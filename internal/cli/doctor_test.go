@@ -2,9 +2,14 @@ package cli
 
 import (
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
+
+	"github.com/kninetimmy/orch/internal/lockfile"
+	"github.com/kninetimmy/orch/internal/state"
 )
 
 func TestDoctorAllChecksPass(t *testing.T) {
@@ -52,6 +57,101 @@ func TestDoctorMissingConfig(t *testing.T) {
 	if !strings.Contains(stdout.String(), "FAIL  configuration") {
 		t.Errorf("stdout missing configuration failure:\n%s", stdout.String())
 	}
+}
+
+func TestDoctorConsistentDeliveryPasses(t *testing.T) {
+	env, stdout, _ := testEnv(t)
+	writeConfig(t, env.RepoRoot, validTOML)
+	if _, err := state.EnterDelivery(env.RepoRoot, "claude"); err != nil {
+		t.Fatal(err)
+	}
+	if code := Run([]string{"doctor"}, env); code != ExitOK {
+		t.Fatalf("exit = %d, want %d\n%s", code, ExitOK, stdout.String())
+	}
+	out := stdout.String()
+	for _, want := range []string{"ok    state file", "ok    delivery lock", "ok    state/lock consistency"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("output missing %q:\n%s", want, out)
+		}
+	}
+}
+
+func TestDoctorOrphanedLockFails(t *testing.T) {
+	env, stdout, _ := testEnv(t)
+	writeConfig(t, env.RepoRoot, validTOML)
+	err := lockfile.Acquire(env.RepoRoot, lockfile.Owner{RunID: "run-orphan", Host: "codex", Hostname: "h", PID: 1, AcquiredAt: time.Now().UTC()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if code := Run([]string{"doctor"}, env); code != ExitError {
+		t.Errorf("exit = %d, want %d", code, ExitError)
+	}
+	out := stdout.String()
+	if !strings.Contains(out, "FAIL  state/lock consistency") {
+		t.Errorf("output missing consistency failure:\n%s", out)
+	}
+	if !strings.Contains(out, "orch abort") {
+		t.Errorf("output missing abort remediation:\n%s", out)
+	}
+}
+
+func TestDoctorCorruptLockFails(t *testing.T) {
+	env, stdout, _ := testEnv(t)
+	writeConfig(t, env.RepoRoot, validTOML)
+	if err := os.WriteFile(filepath.Join(env.RepoRoot, ".orchestrator", "delivery.lock"), []byte("{broken"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if code := Run([]string{"doctor"}, env); code != ExitError {
+		t.Errorf("exit = %d, want %d", code, ExitError)
+	}
+	if !strings.Contains(stdout.String(), "FAIL  delivery lock") {
+		t.Errorf("output missing lock failure:\n%s", stdout.String())
+	}
+}
+
+func TestDoctorNotesDeadAcquirer(t *testing.T) {
+	env, stdout, _ := testEnv(t)
+	writeConfig(t, env.RepoRoot, validTOML)
+	hostname, err := os.Hostname()
+	if err != nil {
+		t.Fatal(err)
+	}
+	st, err := state.EnterDelivery(env.RepoRoot, "claude")
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Rewrite the lock with an exited process's PID and this hostname.
+	if err := lockfile.Release(env.RepoRoot); err != nil {
+		t.Fatal(err)
+	}
+	err = lockfile.Acquire(env.RepoRoot, lockfile.Owner{
+		RunID: st.Run.ID, Host: "claude", Hostname: hostname,
+		PID: exitedPID(t), AcquiredAt: time.Now().UTC(),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if code := Run([]string{"doctor"}, env); code != ExitOK {
+		t.Fatalf("exit = %d, want %d (a dead acquirer is normal between commands)\n%s", code, ExitOK, stdout.String())
+	}
+	if !strings.Contains(stdout.String(), "no longer running") {
+		t.Errorf("output missing dead-acquirer note:\n%s", stdout.String())
+	}
+}
+
+// exitedPID runs this test binary with no matching tests so it exits
+// immediately, returning its (now dead) PID.
+func exitedPID(t *testing.T) int {
+	t.Helper()
+	cmd := exec.Command(os.Args[0], "-test.run=TestNoSuchTestExists")
+	if err := cmd.Start(); err != nil {
+		t.Fatalf("cannot start helper process: %v", err)
+	}
+	pid := cmd.Process.Pid
+	if err := cmd.Wait(); err != nil {
+		t.Fatalf("helper process: %v", err)
+	}
+	return pid
 }
 
 func TestDoctorNotesLocalOverride(t *testing.T) {

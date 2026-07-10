@@ -1,8 +1,14 @@
 package cli
 
 import (
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
+	"time"
+
+	"github.com/kninetimmy/orch/internal/lockfile"
+	"github.com/kninetimmy/orch/internal/state"
 )
 
 func TestStatusNotInitialized(t *testing.T) {
@@ -26,6 +32,56 @@ func TestStatusValidConfig(t *testing.T) {
 		if !strings.Contains(out, want) {
 			t.Errorf("output missing %q:\n%s", want, out)
 		}
+	}
+}
+
+func TestStatusDeliveryShowsRunAndLock(t *testing.T) {
+	env, stdout, _ := testEnv(t)
+	writeConfig(t, env.RepoRoot, validTOML)
+	st, err := state.EnterDelivery(env.RepoRoot, "claude")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if code := Run([]string{"status"}, env); code != ExitOK {
+		t.Fatalf("exit = %d, want %d", code, ExitOK)
+	}
+	out := stdout.String()
+	for _, want := range []string{"mode:   delivery", st.Run.ID, "lock:   held by claude"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("output missing %q:\n%s", want, out)
+		}
+	}
+	if strings.Contains(out, "warning:") {
+		t.Errorf("unexpected warning on consistent state:\n%s", out)
+	}
+}
+
+func TestStatusCorruptState(t *testing.T) {
+	env, _, stderr := testEnv(t)
+	writeConfig(t, env.RepoRoot, validTOML)
+	if err := os.WriteFile(filepath.Join(env.RepoRoot, ".orchestrator", "state.json"), []byte("{broken"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if code := Run([]string{"status"}, env); code != ExitError {
+		t.Errorf("exit = %d, want %d", code, ExitError)
+	}
+	if !strings.Contains(stderr.String(), "state.json") {
+		t.Errorf("stderr does not name the state file: %q", stderr.String())
+	}
+}
+
+func TestStatusOrphanedLockWarnsButSucceeds(t *testing.T) {
+	env, stdout, _ := testEnv(t)
+	writeConfig(t, env.RepoRoot, validTOML)
+	err := lockfile.Acquire(env.RepoRoot, lockfile.Owner{RunID: "run-orphan", Host: "codex", Hostname: "h", PID: 1, AcquiredAt: time.Now().UTC()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if code := Run([]string{"status"}, env); code != ExitOK {
+		t.Fatalf("exit = %d, want %d (status inspects; doctor enforces)", code, ExitOK)
+	}
+	if !strings.Contains(stdout.String(), "warning:") {
+		t.Errorf("output missing consistency warning:\n%s", stdout.String())
 	}
 }
 
