@@ -41,7 +41,7 @@ func commands() []command {
 		{"configure", "Change committed configuration (not implemented)", notImplemented("configure")},
 		{"configure-local", "Change machine-local overrides (not implemented)", notImplemented("configure-local")},
 		{"resume", "Resume an interrupted Delivery run (not implemented)", notImplemented("resume")},
-		{"abort", "Stop dispatch and return to Assist (not implemented)", notImplemented("abort")},
+		{"abort", "Stop dispatch and return to Assist", runAbort},
 		{"metrics", "Show local metrics (not implemented)", notImplemented("metrics")},
 	}
 }

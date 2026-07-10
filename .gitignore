@@ -12,3 +12,7 @@ coverage.html
 
 # Orch machine-local overrides (PRD §17)
 .orchestrator/config.local.toml
+
+# Orch machine-local state and lock (PRD §7, §14)
+.orchestrator/state.json
+.orchestrator/delivery.lock

@@ -109,7 +109,7 @@ func TestRunUnexpectedArgument(t *testing.T) {
 }
 
 func TestNotImplementedCommandsFailClosed(t *testing.T) {
-	for _, name := range []string{"init", "configure", "configure-local", "resume", "abort", "metrics"} {
+	for _, name := range []string{"init", "configure", "configure-local", "resume", "metrics"} {
 		t.Run(name, func(t *testing.T) {
 			env, _, stderr := testEnv(t)
 			if code := Run([]string{name}, env); code != ExitError {
