@@ -1,3 +1,14 @@
 .memhub/
 agent_docs/PROJECT.md
 agent_docs/PROJECT_LEDGER.md
+
+# Go build/test artifacts
+/orch
+/orch.exe
+/bin/
+*.test
+*.out
+coverage.html
+
+# Orch machine-local overrides (PRD §17)
+.orchestrator/config.local.toml
