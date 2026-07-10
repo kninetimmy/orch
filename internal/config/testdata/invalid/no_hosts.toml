@@ -1,0 +1,6 @@
+# At least one host profile must be configured.
+schema_version  = 1
+config_revision = "r1"
+
+[memhub]
+mode = "off"

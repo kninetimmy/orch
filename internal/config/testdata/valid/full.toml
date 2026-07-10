@@ -1,0 +1,64 @@
+# Every section explicit, both hosts enabled, values matching the
+# PRD §10 default model profiles.
+schema_version  = 1
+config_revision = "r1"
+
+[concurrency]
+max_subagents = 3
+
+[merge]
+strategy = "squash"
+
+[memhub]
+mode = "required"
+
+[metrics]
+enabled = false
+
+[hosts.codex.roles.architect]
+model  = "gpt-5.6-sol"
+effort = "high"
+
+[hosts.codex.roles.scout]
+model  = "gpt-5.6-terra"
+effort = "low"
+
+[hosts.codex.roles.implementer]
+model  = "gpt-5.6-terra"
+effort = "high"
+
+[hosts.codex.roles.specialist]
+model  = "gpt-5.6-sol"
+effort = "medium"
+
+[hosts.codex.roles.reviewer]
+model  = "gpt-5.6-sol"
+effort = "medium"
+
+[hosts.codex.roles.review_downgrade]
+model  = "gpt-5.6-terra"
+effort = "high"
+
+[hosts.claude.roles.architect]
+model  = "claude-opus-4-8"
+effort = "xhigh"
+
+[hosts.claude.roles.scout]
+model  = "claude-sonnet-5"
+effort = "low"
+
+[hosts.claude.roles.implementer]
+model  = "claude-sonnet-5"
+effort = "xhigh"
+
+[hosts.claude.roles.specialist]
+model  = "claude-opus-4-8"
+effort = "high"
+
+[hosts.claude.roles.reviewer]
+model  = "claude-opus-4-8"
+effort = "high"
+
+[hosts.claude.roles.review_downgrade]
+model  = "claude-sonnet-5"
+effort = "high"

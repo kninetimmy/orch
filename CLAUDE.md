@@ -11,5 +11,12 @@ the DB and gitignored by default. Re-render after `/wrap-up` with
 
 ## Build / test / run
 
-None yet — the shared-core language/runtime is undecided (PRD §24).
-See Architecture in `.memhub/rendered/PROJECT.md`.
+Shared core is Go (module `github.com/kninetimmy/orch`, Go 1.26+).
+
+- Build:  `go build ./...`
+- Test:   `go test ./...`
+- Vet:    `go vet ./...`
+- Format: `gofmt -w .` (CI fails on unformatted files)
+- Run:    `go run ./cmd/orch status` (or `doctor`, `help`)
+
+Host adapters under `adapters/` are non-Go artifacts (not implemented yet).

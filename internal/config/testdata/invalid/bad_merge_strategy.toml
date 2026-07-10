@@ -1,0 +1,33 @@
+# Only squash, rebase, and merge-commit are valid strategies.
+schema_version  = 1
+config_revision = "r1"
+
+[merge]
+strategy = "fast-forward"
+
+[memhub]
+mode = "off"
+
+[hosts.claude.roles.architect]
+model  = "claude-opus-4-8"
+effort = "xhigh"
+
+[hosts.claude.roles.scout]
+model  = "claude-sonnet-5"
+effort = "low"
+
+[hosts.claude.roles.implementer]
+model  = "claude-sonnet-5"
+effort = "xhigh"
+
+[hosts.claude.roles.specialist]
+model  = "claude-opus-4-8"
+effort = "high"
+
+[hosts.claude.roles.reviewer]
+model  = "claude-opus-4-8"
+effort = "high"
+
+[hosts.claude.roles.review_downgrade]
+model  = "claude-sonnet-5"
+effort = "high"
