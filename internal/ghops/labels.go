@@ -60,6 +60,10 @@ const (
 // the taxonomy table depend on this order being stable.
 var statuses = []Status{StatusReady, StatusInProgress, StatusBlocked, StatusNeedsHuman, StatusAwaitingReview}
 
+// roleLabels lists all role labels in canonical order; SetRole depends
+// on this order being stable.
+var roleLabels = []Role{RoleImplementer, RoleSpecialist}
+
 // labelDef pins a taxonomy label's repository definition so
 // EnsureLabelTaxonomy is deterministic and transcripts are stable.
 type labelDef struct {
@@ -159,6 +163,14 @@ func statusNames() []string {
 	names := make([]string, len(statuses))
 	for i, s := range statuses {
 		names[i] = string(s)
+	}
+	return names
+}
+
+func roleNames() []string {
+	names := make([]string, len(roleLabels))
+	for i, r := range roleLabels {
+		names[i] = string(r)
 	}
 	return names
 }

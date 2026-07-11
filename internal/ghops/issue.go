@@ -100,6 +100,25 @@ func (g *GH) SetStatus(ctx context.Context, number int, to Status) error {
 	return err
 }
 
+// SetRole moves the issue to role to, removing every other role label
+// in one edit so the exactly-one-role invariant of PRD §13 survives an
+// escalation that changes the executor role. Removing an absent label is
+// a no-op for gh.
+func (g *GH) SetRole(ctx context.Context, number int, to Role) error {
+	if !memberOf(string(to), roleNames()) {
+		return fmt.Errorf("%w: role %q is not one of %s", ErrBadLabels, to, strings.Join(roleNames(), ", "))
+	}
+	args := []string{"issue", "edit", strconv.Itoa(number)}
+	for _, r := range roleLabels {
+		if r != to {
+			args = append(args, "--remove-label", string(r))
+		}
+	}
+	args = append(args, "--add-label", string(to))
+	_, err := g.gh(ctx, args...)
+	return err
+}
+
 // CloseIssue closes the issue. Closing is destructive bookkeeping
 // (PRD §12 step 17 confirms closure only after the merge result is
 // recorded), so it requires ExplicitConfirmation.
