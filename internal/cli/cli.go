@@ -41,6 +41,19 @@ type usageError string
 
 func (e usageError) Error() string { return string(e) }
 
+// exitCodeError lets a command choose its own process exit code instead
+// of the ExitError default. `orch guard claude` returns it to exit 2 on
+// an internal failure: that is the PreToolUse hook protocol's blocking
+// code, where exit 1 is non-blocking (a fail-open trap), so the claude
+// verb must never exit 1.
+type exitCodeError struct {
+	code int
+	err  error
+}
+
+func (e exitCodeError) Error() string { return e.err.Error() }
+func (e exitCodeError) Unwrap() error { return e.err }
+
 type command struct {
 	name    string
 	summary string
@@ -62,6 +75,7 @@ func commands() []command {
 		{"abort", "Stop dispatch and return to Assist", noArgs("abort", runAbort)},
 		{"metrics", "Show local metrics (not implemented)", noArgs("metrics", notImplemented("metrics"))},
 		{"run", "Adapter plumbing: Delivery run verbs (JSON stdin/stdout; not a human command)", runRunVerb},
+		{"guard", "Adapter plumbing: pre-write enforcement for host hooks (not a human command)", runGuard},
 	}
 }
 
@@ -116,6 +130,11 @@ func Run(args []string, env Env) int {
 		if errors.As(err, &ue) {
 			fmt.Fprintf(env.Stderr, "%s\n", err)
 			return ExitUsage
+		}
+		var ce exitCodeError
+		if errors.As(err, &ce) {
+			fmt.Fprintf(env.Stderr, "orch %s: %v\n", c.name, err)
+			return ce.code
 		}
 		fmt.Fprintf(env.Stderr, "orch %s: %v\n", c.name, err)
 		return ExitError

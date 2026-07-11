@@ -131,3 +131,44 @@ func FindRoot(startDir string) (string, error) {
 		dir = parent
 	}
 }
+
+// FindOutermostRoot walks from startDir to the filesystem root and
+// returns the outermost ancestor that contains an .orchestrator
+// directory — the opposite selection from FindRoot, which stops at the
+// innermost. The guard (PRD §23) needs the outermost hit: a Delivery
+// worktree checkout carries the committed .orchestrator/config.toml, so
+// an innermost search would resolve a path under
+// <root>/.orchestrator/worktrees/issue-N/ to the worktree itself, whose
+// missing machine-local state.json would read as Assist and wrongly deny
+// every executor write. The same fail-closed rules as FindRoot apply: an
+// unreadable ancestor, or an .orchestrator entry that is not a real
+// directory (a symlink does not count), is an error; ErrNotFound wraps
+// when no ancestor qualifies.
+func FindOutermostRoot(startDir string) (string, error) {
+	dir, err := Canonical(startDir)
+	if err != nil {
+		return "", err
+	}
+	outermost := ""
+	for {
+		candidate := filepath.Join(dir, OrchestratorDir)
+		info, err := os.Lstat(candidate)
+		switch {
+		case err == nil && info.IsDir():
+			outermost = dir
+		case err == nil:
+			return "", fmt.Errorf("%s exists but is not a real directory", candidate)
+		case !errors.Is(err, fs.ErrNotExist):
+			return "", fmt.Errorf("find repo root: %w", err)
+		}
+		parent := filepath.Dir(dir)
+		if parent == dir {
+			break
+		}
+		dir = parent
+	}
+	if outermost == "" {
+		return "", fmt.Errorf("%w in %s or any parent", ErrNotFound, startDir)
+	}
+	return outermost, nil
+}

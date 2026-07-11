@@ -85,11 +85,17 @@ type fakeRunner struct {
 	authExit  int
 	repoExit  int
 	repoJSON  string
+	// checkIgnoreExit scripts `git check-ignore`: 0 ignored, 1 not
+	// ignored, anything else an error (the guard ignore probe).
+	checkIgnoreExit int
 }
 
 func (f fakeRunner) Run(_ context.Context, c execx.Cmd) (execx.Result, error) {
 	switch c.Name {
 	case "git":
+		if len(c.Args) > 0 && c.Args[0] == "check-ignore" {
+			return execx.Result{ExitCode: f.checkIgnoreExit}, nil
+		}
 		if f.gitExit != 0 {
 			return execx.Result{Stderr: f.gitStderr, ExitCode: f.gitExit}, nil
 		}

@@ -189,3 +189,77 @@ func TestFindRootRejectsNonDirectory(t *testing.T) {
 		t.Errorf("FindRoot error = %v, want 'not a real directory'", err)
 	}
 }
+
+// TestFindOutermostRootNested confirms the outermost .orchestrator ancestor
+// wins when roots nest, the opposite of FindRoot's innermost selection.
+func TestFindOutermostRootNested(t *testing.T) {
+	outer := t.TempDir()
+	inner := filepath.Join(outer, "a", "inner")
+	deep := filepath.Join(inner, "b", "c")
+	if err := os.MkdirAll(deep, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	for _, r := range []string{outer, inner} {
+		if err := os.Mkdir(filepath.Join(r, OrchestratorDir), 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	got, err := FindOutermostRoot(deep)
+	if err != nil {
+		t.Fatalf("FindOutermostRoot: %v", err)
+	}
+	if want := canonical(t, outer); got != want {
+		t.Errorf("FindOutermostRoot = %s, want outer %s", got, want)
+	}
+	// FindRoot picks the innermost, proving the two differ here.
+	if inRoot, err := FindRoot(deep); err != nil || inRoot != canonical(t, inner) {
+		t.Errorf("FindRoot = %s, %v; want inner %s", inRoot, err, canonical(t, inner))
+	}
+}
+
+// TestFindOutermostRootWorktreeShaped mirrors the guard regression: a
+// worktree checkout under the primary root carries its own committed
+// .orchestrator/, but the outermost root is still the primary checkout.
+func TestFindOutermostRootWorktreeShaped(t *testing.T) {
+	root := t.TempDir()
+	worktree := filepath.Join(root, OrchestratorDir, "worktrees", "issue-3")
+	target := filepath.Join(worktree, "src")
+	if err := os.MkdirAll(target, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	for _, r := range []string{root, worktree} {
+		if err := os.MkdirAll(filepath.Join(r, OrchestratorDir), 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	got, err := FindOutermostRoot(filepath.Join(target, "x.go"))
+	if err != nil {
+		t.Fatalf("FindOutermostRoot: %v", err)
+	}
+	if want := canonical(t, root); got != want {
+		t.Errorf("FindOutermostRoot = %s, want primary root %s", got, want)
+	}
+}
+
+func TestFindOutermostRootNotFound(t *testing.T) {
+	got, err := FindOutermostRoot(t.TempDir())
+	if err == nil {
+		t.Skipf("ancestor %s contains %s", got, OrchestratorDir)
+	}
+	if !errors.Is(err, ErrNotFound) {
+		t.Errorf("FindOutermostRoot error = %v, want ErrNotFound", err)
+	}
+}
+
+func TestFindOutermostRootRejectsNonDirectory(t *testing.T) {
+	root := t.TempDir()
+	if err := os.WriteFile(filepath.Join(root, OrchestratorDir), []byte("x"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	_, err := FindOutermostRoot(root)
+	if err == nil || !strings.Contains(err.Error(), "not a real directory") {
+		t.Errorf("FindOutermostRoot error = %v, want 'not a real directory'", err)
+	}
+}
