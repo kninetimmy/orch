@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"strings"
 
 	"github.com/kninetimmy/orch/internal/config"
 	"github.com/kninetimmy/orch/internal/ghops"
@@ -55,11 +56,15 @@ func runDoctor(env Env) error {
 		}
 	}
 
-	_, cfgErr := config.Load(env.RepoRoot)
+	cfg, cfgErr := config.Load(env.RepoRoot)
 	check("configuration", cfgErr)
 
-	if config.HasLocalOverride(env.RepoRoot) {
-		fmt.Fprintf(env.Stdout, "note  %s present; overrides are not yet applied\n", config.LocalOverridePath)
+	if cfgErr == nil && config.HasLocalOverride(env.RepoRoot) {
+		if len(cfg.Overrides) > 0 {
+			fmt.Fprintf(env.Stdout, "note  %s applied; overrides: %s\n", config.LocalOverridePath, strings.Join(cfg.Overrides, ", "))
+		} else {
+			fmt.Fprintf(env.Stdout, "note  %s present; no overrides set\n", config.LocalOverridePath)
+		}
 	}
 
 	st, stErr := state.Load(env.RepoRoot)

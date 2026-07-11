@@ -1,0 +1,3 @@
+# Overriding only the model must leave the committed effort in place.
+[hosts.claude.roles.architect]
+model = "claude-fable-5"

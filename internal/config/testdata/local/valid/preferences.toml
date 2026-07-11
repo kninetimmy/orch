@@ -1,0 +1,6 @@
+# Non-host preference keys are mergeable too.
+[concurrency]
+max_subagents = 7
+
+[metrics]
+enabled = true

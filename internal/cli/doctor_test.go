@@ -227,7 +227,41 @@ func TestDoctorNotesLocalOverride(t *testing.T) {
 	if code := Run([]string{"doctor"}, env); code != ExitOK {
 		t.Fatalf("exit = %d, want %d", code, ExitOK)
 	}
-	if !strings.Contains(stdout.String(), "overrides are not yet applied") {
+	if !strings.Contains(stdout.String(), "note  .orchestrator/config.local.toml present; no overrides set") {
 		t.Errorf("stdout missing local-override note:\n%s", stdout.String())
+	}
+}
+
+func TestDoctorNotesAppliedLocalOverride(t *testing.T) {
+	env, stdout, _ := testEnv(t)
+	writeConfig(t, env.RepoRoot, validTOML)
+	local := "[concurrency]\nmax_subagents = 5\n"
+	if err := os.WriteFile(filepath.Join(env.RepoRoot, ".orchestrator", "config.local.toml"), []byte(local), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if code := Run([]string{"doctor"}, env); code != ExitOK {
+		t.Fatalf("exit = %d, want %d\n%s", code, ExitOK, stdout.String())
+	}
+	if !strings.Contains(stdout.String(), "note  .orchestrator/config.local.toml applied; overrides: concurrency.max_subagents") {
+		t.Errorf("stdout missing applied-override note:\n%s", stdout.String())
+	}
+}
+
+func TestDoctorPolicyViolatingLocalOverrideFails(t *testing.T) {
+	env, stdout, _ := testEnv(t)
+	writeConfig(t, env.RepoRoot, validTOML)
+	local := "schema_version = 2\n"
+	if err := os.WriteFile(filepath.Join(env.RepoRoot, ".orchestrator", "config.local.toml"), []byte(local), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if code := Run([]string{"doctor"}, env); code != ExitError {
+		t.Errorf("exit = %d, want %d", code, ExitError)
+	}
+	out := stdout.String()
+	if !strings.Contains(out, "FAIL  configuration") {
+		t.Errorf("stdout missing configuration failure:\n%s", out)
+	}
+	if !strings.Contains(out, "schema_version") {
+		t.Errorf("stdout missing policy-violation detail:\n%s", out)
 	}
 }

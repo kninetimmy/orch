@@ -1,0 +1,4 @@
+# A permitted preference key with an invalid value must fail
+# re-validation of the merged configuration.
+[hosts.claude.roles.architect]
+effort = "ultra"

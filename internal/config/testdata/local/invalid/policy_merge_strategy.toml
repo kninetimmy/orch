@@ -1,0 +1,3 @@
+# merge.strategy is policy-bearing; it may not be set locally.
+[merge]
+strategy = "rebase"

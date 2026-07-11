@@ -1,0 +1,5 @@
+# Multiple policy-bearing keys set together must all be reported.
+schema_version = 2
+
+[merge]
+strategy = "rebase"

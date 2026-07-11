@@ -1,0 +1,2 @@
+# config_revision is policy-bearing; it may not be set locally.
+config_revision = "r2"
