@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -57,25 +58,46 @@ func testEnv(t *testing.T) (Env, *bytes.Buffer, *bytes.Buffer) {
 		Stdout:   &stdout,
 		Stderr:   &stderr,
 		LookPath: func(name string) (string, error) { return "/fake/" + name, nil },
-		Runner:   fakeGitRunner{toplevel: root},
+		Runner:   fakeRunner{toplevel: root},
 	}
 	return env, &stdout, &stderr
 }
 
-// fakeGitRunner answers `git rev-parse --show-toplevel` (the doctor
-// repository probe) with a fixed top level; exit carries a scripted
-// failure.
-type fakeGitRunner struct {
-	toplevel string
-	exit     int
-	stderr   string
+// fakeRunner answers the doctor probes: `git rev-parse
+// --show-toplevel` with a fixed top level, `gh auth status` and
+// `gh repo view` with scripted exits (zero values report healthy).
+type fakeRunner struct {
+	toplevel  string
+	gitExit   int
+	gitStderr string
+	authExit  int
+	repoExit  int
+	repoJSON  string
 }
 
-func (f fakeGitRunner) Run(context.Context, execx.Cmd) (execx.Result, error) {
-	if f.exit != 0 {
-		return execx.Result{Stderr: f.stderr, ExitCode: f.exit}, nil
+func (f fakeRunner) Run(_ context.Context, c execx.Cmd) (execx.Result, error) {
+	switch c.Name {
+	case "git":
+		if f.gitExit != 0 {
+			return execx.Result{Stderr: f.gitStderr, ExitCode: f.gitExit}, nil
+		}
+		return execx.Result{Stdout: f.toplevel + "\n"}, nil
+	case "gh":
+		switch c.Args[0] {
+		case "auth":
+			return execx.Result{ExitCode: f.authExit}, nil
+		case "repo":
+			if f.repoExit != 0 {
+				return execx.Result{Stderr: "none of the git remotes point to a known GitHub host", ExitCode: f.repoExit}, nil
+			}
+			j := f.repoJSON
+			if j == "" {
+				j = `{"nameWithOwner":"o/r","defaultBranchRef":{"name":"main"},"url":"https://github.com/o/r"}`
+			}
+			return execx.Result{Stdout: j}, nil
+		}
 	}
-	return execx.Result{Stdout: f.toplevel + "\n"}, nil
+	return execx.Result{}, fmt.Errorf("fakeRunner: unexpected command %s %v", c.Name, c.Args)
 }
 
 func writeConfig(t *testing.T, root, content string) {

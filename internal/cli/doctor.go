@@ -7,6 +7,7 @@ import (
 	"os"
 
 	"github.com/kninetimmy/orch/internal/config"
+	"github.com/kninetimmy/orch/internal/ghops"
 	"github.com/kninetimmy/orch/internal/gitops"
 	"github.com/kninetimmy/orch/internal/lockfile"
 	"github.com/kninetimmy/orch/internal/state"
@@ -35,6 +36,24 @@ func runDoctor(env Env) error {
 
 	_, ghErr := env.LookPath("gh")
 	check("gh on PATH", ghErr)
+
+	if ghErr == nil {
+		gh, authErr := ghops.Open(context.Background(), env.Runner, env.RepoRoot)
+		check("gh authentication", authErr)
+		if authErr == nil {
+			repo, repoErr := gh.Repo(context.Background())
+			switch {
+			case errors.Is(repoErr, ghops.ErrNoGitHubRepo):
+				// Assist works without a remote (PRD §5); Delivery
+				// preflight fails closed on this same probe.
+				fmt.Fprintf(env.Stdout, "note  no GitHub repository resolved; Assist works without one, Delivery will fail closed (%v)\n", repoErr)
+			case repoErr != nil:
+				check("gh repository", repoErr)
+			default:
+				fmt.Fprintf(env.Stdout, "ok    gh repository: %s\n", repo.NameWithOwner)
+			}
+		}
+	}
 
 	_, cfgErr := config.Load(env.RepoRoot)
 	check("configuration", cfgErr)
