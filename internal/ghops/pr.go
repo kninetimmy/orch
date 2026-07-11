@@ -84,19 +84,10 @@ type prJSON struct {
 	Body             string `json:"body"`
 }
 
+// toPR converts to the exported view: the field sets are identical, so
+// this is a direct struct conversion (tags are ignored in conversions).
 func (d prJSON) toPR() PR {
-	return PR{
-		Number:           d.Number,
-		State:            d.State,
-		Title:            d.Title,
-		URL:              d.URL,
-		HeadRefName:      d.HeadRefName,
-		BaseRefName:      d.BaseRefName,
-		HeadRefOid:       d.HeadRefOid,
-		MergeStateStatus: d.MergeStateStatus,
-		MergedAt:         d.MergedAt,
-		Body:             d.Body,
-	}
+	return PR(d)
 }
 
 // PR reads one pull request; the run engine uses it for the
