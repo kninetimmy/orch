@@ -2,11 +2,14 @@ package cli
 
 import (
 	"bytes"
+	"context"
 	"errors"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/kninetimmy/orch/internal/execx"
 )
 
 // validTOML is a minimal valid configuration (one host, defaults).
@@ -43,17 +46,36 @@ effort = "high"
 `
 
 // testEnv returns an Env writing to fresh buffers, rooted in an empty
-// temp dir, with every PATH lookup succeeding.
+// temp dir, with every PATH lookup succeeding and a Runner that
+// reports the repo root as a healthy git top level.
 func testEnv(t *testing.T) (Env, *bytes.Buffer, *bytes.Buffer) {
 	t.Helper()
 	var stdout, stderr bytes.Buffer
+	root := t.TempDir()
 	env := Env{
-		RepoRoot: t.TempDir(),
+		RepoRoot: root,
 		Stdout:   &stdout,
 		Stderr:   &stderr,
 		LookPath: func(name string) (string, error) { return "/fake/" + name, nil },
+		Runner:   fakeGitRunner{toplevel: root},
 	}
 	return env, &stdout, &stderr
+}
+
+// fakeGitRunner answers `git rev-parse --show-toplevel` (the doctor
+// repository probe) with a fixed top level; exit carries a scripted
+// failure.
+type fakeGitRunner struct {
+	toplevel string
+	exit     int
+	stderr   string
+}
+
+func (f fakeGitRunner) Run(context.Context, execx.Cmd) (execx.Result, error) {
+	if f.exit != 0 {
+		return execx.Result{Stderr: f.stderr, ExitCode: f.exit}, nil
+	}
+	return execx.Result{Stdout: f.toplevel + "\n"}, nil
 }
 
 func writeConfig(t *testing.T, root, content string) {

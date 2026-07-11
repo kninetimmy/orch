@@ -19,10 +19,43 @@ func TestDoctorAllChecksPass(t *testing.T) {
 		t.Fatalf("exit = %d, want %d\n%s", code, ExitOK, stdout.String())
 	}
 	out := stdout.String()
-	for _, want := range []string{"ok    git on PATH", "ok    gh on PATH", "ok    configuration"} {
+	for _, want := range []string{"ok    git on PATH", "ok    git repository", "ok    gh on PATH", "ok    configuration"} {
 		if !strings.Contains(out, want) {
 			t.Errorf("output missing %q:\n%s", want, out)
 		}
+	}
+}
+
+func TestDoctorNotAGitRepo(t *testing.T) {
+	env, stdout, _ := testEnv(t)
+	writeConfig(t, env.RepoRoot, validTOML)
+	env.Runner = fakeGitRunner{exit: 128, stderr: "fatal: not a git repository"}
+	if code := Run([]string{"doctor"}, env); code != ExitError {
+		t.Errorf("exit = %d, want %d", code, ExitError)
+	}
+	if !strings.Contains(stdout.String(), "FAIL  git repository") {
+		t.Errorf("stdout missing repository failure:\n%s", stdout.String())
+	}
+}
+
+func TestDoctorSkipsRepoCheckWithoutGit(t *testing.T) {
+	env, stdout, _ := testEnv(t)
+	writeConfig(t, env.RepoRoot, validTOML)
+	env.LookPath = func(name string) (string, error) {
+		if name == "git" {
+			return "", errNotFound
+		}
+		return "/fake/" + name, nil
+	}
+	if code := Run([]string{"doctor"}, env); code != ExitError {
+		t.Errorf("exit = %d, want %d", code, ExitError)
+	}
+	out := stdout.String()
+	if !strings.Contains(out, "FAIL  git on PATH") {
+		t.Errorf("stdout missing git failure:\n%s", out)
+	}
+	if strings.Contains(out, "git repository") {
+		t.Errorf("repository check ran without git on PATH:\n%s", out)
 	}
 }
 

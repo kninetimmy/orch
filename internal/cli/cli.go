@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"io"
 	"os/exec"
+
+	"github.com/kninetimmy/orch/internal/execx"
 )
 
 // Exit codes returned by Run.
@@ -23,6 +25,9 @@ type Env struct {
 	Stderr   io.Writer
 	// LookPath resolves an executable name; defaults to exec.LookPath.
 	LookPath func(string) (string, error)
+	// Runner executes external commands (git, gh); defaults to
+	// execx.Local resolving through LookPath.
+	Runner execx.Runner
 }
 
 type command struct {
@@ -57,6 +62,9 @@ func notImplemented(name string) func(Env) error {
 func Run(args []string, env Env) int {
 	if env.LookPath == nil {
 		env.LookPath = exec.LookPath
+	}
+	if env.Runner == nil {
+		env.Runner = execx.Local{LookPath: env.LookPath}
 	}
 	if len(args) == 0 {
 		usage(env.Stderr)
