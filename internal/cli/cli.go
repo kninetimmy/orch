@@ -71,7 +71,7 @@ func commands() []command {
 		{"doctor", "Check environment and configuration health", noArgs("doctor", runDoctor)},
 		{"configure", "Change committed configuration (not implemented)", noArgs("configure", notImplemented("configure"))},
 		{"configure-local", "Change machine-local overrides (not implemented)", noArgs("configure-local", notImplemented("configure-local"))},
-		{"resume", "Resume an interrupted Delivery run (not implemented)", noArgs("resume", notImplemented("resume"))},
+		{"resume", "Reconcile an interrupted Delivery run against GitHub and continue", runResume},
 		{"abort", "Stop dispatch and return to Assist", noArgs("abort", runAbort)},
 		{"metrics", "Show local metrics (not implemented)", noArgs("metrics", notImplemented("metrics"))},
 		{"run", "Adapter plumbing: Delivery run verbs (JSON stdin/stdout; not a human command)", runRunVerb},

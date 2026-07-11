@@ -97,7 +97,7 @@ func PROpen(ctx context.Context, env Env, reqJSON []byte) (*PROpenResult, error)
 		return nil, err
 	}
 	if existing != nil {
-		return nil, fmt.Errorf("%w: PR #%d for branch %s; run `orch abort` or a future `orch resume` to adopt it", ErrPRExists, existing.Number, issue.Branch)
+		return nil, fmt.Errorf("%w: PR #%d for branch %s; run `orch abort` or `orch resume` to adopt it", ErrPRExists, existing.Number, issue.Branch)
 	}
 
 	// Push the branch, then record the verifications on the issue body

@@ -96,12 +96,12 @@ func DecodeActivation(data []byte) (*ActivationRequest, error) {
 // wrapAfterEnter marks an error that occurred after state.EnterDelivery
 // succeeded: state and the Delivery lock are held, so the remediation
 // is `orch abort` (safe — it never touches branches, issues, or
-// worktrees) or a future `orch resume`, never a bare retry.
+// worktrees) or `orch resume`, never a bare retry.
 func wrapAfterEnter(err error) error {
 	if err == nil {
 		return nil
 	}
-	return fmt.Errorf("%w (state and the delivery lock are preserved; run `orch abort` to return to assist, or a future `orch resume` to continue)", err)
+	return fmt.Errorf("%w (state and the delivery lock are preserved; run `orch abort` to return to assist, or `orch resume` to continue)", err)
 }
 
 // Activate validates a plan and its approval, runs the read-only

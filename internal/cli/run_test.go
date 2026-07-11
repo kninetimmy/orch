@@ -6,11 +6,12 @@ import (
 	"testing"
 )
 
-// TestEightCommandsRejectTrailingArgs proves noArgs still rejects a
-// trailing argument for every PRD §22 command except the adapter-
-// plumbing `run` verb, which parses its own argv.
-func TestEightCommandsRejectTrailingArgs(t *testing.T) {
-	for _, name := range []string{"init", "status", "doctor", "configure", "configure-local", "resume", "abort", "metrics"} {
+// TestNoArgCommandsRejectTrailingArgs proves noArgs still rejects a
+// trailing argument for every PRD §22 command except the ones that parse
+// their own argv: the adapter-plumbing `run` verb and `resume` (which
+// takes flags).
+func TestNoArgCommandsRejectTrailingArgs(t *testing.T) {
+	for _, name := range []string{"init", "status", "doctor", "configure", "configure-local", "abort", "metrics"} {
 		t.Run(name, func(t *testing.T) {
 			env, _, stderr := testEnv(t)
 			if code := Run([]string{name, "extra"}, env); code != ExitUsage {
