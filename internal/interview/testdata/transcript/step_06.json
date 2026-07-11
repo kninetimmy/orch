@@ -1,0 +1,56 @@
+{
+  "schema_version": 1,
+  "kind": "questions",
+  "progress": {
+    "index": 6,
+    "total": 14
+  },
+  "questions": [
+    {
+      "id": "host.claude.role.reviewer.model",
+      "header": "Reviewer",
+      "prompt": "Reviewer model (Claude Code)",
+      "preamble": "Reviewer: independently verifies acceptance criteria, scope discipline, correctness, test evidence, CI state, and security/data-safety concerns.",
+      "kind": "select",
+      "options": [
+        {
+          "value": "claude-opus-4-8",
+          "label": "claude-opus-4-8",
+          "recommended": true
+        },
+        {
+          "value": "claude-sonnet-5",
+          "label": "claude-sonnet-5"
+        }
+      ],
+      "free_text": true,
+      "default": "claude-opus-4-8"
+    },
+    {
+      "id": "host.claude.role.reviewer.effort",
+      "header": "Reviewer",
+      "prompt": "Reviewer reasoning effort (Claude Code)",
+      "kind": "select",
+      "options": [
+        {
+          "value": "low",
+          "label": "Low"
+        },
+        {
+          "value": "medium",
+          "label": "Medium"
+        },
+        {
+          "value": "high",
+          "label": "High",
+          "recommended": true
+        },
+        {
+          "value": "xhigh",
+          "label": "Extra high"
+        }
+      ],
+      "default": "high"
+    }
+  ]
+}

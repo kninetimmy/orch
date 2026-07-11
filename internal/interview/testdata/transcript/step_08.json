@@ -1,0 +1,51 @@
+{
+  "schema_version": 1,
+  "kind": "questions",
+  "progress": {
+    "index": 8,
+    "total": 14
+  },
+  "questions": [
+    {
+      "id": "host.codex.role.architect.model",
+      "header": "Architect",
+      "prompt": "Architect model (Codex CLI)",
+      "kind": "select",
+      "options": [
+        {
+          "value": "gpt-5.6-sol",
+          "label": "gpt-5.6-sol",
+          "recommended": true
+        },
+        {
+          "value": "gpt-5.6-terra",
+          "label": "gpt-5.6-terra"
+        }
+      ],
+      "free_text": true,
+      "default": "gpt-5.6-sol"
+    },
+    {
+      "id": "host.codex.role.architect.effort",
+      "header": "Architect",
+      "prompt": "Architect reasoning effort (Codex CLI)",
+      "kind": "select",
+      "options": [
+        {
+          "value": "low",
+          "label": "Low"
+        },
+        {
+          "value": "medium",
+          "label": "Medium"
+        },
+        {
+          "value": "high",
+          "label": "High",
+          "recommended": true
+        }
+      ],
+      "default": "high"
+    }
+  ]
+}
