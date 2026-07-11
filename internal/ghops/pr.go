@@ -1,0 +1,133 @@
+package ghops
+
+import (
+	"context"
+	"fmt"
+	"strconv"
+	"strings"
+)
+
+// PRSpec describes a PR to open. The body (the PRD §13 audit record)
+// is opaque to ghops.
+type PRSpec struct {
+	// Head is the feature branch, Base the merge target.
+	Head, Base string
+	Title      string
+	Body       string
+}
+
+// PR is the read-back view of a pull request.
+type PR struct {
+	Number int
+	// State is "OPEN", "CLOSED", or "MERGED".
+	State string
+	Title string
+	URL   string
+	// HeadRefName and BaseRefName are the branch names.
+	HeadRefName, BaseRefName string
+	// HeadRefOid is the head commit SHA the human's merge approval
+	// refers to; MergePR pins it (PRD §8).
+	HeadRefOid string
+	// MergeStateStatus is GitHub's merge-state summary, for example
+	// "CLEAN", "BLOCKED", or "DIRTY".
+	MergeStateStatus string
+	// MergedAt is the RFC3339 merge time, empty while unmerged.
+	MergedAt string
+}
+
+// mergeFlags maps the config-validated merge strategies
+// (internal/config: squash|rebase|merge-commit) to gh's merge flags.
+// ghops re-validates rather than trusting its caller.
+var mergeFlags = map[string]string{
+	"squash":       "--squash",
+	"rebase":       "--rebase",
+	"merge-commit": "--merge",
+}
+
+// CreatePR opens one PR for the issue's feature branch (PRD §12
+// step 9). The body travels over stdin, never the command line.
+func (g *GH) CreatePR(ctx context.Context, spec PRSpec) (number int, url string, err error) {
+	if spec.Head == "" || spec.Base == "" {
+		return 0, "", fmt.Errorf("pr create requires head and base branches (head %q, base %q)", spec.Head, spec.Base)
+	}
+	// With a non-TTY stdout gh prints exactly the created PR URL.
+	out, err := g.ghStdin(ctx, strings.NewReader(spec.Body),
+		"pr", "create", "--head", spec.Head, "--base", spec.Base, "--title", spec.Title, "--body-file", "-")
+	if err != nil {
+		return 0, "", err
+	}
+	number, err = parseNumberFromURL(out, "pull")
+	if err != nil {
+		return 0, "", err
+	}
+	return number, out, nil
+}
+
+// PR reads one pull request; the run engine uses it for the
+// ready-to-merge report (PRD §12 step 14) and to obtain the
+// HeadRefOid a merge approval pins.
+func (g *GH) PR(ctx context.Context, number int) (PR, error) {
+	var decoded struct {
+		Number           int    `json:"number"`
+		State            string `json:"state"`
+		Title            string `json:"title"`
+		URL              string `json:"url"`
+		HeadRefName      string `json:"headRefName"`
+		BaseRefName      string `json:"baseRefName"`
+		HeadRefOid       string `json:"headRefOid"`
+		MergeStateStatus string `json:"mergeStateStatus"`
+		MergedAt         string `json:"mergedAt"`
+	}
+	if err := g.ghJSON(ctx, &decoded, "pr", "view", strconv.Itoa(number),
+		"--json", "number,state,title,url,headRefName,baseRefName,headRefOid,mergeStateStatus,mergedAt"); err != nil {
+		return PR{}, err
+	}
+	if decoded.Number != number {
+		return PR{}, fmt.Errorf("gh pr view %d in %s returned PR %d", number, g.root, decoded.Number)
+	}
+	return PR{
+		Number:           decoded.Number,
+		State:            decoded.State,
+		Title:            decoded.Title,
+		URL:              decoded.URL,
+		HeadRefName:      decoded.HeadRefName,
+		BaseRefName:      decoded.BaseRefName,
+		HeadRefOid:       decoded.HeadRefOid,
+		MergeStateStatus: decoded.MergeStateStatus,
+		MergedAt:         decoded.MergedAt,
+	}, nil
+}
+
+// MergePR merges an approved PR with the configured strategy. It is
+// only ever invoked after the human merge gate (PRD §8) and requires
+// ExplicitConfirmation. headOID pins the commit the human approved
+// (--match-head-commit): if the PR moved after approval, gh refuses
+// and the merge fails mechanically instead of merging unreviewed
+// commits. Remote branch deletion is deliberately separate
+// (gitops.DeleteRemoteBranch, PRD §12 step 18): --delete-branch
+// would also delete the local branch and touch the invoking
+// checkout, and each destructive act carries its own confirmation.
+func (g *GH) MergePR(ctx context.Context, number int, strategy, headOID string, c Confirmation) error {
+	if !c.ok {
+		return fmt.Errorf("%w: merge PR #%d", ErrNotConfirmed, number)
+	}
+	flag, ok := mergeFlags[strategy]
+	if !ok {
+		return fmt.Errorf("unknown merge strategy %q (want squash, rebase, or merge-commit)", strategy)
+	}
+	if headOID == "" {
+		return fmt.Errorf("merge PR #%d requires the approved head commit SHA (PRD §8: approval pins one PR state)", number)
+	}
+	_, err := g.gh(ctx, "pr", "merge", strconv.Itoa(number), flag, "--match-head-commit", headOID)
+	return err
+}
+
+// ClosePR closes a PR without merging; abandoning tracked work is
+// destructive bookkeeping and requires ExplicitConfirmation.
+func (g *GH) ClosePR(ctx context.Context, number int, c Confirmation) error {
+	if !c.ok {
+		return fmt.Errorf("%w: close PR #%d", ErrNotConfirmed, number)
+	}
+	_, err := g.gh(ctx, "pr", "close", strconv.Itoa(number))
+	return err
+}

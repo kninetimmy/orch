@@ -6,6 +6,7 @@ package execxtest
 
 import (
 	"context"
+	"io"
 	"slices"
 	"testing"
 
@@ -23,6 +24,9 @@ type Call struct {
 	Dir string
 	// Env, when non-nil, is the expected exact Cmd.Env.
 	Env []string
+	// Stdin, when non-empty, is the expected full standard input;
+	// empty skips the check, matching the Dir convention.
+	Stdin string
 
 	// Stdout, Stderr, and Exit form the scripted Result.
 	Stdout string
@@ -62,6 +66,18 @@ func (s *Script) Run(_ context.Context, c execx.Cmd) (execx.Result, error) {
 	}
 	if want.Env != nil && !slices.Equal(c.Env, want.Env) {
 		s.T.Fatalf("call %d: %s env\ngot  %q\nwant %q", s.next, c.Name, c.Env, want.Env)
+	}
+	if want.Stdin != "" {
+		if c.Stdin == nil {
+			s.T.Fatalf("call %d: %s stdin\ngot  no stdin\nwant %q", s.next, c.Name, want.Stdin)
+		}
+		got, err := io.ReadAll(c.Stdin)
+		if err != nil {
+			s.T.Fatalf("call %d: %s stdin read: %v", s.next, c.Name, err)
+		}
+		if string(got) != want.Stdin {
+			s.T.Fatalf("call %d: %s stdin\ngot  %q\nwant %q", s.next, c.Name, got, want.Stdin)
+		}
 	}
 	if want.Err != nil {
 		return execx.Result{}, want.Err

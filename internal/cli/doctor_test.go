@@ -19,17 +19,45 @@ func TestDoctorAllChecksPass(t *testing.T) {
 		t.Fatalf("exit = %d, want %d\n%s", code, ExitOK, stdout.String())
 	}
 	out := stdout.String()
-	for _, want := range []string{"ok    git on PATH", "ok    git repository", "ok    gh on PATH", "ok    configuration"} {
+	for _, want := range []string{"ok    git on PATH", "ok    git repository", "ok    gh on PATH", "ok    gh authentication", "ok    gh repository: o/r", "ok    configuration"} {
 		if !strings.Contains(out, want) {
 			t.Errorf("output missing %q:\n%s", want, out)
 		}
 	}
 }
 
+func TestDoctorUnauthenticatedGh(t *testing.T) {
+	env, stdout, _ := testEnv(t)
+	writeConfig(t, env.RepoRoot, validTOML)
+	env.Runner = fakeRunner{toplevel: env.RepoRoot, authExit: 1}
+	if code := Run([]string{"doctor"}, env); code != ExitError {
+		t.Errorf("exit = %d, want %d", code, ExitError)
+	}
+	out := stdout.String()
+	if !strings.Contains(out, "FAIL  gh authentication") {
+		t.Errorf("stdout missing auth failure:\n%s", out)
+	}
+	if strings.Contains(out, "gh repository") {
+		t.Errorf("repository probe ran without authentication:\n%s", out)
+	}
+}
+
+func TestDoctorNoGitHubRepoIsNote(t *testing.T) {
+	env, stdout, _ := testEnv(t)
+	writeConfig(t, env.RepoRoot, validTOML)
+	env.Runner = fakeRunner{toplevel: env.RepoRoot, repoExit: 1}
+	if code := Run([]string{"doctor"}, env); code != ExitOK {
+		t.Fatalf("exit = %d, want %d (Assist works without a remote)\n%s", code, ExitOK, stdout.String())
+	}
+	if !strings.Contains(stdout.String(), "note  no GitHub repository resolved") {
+		t.Errorf("stdout missing no-repo note:\n%s", stdout.String())
+	}
+}
+
 func TestDoctorNotAGitRepo(t *testing.T) {
 	env, stdout, _ := testEnv(t)
 	writeConfig(t, env.RepoRoot, validTOML)
-	env.Runner = fakeGitRunner{exit: 128, stderr: "fatal: not a git repository"}
+	env.Runner = fakeRunner{gitExit: 128, gitStderr: "fatal: not a git repository"}
 	if code := Run([]string{"doctor"}, env); code != ExitError {
 		t.Errorf("exit = %d, want %d", code, ExitError)
 	}
@@ -73,6 +101,9 @@ func TestDoctorMissingTool(t *testing.T) {
 	}
 	if !strings.Contains(stdout.String(), "FAIL  gh on PATH") {
 		t.Errorf("stdout missing gh failure:\n%s", stdout.String())
+	}
+	if strings.Contains(stdout.String(), "gh authentication") {
+		t.Errorf("authentication check ran without gh on PATH:\n%s", stdout.String())
 	}
 	if !strings.Contains(stdout.String(), "ok    git on PATH") {
 		t.Errorf("doctor stopped at first failure instead of running all checks:\n%s", stdout.String())
