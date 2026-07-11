@@ -15,6 +15,9 @@ type Issue struct {
 	Title  string
 	URL    string
 	Labels []string
+	// Body is the raw issue body (the PRD §13 audit record), which
+	// resume/recovery parses back into run state (PRD §23).
+	Body string
 }
 
 // CreateIssue creates an issue carrying the full PRD §13 taxonomy.
@@ -56,8 +59,9 @@ func (g *GH) Issue(ctx context.Context, number int) (Issue, error) {
 		Labels []struct {
 			Name string `json:"name"`
 		} `json:"labels"`
+		Body string `json:"body"`
 	}
-	if err := g.ghJSON(ctx, &decoded, "issue", "view", strconv.Itoa(number), "--json", "number,state,title,url,labels"); err != nil {
+	if err := g.ghJSON(ctx, &decoded, "issue", "view", strconv.Itoa(number), "--json", "number,state,title,url,labels,body"); err != nil {
 		return Issue{}, err
 	}
 	if decoded.Number != number {
@@ -67,7 +71,7 @@ func (g *GH) Issue(ctx context.Context, number int) (Issue, error) {
 	for i, l := range decoded.Labels {
 		names[i] = l.Name
 	}
-	return Issue{Number: decoded.Number, State: decoded.State, Title: decoded.Title, URL: decoded.URL, Labels: names}, nil
+	return Issue{Number: decoded.Number, State: decoded.State, Title: decoded.Title, URL: decoded.URL, Labels: names, Body: decoded.Body}, nil
 }
 
 // SetIssueBody replaces the issue body (the PRD §13 audit record is

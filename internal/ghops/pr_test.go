@@ -48,12 +48,12 @@ func TestPRView(t *testing.T) {
 	root := tempRoot(t)
 	g, script := openScripted(t, root, execxtest.Call{
 		Name: "gh",
-		Args: []string{"pr", "view", "43", "--json", "number,state,title,url,headRefName,baseRefName,headRefOid,mergeStateStatus,mergedAt"},
+		Args: []string{"pr", "view", "43", "--json", "number,state,title,url,headRefName,baseRefName,headRefOid,mergeStateStatus,mergedAt,body"},
 		Dir:  root,
 		Env:  ghTestEnv,
 		Stdout: `{"number":43,"state":"OPEN","title":"Add widget","url":"https://github.com/o/r/pull/43",` +
 			`"headRefName":"orch/7-add-widget","baseRefName":"main","headRefOid":"abc123",` +
-			`"mergeStateStatus":"CLEAN","mergedAt":null}`,
+			`"mergeStateStatus":"CLEAN","mergedAt":null,"body":"manifest body"}`,
 	})
 	pr, err := g.PR(context.Background(), 43)
 	if err != nil {
@@ -66,13 +66,16 @@ func TestPRView(t *testing.T) {
 	if pr.MergedAt != "" {
 		t.Errorf("MergedAt = %q, want empty while unmerged", pr.MergedAt)
 	}
+	if pr.Body != "manifest body" {
+		t.Errorf("Body = %q, want the round-tripped audit record", pr.Body)
+	}
 }
 
 func TestPRViewNumberMismatch(t *testing.T) {
 	root := tempRoot(t)
 	g, script := openScripted(t, root, execxtest.Call{
 		Name:   "gh",
-		Args:   []string{"pr", "view", "43", "--json", "number,state,title,url,headRefName,baseRefName,headRefOid,mergeStateStatus,mergedAt"},
+		Args:   []string{"pr", "view", "43", "--json", "number,state,title,url,headRefName,baseRefName,headRefOid,mergeStateStatus,mergedAt,body"},
 		Dir:    root,
 		Env:    ghTestEnv,
 		Stdout: `{"number":9,"state":"OPEN"}`,

@@ -33,6 +33,9 @@ type PR struct {
 	MergeStateStatus string
 	// MergedAt is the RFC3339 merge time, empty while unmerged.
 	MergedAt string
+	// Body is the raw PR body (the PRD §13 audit record), which
+	// resume/recovery parses back into run state (PRD §23).
+	Body string
 }
 
 // mergeFlags maps the config-validated merge strategies
@@ -77,9 +80,10 @@ func (g *GH) PR(ctx context.Context, number int) (PR, error) {
 		HeadRefOid       string `json:"headRefOid"`
 		MergeStateStatus string `json:"mergeStateStatus"`
 		MergedAt         string `json:"mergedAt"`
+		Body             string `json:"body"`
 	}
 	if err := g.ghJSON(ctx, &decoded, "pr", "view", strconv.Itoa(number),
-		"--json", "number,state,title,url,headRefName,baseRefName,headRefOid,mergeStateStatus,mergedAt"); err != nil {
+		"--json", "number,state,title,url,headRefName,baseRefName,headRefOid,mergeStateStatus,mergedAt,body"); err != nil {
 		return PR{}, err
 	}
 	if decoded.Number != number {
@@ -95,6 +99,7 @@ func (g *GH) PR(ctx context.Context, number int) (PR, error) {
 		HeadRefOid:       decoded.HeadRefOid,
 		MergeStateStatus: decoded.MergeStateStatus,
 		MergedAt:         decoded.MergedAt,
+		Body:             decoded.Body,
 	}, nil
 }
 
