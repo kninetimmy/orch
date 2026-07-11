@@ -120,10 +120,10 @@ func TestIssueView(t *testing.T) {
 	root := tempRoot(t)
 	g, script := openScripted(t, root, execxtest.Call{
 		Name:   "gh",
-		Args:   []string{"issue", "view", "42", "--json", "number,state,title,url,labels"},
+		Args:   []string{"issue", "view", "42", "--json", "number,state,title,url,labels,body"},
 		Dir:    root,
 		Env:    ghTestEnv,
-		Stdout: `{"number":42,"state":"CLOSED","title":"Add widget","url":"https://github.com/o/r/issues/42","labels":[{"name":"ready"},{"name":"feature"}]}`,
+		Stdout: `{"number":42,"state":"CLOSED","title":"Add widget","url":"https://github.com/o/r/issues/42","labels":[{"name":"ready"},{"name":"feature"}],"body":"audit record body"}`,
 	})
 	issue, err := g.Issue(context.Background(), 42)
 	if err != nil {
@@ -136,16 +136,19 @@ func TestIssueView(t *testing.T) {
 	if len(issue.Labels) != 2 || issue.Labels[0] != "ready" || issue.Labels[1] != "feature" {
 		t.Errorf("labels = %v", issue.Labels)
 	}
+	if issue.Body != "audit record body" {
+		t.Errorf("Body = %q, want the round-tripped audit record", issue.Body)
+	}
 }
 
 func TestIssueViewNumberMismatch(t *testing.T) {
 	root := tempRoot(t)
 	g, script := openScripted(t, root, execxtest.Call{
 		Name:   "gh",
-		Args:   []string{"issue", "view", "42", "--json", "number,state,title,url,labels"},
+		Args:   []string{"issue", "view", "42", "--json", "number,state,title,url,labels,body"},
 		Dir:    root,
 		Env:    ghTestEnv,
-		Stdout: `{"number":7,"state":"OPEN","title":"","url":"","labels":[]}`,
+		Stdout: `{"number":7,"state":"OPEN","title":"","url":"","labels":[],"body":""}`,
 	})
 	_, err := g.Issue(context.Background(), 42)
 	script.AssertExhausted()
