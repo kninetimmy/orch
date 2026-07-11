@@ -165,7 +165,8 @@ type Run struct {
 	Issues    []Issue   `json:"issues"`
 	// StoppedReason is non-empty when a secret block stopped the whole
 	// run (PRD §16): every mutating verb but block itself then fails
-	// closed until `orch abort` or a future `orch resume`.
+	// closed until `orch abort` or `orch resume` (with its explicit
+	// resume-stopped-run statement).
 	StoppedReason string `json:"stopped_reason,omitempty"`
 }
 

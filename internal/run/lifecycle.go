@@ -122,7 +122,7 @@ func loadVerb(env Env, issueNumber int, allowed []state.Phase, exemptStop bool) 
 		return nil, fmt.Errorf("%w: config revision %q does not match the run's %q; run `orch abort`, ship the config change on its own Delivery run, then re-plan", ErrConfigDrift, cfg.ConfigRevision, st.Run.Plan.ConfigRevision)
 	}
 	if !exemptStop && st.Run.StoppedReason != "" {
-		return nil, fmt.Errorf("%w (%s); run `orch abort` to return to assist, or a future `orch resume` to continue", ErrRunStopped, st.Run.StoppedReason)
+		return nil, fmt.Errorf("%w (%s); run `orch abort` to return to assist, or `orch resume` to continue", ErrRunStopped, st.Run.StoppedReason)
 	}
 
 	c := &verbCtx{env: env, cfg: cfg, st: st, owner: owner, idx: -1}
@@ -194,7 +194,7 @@ func decodeRequest(data []byte, v any) error {
 
 // wrapAfterMutation marks an error that occurred after a lifecycle verb
 // already advanced persisted state or a GitHub/git surface: the run is
-// mid-step, so the remediation is `orch abort` or a future `orch resume`
+// mid-step, so the remediation is `orch abort` or `orch resume`
 // (the verb re-runs cleanly from the last completed sub-step), never a
 // bare retry. It mirrors activation's wrapAfterEnter for the per-issue
 // verbs.
@@ -202,7 +202,7 @@ func wrapAfterMutation(err error) error {
 	if err == nil {
 		return nil
 	}
-	return fmt.Errorf("%w (state advanced; run `orch abort` to return to assist, or a future `orch resume` to continue from the last completed step)", err)
+	return fmt.Errorf("%w (state advanced; run `orch abort` to return to assist, or `orch resume` to continue from the last completed step)", err)
 }
 
 // openGitHub opens the authenticated gh handle every verb that touches

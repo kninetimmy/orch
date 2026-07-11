@@ -37,7 +37,7 @@ var (
 	ErrConfigDrift = errors.New("configuration changed mid-run")
 	// ErrRunStopped reports that the run was stopped by a secret block
 	// (PRD §16); every mutating verb but block itself is denied until
-	// `orch abort` or a future `orch resume`.
+	// `orch abort` or `orch resume`.
 	ErrRunStopped = errors.New("delivery run is stopped")
 	// ErrUnknownIssue reports an issue_number that matches no run issue.
 	ErrUnknownIssue = errors.New("issue number does not match any run issue")
