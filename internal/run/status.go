@@ -25,13 +25,17 @@ type StatusDoc struct {
 	Run           *RunView        `json:"run,omitempty"`
 }
 
-// RunView is the active Delivery run's status view.
+// RunView is the active Delivery run's status view. Issues carry the
+// full state.Issue shape, so the PR B per-issue lifecycle fields (phase,
+// PR number, decision, review cycles, ...) are reported as-is.
 type RunView struct {
 	ID        string        `json:"id"`
 	Host      string        `json:"host"`
 	StartedAt time.Time     `json:"started_at"`
 	Plan      state.PlanRef `json:"plan"`
 	Issues    []state.Issue `json:"issues"`
+	// StoppedReason is non-empty when a secret block stopped the run.
+	StoppedReason string `json:"stopped_reason,omitempty"`
 }
 
 // Status reports the run-state document.
@@ -57,11 +61,12 @@ func Status(ctx context.Context, env Env) (*StatusDoc, error) {
 	}
 	if st.Run != nil {
 		doc.Run = &RunView{
-			ID:        st.Run.ID,
-			Host:      st.Run.Host,
-			StartedAt: st.Run.StartedAt,
-			Plan:      st.Run.Plan,
-			Issues:    st.Run.Issues,
+			ID:            st.Run.ID,
+			Host:          st.Run.Host,
+			StartedAt:     st.Run.StartedAt,
+			Plan:          st.Run.Plan,
+			Issues:        st.Run.Issues,
+			StoppedReason: st.Run.StoppedReason,
 		}
 	}
 	return doc, nil

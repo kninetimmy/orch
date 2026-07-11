@@ -118,6 +118,36 @@ func Abort(repoRoot string) (*AbortResult, error) {
 	return res, nil
 }
 
+// CompleteDelivery returns a finished Delivery run to Assist and
+// releases the lock (PRD §7 auto-return). Unlike Abort it is not a
+// repair path: it requires a consistent delivery state owned by a
+// matching lock and fails closed otherwise, so a caller cannot complete
+// over a broken or already-assist state. Ordering matches
+// EnterDelivery/Abort — state first, lock second — so a crash between
+// the two leaves an orphaned lock that denies new runs (fail closed)
+// until `orch abort` clears it.
+func CompleteDelivery(repoRoot string) error {
+	st, err := Load(repoRoot)
+	if err != nil {
+		return err
+	}
+	owner, err := lockfile.Inspect(repoRoot)
+	if err != nil {
+		return err
+	}
+	if err := CheckConsistent(st, owner); err != nil {
+		return err
+	}
+	if st.Mode != ModeDelivery {
+		return fmt.Errorf("CompleteDelivery: not in delivery mode (mode %q); nothing to complete", st.Mode)
+	}
+	assist := &State{SchemaVersion: SchemaVersion, Mode: ModeAssist, UpdatedAt: time.Now().UTC()}
+	if err := write(repoRoot, assist); err != nil {
+		return err
+	}
+	return lockfile.Release(repoRoot)
+}
+
 // CheckConsistent verifies the invariant that delivery mode and the
 // Delivery lock exist together and describe the same run. st and owner
 // come from Load and lockfile.Inspect.

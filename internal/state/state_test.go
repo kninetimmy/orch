@@ -56,20 +56,32 @@ func TestLoadRejectsBadState(t *testing.T) {
 		"corrupt json":    {"{broken", "parse"},
 		"wrong schema":    {`{"schema_version": 99, "mode": "assist"}`, "schema_version 99"},
 		"v1 rejected":     {`{"schema_version": 1, "mode": "assist"}`, "schema_version 1"},
-		"unknown mode":    {`{"schema_version": 2, "mode": "turbo"}`, `unknown mode "turbo"`},
-		"delivery no run": {`{"schema_version": 2, "mode": "delivery"}`, "without a recorded run"},
-		"assist with run": {`{"schema_version": 2, "mode": "assist", "run": {"id": "r", "host": "claude", "started_at": "2026-07-10T12:00:00Z", "plan": {}, "issues": null}}`, "assist mode with a recorded run"},
+		"unknown mode":    {`{"schema_version": 3, "mode": "turbo"}`, `unknown mode "turbo"`},
+		"delivery no run": {`{"schema_version": 3, "mode": "delivery"}`, "without a recorded run"},
+		"assist with run": {`{"schema_version": 3, "mode": "assist", "run": {"id": "r", "host": "claude", "started_at": "2026-07-10T12:00:00Z", "plan": {}, "issues": null}}`, "assist mode with a recorded run"},
 		"invalid phase": {
-			`{"schema_version": 2, "mode": "delivery", "run": {"id": "r", "host": "claude", "started_at": "2026-07-10T12:00:00Z", "plan": {"digest": "sha256:x"}, "issues": [{"plan_id": "a", "phase": "bogus"}]}}`,
+			`{"schema_version": 3, "mode": "delivery", "run": {"id": "r", "host": "claude", "started_at": "2026-07-10T12:00:00Z", "plan": {"digest": "sha256:x"}, "issues": [{"plan_id": "a", "phase": "bogus"}]}}`,
 			`invalid phase "bogus"`,
 		},
 		"issue-created without number": {
-			`{"schema_version": 2, "mode": "delivery", "run": {"id": "r", "host": "claude", "started_at": "2026-07-10T12:00:00Z", "plan": {"digest": "sha256:x"}, "issues": [{"plan_id": "a", "phase": "issue-created"}]}}`,
+			`{"schema_version": 3, "mode": "delivery", "run": {"id": "r", "host": "claude", "started_at": "2026-07-10T12:00:00Z", "plan": {"digest": "sha256:x"}, "issues": [{"plan_id": "a", "phase": "issue-created"}]}}`,
 			"requires a positive issue number",
 		},
 		"worktree-ready without branch": {
-			`{"schema_version": 2, "mode": "delivery", "run": {"id": "r", "host": "claude", "started_at": "2026-07-10T12:00:00Z", "plan": {"digest": "sha256:x"}, "issues": [{"plan_id": "a", "phase": "worktree-ready", "number": 4}]}}`,
+			`{"schema_version": 3, "mode": "delivery", "run": {"id": "r", "host": "claude", "started_at": "2026-07-10T12:00:00Z", "plan": {"digest": "sha256:x"}, "issues": [{"plan_id": "a", "phase": "worktree-ready", "number": 4}]}}`,
 			"requires branch and worktree",
+		},
+		"dispatched without decision": {
+			`{"schema_version": 3, "mode": "delivery", "run": {"id": "r", "host": "claude", "started_at": "2026-07-10T12:00:00Z", "plan": {"digest": "sha256:x"}, "issues": [{"plan_id": "a", "phase": "dispatched", "number": 4, "branch": "b", "worktree": "w"}]}}`,
+			"requires a routing decision",
+		},
+		"blocked without reason": {
+			`{"schema_version": 3, "mode": "delivery", "run": {"id": "r", "host": "claude", "started_at": "2026-07-10T12:00:00Z", "plan": {"digest": "sha256:x"}, "issues": [{"plan_id": "a", "phase": "blocked", "number": 4, "branch": "b", "worktree": "w", "decision": {"role": "implementer", "executor": {"model": "m", "effort": "e"}, "reviewer": {"model": "m", "effort": "e"}, "rationale": "r"}}]}}`,
+			"blocked phase requires a blocked reason",
+		},
+		"awaiting-merge without approved head": {
+			`{"schema_version": 3, "mode": "delivery", "run": {"id": "r", "host": "claude", "started_at": "2026-07-10T12:00:00Z", "plan": {"digest": "sha256:x"}, "issues": [{"plan_id": "a", "phase": "awaiting-merge", "number": 4, "branch": "b", "worktree": "w", "pr_number": 5, "decision": {"role": "implementer", "executor": {"model": "m", "effort": "e"}, "reviewer": {"model": "m", "effort": "e"}, "rationale": "r"}}]}}`,
+			"requires an approved head OID",
 		},
 	}
 	for name, tc := range cases {
@@ -87,7 +99,7 @@ func TestLoadRejectsBadState(t *testing.T) {
 	}
 }
 
-func TestLoadAcceptsV2RoundTrip(t *testing.T) {
+func TestLoadAcceptsRoundTrip(t *testing.T) {
 	root := stateDir(t)
 	st, err := EnterDelivery(root, "claude", testPlanRef(), testIssues())
 	if err != nil {
@@ -354,6 +366,45 @@ func TestAbortResetsV1State(t *testing.T) {
 	}
 	if after.Mode != ModeAssist {
 		t.Errorf("mode = %s, want assist", after.Mode)
+	}
+}
+
+func TestCompleteDelivery(t *testing.T) {
+	root := stateDir(t)
+	if _, err := EnterDelivery(root, "claude", testPlanRef(), testIssues()); err != nil {
+		t.Fatal(err)
+	}
+	if err := CompleteDelivery(root); err != nil {
+		t.Fatalf("CompleteDelivery: %v", err)
+	}
+	after, err := Load(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if after.Mode != ModeAssist || after.Run != nil {
+		t.Errorf("state after complete = %+v, want assist with no run", after)
+	}
+	if o, err := lockfile.Inspect(root); o != nil || err != nil {
+		t.Errorf("lock still present after complete: %+v, %v", o, err)
+	}
+}
+
+func TestCompleteDeliveryRejectsAssist(t *testing.T) {
+	root := stateDir(t)
+	if err := CompleteDelivery(root); err == nil {
+		t.Error("CompleteDelivery succeeded from assist, want error")
+	}
+}
+
+func TestCompleteDeliveryRejectsInconsistentState(t *testing.T) {
+	root := stateDir(t)
+	// A delivery lock with no delivery state is inconsistent: complete is
+	// not a repair path, so it must refuse.
+	if err := lockfile.Acquire(root, lockfile.Owner{RunID: "run-orphan", Host: "codex", Hostname: "h", PID: 1, AcquiredAt: time.Now().UTC()}); err != nil {
+		t.Fatal(err)
+	}
+	if err := CompleteDelivery(root); err == nil {
+		t.Error("CompleteDelivery succeeded over an orphaned lock, want error")
 	}
 }
 

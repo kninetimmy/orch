@@ -66,41 +66,70 @@ func (g *GH) CreatePR(ctx context.Context, spec PRSpec) (number int, url string,
 	return number, out, nil
 }
 
+// prFields is the JSON field list every PR read pins, shared by PR and
+// PRForBranch so both return a fully-populated view.
+const prFields = "number,state,title,url,headRefName,baseRefName,headRefOid,mergeStateStatus,mergedAt,body"
+
+// prJSON is the decode target for prFields.
+type prJSON struct {
+	Number           int    `json:"number"`
+	State            string `json:"state"`
+	Title            string `json:"title"`
+	URL              string `json:"url"`
+	HeadRefName      string `json:"headRefName"`
+	BaseRefName      string `json:"baseRefName"`
+	HeadRefOid       string `json:"headRefOid"`
+	MergeStateStatus string `json:"mergeStateStatus"`
+	MergedAt         string `json:"mergedAt"`
+	Body             string `json:"body"`
+}
+
+// toPR converts to the exported view: the field sets are identical, so
+// this is a direct struct conversion (tags are ignored in conversions).
+func (d prJSON) toPR() PR {
+	return PR(d)
+}
+
 // PR reads one pull request; the run engine uses it for the
 // ready-to-merge report (PRD §12 step 14) and to obtain the
 // HeadRefOid a merge approval pins.
 func (g *GH) PR(ctx context.Context, number int) (PR, error) {
-	var decoded struct {
-		Number           int    `json:"number"`
-		State            string `json:"state"`
-		Title            string `json:"title"`
-		URL              string `json:"url"`
-		HeadRefName      string `json:"headRefName"`
-		BaseRefName      string `json:"baseRefName"`
-		HeadRefOid       string `json:"headRefOid"`
-		MergeStateStatus string `json:"mergeStateStatus"`
-		MergedAt         string `json:"mergedAt"`
-		Body             string `json:"body"`
-	}
-	if err := g.ghJSON(ctx, &decoded, "pr", "view", strconv.Itoa(number),
-		"--json", "number,state,title,url,headRefName,baseRefName,headRefOid,mergeStateStatus,mergedAt,body"); err != nil {
+	var decoded prJSON
+	if err := g.ghJSON(ctx, &decoded, "pr", "view", strconv.Itoa(number), "--json", prFields); err != nil {
 		return PR{}, err
 	}
 	if decoded.Number != number {
 		return PR{}, fmt.Errorf("gh pr view %d in %s returned PR %d", number, g.root, decoded.Number)
 	}
-	return PR{
-		Number:           decoded.Number,
-		State:            decoded.State,
-		Title:            decoded.Title,
-		URL:              decoded.URL,
-		HeadRefName:      decoded.HeadRefName,
-		BaseRefName:      decoded.BaseRefName,
-		HeadRefOid:       decoded.HeadRefOid,
-		MergeStateStatus: decoded.MergeStateStatus,
-		MergedAt:         decoded.MergedAt,
-		Body:             decoded.Body,
-	}, nil
+	return decoded.toPR(), nil
+}
+
+// PRForBranch returns the single open pull request whose head branch is
+// head, or nil when none exists (`gh pr list --head <branch> --state
+// open`). pr-open uses it to fail closed on an orphan PR left by a
+// crashed run (PRD §23 reconciliation); more than one open PR for a
+// branch is impossible on GitHub, so a longer list is an error.
+func (g *GH) PRForBranch(ctx context.Context, head string) (*PR, error) {
+	var decoded []prJSON
+	if err := g.ghJSON(ctx, &decoded, "pr", "list", "--head", head, "--state", "open", "--json", prFields); err != nil {
+		return nil, err
+	}
+	if len(decoded) == 0 {
+		return nil, nil
+	}
+	if len(decoded) > 1 {
+		return nil, fmt.Errorf("gh pr list --head %s in %s returned %d open PRs (want at most one)", head, g.root, len(decoded))
+	}
+	pr := decoded[0].toPR()
+	return &pr, nil
+}
+
+// SetPRBody replaces the PR body (the PRD §13 audit record is mirrored
+// onto the PR while it is the active surface). The body travels over
+// stdin, never the command line.
+func (g *GH) SetPRBody(ctx context.Context, number int, body string) error {
+	_, err := g.ghStdin(ctx, strings.NewReader(body), "pr", "edit", strconv.Itoa(number), "--body-file", "-")
+	return err
 }
 
 // MergePR merges an approved PR with the configured strategy. It is

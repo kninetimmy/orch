@@ -87,6 +87,61 @@ func TestPRViewNumberMismatch(t *testing.T) {
 	}
 }
 
+func TestPRForBranch(t *testing.T) {
+	root := tempRoot(t)
+	g, script := openScripted(t, root, execxtest.Call{
+		Name: "gh",
+		Args: []string{"pr", "list", "--head", "orch/7-add-widget", "--state", "open", "--json", prFields},
+		Dir:  root,
+		Env:  ghTestEnv,
+		Stdout: `[{"number":43,"state":"OPEN","title":"Add widget","url":"https://github.com/o/r/pull/43",` +
+			`"headRefName":"orch/7-add-widget","baseRefName":"main","headRefOid":"abc123",` +
+			`"mergeStateStatus":"CLEAN","mergedAt":null,"body":"b"}]`,
+	})
+	pr, err := g.PRForBranch(context.Background(), "orch/7-add-widget")
+	if err != nil {
+		t.Fatalf("PRForBranch: %v", err)
+	}
+	script.AssertExhausted()
+	if pr == nil || pr.Number != 43 || pr.HeadRefOid != "abc123" {
+		t.Errorf("pr = %+v, want #43 headRefOid abc123", pr)
+	}
+}
+
+func TestPRForBranchNone(t *testing.T) {
+	root := tempRoot(t)
+	g, script := openScripted(t, root, execxtest.Call{
+		Name:   "gh",
+		Args:   []string{"pr", "list", "--head", "orch/gone", "--state", "open", "--json", prFields},
+		Dir:    root,
+		Env:    ghTestEnv,
+		Stdout: "[]",
+	})
+	pr, err := g.PRForBranch(context.Background(), "orch/gone")
+	if err != nil {
+		t.Fatalf("PRForBranch: %v", err)
+	}
+	script.AssertExhausted()
+	if pr != nil {
+		t.Errorf("pr = %+v, want nil", pr)
+	}
+}
+
+func TestSetPRBody(t *testing.T) {
+	root := tempRoot(t)
+	g, script := openScripted(t, root, execxtest.Call{
+		Name:  "gh",
+		Args:  []string{"pr", "edit", "43", "--body-file", "-"},
+		Dir:   root,
+		Env:   ghTestEnv,
+		Stdin: "updated body",
+	})
+	if err := g.SetPRBody(context.Background(), 43, "updated body"); err != nil {
+		t.Fatalf("SetPRBody: %v", err)
+	}
+	script.AssertExhausted()
+}
+
 func TestMergePR(t *testing.T) {
 	tests := map[string]struct {
 		strategy string

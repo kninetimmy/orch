@@ -201,6 +201,34 @@ func TestSetStatusBadValue(t *testing.T) {
 	script.AssertExhausted()
 }
 
+func TestSetRole(t *testing.T) {
+	root := tempRoot(t)
+	g, script := openScripted(t, root, execxtest.Call{
+		Name: "gh",
+		Args: []string{
+			"issue", "edit", "42",
+			"--remove-label", "implementer",
+			"--add-label", "specialist",
+		},
+		Dir: root,
+		Env: ghTestEnv,
+	})
+	if err := g.SetRole(context.Background(), 42, RoleSpecialist); err != nil {
+		t.Fatalf("SetRole: %v", err)
+	}
+	script.AssertExhausted()
+}
+
+func TestSetRoleBadValue(t *testing.T) {
+	root := tempRoot(t)
+	g, script := openScripted(t, root) // no gh call may happen
+	err := g.SetRole(context.Background(), 42, Role("architect"))
+	if !errors.Is(err, ErrBadLabels) {
+		t.Fatalf("err = %v, want ErrBadLabels", err)
+	}
+	script.AssertExhausted()
+}
+
 func TestCloseIssue(t *testing.T) {
 	root := tempRoot(t)
 	g, script := openScripted(t, root, execxtest.Call{

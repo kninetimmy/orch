@@ -285,6 +285,52 @@ func TestIntegrationRemoteFlow(t *testing.T) {
 	}
 }
 
+func TestIntegrationPushFastForwardInRemoteExists(t *testing.T) {
+	setupGitEnv(t)
+	g, root := newRepo(t)
+	ctx := context.Background()
+
+	origin := filepath.Join(t.TempDir(), "origin.git")
+	rawGit(t, filepath.Dir(origin), "init", "--bare", origin)
+	rawGit(t, root, "remote", "add", "origin", origin)
+	rawGit(t, root, "push", "origin", "main")
+	rawGit(t, root, "fetch", "origin")
+
+	wt, err := g.AddWorktree(ctx, filepath.Join(t.TempDir(), "issue-8"), "orch/issue-8", "main")
+	if err != nil {
+		t.Fatalf("AddWorktree: %v", err)
+	}
+
+	// A pre-dispatch branch sits at origin/main: FastForwardIn is a no-op
+	// and CommitsAhead is 0 (no empty PR).
+	if err := g.FastForwardIn(ctx, wt.Path, "origin/main"); err != nil {
+		t.Fatalf("FastForwardIn (at tip): %v", err)
+	}
+	ahead, err := g.CommitsAhead(ctx, wt.Path, "origin/main", "orch/issue-8")
+	if err != nil || ahead != 0 {
+		t.Fatalf("CommitsAhead (no work) = %d, %v; want 0, nil", ahead, err)
+	}
+
+	// Add work, push it, and confirm the remote branch and the ahead count.
+	commitFile(t, wt.Path, "feature.go", "package feature\n")
+	if err := g.Push(ctx, wt.Path, "origin", "orch/issue-8"); err != nil {
+		t.Fatalf("Push: %v", err)
+	}
+	exists, err := g.RemoteBranchExists(ctx, "origin", "orch/issue-8")
+	if err != nil || !exists {
+		t.Fatalf("RemoteBranchExists after push = %v, %v; want true, nil", exists, err)
+	}
+	ahead, err = g.CommitsAhead(ctx, wt.Path, "origin/main", "orch/issue-8")
+	if err != nil || ahead != 1 {
+		t.Fatalf("CommitsAhead (one commit) = %d, %v; want 1, nil", ahead, err)
+	}
+
+	gone, err := g.RemoteBranchExists(ctx, "origin", "orch/never")
+	if err != nil || gone {
+		t.Fatalf("RemoteBranchExists(absent) = %v, %v; want false, nil", gone, err)
+	}
+}
+
 func TestIntegrationAddWorktreeInsidePrimary(t *testing.T) {
 	setupGitEnv(t)
 	g, root := newRepo(t)
