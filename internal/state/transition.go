@@ -2,6 +2,7 @@ package state
 
 import (
 	"crypto/rand"
+	"errors"
 	"fmt"
 	"os"
 	"time"
@@ -10,17 +11,30 @@ import (
 )
 
 // EnterDelivery acquires the cross-host Delivery lock and records a new
-// delivery run. Ordering matters for crash safety: lock first, state
-// second — a crash between the two leaves an orphaned lock, which
-// denies every new run (fail closed) until `orch abort` clears it. The
-// reverse order could leave delivery state without a lock, letting a
-// second host acquire.
+// delivery run over plan and issues. Ordering matters for crash
+// safety: lock first, state second — a crash between the two leaves an
+// orphaned lock, which denies every new run (fail closed) until
+// `orch abort` clears it. The reverse order could leave delivery state
+// without a lock, letting a second host acquire.
 //
-// In this slice only tests call EnterDelivery; the plan gate that will
-// invoke it is future work (PRD §22: no manual delivery command).
-func EnterDelivery(repoRoot, host string) (*State, error) {
+// issues must all be at PhasePlanned and in the order the run engine
+// wants them processed (wave order); plan.Digest must be non-empty
+// (EnterDelivery does not recompute it — the caller has already
+// validated the plan and its approval).
+func EnterDelivery(repoRoot, host string, plan PlanRef, issues []Issue) (*State, error) {
 	if host != "claude" && host != "codex" {
 		return nil, fmt.Errorf("unknown host %q (want claude or codex)", host)
+	}
+	if plan.Digest == "" {
+		return nil, errors.New("EnterDelivery: plan digest must not be empty")
+	}
+	if len(issues) == 0 {
+		return nil, errors.New("EnterDelivery: at least one issue is required")
+	}
+	for i, iss := range issues {
+		if iss.Phase != PhasePlanned {
+			return nil, fmt.Errorf("EnterDelivery: issue %d (%s) has phase %q, want %q", i, iss.PlanID, iss.Phase, PhasePlanned)
+		}
 	}
 	now := time.Now().UTC()
 	runID, err := newRunID(now)
@@ -43,7 +57,7 @@ func EnterDelivery(repoRoot, host string) (*State, error) {
 	st := &State{
 		SchemaVersion: SchemaVersion,
 		Mode:          ModeDelivery,
-		Run:           &Run{ID: runID, Host: host, StartedAt: now},
+		Run:           &Run{ID: runID, Host: host, StartedAt: now, Plan: plan, Issues: issues},
 		UpdatedAt:     now,
 	}
 	if err := write(repoRoot, st); err != nil {

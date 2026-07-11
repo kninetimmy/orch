@@ -57,7 +57,7 @@ func TestStatusShowsLocalOverrides(t *testing.T) {
 func TestStatusDeliveryShowsRunAndLock(t *testing.T) {
 	env, stdout, _ := testEnv(t)
 	writeConfig(t, env.RepoRoot, validTOML)
-	st, err := state.EnterDelivery(env.RepoRoot, "claude")
+	st, err := state.EnterDelivery(env.RepoRoot, "claude", testPlanRef(), testIssues())
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -3,9 +3,11 @@
 package cli
 
 import (
+	"errors"
 	"fmt"
 	"io"
 	"os/exec"
+	"strings"
 
 	"github.com/kninetimmy/orch/internal/execx"
 )
@@ -23,6 +25,9 @@ type Env struct {
 	RepoRoot string
 	Stdout   io.Writer
 	Stderr   io.Writer
+	// Stdin is the process input; nil is treated as empty. `orch run`
+	// verbs read their JSON document from it.
+	Stdin io.Reader
 	// LookPath resolves an executable name; defaults to exec.LookPath.
 	LookPath func(string) (string, error)
 	// Runner executes external commands (git, gh); defaults to
@@ -30,30 +35,52 @@ type Env struct {
 	Runner execx.Runner
 }
 
+// usageError marks a user-facing usage mistake, as opposed to an
+// operational failure: Run maps it to ExitUsage instead of ExitError.
+type usageError string
+
+func (e usageError) Error() string { return string(e) }
+
 type command struct {
 	name    string
 	summary string
-	run     func(Env) error
+	run     func(Env, []string) error
 }
 
 // commands lists the full PRD §22 surface in documentation order, so
 // `orch help` always shows every logical command even before it works.
+// `run` is listed last and labeled plumbing (F2): it is adapter-facing
+// JSON stdin/stdout, not a command a human runs directly.
 func commands() []command {
 	return []command{
-		{"init", "Interview and bootstrap this repository (not implemented)", notImplemented("init")},
-		{"status", "Show mode and configuration summary", runStatus},
-		{"doctor", "Check environment and configuration health", runDoctor},
-		{"configure", "Change committed configuration (not implemented)", notImplemented("configure")},
-		{"configure-local", "Change machine-local overrides (not implemented)", notImplemented("configure-local")},
-		{"resume", "Resume an interrupted Delivery run (not implemented)", notImplemented("resume")},
-		{"abort", "Stop dispatch and return to Assist", runAbort},
-		{"metrics", "Show local metrics (not implemented)", notImplemented("metrics")},
+		{"init", "Interview and bootstrap this repository (not implemented)", noArgs("init", notImplemented("init"))},
+		{"status", "Show mode and configuration summary", noArgs("status", runStatus)},
+		{"doctor", "Check environment and configuration health", noArgs("doctor", runDoctor)},
+		{"configure", "Change committed configuration (not implemented)", noArgs("configure", notImplemented("configure"))},
+		{"configure-local", "Change machine-local overrides (not implemented)", noArgs("configure-local", notImplemented("configure-local"))},
+		{"resume", "Resume an interrupted Delivery run (not implemented)", noArgs("resume", notImplemented("resume"))},
+		{"abort", "Stop dispatch and return to Assist", noArgs("abort", runAbort)},
+		{"metrics", "Show local metrics (not implemented)", noArgs("metrics", notImplemented("metrics"))},
+		{"run", "Adapter plumbing: Delivery run verbs (JSON stdin/stdout; not a human command)", runRunVerb},
 	}
 }
 
 func notImplemented(name string) func(Env) error {
 	return func(Env) error {
 		return fmt.Errorf("%s is not implemented yet", name)
+	}
+}
+
+// noArgs adapts a no-trailing-argument command function to the
+// dispatcher's func(Env, []string) error shape, preserving the
+// existing trailing-argument rejection for every command that isn't
+// adapter plumbing.
+func noArgs(name string, fn func(Env) error) func(Env, []string) error {
+	return func(env Env, args []string) error {
+		if len(args) > 0 {
+			return usageError(fmt.Sprintf("orch %s: unexpected argument %q", name, args[0]))
+		}
+		return fn(env)
 	}
 }
 
@@ -65,6 +92,9 @@ func Run(args []string, env Env) int {
 	}
 	if env.Runner == nil {
 		env.Runner = execx.Local{LookPath: env.LookPath}
+	}
+	if env.Stdin == nil {
+		env.Stdin = strings.NewReader("")
 	}
 	if len(args) == 0 {
 		usage(env.Stderr)
@@ -78,15 +108,17 @@ func Run(args []string, env Env) int {
 		if c.name != args[0] {
 			continue
 		}
-		if len(args) > 1 {
-			fmt.Fprintf(env.Stderr, "orch %s: unexpected argument %q\n", c.name, args[1])
+		err := c.run(env, args[1:])
+		if err == nil {
+			return ExitOK
+		}
+		var ue usageError
+		if errors.As(err, &ue) {
+			fmt.Fprintf(env.Stderr, "%s\n", err)
 			return ExitUsage
 		}
-		if err := c.run(env); err != nil {
-			fmt.Fprintf(env.Stderr, "orch %s: %v\n", c.name, err)
-			return ExitError
-		}
-		return ExitOK
+		fmt.Fprintf(env.Stderr, "orch %s: %v\n", c.name, err)
+		return ExitError
 	}
 	fmt.Fprintf(env.Stderr, "orch: unknown command %q\n\n", args[0])
 	usage(env.Stderr)

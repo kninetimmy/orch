@@ -33,4 +33,9 @@ var (
 	// ErrNotConfirmed reports a destructive operation attempted
 	// without ExplicitConfirmation (PRD §15).
 	ErrNotConfirmed = errors.New("destructive operation requires explicit confirmation")
+	// ErrNotIgnored reports a path that RequireIgnored expected git to
+	// ignore but does not (PRD §5: an inside-primary worktree is only
+	// safe from RequireClean and isolation guarantees when git itself
+	// will never report it in `status --porcelain`).
+	ErrNotIgnored = errors.New("path is not git-ignored")
 )

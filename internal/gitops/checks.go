@@ -3,8 +3,11 @@ package gitops
 import (
 	"context"
 	"fmt"
+	"path/filepath"
 	"slices"
 	"strings"
+
+	"github.com/kninetimmy/orch/internal/paths"
 )
 
 // RequireClean returns nil only when dir's working tree has no
@@ -68,4 +71,44 @@ func (g *Git) RequireNotOn(ctx context.Context, protected ...string) error {
 // (PRD §13) and verification.
 func (g *Git) RevParse(ctx context.Context, ref string) (string, error) {
 	return g.git(ctx, g.root, "rev-parse", "--verify", ref+"^{commit}")
+}
+
+// RequireIgnored returns nil only when path is git-ignored relative to
+// the primary checkout (F1: an inside-primary worktree relaxation is
+// only safe because an ignored path never appears in
+// `status --porcelain`, so RequireClean and isolation guarantees still
+// hold). It works for paths that do not yet exist — `git check-ignore`
+// matches by pattern, not by filesystem presence. path may be absolute
+// or relative; either way it is canonicalized and expressed relative
+// to root before the check. A path outside root is an error: this
+// check only makes sense for a candidate inside-primary location.
+//
+// The query is always sent to git with a trailing slash: path is
+// always a directory in every caller of this method (a worktree or
+// its container), and a directory-only .gitignore pattern (the common
+// case, e.g. "foo/") only matches a bare, non-existent path when git
+// is told it is a directory this way — without it, `check-ignore`
+// silently refuses to match.
+func (g *Git) RequireIgnored(ctx context.Context, path string) error {
+	canon, err := paths.Canonical(path)
+	if err != nil {
+		return err
+	}
+	rel, err := filepath.Rel(g.root, canon)
+	if err != nil {
+		return fmt.Errorf("compute path for %s relative to %s: %w", canon, g.root, err)
+	}
+	query := filepath.ToSlash(rel) + "/"
+	res, err := g.run(ctx, g.root, "check-ignore", "-q", "--", query)
+	if err != nil {
+		return err
+	}
+	switch res.ExitCode {
+	case 0:
+		return nil
+	case 1:
+		return fmt.Errorf("%w: %s; add a line like \"%s/\" to .gitignore", ErrNotIgnored, canon, filepath.ToSlash(rel))
+	default:
+		return fmt.Errorf("git check-ignore in %s exited %d: %s", g.root, res.ExitCode, strings.TrimSpace(res.Stderr))
+	}
 }
