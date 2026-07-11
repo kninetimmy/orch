@@ -20,9 +20,12 @@ import (
 const Path = ".orchestrator/state.json"
 
 // SchemaVersion is the state-file schema this build reads and writes.
-// v1 never ran a real Delivery (Task 11 is the first slice that
-// activates one), so a v1 file on disk can only be a test artifact.
-const SchemaVersion = 2
+// v3 adds the PR B per-issue lifecycle fields (Issue.Decision,
+// DependsOn, Wave, LastReviewVerdict) and Run.StoppedReason. There is no
+// migration from earlier versions: Load fails closed on a version
+// mismatch with the `orch abort` remediation, and no real run persists
+// across builds, so an out-of-version file on disk is a test artifact.
+const SchemaVersion = 3
 
 // Mode is the operating mode (PRD §7).
 type Mode string
@@ -44,10 +47,9 @@ type PlanRef struct {
 }
 
 // Phase is one issue's position in the Delivery lifecycle (PRD §12).
-// The set is closed. PR A (this slice) only ever writes Planned,
-// IssueCreated, and WorktreeReady; the remaining values belong to PR B
-// and are declared now so the schema needs no v3 migration when PR B
-// lands.
+// The set is closed. Activation (PR A) writes Planned, IssueCreated, and
+// WorktreeReady; the per-issue lifecycle verbs (PR B) drive the rest.
+// PhaseCleaned is terminal.
 type Phase string
 
 const (
@@ -61,15 +63,27 @@ const (
 	// dispatch.
 	PhaseWorktreeReady Phase = "worktree-ready"
 
-	// PR B values, declared now:
-	PhaseDispatched    Phase = "dispatched"
-	PhasePROpen        Phase = "pr-open"
-	PhaseInReview      Phase = "in-review"
+	// PhaseDispatched marks an issue handed to an executor (branch
+	// fast-forwarded, status in-progress).
+	PhaseDispatched Phase = "dispatched"
+	// PhasePROpen marks an opened pull request awaiting review.
+	PhasePROpen Phase = "pr-open"
+	// PhaseInReview marks an issue in a review cycle.
+	PhaseInReview Phase = "in-review"
+	// PhaseAwaitingMerge marks an approved PR pinned to its head OID,
+	// waiting at the human merge gate.
 	PhaseAwaitingMerge Phase = "awaiting-merge"
-	PhaseMerged        Phase = "merged"
-	PhaseCleaned       Phase = "cleaned"
-	PhaseAbandoned     Phase = "abandoned"
-	PhaseBlocked       Phase = "blocked"
+	// PhaseMerged marks a merged PR with its issue closed.
+	PhaseMerged Phase = "merged"
+	// PhaseCleaned is terminal: remote branch, worktree, and local
+	// branch removed.
+	PhaseCleaned Phase = "cleaned"
+	// PhaseAbandoned marks an issue closed without merging; its branch
+	// and worktree are preserved until cleanup.
+	PhaseAbandoned Phase = "abandoned"
+	// PhaseBlocked marks an issue awaiting human action; recovery is
+	// `orch resume` or `orch abort`.
+	PhaseBlocked Phase = "blocked"
 )
 
 // Valid reports whether p is a member of the closed Phase set.
@@ -95,6 +109,19 @@ type Attempt struct {
 	Reason    string             `json:"reason,omitempty"`
 }
 
+// Decision mirrors routing.Decision in persistable form: the current
+// routing chosen for an issue, set at activation and updated by
+// escalate. Like Attempt it keeps this package off the routing policy
+// dependency edge — state imports manifest, never routing, and the run
+// engine converts between the two.
+type Decision struct {
+	Role               manifest.Role      `json:"role"`
+	Executor           manifest.Selection `json:"executor"`
+	Reviewer           manifest.Selection `json:"reviewer"`
+	ReviewerDowngraded bool               `json:"reviewer_downgraded"`
+	Rationale          string             `json:"rationale"`
+}
+
 // Issue is one plan issue's persisted Delivery state.
 type Issue struct {
 	PlanID string `json:"plan_id"`
@@ -107,14 +134,26 @@ type Issue struct {
 	Branch   string `json:"branch,omitempty"`
 	Worktree string `json:"worktree,omitempty"`
 
-	// PR B fields, declared now to avoid a v3 (see lifecycle.go in
-	// internal/run for the verb sketch that will populate them).
-	PRNumber        int       `json:"pr_number,omitempty"`
-	PRURL           string    `json:"pr_url,omitempty"`
-	ApprovedHeadOID string    `json:"approved_head_oid,omitempty"`
-	ReviewCycles    int       `json:"review_cycles,omitempty"`
-	BlockedReason   string    `json:"blocked_reason,omitempty"`
-	Attempts        []Attempt `json:"attempts,omitempty"`
+	// DependsOn (plan ids) and Wave are copied from the plan at
+	// EnterDelivery so dispatch can enforce dependencies — every
+	// DependsOn issue merged or cleaned — without re-taking the plan.
+	DependsOn []string `json:"depends_on,omitempty"`
+	Wave      int      `json:"wave,omitempty"`
+
+	// Decision is the current routing for the issue, set at activation
+	// and updated by escalate. Required from the dispatched phase onward.
+	Decision *Decision `json:"decision,omitempty"`
+
+	// PR B lifecycle fields.
+	PRNumber        int    `json:"pr_number,omitempty"`
+	PRURL           string `json:"pr_url,omitempty"`
+	ApprovedHeadOID string `json:"approved_head_oid,omitempty"`
+	ReviewCycles    int    `json:"review_cycles,omitempty"`
+	// LastReviewVerdict is "", "approve", or "request-changes": the gate
+	// merge-report checks without parsing bodies.
+	LastReviewVerdict string    `json:"last_review_verdict,omitempty"`
+	BlockedReason     string    `json:"blocked_reason,omitempty"`
+	Attempts          []Attempt `json:"attempts,omitempty"`
 }
 
 // Run describes the active Delivery run.
@@ -124,6 +163,10 @@ type Run struct {
 	StartedAt time.Time `json:"started_at"`
 	Plan      PlanRef   `json:"plan"`
 	Issues    []Issue   `json:"issues"`
+	// StoppedReason is non-empty when a secret block stopped the whole
+	// run (PRD §16): every mutating verb but block itself then fails
+	// closed until `orch abort` or a future `orch resume`.
+	StoppedReason string `json:"stopped_reason,omitempty"`
 }
 
 // State is the persisted operating state.
@@ -187,9 +230,13 @@ func (st *State) validate() error {
 }
 
 // validateIssues checks every issue's phase is a member of the closed
-// set and that Number/Branch/Worktree were populated once the
-// lifecycle reached the phase that requires them: Number from
-// issue-created onward, Branch/Worktree from worktree-ready onward.
+// set and that each field was populated once the lifecycle reached the
+// phase that requires it: Number from issue-created onward,
+// Branch/Worktree from worktree-ready onward, a routing Decision from
+// dispatched onward, a PR number from pr-open through merged, an
+// approved head OID at awaiting-merge and merged, and a blocked reason
+// while blocked. Abandoned issues stay exempt from PR fields — an issue
+// can be abandoned before its PR ever opened.
 func (r *Run) validateIssues() error {
 	for i, iss := range r.Issues {
 		if !iss.Phase.Valid() {
@@ -203,8 +250,50 @@ func (r *Run) validateIssues() error {
 				return fmt.Errorf("issue %d (%s): phase %s requires branch and worktree", i, iss.PlanID, iss.Phase)
 			}
 		}
+		if phaseRequiresDecision(iss.Phase) && iss.Decision == nil {
+			return fmt.Errorf("issue %d (%s): phase %s requires a routing decision", i, iss.PlanID, iss.Phase)
+		}
+		if phaseRequiresPR(iss.Phase) && iss.PRNumber <= 0 {
+			return fmt.Errorf("issue %d (%s): phase %s requires a positive PR number", i, iss.PlanID, iss.Phase)
+		}
+		if phaseRequiresApprovedHead(iss.Phase) && iss.ApprovedHeadOID == "" {
+			return fmt.Errorf("issue %d (%s): phase %s requires an approved head OID", i, iss.PlanID, iss.Phase)
+		}
+		if iss.Phase == PhaseBlocked && iss.BlockedReason == "" {
+			return fmt.Errorf("issue %d (%s): blocked phase requires a blocked reason", i, iss.PlanID)
+		}
 	}
 	return nil
+}
+
+// phaseRequiresDecision reports the phases from dispatched onward that a
+// routing decision must accompany. Abandoned and cleaned are exempt: an
+// issue can be abandoned before dispatch ever routed it.
+func phaseRequiresDecision(p Phase) bool {
+	switch p {
+	case PhaseDispatched, PhasePROpen, PhaseInReview, PhaseAwaitingMerge, PhaseMerged, PhaseBlocked:
+		return true
+	default:
+		return false
+	}
+}
+
+// phaseRequiresPR reports the phases a positive PR number must
+// accompany: pr-open through merged. Cleaned is exempt because it can be
+// reached from an abandoned issue that never opened a PR.
+func phaseRequiresPR(p Phase) bool {
+	switch p {
+	case PhasePROpen, PhaseInReview, PhaseAwaitingMerge, PhaseMerged:
+		return true
+	default:
+		return false
+	}
+}
+
+// phaseRequiresApprovedHead reports the phases a pinned approved head OID
+// must accompany (PRD §8: approval pins one PR state).
+func phaseRequiresApprovedHead(p Phase) bool {
+	return p == PhaseAwaitingMerge || p == PhaseMerged
 }
 
 // Save persists st under repoRoot: it stamps UpdatedAt, validates (the
