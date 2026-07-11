@@ -20,5 +20,6 @@ func main() {
 		RepoRoot: root,
 		Stdout:   os.Stdout,
 		Stderr:   os.Stderr,
+		Stdin:    os.Stdin,
 	}))
 }

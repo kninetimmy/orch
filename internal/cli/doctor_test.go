@@ -126,7 +126,7 @@ func TestDoctorMissingConfig(t *testing.T) {
 func TestDoctorConsistentDeliveryPasses(t *testing.T) {
 	env, stdout, _ := testEnv(t)
 	writeConfig(t, env.RepoRoot, validTOML)
-	if _, err := state.EnterDelivery(env.RepoRoot, "claude"); err != nil {
+	if _, err := state.EnterDelivery(env.RepoRoot, "claude", testPlanRef(), testIssues()); err != nil {
 		t.Fatal(err)
 	}
 	if code := Run([]string{"doctor"}, env); code != ExitOK {
@@ -180,7 +180,7 @@ func TestDoctorNotesDeadAcquirer(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	st, err := state.EnterDelivery(env.RepoRoot, "claude")
+	st, err := state.EnterDelivery(env.RepoRoot, "claude", testPlanRef(), testIssues())
 	if err != nil {
 		t.Fatal(err)
 	}

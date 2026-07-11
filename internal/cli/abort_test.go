@@ -21,7 +21,7 @@ func TestAbortNotInitialized(t *testing.T) {
 func TestAbortDeliveryRun(t *testing.T) {
 	env, stdout, _ := testEnv(t)
 	writeConfig(t, env.RepoRoot, validTOML)
-	st, err := state.EnterDelivery(env.RepoRoot, "claude")
+	st, err := state.EnterDelivery(env.RepoRoot, "claude", testPlanRef(), testIssues())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -42,7 +42,7 @@ func TestAbortDeliveryRun(t *testing.T) {
 func TestAbortIdempotent(t *testing.T) {
 	env, stdout, _ := testEnv(t)
 	writeConfig(t, env.RepoRoot, validTOML)
-	if _, err := state.EnterDelivery(env.RepoRoot, "claude"); err != nil {
+	if _, err := state.EnterDelivery(env.RepoRoot, "claude", testPlanRef(), testIssues()); err != nil {
 		t.Fatal(err)
 	}
 	if code := Run([]string{"abort"}, env); code != ExitOK {

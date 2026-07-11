@@ -102,13 +102,48 @@ func TestAddWorktreeBranchExists(t *testing.T) {
 	}
 }
 
-func TestAddWorktreeInsidePrimaryFailsClosed(t *testing.T) {
+func TestAddWorktreeInsidePrimaryNotIgnoredFailsClosed(t *testing.T) {
 	root := tempRoot(t)
-	g, script := openScripted(t, root)
-	_, err := g.AddWorktree(context.Background(), filepath.Join(root, "wt"), "orch/issue-4", "main")
-	script.AssertExhausted() // no git call was made
-	if err == nil || !strings.Contains(err.Error(), "inside the primary checkout") {
+	path := filepath.Join(root, "wt")
+	rel, err := filepath.Rel(root, path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	g, script := openScripted(t, root, execxtest.Call{
+		Name: "git", Args: []string{"check-ignore", "-q", "--", filepath.ToSlash(rel) + "/"}, Dir: root, Exit: 1,
+	})
+	_, err = g.AddWorktree(context.Background(), path, "orch/issue-4", "main")
+	script.AssertExhausted()
+	if !errors.Is(err, ErrNotIgnored) {
+		t.Fatalf("err = %v, want ErrNotIgnored", err)
+	}
+	if !strings.Contains(err.Error(), "inside the primary checkout and not git-ignored") {
 		t.Fatalf("err = %v, want isolation refusal", err)
+	}
+}
+
+func TestAddWorktreeInsidePrimaryIgnoredSucceeds(t *testing.T) {
+	root := tempRoot(t)
+	path := canon(t, filepath.Join(root, ".orchestrator", "worktrees", "issue-4"))
+	rel, err := filepath.Rel(root, path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	const head = "5555555555555555555555555555555555555555"
+	g, script := openScripted(t, root,
+		execxtest.Call{Name: "git", Args: []string{"check-ignore", "-q", "--", filepath.ToSlash(rel) + "/"}, Dir: root},
+		execxtest.Call{Name: "git", Args: []string{"rev-parse", "--verify", "--quiet", "refs/heads/orch/issue-4"}, Dir: root, Exit: 1},
+		execxtest.Call{Name: "git", Args: []string{"worktree", "add", "-b", "orch/issue-4", path, "main"}, Dir: root},
+		execxtest.Call{Name: "git", Args: []string{"rev-parse", "--verify", "orch/issue-4^{commit}"}, Stdout: head + "\n"},
+	)
+	wt, err := g.AddWorktree(context.Background(), path, "orch/issue-4", "main")
+	script.AssertExhausted()
+	if err != nil {
+		t.Fatalf("AddWorktree: %v", err)
+	}
+	want := Worktree{Path: path, Branch: "orch/issue-4", Head: head}
+	if *wt != want {
+		t.Errorf("worktree = %+v, want %+v", *wt, want)
 	}
 }
 

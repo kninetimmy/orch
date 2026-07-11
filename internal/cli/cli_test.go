@@ -11,7 +11,19 @@ import (
 	"testing"
 
 	"github.com/kninetimmy/orch/internal/execx"
+	"github.com/kninetimmy/orch/internal/state"
 )
+
+// testPlanRef and testIssues supply the minimal valid
+// state.EnterDelivery arguments the delivery-mode cli tests need;
+// their content is irrelevant to what those tests assert.
+func testPlanRef() state.PlanRef {
+	return state.PlanRef{Title: "t", Digest: "sha256:test", ConfigRevision: "r1"}
+}
+
+func testIssues() []state.Issue {
+	return []state.Issue{{PlanID: "iss-a", Title: "A", Phase: state.PhasePlanned}}
+}
 
 // validTOML is a minimal valid configuration (one host, defaults).
 const validTOML = `
@@ -125,10 +137,13 @@ func TestRunHelpListsAllCommands(t *testing.T) {
 	if code := Run([]string{"help"}, env); code != ExitOK {
 		t.Errorf("exit = %d, want %d", code, ExitOK)
 	}
-	for _, name := range []string{"init", "status", "doctor", "configure", "configure-local", "resume", "abort", "metrics"} {
+	for _, name := range []string{"init", "status", "doctor", "configure", "configure-local", "resume", "abort", "metrics", "run"} {
 		if !strings.Contains(stdout.String(), name) {
 			t.Errorf("help output missing command %q", name)
 		}
+	}
+	if !strings.Contains(stdout.String(), "plumbing") {
+		t.Error("help output does not label `run` as adapter plumbing (F2)")
 	}
 }
 

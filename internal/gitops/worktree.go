@@ -76,9 +76,12 @@ func (g *Git) ListWorktrees(ctx context.Context) ([]Worktree, error) {
 // AddWorktree creates branch at startPoint together with a new
 // worktree at path (PRD §12 step 7: one branch/worktree per issue).
 // It fails closed before touching git when path already exists (never
-// clobber), when path lies inside the primary checkout (worktrees are
-// isolated, PRD §5), or when the branch already exists
-// (ErrBranchExists). Never uses --force.
+// clobber), when the branch already exists (ErrBranchExists), or when
+// path lies inside the primary checkout and is not git-ignored (F1:
+// worktrees must be isolated from the primary checkout's tracked tree,
+// PRD §5 — an ignored inside-primary path is safe because it never
+// appears in `status --porcelain`, so RequireClean and isolation
+// guarantees still hold). Never uses --force.
 func (g *Git) AddWorktree(ctx context.Context, path, branch, startPoint string) (*Worktree, error) {
 	canon, err := paths.Canonical(path)
 	if err != nil {
@@ -95,7 +98,9 @@ func (g *Git) AddWorktree(ctx context.Context, path, branch, startPoint string) 
 		return nil, err
 	}
 	if inside {
-		return nil, fmt.Errorf("worktree path %s is inside the primary checkout %s; worktrees must be isolated", canon, g.root)
+		if err := g.RequireIgnored(ctx, canon); err != nil {
+			return nil, fmt.Errorf("worktree path %s is inside the primary checkout and not git-ignored: %w", canon, err)
+		}
 	}
 	res, err := g.run(ctx, g.root, "rev-parse", "--verify", "--quiet", "refs/heads/"+branch)
 	if err != nil {

@@ -285,6 +285,40 @@ func TestIntegrationRemoteFlow(t *testing.T) {
 	}
 }
 
+func TestIntegrationAddWorktreeInsidePrimary(t *testing.T) {
+	setupGitEnv(t)
+	g, root := newRepo(t)
+	ctx := context.Background()
+
+	// Not ignored: refused, parent stays clean.
+	notIgnored := filepath.Join(root, "scratch", "issue-9")
+	if _, err := g.AddWorktree(ctx, notIgnored, "orch/issue-9", "main"); !errors.Is(err, ErrNotIgnored) {
+		t.Fatalf("not ignored: err = %v, want ErrNotIgnored", err)
+	}
+	if err := g.RequireClean(ctx, ""); err != nil {
+		t.Fatalf("primary dirtied by a refused AddWorktree: %v", err)
+	}
+
+	// Ignored: succeeds, and the ignored directory never shows up as
+	// dirty in the primary checkout's status.
+	if err := os.WriteFile(filepath.Join(root, ".gitignore"), []byte(".orchestrator/worktrees/\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	commitFile(t, root, ".gitignore", ".orchestrator/worktrees/\n")
+
+	inside := filepath.Join(root, ".orchestrator", "worktrees", "issue-9")
+	wt, err := g.AddWorktree(ctx, inside, "orch/issue-9", "main")
+	if err != nil {
+		t.Fatalf("ignored inside-primary AddWorktree: %v", err)
+	}
+	if wt.Branch != "orch/issue-9" {
+		t.Errorf("worktree = %+v, want branch orch/issue-9", wt)
+	}
+	if err := g.RequireClean(ctx, ""); err != nil {
+		t.Fatalf("primary not clean with an ignored inside-primary worktree present: %v", err)
+	}
+}
+
 func TestIntegrationWithBaseWorktree(t *testing.T) {
 	setupGitEnv(t)
 	g, _ := newRepo(t)

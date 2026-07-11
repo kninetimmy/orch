@@ -28,6 +28,16 @@ func writeState(t *testing.T, root, content string) {
 	}
 }
 
+// testPlanRef and testIssues supply minimal valid EnterDelivery
+// arguments; their content is irrelevant to what most tests assert.
+func testPlanRef() PlanRef {
+	return PlanRef{Title: "t", Digest: "sha256:test", ConfigRevision: "r1"}
+}
+
+func testIssues() []Issue {
+	return []Issue{{PlanID: "iss-a", Title: "A", Phase: PhasePlanned}}
+}
+
 func TestLoadMissingFileIsAssist(t *testing.T) {
 	st, err := Load(stateDir(t))
 	if err != nil {
@@ -45,9 +55,22 @@ func TestLoadRejectsBadState(t *testing.T) {
 	}{
 		"corrupt json":    {"{broken", "parse"},
 		"wrong schema":    {`{"schema_version": 99, "mode": "assist"}`, "schema_version 99"},
-		"unknown mode":    {`{"schema_version": 1, "mode": "turbo"}`, `unknown mode "turbo"`},
-		"delivery no run": {`{"schema_version": 1, "mode": "delivery"}`, "without a recorded run"},
-		"assist with run": {`{"schema_version": 1, "mode": "assist", "run": {"id": "r", "host": "claude", "started_at": "2026-07-10T12:00:00Z"}}`, "assist mode with a recorded run"},
+		"v1 rejected":     {`{"schema_version": 1, "mode": "assist"}`, "schema_version 1"},
+		"unknown mode":    {`{"schema_version": 2, "mode": "turbo"}`, `unknown mode "turbo"`},
+		"delivery no run": {`{"schema_version": 2, "mode": "delivery"}`, "without a recorded run"},
+		"assist with run": {`{"schema_version": 2, "mode": "assist", "run": {"id": "r", "host": "claude", "started_at": "2026-07-10T12:00:00Z", "plan": {}, "issues": null}}`, "assist mode with a recorded run"},
+		"invalid phase": {
+			`{"schema_version": 2, "mode": "delivery", "run": {"id": "r", "host": "claude", "started_at": "2026-07-10T12:00:00Z", "plan": {"digest": "sha256:x"}, "issues": [{"plan_id": "a", "phase": "bogus"}]}}`,
+			`invalid phase "bogus"`,
+		},
+		"issue-created without number": {
+			`{"schema_version": 2, "mode": "delivery", "run": {"id": "r", "host": "claude", "started_at": "2026-07-10T12:00:00Z", "plan": {"digest": "sha256:x"}, "issues": [{"plan_id": "a", "phase": "issue-created"}]}}`,
+			"requires a positive issue number",
+		},
+		"worktree-ready without branch": {
+			`{"schema_version": 2, "mode": "delivery", "run": {"id": "r", "host": "claude", "started_at": "2026-07-10T12:00:00Z", "plan": {"digest": "sha256:x"}, "issues": [{"plan_id": "a", "phase": "worktree-ready", "number": 4}]}}`,
+			"requires branch and worktree",
+		},
 	}
 	for name, tc := range cases {
 		t.Run(name, func(t *testing.T) {
@@ -64,6 +87,27 @@ func TestLoadRejectsBadState(t *testing.T) {
 	}
 }
 
+func TestLoadAcceptsV2RoundTrip(t *testing.T) {
+	root := stateDir(t)
+	st, err := EnterDelivery(root, "claude", testPlanRef(), testIssues())
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err := Load(root)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if got.Mode != ModeDelivery || got.Run.ID != st.Run.ID {
+		t.Errorf("Load = %+v, want delivery run %s", got, st.Run.ID)
+	}
+	if got.Run.Plan.Digest != testPlanRef().Digest {
+		t.Errorf("Plan.Digest = %q, want %q", got.Run.Plan.Digest, testPlanRef().Digest)
+	}
+	if len(got.Run.Issues) != 1 || got.Run.Issues[0].PlanID != "iss-a" {
+		t.Errorf("Issues = %+v, want one planned issue", got.Run.Issues)
+	}
+}
+
 func TestWriteReplacesExistingState(t *testing.T) {
 	root := stateDir(t)
 	first := &State{SchemaVersion: SchemaVersion, Mode: ModeAssist, UpdatedAt: time.Now().UTC()}
@@ -73,8 +117,11 @@ func TestWriteReplacesExistingState(t *testing.T) {
 	second := &State{
 		SchemaVersion: SchemaVersion,
 		Mode:          ModeDelivery,
-		Run:           &Run{ID: "run-x", Host: "claude", StartedAt: time.Now().UTC()},
-		UpdatedAt:     time.Now().UTC(),
+		Run: &Run{
+			ID: "run-x", Host: "claude", StartedAt: time.Now().UTC(),
+			Plan: testPlanRef(), Issues: testIssues(),
+		},
+		UpdatedAt: time.Now().UTC(),
 	}
 	// Rename over an existing file must work on Windows too.
 	if err := write(root, second); err != nil {
@@ -96,9 +143,55 @@ func TestWriteReplacesExistingState(t *testing.T) {
 	}
 }
 
+func TestSaveValidatesAndStampsUpdatedAt(t *testing.T) {
+	root := stateDir(t)
+	st, err := EnterDelivery(root, "claude", testPlanRef(), testIssues())
+	if err != nil {
+		t.Fatal(err)
+	}
+	before := st.UpdatedAt
+	st.Run.Issues[0].Number = 7
+	st.Run.Issues[0].URL = "https://example.invalid/issues/7"
+	st.Run.Issues[0].Phase = PhaseIssueCreated
+	time.Sleep(time.Millisecond)
+	if err := Save(root, st); err != nil {
+		t.Fatalf("Save: %v", err)
+	}
+	if !st.UpdatedAt.After(before) {
+		t.Errorf("UpdatedAt not advanced: before %v, after %v", before, st.UpdatedAt)
+	}
+	got, err := Load(root)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if got.Run.Issues[0].Phase != PhaseIssueCreated || got.Run.Issues[0].Number != 7 {
+		t.Errorf("Load after Save = %+v", got.Run.Issues[0])
+	}
+}
+
+func TestSaveRejectsInvalidState(t *testing.T) {
+	root := stateDir(t)
+	st, err := EnterDelivery(root, "claude", testPlanRef(), testIssues())
+	if err != nil {
+		t.Fatal(err)
+	}
+	st.Run.Issues[0].Phase = "not-a-real-phase"
+	if err := Save(root, st); err == nil {
+		t.Fatal("Save accepted an invalid phase")
+	}
+	// The on-disk file must be untouched by the rejected write.
+	got, err := Load(root)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if got.Run.Issues[0].Phase != PhasePlanned {
+		t.Errorf("on-disk phase = %q, want unchanged %q", got.Run.Issues[0].Phase, PhasePlanned)
+	}
+}
+
 func TestEnterDelivery(t *testing.T) {
 	root := stateDir(t)
-	st, err := EnterDelivery(root, "claude")
+	st, err := EnterDelivery(root, "claude", testPlanRef(), testIssues())
 	if err != nil {
 		t.Fatalf("EnterDelivery: %v", err)
 	}
@@ -118,21 +211,42 @@ func TestEnterDelivery(t *testing.T) {
 }
 
 func TestEnterDeliveryRejectsUnknownHost(t *testing.T) {
-	if _, err := EnterDelivery(stateDir(t), "emacs"); err == nil {
+	if _, err := EnterDelivery(stateDir(t), "emacs", testPlanRef(), testIssues()); err == nil {
 		t.Error("EnterDelivery accepted unknown host")
+	}
+}
+
+func TestEnterDeliveryRejectsEmptyDigest(t *testing.T) {
+	ref := testPlanRef()
+	ref.Digest = ""
+	if _, err := EnterDelivery(stateDir(t), "claude", ref, testIssues()); err == nil {
+		t.Error("EnterDelivery accepted an empty plan digest")
+	}
+}
+
+func TestEnterDeliveryRejectsNoIssues(t *testing.T) {
+	if _, err := EnterDelivery(stateDir(t), "claude", testPlanRef(), nil); err == nil {
+		t.Error("EnterDelivery accepted zero issues")
+	}
+}
+
+func TestEnterDeliveryRejectsNonPlannedIssue(t *testing.T) {
+	issues := []Issue{{PlanID: "a", Phase: PhaseIssueCreated, Number: 1}}
+	if _, err := EnterDelivery(stateDir(t), "claude", testPlanRef(), issues); err == nil {
+		t.Error("EnterDelivery accepted a non-planned issue")
 	}
 }
 
 func TestEnterDeliveryContentionLeavesStateUntouched(t *testing.T) {
 	root := stateDir(t)
-	if _, err := EnterDelivery(root, "claude"); err != nil {
+	if _, err := EnterDelivery(root, "claude", testPlanRef(), testIssues()); err != nil {
 		t.Fatal(err)
 	}
 	before, err := Load(root)
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, err = EnterDelivery(root, "codex")
+	_, err = EnterDelivery(root, "codex", testPlanRef(), testIssues())
 	if !errors.Is(err, lockfile.ErrHeld) {
 		t.Fatalf("second EnterDelivery = %v, want ErrHeld", err)
 	}
@@ -147,7 +261,7 @@ func TestEnterDeliveryContentionLeavesStateUntouched(t *testing.T) {
 
 func TestAbortFromDelivery(t *testing.T) {
 	root := stateDir(t)
-	st, err := EnterDelivery(root, "claude")
+	st, err := EnterDelivery(root, "claude", testPlanRef(), testIssues())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -214,6 +328,25 @@ func TestAbortResetsCorruptState(t *testing.T) {
 	}
 	if !res.StateReset {
 		t.Errorf("StateReset = false: %+v", res)
+	}
+	after, err := Load(root)
+	if err != nil {
+		t.Fatalf("Load after abort: %v", err)
+	}
+	if after.Mode != ModeAssist {
+		t.Errorf("mode = %s, want assist", after.Mode)
+	}
+}
+
+func TestAbortResetsV1State(t *testing.T) {
+	root := stateDir(t)
+	writeState(t, root, `{"schema_version": 1, "mode": "assist"}`)
+	res, err := Abort(root)
+	if err != nil {
+		t.Fatalf("Abort: %v", err)
+	}
+	if !res.StateReset {
+		t.Errorf("StateReset = false for a v1 file: %+v", res)
 	}
 	after, err := Load(root)
 	if err != nil {

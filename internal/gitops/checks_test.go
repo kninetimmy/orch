@@ -3,6 +3,7 @@ package gitops
 import (
 	"context"
 	"errors"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -106,4 +107,46 @@ func TestRevParse(t *testing.T) {
 	if err != nil || got != hash {
 		t.Fatalf("RevParse = %q, %v; want %q, nil", got, err, hash)
 	}
+}
+
+func TestRequireIgnored(t *testing.T) {
+	root := tempRoot(t)
+	rel := filepath.Join(".orchestrator", "worktrees")
+	abs := filepath.Join(root, rel)
+
+	t.Run("ignored", func(t *testing.T) {
+		g, script := openScripted(t, root, execxtest.Call{
+			Name: "git", Args: []string{"check-ignore", "-q", "--", filepath.ToSlash(rel) + "/"}, Dir: root,
+		})
+		if err := g.RequireIgnored(context.Background(), abs); err != nil {
+			t.Errorf("RequireIgnored: %v", err)
+		}
+		script.AssertExhausted()
+	})
+
+	t.Run("not ignored", func(t *testing.T) {
+		g, script := openScripted(t, root, execxtest.Call{
+			Name: "git", Args: []string{"check-ignore", "-q", "--", filepath.ToSlash(rel) + "/"}, Dir: root, Exit: 1,
+		})
+		err := g.RequireIgnored(context.Background(), abs)
+		script.AssertExhausted()
+		if !errors.Is(err, ErrNotIgnored) {
+			t.Fatalf("err = %v, want ErrNotIgnored", err)
+		}
+		if !strings.Contains(err.Error(), ".gitignore") {
+			t.Errorf("err = %v, want .gitignore remediation", err)
+		}
+	})
+
+	t.Run("other exit code", func(t *testing.T) {
+		g, script := openScripted(t, root, execxtest.Call{
+			Name: "git", Args: []string{"check-ignore", "-q", "--", filepath.ToSlash(rel) + "/"}, Dir: root,
+			Stderr: "fatal: bad", Exit: 128,
+		})
+		err := g.RequireIgnored(context.Background(), abs)
+		script.AssertExhausted()
+		if err == nil || errors.Is(err, ErrNotIgnored) {
+			t.Fatalf("err = %v, want a plain error, not ErrNotIgnored", err)
+		}
+	})
 }
