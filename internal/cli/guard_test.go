@@ -64,8 +64,15 @@ func TestGuardCheckDenyTracked(t *testing.T) {
 	if !strings.Contains(stderr.String(), "assist is read-only") {
 		t.Errorf("stderr missing deny reason: %q", stderr.String())
 	}
-	if !strings.Contains(stderr.String(), target) {
-		t.Errorf("stderr does not name the path: %q", stderr.String())
+	// The verdict names the canonical path, which can differ from the
+	// raw temp path (8.3 short segments on Windows, /var symlinks on
+	// macOS), so canonicalize before comparing.
+	canon, err := paths.Canonical(target)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(stderr.String(), canon) {
+		t.Errorf("stderr does not name the path %q: %q", canon, stderr.String())
 	}
 }
 
