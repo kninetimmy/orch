@@ -1,0 +1,56 @@
+{
+  "schema_version": 1,
+  "kind": "questions",
+  "progress": {
+    "index": 4,
+    "total": 14
+  },
+  "questions": [
+    {
+      "id": "host.claude.role.implementer.model",
+      "header": "Implementer",
+      "prompt": "Implementer model (Claude Code)",
+      "preamble": "Implementer: executes narrow, approved, normally difficult changes, following the approved architecture, only inside its assigned worktree.",
+      "kind": "select",
+      "options": [
+        {
+          "value": "claude-opus-4-8",
+          "label": "claude-opus-4-8"
+        },
+        {
+          "value": "claude-sonnet-5",
+          "label": "claude-sonnet-5",
+          "recommended": true
+        }
+      ],
+      "free_text": true,
+      "default": "claude-sonnet-5"
+    },
+    {
+      "id": "host.claude.role.implementer.effort",
+      "header": "Implementer",
+      "prompt": "Implementer reasoning effort (Claude Code)",
+      "kind": "select",
+      "options": [
+        {
+          "value": "low",
+          "label": "Low"
+        },
+        {
+          "value": "medium",
+          "label": "Medium"
+        },
+        {
+          "value": "high",
+          "label": "High"
+        },
+        {
+          "value": "xhigh",
+          "label": "Extra high",
+          "recommended": true
+        }
+      ],
+      "default": "xhigh"
+    }
+  ]
+}
