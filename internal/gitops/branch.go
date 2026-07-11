@@ -3,6 +3,7 @@ package gitops
 import (
 	"context"
 	"fmt"
+	"strconv"
 	"strings"
 )
 
@@ -12,6 +13,57 @@ func (g *Git) Fetch(ctx context.Context, remote string, refspecs ...string) erro
 	args := append([]string{"fetch", remote}, refspecs...)
 	_, err := g.git(ctx, g.root, args...)
 	return err
+}
+
+// Push publishes branch to remote from the working tree at dir, setting
+// the upstream (`git push -u`). pr-open runs it inside the issue's
+// worktree so the push uses that checkout's commits (PRD §12 step 9).
+func (g *Git) Push(ctx context.Context, dir, remote, branch string) error {
+	_, err := g.git(ctx, dir, "push", "-u", remote, branch)
+	return err
+}
+
+// FastForwardIn advances the branch checked out in dir to ref with
+// `git merge --ff-only ref`. dispatch uses it to bring an issue branch
+// up to origin/<default> inside its worktree before work begins; a
+// pre-dispatch branch has no commits by construction, so any divergence
+// is a fail-closed signal (ErrNotFastForward) and nothing changes.
+func (g *Git) FastForwardIn(ctx context.Context, dir, ref string) error {
+	res, err := g.run(ctx, dir, "merge", "--ff-only", ref)
+	if err != nil {
+		return err
+	}
+	if res.ExitCode != 0 {
+		return fmt.Errorf("%w: %s in %s: %s", ErrNotFastForward, ref, dir, strings.TrimSpace(res.Stderr))
+	}
+	return nil
+}
+
+// RemoteBranchExists reports whether branch is present on remote, via
+// `git ls-remote --heads`. cleanup uses it to make remote-branch
+// deletion idempotent, so a crashed cleanup re-runs cleanly.
+func (g *Git) RemoteBranchExists(ctx context.Context, remote, branch string) (bool, error) {
+	out, err := g.git(ctx, g.root, "ls-remote", "--heads", remote, branch)
+	if err != nil {
+		return false, err
+	}
+	return strings.TrimSpace(out) != "", nil
+}
+
+// CommitsAhead returns how many commits branch carries that base does
+// not, as `git rev-list --count base..branch` run in dir. pr-open uses
+// it to refuse an empty PR (PRD §16: no PR without work) after
+// fast-forwarding the base at dispatch.
+func (g *Git) CommitsAhead(ctx context.Context, dir, base, branch string) (int, error) {
+	out, err := g.git(ctx, dir, "rev-list", "--count", base+".."+branch)
+	if err != nil {
+		return 0, err
+	}
+	n, err := strconv.Atoi(strings.TrimSpace(out))
+	if err != nil {
+		return 0, fmt.Errorf("parse rev-list count %q in %s: %w", out, dir, err)
+	}
+	return n, nil
 }
 
 // DeleteBranch deletes a local branch that is fully merged into the

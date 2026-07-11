@@ -137,6 +137,74 @@ func currentBranchCall(branch string) execxtest.Call {
 	return execxtest.Call{Name: "git", Args: []string{"symbolic-ref", "--short", "HEAD"}, Stdout: branch + "\n"}
 }
 
+func TestPush(t *testing.T) {
+	root := tempRoot(t)
+	wt := tempRoot(t)
+	g, script := openScripted(t, root, execxtest.Call{
+		Name: "git", Args: []string{"push", "-u", "origin", "orch/issue-4"}, Dir: wt,
+	})
+	if err := g.Push(context.Background(), wt, "origin", "orch/issue-4"); err != nil {
+		t.Fatalf("Push: %v", err)
+	}
+	script.AssertExhausted()
+}
+
+func TestFastForwardIn(t *testing.T) {
+	root := tempRoot(t)
+	wt := tempRoot(t)
+	g, script := openScripted(t, root, execxtest.Call{
+		Name: "git", Args: []string{"merge", "--ff-only", "origin/main"}, Dir: wt,
+	})
+	if err := g.FastForwardIn(context.Background(), wt, "origin/main"); err != nil {
+		t.Fatalf("FastForwardIn: %v", err)
+	}
+	script.AssertExhausted()
+}
+
+func TestFastForwardInDiverged(t *testing.T) {
+	root := tempRoot(t)
+	wt := tempRoot(t)
+	g, script := openScripted(t, root, execxtest.Call{
+		Name: "git", Args: []string{"merge", "--ff-only", "origin/main"}, Dir: wt,
+		Exit: 128, Stderr: "fatal: Not possible to fast-forward, aborting.",
+	})
+	err := g.FastForwardIn(context.Background(), wt, "origin/main")
+	script.AssertExhausted()
+	if !errors.Is(err, ErrNotFastForward) {
+		t.Fatalf("err = %v, want ErrNotFastForward", err)
+	}
+}
+
+func TestRemoteBranchExists(t *testing.T) {
+	root := tempRoot(t)
+	g, script := openScripted(t, root,
+		execxtest.Call{Name: "git", Args: []string{"ls-remote", "--heads", "origin", "orch/issue-4"}, Dir: root, Stdout: "abc123\trefs/heads/orch/issue-4\n"},
+		execxtest.Call{Name: "git", Args: []string{"ls-remote", "--heads", "origin", "orch/gone"}, Dir: root, Stdout: ""},
+	)
+	exists, err := g.RemoteBranchExists(context.Background(), "origin", "orch/issue-4")
+	if err != nil || !exists {
+		t.Fatalf("RemoteBranchExists(present) = %v, %v; want true, nil", exists, err)
+	}
+	exists, err = g.RemoteBranchExists(context.Background(), "origin", "orch/gone")
+	if err != nil || exists {
+		t.Fatalf("RemoteBranchExists(absent) = %v, %v; want false, nil", exists, err)
+	}
+	script.AssertExhausted()
+}
+
+func TestCommitsAhead(t *testing.T) {
+	root := tempRoot(t)
+	wt := tempRoot(t)
+	g, script := openScripted(t, root, execxtest.Call{
+		Name: "git", Args: []string{"rev-list", "--count", "origin/main..orch/issue-4"}, Dir: wt, Stdout: "3\n",
+	})
+	n, err := g.CommitsAhead(context.Background(), wt, "origin/main", "orch/issue-4")
+	if err != nil || n != 3 {
+		t.Fatalf("CommitsAhead = %d, %v; want 3, nil", n, err)
+	}
+	script.AssertExhausted()
+}
+
 func TestFastForwardWrongBranch(t *testing.T) {
 	g, script := openScripted(t, tempRoot(t), currentBranchCall("orch/issue-4"))
 	err := g.FastForward(context.Background(), "origin", "main")
