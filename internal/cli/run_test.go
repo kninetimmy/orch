@@ -110,6 +110,39 @@ func TestRunStatusNeverReadsStdin(t *testing.T) {
 	}
 }
 
+// TestRunLifecycleVerbsAreRouted proves each new verb is recognized by
+// the dispatcher (not a usage error) and reaches the run engine, which
+// fails closed because the repo is in Assist. A recognized verb with a
+// valid document yields ExitError, never ExitUsage.
+func TestRunLifecycleVerbsAreRouted(t *testing.T) {
+	verbs := map[string]string{
+		"dispatch":     `{"schema_version":1,"issue_number":1}`,
+		"pr-open":      `{"schema_version":1,"issue_number":1,"verifications":[{"name":"t","result":"pass"}]}`,
+		"review":       `{"schema_version":1,"issue_number":1,"reviewed_head_oid":"h","verdict":"approve","summary":"s","reviewer":{"model":"m","effort":"e"}}`,
+		"escalate":     `{"schema_version":1,"issue_number":1,"trigger":"architectural-ambiguity","detail":"x"}`,
+		"ci":           `{"schema_version":1,"issue_number":1}`,
+		"merge-report": `{"schema_version":1,"issue_number":1}`,
+		"merge":        `{"schema_version":1,"issue_number":1,"approval":{"pr_number":1,"head_oid":"h","approved_by":"a","approved_at":"2026-07-11T12:00:00Z","statement":"approve-merge"}}`,
+		"block":        `{"schema_version":1,"issue_number":1,"class":"other","detail":"x"}`,
+		"abandon":      `{"schema_version":1,"issue_number":1,"reason":"x","statement":"abandon-issue"}`,
+		"cleanup":      `{"schema_version":1,"issue_number":1,"statement":"cleanup-issue"}`,
+		"complete":     `{"schema_version":1}`,
+	}
+	for verb, doc := range verbs {
+		t.Run(verb, func(t *testing.T) {
+			env, _, stderr := testEnv(t)
+			writeConfig(t, env.RepoRoot, validTOML)
+			env.Stdin = bytes.NewReader([]byte(doc))
+			if code := Run([]string{"run", verb}, env); code != ExitError {
+				t.Fatalf("exit = %d, want %d (recognized verb, no delivery run); stderr = %s", code, ExitError, stderr.String())
+			}
+			if !strings.Contains(stderr.String(), "no delivery run is active") {
+				t.Errorf("stderr = %q, want the no-delivery-run remediation", stderr.String())
+			}
+		})
+	}
+}
+
 const minimalPlanJSON = `{
   "schema_version": 1,
   "host": "claude",

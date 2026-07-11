@@ -212,7 +212,17 @@ func Activate(ctx context.Context, env Env, reqJSON []byte) (*ActivationResult, 
 	ordered := plan.issuesInWaveOrder()
 	stateIssues := make([]state.Issue, len(ordered))
 	for i, pi := range ordered {
-		stateIssues[i] = state.Issue{PlanID: pi.ID, Title: pi.Title, Phase: state.PhasePlanned}
+		// Persist the plan's dependency edges, wave, and the derived
+		// routing decision so the PR B verbs can enforce dependencies and
+		// spawn executors without re-taking the plan document.
+		stateIssues[i] = state.Issue{
+			PlanID:    pi.ID,
+			Title:     pi.Title,
+			Phase:     state.PhasePlanned,
+			DependsOn: pi.DependsOn,
+			Wave:      pi.Wave,
+			Decision:  fromRoutingDecision(decisionByID[pi.ID]),
+		}
 	}
 	planRef := state.PlanRef{
 		Title:          plan.Title,
