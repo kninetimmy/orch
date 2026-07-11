@@ -210,7 +210,7 @@ func (p *PlanDoc) Validate(cfg *config.Config) error {
 				fail("%s: depends_on: %q does not resolve to a plan issue", prefix, dep)
 				continue
 			}
-			if !(depWave < iss.Wave) {
+			if depWave >= iss.Wave {
 				fail("%s: depends_on: %q is in wave %d, which is not strictly before this issue's wave %d", prefix, dep, depWave, iss.Wave)
 			}
 		}
