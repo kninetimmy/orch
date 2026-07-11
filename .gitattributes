@@ -5,3 +5,4 @@
 *.yaml text eol=lf
 *.md text eol=lf
 *.diff text eol=lf
+*.json text eol=lf
