@@ -33,6 +33,25 @@ func TestStatusValidConfig(t *testing.T) {
 			t.Errorf("output missing %q:\n%s", want, out)
 		}
 	}
+	if strings.Contains(out, "local:") {
+		t.Errorf("output has a local: line without a config.local.toml:\n%s", out)
+	}
+}
+
+func TestStatusShowsLocalOverrides(t *testing.T) {
+	env, stdout, _ := testEnv(t)
+	writeConfig(t, env.RepoRoot, validTOML)
+	local := "[concurrency]\nmax_subagents = 5\n"
+	if err := os.WriteFile(filepath.Join(env.RepoRoot, ".orchestrator", "config.local.toml"), []byte(local), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if code := Run([]string{"status"}, env); code != ExitOK {
+		t.Fatalf("exit = %d, want %d", code, ExitOK)
+	}
+	out := stdout.String()
+	if !strings.Contains(out, "local:  1 override(s) from .orchestrator/config.local.toml") {
+		t.Errorf("output missing local override line:\n%s", out)
+	}
 }
 
 func TestStatusDeliveryShowsRunAndLock(t *testing.T) {

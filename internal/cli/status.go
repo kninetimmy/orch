@@ -35,6 +35,9 @@ func runStatus(env Env) error {
 			owner.Host, owner.Hostname, owner.PID, owner.AcquiredAt.Format(time.RFC3339))
 	}
 	fmt.Fprintf(env.Stdout, "config: %s (schema %d, revision %q)\n", config.Path, cfg.SchemaVersion, cfg.ConfigRevision)
+	if len(cfg.Overrides) > 0 {
+		fmt.Fprintf(env.Stdout, "local:  %d override(s) from %s\n", len(cfg.Overrides), config.LocalOverridePath)
+	}
 	fmt.Fprintf(env.Stdout, "hosts:  %s\n", strings.Join(cfg.EnabledHosts(), ", "))
 
 	// Status inspects and reports; doctor is the check that fails.

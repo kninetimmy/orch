@@ -1,0 +1,6 @@
+# Fable-style override (PRD §10): select claude-fable-5 for the
+# architect role on this machine while the committed default stays
+# claude-opus-4-8.
+[hosts.claude.roles.architect]
+model  = "claude-fable-5"
+effort = "medium"

@@ -1,9 +1,12 @@
 // Package config parses and validates the committed Orch configuration
-// at .orchestrator/config.toml (PRD §17). Machine-local overrides in
-// config.local.toml are detected but not yet applied.
+// at .orchestrator/config.toml (PRD §17), then layers on the
+// machine-local override file at config.local.toml when present. The
+// overlay is restricted to a closed set of preference keys; any
+// policy-bearing key set locally is rejected (see overlay.go).
 package config
 
-// Config is the root of the committed configuration schema.
+// Config is the root of the committed configuration schema, after any
+// machine-local overlay has been merged in.
 type Config struct {
 	SchemaVersion  int         `toml:"schema_version"`
 	ConfigRevision string      `toml:"config_revision"`
@@ -12,6 +15,13 @@ type Config struct {
 	Memhub         Memhub      `toml:"memhub"`
 	Metrics        Metrics     `toml:"metrics"`
 	Hosts          Hosts       `toml:"hosts"`
+
+	// Overrides lists, sorted, the dotted keys applied from
+	// config.local.toml. It is the audit surface for PRD §23: which
+	// exact model/effort values are in effect must always be visible.
+	// Empty (nil) when no local override file exists or it sets
+	// nothing. Never itself read from either TOML file.
+	Overrides []string `toml:"-"`
 }
 
 // Concurrency caps concurrent subagents (PRD §14; default 3).

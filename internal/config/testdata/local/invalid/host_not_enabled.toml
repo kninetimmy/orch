@@ -1,0 +1,6 @@
+# Pair with a committed config that does not enable hosts.codex:
+# enabling a host is not a preference change and requires a Delivery
+# PR (PRD §18).
+[hosts.codex.roles.architect]
+model  = "gpt-5.6-sol"
+effort = "high"

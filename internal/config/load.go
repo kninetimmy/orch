@@ -15,16 +15,29 @@ import (
 const Path = ".orchestrator/config.toml"
 
 // LocalOverridePath is the repo-relative location of the machine-local
-// override file. It is detected but not yet applied (PRD §17).
+// override file. When present, Load layers it onto the committed
+// configuration, restricted to a closed set of preference keys
+// (PRD §17; see overlay.go).
 const LocalOverridePath = ".orchestrator/config.local.toml"
 
 // ErrNotInitialized reports a missing committed configuration file.
 var ErrNotInitialized = errors.New("not initialized: " + Path + " not found (orch init is not yet implemented)")
 
 // Load reads, parses, and validates the committed configuration under
-// repoRoot. It never returns a partial Config: on any parse or
-// validation failure the returned Config is nil.
+// repoRoot, then merges in any machine-local overlay from
+// config.local.toml (PRD §17). It never returns a partial Config: on
+// any parse or validation failure the returned Config is nil.
 func Load(repoRoot string) (*Config, error) {
+	committed, err := loadCommitted(repoRoot)
+	if err != nil {
+		return nil, err
+	}
+	return applyLocalOverride(repoRoot, committed)
+}
+
+// loadCommitted reads, parses, and validates only the committed
+// configuration; it does not consult config.local.toml.
+func loadCommitted(repoRoot string) (*Config, error) {
 	data, err := os.ReadFile(filepath.Join(repoRoot, filepath.FromSlash(Path)))
 	if errors.Is(err, fs.ErrNotExist) {
 		return nil, ErrNotInitialized

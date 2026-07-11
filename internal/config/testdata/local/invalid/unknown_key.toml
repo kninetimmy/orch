@@ -1,0 +1,3 @@
+# A key outside the schema must be rejected by name, attributed to
+# config.local.toml.
+bogus_local_key = true
