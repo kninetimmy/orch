@@ -1,11 +1,13 @@
 package cli
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"os"
 
 	"github.com/kninetimmy/orch/internal/config"
+	"github.com/kninetimmy/orch/internal/gitops"
 	"github.com/kninetimmy/orch/internal/lockfile"
 	"github.com/kninetimmy/orch/internal/state"
 )
@@ -23,6 +25,13 @@ func runDoctor(env Env) error {
 
 	_, gitErr := env.LookPath("git")
 	check("git on PATH", gitErr)
+
+	if gitErr == nil {
+		// gitops.Open also verifies .orchestrator/ sits at the git
+		// top level, which the containment guarantees depend on.
+		_, repoErr := gitops.Open(context.Background(), env.Runner, env.RepoRoot)
+		check("git repository", repoErr)
+	}
 
 	_, ghErr := env.LookPath("gh")
 	check("gh on PATH", ghErr)
