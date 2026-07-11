@@ -6,7 +6,6 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
-	"strings"
 
 	"github.com/BurntSushi/toml"
 )
@@ -35,8 +34,9 @@ func Load(repoRoot string) (*Config, error) {
 	return applyLocalOverride(repoRoot, committed)
 }
 
-// loadCommitted reads, parses, and validates only the committed
-// configuration; it does not consult config.local.toml.
+// loadCommitted reads the committed configuration file under repoRoot
+// and calls Parse on its bytes; it does not consult
+// config.local.toml.
 func loadCommitted(repoRoot string) (*Config, error) {
 	data, err := os.ReadFile(filepath.Join(repoRoot, filepath.FromSlash(Path)))
 	if errors.Is(err, fs.ErrNotExist) {
@@ -46,24 +46,11 @@ func loadCommitted(repoRoot string) (*Config, error) {
 		return nil, fmt.Errorf("read %s: %w", Path, err)
 	}
 
-	var cfg Config
-	md, err := toml.Decode(string(data), &cfg)
+	cfg, err := Parse(data)
 	if err != nil {
-		return nil, fmt.Errorf("parse %s: %w", Path, err)
-	}
-	if undecoded := md.Undecoded(); len(undecoded) > 0 {
-		keys := make([]string, len(undecoded))
-		for i, k := range undecoded {
-			keys[i] = k.String()
-		}
-		return nil, fmt.Errorf("%s: unknown keys: %s", Path, strings.Join(keys, ", "))
-	}
-
-	applyDefaults(&cfg, md)
-	if err := cfg.validate(); err != nil {
 		return nil, fmt.Errorf("%s: %w", Path, err)
 	}
-	return &cfg, nil
+	return cfg, nil
 }
 
 // applyDefaults fills PRD-specified defaults for keys the file omits.
