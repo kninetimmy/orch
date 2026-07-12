@@ -117,11 +117,13 @@ bugs:
 
 ## Host version
 
-This design assumes a Claude Code version with plugin support
-(component auto-discovery for `commands/`, `agents/`, `skills/`, and
-`hooks/hooks.json`), `SessionStart` hooks, and the `AskUserQuestion` tool.
-A formally pinned minimum supported Claude Code version is deliberately
-deferred (PRD §24) to the sandbox-e2e and parity milestones (task 21),
-where it will be recorded alongside the manual smoke test this PR's plan
-calls for. Until then, treat the Claude Code version this adapter is
-manually smoke-tested against during development as the de-facto floor.
+Formal minimum: Claude Code >= 2.1.207 (the version the task-18
+end-to-end smoke validated: plugin component auto-discovery for
+`commands/`, `agents/`, `skills/`, and `hooks/hooks.json`, `SessionStart`
+hooks, the `AskUserQuestion` tool, and the `PreToolUse`
+`permissionDecision` protocol), formalized at task 21 alongside the
+Codex CLI floor.
+
+The Codex CLI adapter lives at `adapters/codex/` and passes the same
+shared parity suite (`internal/adaptertest`) this adapter's plugin tests
+do.

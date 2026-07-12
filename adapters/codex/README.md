@@ -12,6 +12,10 @@ This adapter only translates Codex CLI host events into calls against
 that binary, presents native dialogs, and dispatches role agents. It
 never re-derives a decision the engine already made.
 
+The Claude Code adapter lives at `adapters/claude/` and passes the same
+shared parity suite (`internal/adaptertest`) this adapter's plugin tests
+do.
+
 ## Artifact map
 
 - `.codex-plugin/plugin.json` — the plugin manifest (name, description,
