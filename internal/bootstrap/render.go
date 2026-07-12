@@ -41,6 +41,16 @@ func renderRecord(complete *question.Complete, validations []ValidationEntry, cl
 	}
 	b.WriteString("```\n")
 
+	if complete.Summary.ConfigDiff != "" {
+		b.WriteString("\n## Configuration diff\n\n")
+		b.WriteString("```diff\n")
+		b.WriteString(complete.Summary.ConfigDiff)
+		if !strings.HasSuffix(complete.Summary.ConfigDiff, "\n") {
+			b.WriteByte('\n')
+		}
+		b.WriteString("```\n")
+	}
+
 	b.WriteString("\n## Instruction files\n\n")
 	if len(complete.Summary.Files) == 0 {
 		b.WriteString("_none_\n")

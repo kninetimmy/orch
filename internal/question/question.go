@@ -135,6 +135,14 @@ type Summary struct {
 	GitignoreLines []string     `json:"gitignore_lines,omitempty"`
 	Conflicts      []string     `json:"conflicts,omitempty"`
 	Blockers       []string     `json:"blockers,omitempty"`
+	// ConfigDiff is emit-only: `orch configure`'s unified diff between
+	// the committed config.toml and the newly materialized render, for
+	// display alongside Files. It is deliberately not a FileChange —
+	// config.toml is written by bootstrap.writeFiles directly from
+	// ConfigTOML, never from an entry in Files, so a caller can never
+	// double-write it. Always "" for `orch init`/`orch configure-local`,
+	// which never populate it.
+	ConfigDiff string `json:"config_diff,omitempty"`
 }
 
 // FileChange is one proposed instruction-file edit. Path is

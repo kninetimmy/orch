@@ -86,6 +86,17 @@ var defaultProfiles = map[string]map[string]profile{
 	},
 }
 
+// defaultProfileFor returns a role-defaults source drawing from the
+// PRD §10 default profiles for host — the source roleDocSpecs uses for
+// a freshly enabled host: init always uses it, and `orch configure`
+// uses it only for a host this change newly enables (a host that was
+// already committed-enabled and stays enabled instead sources its
+// defaults from what is already committed, via
+// interview.committedRoleDefaults, configure.go).
+func defaultProfileFor(host string) func(string) profile {
+	return func(role string) profile { return defaultProfiles[host][role] }
+}
+
 // hostModels lists each host's distinct committed-config model
 // choices, in a fixed display order, so model select options are
 // deterministic. This is deliberately not the local-override-only
@@ -143,7 +154,7 @@ func (d docSpec) allAnswered(answers map[string]string) bool {
 // "no" — the same rule config.validate enforces on the committed file,
 // checked here before any role question is ever asked.
 func buildSequence(facts Facts, answers map[string]string) ([]docSpec, error) {
-	docs := []docSpec{hostToggleDoc(facts)}
+	docs := []docSpec{hostToggleDoc(facts, boolValue(facts.ClaudeCLI), boolValue(facts.CodexCLI))}
 
 	claudeVal, claudeKnown := answers[idHostClaudeEnabled]
 	codexVal, codexKnown := answers[idHostCodexEnabled]
@@ -155,24 +166,28 @@ func buildSequence(facts Facts, answers map[string]string) ([]docSpec, error) {
 	}
 
 	if claudeEnabled {
-		docs = append(docs, roleDocSpecs("claude", true)...)
+		docs = append(docs, roleDocSpecs("claude", true, defaultProfileFor("claude"))...)
 	}
 	if codexEnabled {
-		docs = append(docs, roleDocSpecs("codex", !claudeEnabled)...)
+		docs = append(docs, roleDocSpecs("codex", !claudeEnabled, defaultProfileFor("codex"))...)
 	}
 	if claudeKnown && codexKnown {
-		docs = append(docs, settingsDoc(facts))
+		docs = append(docs, settingsDoc(initSettingsDefaults(facts)))
 	}
 	return docs, nil
 }
 
-// hostToggleDoc is doc 1: whether to enable Claude Code and Codex CLI,
-// defaulted from Facts and carrying the §18 step 3 explanation on its
-// first question.
-func hostToggleDoc(facts Facts) docSpec {
-	claudeDefault := boolValue(facts.ClaudeCLI)
-	codexDefault := boolValue(facts.CodexCLI)
-
+// hostToggleDoc is doc 1 (init) — or, for `orch configure`, the
+// host-toggle document inserted once pick.hosts is answered "yes" —
+// whether to enable Claude Code and Codex CLI. claudeDefault/
+// codexDefault source each Default independently of the Hint's
+// detection status (still always facts-derived): init passes
+// facts-derived CLI detection (boolValue(facts.ClaudeCLI/CodexCLI));
+// `orch configure` passes the committed configuration's current
+// enablement instead, so re-answering this doc while editing an
+// existing configuration starts from what is already there rather
+// than re-running the first-time detection default.
+func hostToggleDoc(facts Facts, claudeDefault, codexDefault string) docSpec {
 	claudeQ := question.Question{
 		ID:       idHostClaudeEnabled,
 		Header:   "Claude",
@@ -201,11 +216,16 @@ func hostToggleDoc(facts Facts) docSpec {
 // Preamble: claude's docs always show it; codex's docs show it only
 // when claude was not enabled (so a solo-Codex interview still walks
 // the role explanations once, and a both-hosts interview does not
-// repeat them).
-func roleDocSpecs(host string, showExplain bool) []docSpec {
+// repeat them). defaults sources each role's starting model/effort:
+// init and a freshly-enabled `orch configure` host both pass
+// defaultProfileFor(host) (the PRD §10 defaults); a still-enabled
+// `orch configure` host instead passes committedRoleDefaults(h)
+// (configure.go), so re-editing an already-committed host's roles
+// starts from what is already there.
+func roleDocSpecs(host string, showExplain bool, defaults func(string) profile) []docSpec {
 	docs := make([]docSpec, 0, len(roleSpecs))
 	for _, rs := range roleSpecs {
-		def := defaultProfiles[host][rs.key]
+		def := defaults(rs.key)
 		hostLabel := hostLabels[host]
 
 		modelQ := question.Question{
@@ -265,18 +285,38 @@ func effortLabel(effort string) string {
 	return strings.ToUpper(effort[:1]) + effort[1:]
 }
 
-// settingsDoc is doc 14: concurrency, merge strategy, memhub mode, and
-// metrics — the four independent PRD §14/§16/§20/§21 settings,
-// grouped in one document since a Document carries up to four
-// questions. memhub.mode defaults to "best-effort" when memhub is
-// detected and healthy, else "off" (contract call 5; "required" is one
-// arrow-key away, described as the memhub-first-repo choice).
-func settingsDoc(facts Facts) docSpec {
+// settingsDefaults holds settingsDoc's four question defaults, so init
+// can derive them from Facts (initSettingsDefaults) while `orch
+// configure` derives them from the committed configuration's current
+// values instead (committedSettingsDefaults, configure.go) — the
+// refactored seam this doc comment used to describe as fixed PRD
+// defaults plus a memhub-health-based memhub.mode.
+type settingsDefaults struct {
+	maxSubagents   string
+	mergeStrategy  string
+	memhubMode     string
+	metricsEnabled string
+}
+
+// initSettingsDefaults derives settingsDoc's defaults for `orch init`:
+// the PRD §14/§16/§21 hardcoded defaults (concurrency 3, merge squash,
+// metrics off), plus a memhub.mode default of "best-effort" when
+// memhub is detected and healthy, else "off" (contract call 5;
+// "required" is one arrow-key away, described as the memhub-first-repo
+// choice).
+func initSettingsDefaults(facts Facts) settingsDefaults {
 	memhubDefault := "off"
 	if facts.MemhubHealthy {
 		memhubDefault = "best-effort"
 	}
+	return settingsDefaults{maxSubagents: "3", mergeStrategy: "squash", memhubMode: memhubDefault, metricsEnabled: "no"}
+}
 
+// settingsDoc is doc 14: concurrency, merge strategy, memhub mode, and
+// metrics — the four independent PRD §14/§16/§20/§21 settings, grouped
+// in one document since a Document carries up to four questions.
+// defaults sources every question's Default and Recommended option.
+func settingsDoc(defaults settingsDefaults) docSpec {
 	concurrency := question.Question{
 		ID:       idMaxSubagents,
 		Header:   "Concurrency",
@@ -284,12 +324,12 @@ func settingsDoc(facts Facts) docSpec {
 		Preamble: "Concurrency caps how many subagents run at once across both hosts (PRD §14; default 3).",
 		Kind:     question.KindSelect,
 		FreeText: true,
-		Default:  "3",
+		Default:  defaults.maxSubagents,
 		Options: []question.Option{
-			{Value: "1", Label: "1"},
-			{Value: "2", Label: "2"},
-			{Value: "3", Label: "3", Recommended: true},
-			{Value: "4", Label: "4"},
+			{Value: "1", Label: "1", Recommended: defaults.maxSubagents == "1"},
+			{Value: "2", Label: "2", Recommended: defaults.maxSubagents == "2"},
+			{Value: "3", Label: "3", Recommended: defaults.maxSubagents == "3"},
+			{Value: "4", Label: "4", Recommended: defaults.maxSubagents == "4"},
 		},
 	}
 	merge := question.Question{
@@ -298,11 +338,11 @@ func settingsDoc(facts Facts) docSpec {
 		Prompt:   "Merge strategy for approved PRs",
 		Preamble: "Merge strategy applies once a human gives explicit merge approval (PRD §16; default squash).",
 		Kind:     question.KindSelect,
-		Default:  "squash",
+		Default:  defaults.mergeStrategy,
 		Options: []question.Option{
-			{Value: "squash", Label: "Squash", Recommended: true},
-			{Value: "rebase", Label: "Rebase"},
-			{Value: "merge-commit", Label: "Merge commit"},
+			{Value: "squash", Label: "Squash", Recommended: defaults.mergeStrategy == "squash"},
+			{Value: "rebase", Label: "Rebase", Recommended: defaults.mergeStrategy == "rebase"},
+			{Value: "merge-commit", Label: "Merge commit", Recommended: defaults.mergeStrategy == "merge-commit"},
 		},
 	}
 	memhub := question.Question{
@@ -311,11 +351,11 @@ func settingsDoc(facts Facts) docSpec {
 		Prompt:   "Memhub integration mode",
 		Preamble: "Memhub mode controls how Delivery planning treats memhub health (PRD §20): required blocks planning on failure, best-effort records it, off skips the probe.",
 		Kind:     question.KindSelect,
-		Default:  memhubDefault,
+		Default:  defaults.memhubMode,
 		Options: []question.Option{
-			{Value: "required", Label: "Required", Description: "The memhub-first-repo choice: blocks Delivery planning if memhub health or recall fails.", Recommended: memhubDefault == "required"},
-			{Value: "best-effort", Label: "Best effort", Recommended: memhubDefault == "best-effort"},
-			{Value: "off", Label: "Off", Recommended: memhubDefault == "off"},
+			{Value: "required", Label: "Required", Description: "The memhub-first-repo choice: blocks Delivery planning if memhub health or recall fails.", Recommended: defaults.memhubMode == "required"},
+			{Value: "best-effort", Label: "Best effort", Recommended: defaults.memhubMode == "best-effort"},
+			{Value: "off", Label: "Off", Recommended: defaults.memhubMode == "off"},
 		},
 	}
 	metrics := question.Question{
@@ -324,10 +364,10 @@ func settingsDoc(facts Facts) docSpec {
 		Prompt:   "Enable local metrics",
 		Preamble: "Metrics record local, gitignored routing/outcome data for future evaluation (PRD §21); off by default and never transmitted externally.",
 		Kind:     question.KindSelect,
-		Default:  "no",
+		Default:  defaults.metricsEnabled,
 		Options: []question.Option{
-			{Value: "yes", Label: "Yes"},
-			{Value: "no", Label: "No", Recommended: true},
+			{Value: "yes", Label: "Yes", Recommended: defaults.metricsEnabled == "yes"},
+			{Value: "no", Label: "No", Recommended: defaults.metricsEnabled == "no"},
 		},
 	}
 	return docSpec{questions: []question.Question{concurrency, merge, memhub, metrics}}

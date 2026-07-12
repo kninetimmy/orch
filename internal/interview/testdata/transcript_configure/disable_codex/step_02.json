@@ -1,0 +1,49 @@
+{
+  "schema_version": 1,
+  "kind": "questions",
+  "progress": {
+    "index": 2,
+    "total": 2
+  },
+  "questions": [
+    {
+      "id": "host.claude.enabled",
+      "header": "Claude",
+      "prompt": "Enable Claude Code as a host?",
+      "preamble": "Orch has two modes: Assist (read-only; the default — the Architect and Scouts may inspect and explain, but repository mutation is mechanically denied) and Delivery (a mutation request is investigated read-only, then approved work happens in an isolated per-issue worktree with its own branch and PR; merges are always human-approved). Enable each host CLI you want to drive Orch through; a host can be added later through Delivery.",
+      "kind": "select",
+      "options": [
+        {
+          "value": "yes",
+          "label": "Yes",
+          "recommended": true
+        },
+        {
+          "value": "no",
+          "label": "No"
+        }
+      ],
+      "default": "yes",
+      "hint": "claude CLI detected on PATH"
+    },
+    {
+      "id": "host.codex.enabled",
+      "header": "Codex",
+      "prompt": "Enable Codex CLI as a host?",
+      "kind": "select",
+      "options": [
+        {
+          "value": "yes",
+          "label": "Yes",
+          "recommended": true
+        },
+        {
+          "value": "no",
+          "label": "No"
+        }
+      ],
+      "default": "yes",
+      "hint": "codex CLI detected on PATH"
+    }
+  ]
+}

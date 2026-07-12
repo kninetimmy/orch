@@ -33,6 +33,15 @@ func applicableInstructionFiles(cfg *config.Config) []string {
 	return names
 }
 
+// InstructionFile returns host's root instruction file name
+// (instructionFileFor's exported form), or "" for an unrecognized host
+// name — exported for internal/bootstrap's disable-validation
+// (validateConfigure), which needs every host's file status without
+// depending on interview's own host-name set.
+func InstructionFile(host string) string {
+	return instructionFileFor[host]
+}
+
 // baseGitignoreLines are the repo-relative ignore patterns every
 // initialized repository needs, mirroring (as literal strings —
 // Detect's execProber-duplication precedent, so this pre-init-safe
@@ -66,24 +75,9 @@ func buildSummary(cfg *config.Config, repoRoot string) (question.Summary, error)
 		return question.Summary{}, fmt.Errorf("render configuration for summary: %w", err)
 	}
 
-	var files []question.FileChange
-	var blockers []string
-	for _, name := range applicableInstructionFiles(cfg) {
-		path := filepath.Join(repoRoot, name)
-		ch, err := instructions.PlanFile(path)
-		if isBlockingPlanError(err) {
-			blockers = append(blockers, fmt.Sprintf("%s: %v", name, err))
-			continue
-		}
-		if err != nil {
-			return question.Summary{}, err
-		}
-		files = append(files, question.FileChange{
-			Path:       filepath.ToSlash(name),
-			Existed:    ch.FileExisted,
-			Diff:       ch.Diff,
-			NewContent: ch.New,
-		})
+	files, blockers, err := planInstructionFiles(repoRoot, applicableInstructionFiles(cfg), instructions.PlanFile)
+	if err != nil {
+		return question.Summary{}, err
 	}
 
 	conflicts, err := instructions.Scan(repoRoot)
@@ -112,6 +106,37 @@ func buildSummary(cfg *config.Config, repoRoot string) (question.Summary, error)
 		Conflicts:      conflictLines,
 		Blockers:       blockers,
 	}, nil
+}
+
+// planInstructionFiles runs planFunc (instructions.PlanFile or
+// instructions.PlanRemoveFile) for each name in names, turning a
+// blocking Plan error into a Blockers entry rather than aborting —
+// buildSummary and interview's own buildConfigureSummary
+// (`orch configure`, configure.go) both share this loop: init only
+// ever calls it with instructions.PlanFile, while configure calls it
+// once with PlanFile (for the hosts it enables) and once more with
+// PlanRemoveFile (for the hosts it disables).
+func planInstructionFiles(repoRoot string, names []string, planFunc func(string) (instructions.Change, error)) ([]question.FileChange, []string, error) {
+	var files []question.FileChange
+	var blockers []string
+	for _, name := range names {
+		path := filepath.Join(repoRoot, name)
+		ch, err := planFunc(path)
+		if isBlockingPlanError(err) {
+			blockers = append(blockers, fmt.Sprintf("%s: %v", name, err))
+			continue
+		}
+		if err != nil {
+			return nil, nil, err
+		}
+		files = append(files, question.FileChange{
+			Path:       filepath.ToSlash(name),
+			Existed:    ch.FileExisted,
+			Diff:       ch.Diff,
+			NewContent: ch.New,
+		})
+	}
+	return files, blockers, nil
 }
 
 // isBlockingPlanError reports whether err is one of instructions.Plan's

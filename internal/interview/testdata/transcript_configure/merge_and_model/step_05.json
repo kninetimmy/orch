@@ -1,0 +1,56 @@
+{
+  "schema_version": 1,
+  "kind": "questions",
+  "progress": {
+    "index": 5,
+    "total": 8
+  },
+  "questions": [
+    {
+      "id": "host.claude.role.specialist.model",
+      "header": "Specialist",
+      "prompt": "Specialist model (Claude Code)",
+      "preamble": "Specialist: executes approved changes where implementation itself is unusually difficult — concurrency, auth, migrations, performance, cross-cutting refactors.",
+      "kind": "select",
+      "options": [
+        {
+          "value": "claude-opus-4-8",
+          "label": "claude-opus-4-8",
+          "recommended": true
+        },
+        {
+          "value": "claude-sonnet-5",
+          "label": "claude-sonnet-5"
+        }
+      ],
+      "free_text": true,
+      "default": "claude-opus-4-8"
+    },
+    {
+      "id": "host.claude.role.specialist.effort",
+      "header": "Specialist",
+      "prompt": "Specialist reasoning effort (Claude Code)",
+      "kind": "select",
+      "options": [
+        {
+          "value": "low",
+          "label": "Low"
+        },
+        {
+          "value": "medium",
+          "label": "Medium"
+        },
+        {
+          "value": "high",
+          "label": "High",
+          "recommended": true
+        },
+        {
+          "value": "xhigh",
+          "label": "Extra high"
+        }
+      ],
+      "default": "high"
+    }
+  ]
+}

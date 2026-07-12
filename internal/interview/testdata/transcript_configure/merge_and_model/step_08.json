@@ -1,0 +1,104 @@
+{
+  "schema_version": 1,
+  "kind": "questions",
+  "progress": {
+    "index": 8,
+    "total": 8
+  },
+  "questions": [
+    {
+      "id": "concurrency.max_subagents",
+      "header": "Concurrency",
+      "prompt": "Maximum concurrent subagents",
+      "preamble": "Concurrency caps how many subagents run at once across both hosts (PRD §14; default 3).",
+      "kind": "select",
+      "options": [
+        {
+          "value": "1",
+          "label": "1"
+        },
+        {
+          "value": "2",
+          "label": "2"
+        },
+        {
+          "value": "3",
+          "label": "3",
+          "recommended": true
+        },
+        {
+          "value": "4",
+          "label": "4"
+        }
+      ],
+      "free_text": true,
+      "default": "3"
+    },
+    {
+      "id": "merge.strategy",
+      "header": "Merge",
+      "prompt": "Merge strategy for approved PRs",
+      "preamble": "Merge strategy applies once a human gives explicit merge approval (PRD §16; default squash).",
+      "kind": "select",
+      "options": [
+        {
+          "value": "squash",
+          "label": "Squash",
+          "recommended": true
+        },
+        {
+          "value": "rebase",
+          "label": "Rebase"
+        },
+        {
+          "value": "merge-commit",
+          "label": "Merge commit"
+        }
+      ],
+      "default": "squash"
+    },
+    {
+      "id": "memhub.mode",
+      "header": "Memhub",
+      "prompt": "Memhub integration mode",
+      "preamble": "Memhub mode controls how Delivery planning treats memhub health (PRD §20): required blocks planning on failure, best-effort records it, off skips the probe.",
+      "kind": "select",
+      "options": [
+        {
+          "value": "required",
+          "label": "Required",
+          "description": "The memhub-first-repo choice: blocks Delivery planning if memhub health or recall fails."
+        },
+        {
+          "value": "best-effort",
+          "label": "Best effort"
+        },
+        {
+          "value": "off",
+          "label": "Off",
+          "recommended": true
+        }
+      ],
+      "default": "off"
+    },
+    {
+      "id": "metrics.enabled",
+      "header": "Metrics",
+      "prompt": "Enable local metrics",
+      "preamble": "Metrics record local, gitignored routing/outcome data for future evaluation (PRD §21); off by default and never transmitted externally.",
+      "kind": "select",
+      "options": [
+        {
+          "value": "yes",
+          "label": "Yes"
+        },
+        {
+          "value": "no",
+          "label": "No",
+          "recommended": true
+        }
+      ],
+      "default": "no"
+    }
+  ]
+}

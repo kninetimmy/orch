@@ -1,0 +1,51 @@
+{
+  "schema_version": 1,
+  "kind": "questions",
+  "progress": {
+    "index": 6,
+    "total": 8
+  },
+  "questions": [
+    {
+      "id": "host.codex.role.specialist.model",
+      "header": "Specialist",
+      "prompt": "Specialist model (Codex CLI)",
+      "kind": "select",
+      "options": [
+        {
+          "value": "gpt-5.6-sol",
+          "label": "gpt-5.6-sol",
+          "recommended": true
+        },
+        {
+          "value": "gpt-5.6-terra",
+          "label": "gpt-5.6-terra"
+        }
+      ],
+      "free_text": true,
+      "default": "gpt-5.6-sol"
+    },
+    {
+      "id": "host.codex.role.specialist.effort",
+      "header": "Specialist",
+      "prompt": "Specialist reasoning effort (Codex CLI)",
+      "kind": "select",
+      "options": [
+        {
+          "value": "low",
+          "label": "Low"
+        },
+        {
+          "value": "medium",
+          "label": "Medium",
+          "recommended": true
+        },
+        {
+          "value": "high",
+          "label": "High"
+        }
+      ],
+      "default": "medium"
+    }
+  ]
+}
