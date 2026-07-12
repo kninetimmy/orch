@@ -19,6 +19,11 @@ var (
 	// other than ApprovalStatement, or a plan_digest that does not
 	// equal the recomputed digest (the "adjust = resubmit" loop).
 	ErrBadApproval = errors.New("activation approval is invalid")
+	// ErrAreaLabelMissing reports plan-declared area labels absent from
+	// the repository at activation preflight: area labels are
+	// repository-defined (PRD §13), so activation never creates them —
+	// it fails closed before any mutation instead.
+	ErrAreaLabelMissing = errors.New("plan-declared area labels do not exist in the repository")
 	// ErrMemhubRequired reports that config.Memhub.Mode is "required"
 	// and the memhub probe failed or could not run (PRD §20: fail
 	// closed rather than proceed without memory).

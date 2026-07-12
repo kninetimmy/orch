@@ -103,6 +103,61 @@ func allTaxonomyNames() []string {
 	return names
 }
 
+func TestMissingLabels(t *testing.T) {
+	root := tempRoot(t)
+	list := labelListCall
+	list.Dir = root
+	list.Env = ghTestEnv
+	list.Stdout = labelJSON("Core", "docs-site")
+	g, script := openScripted(t, root, list)
+	missing, err := g.MissingLabels(context.Background(), []string{"core", "CLI", "docs-site", "greet"})
+	if err != nil {
+		t.Fatalf("MissingLabels: %v", err)
+	}
+	script.AssertExhausted()
+	// Present names match case-insensitively; missing names come back
+	// in the order given, original casing preserved.
+	want := []string{"CLI", "greet"}
+	if len(missing) != len(want) || missing[0] != want[0] || missing[1] != want[1] {
+		t.Errorf("missing = %v, want %v", missing, want)
+	}
+}
+
+func TestMissingLabelsAllPresent(t *testing.T) {
+	root := tempRoot(t)
+	list := labelListCall
+	list.Dir = root
+	list.Env = ghTestEnv
+	list.Stdout = labelJSON("core", "cli")
+	g, script := openScripted(t, root, list)
+	missing, err := g.MissingLabels(context.Background(), []string{"Core", "cli"})
+	if err != nil {
+		t.Fatalf("MissingLabels: %v", err)
+	}
+	script.AssertExhausted()
+	if len(missing) != 0 {
+		t.Errorf("missing = %v, want none", missing)
+	}
+}
+
+func TestMissingLabelsListFails(t *testing.T) {
+	root := tempRoot(t)
+	list := labelListCall
+	list.Dir = root
+	list.Env = ghTestEnv
+	list.Stderr = "HTTP 403: forbidden"
+	list.Exit = 1
+	g, script := openScripted(t, root, list)
+	missing, err := g.MissingLabels(context.Background(), []string{"core"})
+	script.AssertExhausted()
+	if err == nil || !strings.Contains(err.Error(), "exited 1") {
+		t.Fatalf("err = %v, want list failure", err)
+	}
+	if missing != nil {
+		t.Errorf("missing = %v, want nil on error", missing)
+	}
+}
+
 func TestEnsureLabelTaxonomyAllPresent(t *testing.T) {
 	root := tempRoot(t)
 	list := labelListCall

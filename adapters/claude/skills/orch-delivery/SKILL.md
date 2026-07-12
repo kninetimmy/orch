@@ -61,7 +61,10 @@ a routed selection.
 `facts.read_only` must be `false` for every issue — read-only work
 belongs in Assist. `depends_on` names issues by `id`; a dependency's
 `wave` must be strictly less than the depending issue's. `usage_class`
-is `light`, `medium`, or `heavy`.
+is `light`, `medium`, or `heavy`. `area_labels` are repository-defined:
+every one you declare must already exist in the repo — activation fails
+closed at a read-only preflight if any is missing (create it with
+`gh label create <name>` or drop it from the plan).
 
 ## Plan gate
 
