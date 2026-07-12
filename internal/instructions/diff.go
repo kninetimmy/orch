@@ -214,6 +214,16 @@ func prefixCounts(ops []diffOp) (oldPrefix, newPrefix []int) {
 	return oldPrefix, newPrefix
 }
 
+// UnifiedDiff renders old and newText's line-level differences as
+// unified-diff text; it is unifiedDiff's exported form, for
+// internal/interview's configure-local summary, which needs a diff
+// display surface over an entire proposed file rather than one
+// Plan/PlanRemove-scoped Change. See unifiedDiff's doc comment for the
+// exact format and its documented limitation.
+func UnifiedDiff(old, newText string) string {
+	return unifiedDiff(old, newText)
+}
+
 // unifiedDiff renders the line-level differences between old and
 // newText as unified-diff text: 3 lines of context, overlapping-context
 // hunks merged into one, 1-based "@@ -a,b +c,d @@" headers always

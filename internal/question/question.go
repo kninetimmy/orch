@@ -141,11 +141,18 @@ type Summary struct {
 // repo-relative with forward slashes regardless of host OS. The
 // bootstrap executor writes NewContent verbatim; Diff is display-only
 // (a unified diff against the file's current content, or its absence).
+// Delete is emit-only: configure-local sets it when clearing the last
+// machine-local override deletes config.local.toml outright rather than
+// writing an empty file (an empty override file would make
+// config.HasLocalOverride and `orch status` misleading). It carries no
+// meaning on an incoming AnswerSet — the wire schema stays 1; strict
+// decoding governs AnswerSet only, not this emit-only Document field.
 type FileChange struct {
 	Path       string `json:"path"`
 	Existed    bool   `json:"existed"`
 	Diff       string `json:"diff,omitempty"`
 	NewContent string `json:"new_content"`
+	Delete     bool   `json:"delete,omitempty"`
 }
 
 // Complete is the terminal hand-off document: the entire interface
