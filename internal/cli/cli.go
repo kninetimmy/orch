@@ -66,7 +66,7 @@ type command struct {
 // JSON stdin/stdout, not a command a human runs directly.
 func commands() []command {
 	return []command{
-		{"init", "Interview and bootstrap this repository (not implemented)", noArgs("init", notImplemented("init"))},
+		{"init", "Interview and bootstrap this repository", runInit},
 		{"status", "Show mode and configuration summary", noArgs("status", runStatus)},
 		{"doctor", "Check environment and configuration health", noArgs("doctor", runDoctor)},
 		{"configure", "Change committed configuration (not implemented)", noArgs("configure", notImplemented("configure"))},

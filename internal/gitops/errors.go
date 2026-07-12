@@ -38,4 +38,8 @@ var (
 	// safe from RequireClean and isolation guarantees when git itself
 	// will never report it in `status --porcelain`).
 	ErrNotIgnored = errors.New("path is not git-ignored")
+	// ErrNothingToCommit reports that CommitAll staged nothing: the
+	// caller expected a change and an empty commit would silently hide
+	// that bug rather than fail closed.
+	ErrNothingToCommit = errors.New("nothing to commit")
 )

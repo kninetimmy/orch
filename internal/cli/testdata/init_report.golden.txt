@@ -1,0 +1,9 @@
+orch init: detection report
+  claude CLI:  yes
+  codex CLI:   yes
+  git:         yes
+  git root:    <ROOT>
+  gh:          yes
+  memhub CLI:  no
+
+this is a report only; an adapter drives the interactive interview through `orch init --step`.

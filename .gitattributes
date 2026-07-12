@@ -6,3 +6,4 @@
 *.md text eol=lf
 *.diff text eol=lf
 *.json text eol=lf
+*.txt text eol=lf
