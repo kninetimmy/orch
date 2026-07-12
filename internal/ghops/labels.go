@@ -15,13 +15,16 @@ import (
 // Status is the exactly-one workflow-status label (PRD §13).
 type Status string
 
-// The five status labels.
+// The six status labels. Delivered is terminal: merge sets it just
+// before closing the issue, so a closed delivered issue does not keep
+// wearing the needs-human set at merge-report.
 const (
 	StatusReady          Status = "ready"
 	StatusInProgress     Status = "in-progress"
 	StatusBlocked        Status = "blocked"
 	StatusNeedsHuman     Status = "needs-human"
 	StatusAwaitingReview Status = "awaiting-review"
+	StatusDelivered      Status = "delivered"
 )
 
 // Type is the exactly-one change-type label (PRD §13).
@@ -58,7 +61,7 @@ const (
 
 // statuses lists all status labels in canonical order; SetStatus and
 // the taxonomy table depend on this order being stable.
-var statuses = []Status{StatusReady, StatusInProgress, StatusBlocked, StatusNeedsHuman, StatusAwaitingReview}
+var statuses = []Status{StatusReady, StatusInProgress, StatusBlocked, StatusNeedsHuman, StatusAwaitingReview, StatusDelivered}
 
 // roleLabels lists all role labels in canonical order; SetRole depends
 // on this order being stable.
@@ -81,6 +84,7 @@ var taxonomy = []labelDef{
 	{"blocked", "1D76DB", "orch status label — exactly one per issue (PRD §13)"},
 	{"needs-human", "1D76DB", "orch status label — exactly one per issue (PRD §13)"},
 	{"awaiting-review", "1D76DB", "orch status label — exactly one per issue (PRD §13)"},
+	{"delivered", "1D76DB", "orch status label — exactly one per issue (PRD §13)"},
 	{"feature", "0E8A16", "orch type label — exactly one per issue (PRD §13)"},
 	{"bug", "0E8A16", "orch type label — exactly one per issue (PRD §13)"},
 	{"chore", "0E8A16", "orch type label — exactly one per issue (PRD §13)"},

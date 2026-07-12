@@ -98,7 +98,7 @@ func ghCloseIssueCall(number int) execxtest.Call {
 
 func ghSetStatusCall(number int, to ghops.Status) execxtest.Call {
 	args := []string{"issue", "edit", strconv.Itoa(number)}
-	for _, s := range []ghops.Status{ghops.StatusReady, ghops.StatusInProgress, ghops.StatusBlocked, ghops.StatusNeedsHuman, ghops.StatusAwaitingReview} {
+	for _, s := range []ghops.Status{ghops.StatusReady, ghops.StatusInProgress, ghops.StatusBlocked, ghops.StatusNeedsHuman, ghops.StatusAwaitingReview, ghops.StatusDelivered} {
 		if s != to {
 			args = append(args, "--remove-label", string(s))
 		}
@@ -240,6 +240,7 @@ func TestLifecycleWalk(t *testing.T) {
 	runVerb(t, root, Merge, `{"schema_version":1,"issue_number":1,"approval":{"pr_number":10,"head_oid":"head-oid-2","approved_by":"alice","approved_at":"2026-07-11T12:00:00Z","statement":"approve-merge"}}`,
 		ghAuth(), ghPRViewCall(10, "OPEN", "head-oid-2"), ghRollupEmptyCall(10),
 		ghMergePRCall(10, "head-oid-2"), ghPRViewCall(10, "MERGED", "head-oid-2"),
+		ghSetStatusCall(1, ghops.StatusDelivered),
 		ghIssueViewCall(t, 1, "OPEN", body), ghCloseIssueCall(1), ghSetIssueBodyCall(1))
 	wantPhase(t, root, 1, state.PhaseMerged)
 

@@ -108,6 +108,12 @@ func Merge(ctx context.Context, env Env, reqJSON []byte) (*MergeResult, error) {
 		pr = merged
 	}
 
+	// Terminal status (PRD §13): the issue reads delivered from here
+	// on, not the needs-human set at merge-report.
+	if err := gh.SetStatus(ctx, issue.Number, ghops.StatusDelivered); err != nil {
+		return nil, wrapAfterMutation(err)
+	}
+
 	// Confirm issue closure (PRD §12 step 17): the Closes link usually
 	// fires on merge, but the human merge approval covers closing it if
 	// it did not.

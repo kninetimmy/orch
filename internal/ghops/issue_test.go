@@ -180,6 +180,7 @@ func TestSetStatus(t *testing.T) {
 			"issue", "edit", "42",
 			"--remove-label", "ready", "--remove-label", "in-progress",
 			"--remove-label", "needs-human", "--remove-label", "awaiting-review",
+			"--remove-label", "delivered",
 			"--add-label", "blocked",
 		},
 		Dir: root,
