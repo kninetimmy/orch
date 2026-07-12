@@ -20,7 +20,7 @@ const Path = ".orchestrator/config.toml"
 const LocalOverridePath = ".orchestrator/config.local.toml"
 
 // ErrNotInitialized reports a missing committed configuration file.
-var ErrNotInitialized = errors.New("not initialized: " + Path + " not found (orch init is not yet implemented)")
+var ErrNotInitialized = errors.New("not initialized: " + Path + " not found (run `orch init` to set up this repository)")
 
 // Load reads, parses, and validates the committed configuration under
 // repoRoot, then merges in any machine-local overlay from

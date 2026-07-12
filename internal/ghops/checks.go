@@ -69,7 +69,10 @@ func (g *GH) RequiredCI(ctx context.Context, number int) (CISummary, error) {
 	}
 	switch res.ExitCode {
 	case 0, 1, 8:
-		// Data: 0 all passing, 1 something failed, 8 checks pending.
+		// Data. gh documents 1 (something failed) and 8 (pending) for
+		// the human-output mode; with --json, gh 2.87.3 exits 0 in
+		// every state (verified live, fact 17). All three are accepted
+		// so the state derivation below owns the signal either way.
 	default:
 		return CISummary{}, fmt.Errorf("gh pr checks in %s exited %d: %s", g.root, res.ExitCode, strings.TrimSpace(res.Stderr))
 	}

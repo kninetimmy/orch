@@ -251,6 +251,7 @@ var taxonomyLabels = []struct{ name, color, desc string }{
 	{"blocked", "1D76DB", "orch status label — exactly one per issue (PRD §13)"},
 	{"needs-human", "1D76DB", "orch status label — exactly one per issue (PRD §13)"},
 	{"awaiting-review", "1D76DB", "orch status label — exactly one per issue (PRD §13)"},
+	{"delivered", "1D76DB", "orch status label — exactly one per issue (PRD §13)"},
 	{"feature", "0E8A16", "orch type label — exactly one per issue (PRD §13)"},
 	{"bug", "0E8A16", "orch type label — exactly one per issue (PRD §13)"},
 	{"chore", "0E8A16", "orch type label — exactly one per issue (PRD §13)"},
@@ -288,7 +289,7 @@ func ghCreatePRCall(number int) execxtest.Call {
 }
 
 func ghSetStatusCall(number int, to ghops.Status) execxtest.Call {
-	all := []ghops.Status{ghops.StatusReady, ghops.StatusInProgress, ghops.StatusBlocked, ghops.StatusNeedsHuman, ghops.StatusAwaitingReview}
+	all := []ghops.Status{ghops.StatusReady, ghops.StatusInProgress, ghops.StatusBlocked, ghops.StatusNeedsHuman, ghops.StatusAwaitingReview, ghops.StatusDelivered}
 	args := []string{"issue", "edit", strconv.Itoa(number)}
 	for _, s := range all {
 		if s != to {

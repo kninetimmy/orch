@@ -309,7 +309,7 @@ One issue maps to one branch/worktree and one PR.
 
 Every issue carries:
 
-- One status: `ready`, `in-progress`, `blocked`, `needs-human`, or `awaiting-review`.
+- One status: `ready`, `in-progress`, `blocked`, `needs-human`, `awaiting-review`, or `delivered` (terminal; set by merge just before the issue closes).
 - One type: `feature`, `bug`, `chore`, `infra`, `docs`, or `research`.
 - One role: `implementer` or `specialist`.
 - One risk: `standard` or `critical`.

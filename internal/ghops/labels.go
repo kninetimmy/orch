@@ -15,13 +15,16 @@ import (
 // Status is the exactly-one workflow-status label (PRD §13).
 type Status string
 
-// The five status labels.
+// The six status labels. Delivered is terminal: merge sets it just
+// before closing the issue, so a closed delivered issue does not keep
+// wearing the needs-human set at merge-report.
 const (
 	StatusReady          Status = "ready"
 	StatusInProgress     Status = "in-progress"
 	StatusBlocked        Status = "blocked"
 	StatusNeedsHuman     Status = "needs-human"
 	StatusAwaitingReview Status = "awaiting-review"
+	StatusDelivered      Status = "delivered"
 )
 
 // Type is the exactly-one change-type label (PRD §13).
@@ -58,7 +61,7 @@ const (
 
 // statuses lists all status labels in canonical order; SetStatus and
 // the taxonomy table depend on this order being stable.
-var statuses = []Status{StatusReady, StatusInProgress, StatusBlocked, StatusNeedsHuman, StatusAwaitingReview}
+var statuses = []Status{StatusReady, StatusInProgress, StatusBlocked, StatusNeedsHuman, StatusAwaitingReview, StatusDelivered}
 
 // roleLabels lists all role labels in canonical order; SetRole depends
 // on this order being stable.
@@ -81,6 +84,7 @@ var taxonomy = []labelDef{
 	{"blocked", "1D76DB", "orch status label — exactly one per issue (PRD §13)"},
 	{"needs-human", "1D76DB", "orch status label — exactly one per issue (PRD §13)"},
 	{"awaiting-review", "1D76DB", "orch status label — exactly one per issue (PRD §13)"},
+	{"delivered", "1D76DB", "orch status label — exactly one per issue (PRD §13)"},
 	{"feature", "0E8A16", "orch type label — exactly one per issue (PRD §13)"},
 	{"bug", "0E8A16", "orch type label — exactly one per issue (PRD §13)"},
 	{"chore", "0E8A16", "orch type label — exactly one per issue (PRD §13)"},
@@ -202,13 +206,9 @@ func matchesAny(folded string, forbidden []string) bool {
 	return false
 }
 
-// EnsureLabelTaxonomy lists the repository's labels and creates any
-// missing taxonomy label with its pinned color and description;
-// existing labels are never modified (no --force: repository
-// customizations survive). Idempotent; returns the names it created,
-// in taxonomy order, for the audit trail. The list-then-create gap is
-// not atomic; the run engine serializes conflicting writes (PRD §14).
-func (g *GH) EnsureLabelTaxonomy(ctx context.Context) ([]string, error) {
+// existingLabelNames lists the repository's labels as a set keyed by
+// lowercase name (GitHub label names are case-insensitive).
+func (g *GH) existingLabelNames(ctx context.Context) (map[string]bool, error) {
 	var existing []struct {
 		Name string `json:"name"`
 	}
@@ -216,9 +216,43 @@ func (g *GH) EnsureLabelTaxonomy(ctx context.Context) ([]string, error) {
 	if err := g.ghJSON(ctx, &existing, "label", "list", "--json", "name", "--limit", "1000"); err != nil {
 		return nil, err
 	}
-	present := map[string]bool{}
+	present := make(map[string]bool, len(existing))
 	for _, l := range existing {
 		present[strings.ToLower(l.Name)] = true
+	}
+	return present, nil
+}
+
+// MissingLabels reports which of names do not exist in the repository,
+// in the order given (case-insensitive, matching GitHub's label-name
+// semantics). Read-only; what a missing label means is the caller's
+// policy — the run engine fails activation closed on absent
+// plan-declared area labels, because area labels are
+// repository-defined (PRD §13) and orch never invents them.
+func (g *GH) MissingLabels(ctx context.Context, names []string) ([]string, error) {
+	present, err := g.existingLabelNames(ctx)
+	if err != nil {
+		return nil, err
+	}
+	var missing []string
+	for _, n := range names {
+		if !present[strings.ToLower(n)] {
+			missing = append(missing, n)
+		}
+	}
+	return missing, nil
+}
+
+// EnsureLabelTaxonomy lists the repository's labels and creates any
+// missing taxonomy label with its pinned color and description;
+// existing labels are never modified (no --force: repository
+// customizations survive). Idempotent; returns the names it created,
+// in taxonomy order, for the audit trail. The list-then-create gap is
+// not atomic; the run engine serializes conflicting writes (PRD §14).
+func (g *GH) EnsureLabelTaxonomy(ctx context.Context) ([]string, error) {
+	present, err := g.existingLabelNames(ctx)
+	if err != nil {
+		return nil, err
 	}
 	var created []string
 	for _, def := range taxonomy {

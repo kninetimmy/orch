@@ -114,8 +114,10 @@ func wrapAfterEnter(err error) error {
 //     approval, derive routing and labels for every issue.
 //   - Phase 2 (read-only preflights): Assist+no-lock, clean primary
 //     checkout, authenticated GitHub remote, primary on the default
-//     branch (F4), the memhub gate, and the worktree container
-//     git-ignored (F1).
+//     branch (F4), every plan-declared area label existing in the
+//     repository (area labels are repository-defined per PRD §13, so
+//     activation never creates them), the memhub gate, and the
+//     worktree container git-ignored (F1).
 //   - Phase 3 (idempotent GitHub prep): EnsureLabelTaxonomy — the only
 //     mutation before the lock is held (F6).
 //   - Phase 4: state.EnterDelivery acquires the lock and records the
@@ -194,6 +196,15 @@ func Activate(ctx context.Context, env Env, reqJSON []byte) (*ActivationResult, 
 	}
 	if branch != repo.DefaultBranch {
 		return nil, fmt.Errorf("primary checkout is on %s, not the default branch %s; activation requires the primary checkout on the default branch", branch, repo.DefaultBranch)
+	}
+	if areas := planAreaLabels(plan); len(areas) > 0 {
+		missing, err := gh.MissingLabels(ctx, areas)
+		if err != nil {
+			return nil, err
+		}
+		if len(missing) > 0 {
+			return nil, fmt.Errorf("%w: %s; create them in the repository (gh label create <name>) or remove them from the plan, then resubmit for approval", ErrAreaLabelMissing, strings.Join(missing, ", "))
+		}
 	}
 	if _, err := memhubGate(ctx, cfg.Memhub.Mode, execProber{runner: env.Runner, dir: env.RepoRoot}); err != nil {
 		return nil, err
@@ -289,6 +300,25 @@ func Activate(ctx context.Context, env Env, reqJSON []byte) (*ActivationResult, 
 		return nil, wrapAfterEnter(err)
 	}
 	return result, nil
+}
+
+// planAreaLabels collects the plan's area labels across issues in
+// document order, deduplicated case-insensitively (GitHub label names
+// are), for the activation preflight.
+func planAreaLabels(p *PlanDoc) []string {
+	seen := map[string]bool{}
+	var areas []string
+	for _, pi := range p.Issues {
+		for _, a := range pi.AreaLabels {
+			folded := strings.ToLower(a)
+			if seen[folded] {
+				continue
+			}
+			seen[folded] = true
+			areas = append(areas, a)
+		}
+	}
+	return areas
 }
 
 // issueBody renders the human-prose portion of a created issue's body

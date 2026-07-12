@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/kninetimmy/orch/internal/execx"
@@ -113,8 +114,12 @@ func ghRepoViewCall(defaultBranch string) execxtest.Call {
 	}
 }
 
+func ghLabelListCall(stdout string) execxtest.Call {
+	return execxtest.Call{Name: "gh", Args: []string{"label", "list", "--json", "name", "--limit", "1000"}, Stdout: stdout}
+}
+
 func ghLabelListEmptyCall() execxtest.Call {
-	return execxtest.Call{Name: "gh", Args: []string{"label", "list", "--json", "name", "--limit", "1000"}, Stdout: "[]"}
+	return ghLabelListCall("[]")
 }
 
 // taxonomyLabels mirrors ghops's private label taxonomy table
@@ -125,6 +130,7 @@ var taxonomyLabels = []struct{ name, color, desc string }{
 	{"blocked", "1D76DB", "orch status label — exactly one per issue (PRD §13)"},
 	{"needs-human", "1D76DB", "orch status label — exactly one per issue (PRD §13)"},
 	{"awaiting-review", "1D76DB", "orch status label — exactly one per issue (PRD §13)"},
+	{"delivered", "1D76DB", "orch status label — exactly one per issue (PRD §13)"},
 	{"feature", "0E8A16", "orch type label — exactly one per issue (PRD §13)"},
 	{"bug", "0E8A16", "orch type label — exactly one per issue (PRD §13)"},
 	{"chore", "0E8A16", "orch type label — exactly one per issue (PRD §13)"},
@@ -275,6 +281,74 @@ func TestActivateHappyPathTwoIssuesTwoWaves(t *testing.T) {
 			t.Errorf("Issues[%d] = %+v, want %+v", i, got, want)
 		}
 	}
+}
+
+// areaPlanJSON is a single-issue plan declaring two area labels,
+// passing Validate against testConfig().
+func areaPlanJSON() string {
+	return `{
+  "schema_version": 1,
+  "host": "claude",
+  "title": "Area label plan",
+  "issues": [
+    {
+      "id": "a",
+      "title": "Issue A",
+      "objective": "Do A",
+      "acceptance_criteria": ["A works"],
+      "type": "feature",
+      "facts": {"read_only": false},
+      "wave": 1,
+      "required_tests": ["go test ./..."],
+      "usage_class": "light",
+      "area_labels": ["core", "cli"]
+    }
+  ]
+}`
+}
+
+func TestActivateAreaLabelsPresentProceeds(t *testing.T) {
+	root := newActivateRepo(t)
+	// Preflight matches area labels case-insensitively (GitHub label
+	// names are); the taxonomy step then lists again and creates the
+	// full §13 set.
+	repoLabels := `[{"name":"Core"},{"name":"cli"}]`
+	calls := []execxtest.Call{ghOpenCall(), ghRepoViewCall("main"), ghLabelListCall(repoLabels), ghLabelListCall(repoLabels)}
+	calls = append(calls, ghLabelCreateCalls()...)
+	calls = append(calls,
+		ghIssueCreateCall("Issue A", []string{"ready", "feature", "implementer", "standard", "core", "cli"}, 1),
+	)
+	script := &execxtest.Script{T: t, Calls: calls}
+	env := Env{RepoRoot: root, Runner: muxRunner{git: execx.Local{}, gh: script}, Now: fixedNow}
+
+	result, err := Activate(context.Background(), env, activationJSON(t, areaPlanJSON()))
+	if err != nil {
+		t.Fatalf("Activate: %v", err)
+	}
+	script.AssertExhausted()
+	if len(result.Issues) != 1 || result.Issues[0].Number != 1 {
+		t.Errorf("Issues = %+v, want one issue #1", result.Issues)
+	}
+}
+
+func TestActivateMissingAreaLabelLeavesNothing(t *testing.T) {
+	root := newActivateRepo(t)
+	// The repo has "core" but not "cli": activation must fail closed at
+	// the read-only preflight, before the taxonomy step or any issue.
+	script := &execxtest.Script{T: t, Calls: []execxtest.Call{
+		ghOpenCall(), ghRepoViewCall("main"), ghLabelListCall(`[{"name":"core"}]`),
+	}}
+	env := Env{RepoRoot: root, Runner: muxRunner{git: execx.Local{}, gh: script}, Now: fixedNow}
+
+	_, err := Activate(context.Background(), env, activationJSON(t, areaPlanJSON()))
+	if !errors.Is(err, ErrAreaLabelMissing) {
+		t.Fatalf("err = %v, want ErrAreaLabelMissing", err)
+	}
+	if !strings.Contains(err.Error(), "cli") || strings.Contains(err.Error(), "core,") {
+		t.Errorf("err = %v, want the missing label named and the present one not", err)
+	}
+	script.AssertExhausted()
+	assertNoDeliveryState(t, root)
 }
 
 func TestActivateFailureAtSecondIssueCreateIsResumable(t *testing.T) {
