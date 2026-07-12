@@ -1,0 +1,21 @@
+{
+  "schema_version": 1,
+  "kind": "complete",
+  "complete": {
+    "summary": {
+      "config_toml": "",
+      "config_revision": "sha256:6240dc99e81e",
+      "files": [
+        {
+          "path": ".orchestrator/config.local.toml",
+          "existed": true,
+          "diff": "@@ -1,2 +0,0 @@\n-[hosts.claude.roles.architect]\n-model = \"claude-fable-5\"\n",
+          "new_content": "",
+          "delete": true
+        }
+      ]
+    },
+    "detection": null,
+    "bootstrap_ready": true
+  }
+}

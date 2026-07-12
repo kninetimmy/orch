@@ -1,0 +1,35 @@
+{
+  "schema_version": 1,
+  "kind": "summary",
+  "questions": [
+    {
+      "id": "approval",
+      "header": "Approve",
+      "prompt": "Apply these machine-local overrides?",
+      "kind": "select",
+      "options": [
+        {
+          "value": "approve",
+          "label": "Approve"
+        },
+        {
+          "value": "abort",
+          "label": "Abort"
+        }
+      ]
+    }
+  ],
+  "summary": {
+    "config_toml": "",
+    "config_revision": "sha256:6240dc99e81e",
+    "files": [
+      {
+        "path": ".orchestrator/config.local.toml",
+        "existed": true,
+        "diff": "@@ -1,2 +0,0 @@\n-[hosts.claude.roles.architect]\n-model = \"claude-fable-5\"\n",
+        "new_content": "",
+        "delete": true
+      }
+    ]
+  }
+}

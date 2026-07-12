@@ -1,0 +1,59 @@
+{
+  "schema_version": 1,
+  "kind": "questions",
+  "progress": {
+    "index": 7,
+    "total": 7
+  },
+  "questions": [
+    {
+      "id": "hosts.claude.roles.review_downgrade.model",
+      "header": "Downgrade",
+      "prompt": "Safe review downgrade model (Claude Code)",
+      "kind": "select",
+      "options": [
+        {
+          "value": "claude-opus-4-8",
+          "label": "claude-opus-4-8"
+        },
+        {
+          "value": "claude-sonnet-5",
+          "label": "claude-sonnet-5 (committed)",
+          "recommended": true
+        },
+        {
+          "value": "claude-fable-5",
+          "label": "claude-fable-5"
+        }
+      ],
+      "free_text": true,
+      "default": "claude-sonnet-5"
+    },
+    {
+      "id": "hosts.claude.roles.review_downgrade.effort",
+      "header": "Downgrade",
+      "prompt": "Safe review downgrade reasoning effort (Claude Code)",
+      "kind": "select",
+      "options": [
+        {
+          "value": "low",
+          "label": "Low"
+        },
+        {
+          "value": "medium",
+          "label": "Medium"
+        },
+        {
+          "value": "high",
+          "label": "High (committed)",
+          "recommended": true
+        },
+        {
+          "value": "xhigh",
+          "label": "Extra high"
+        }
+      ],
+      "default": "high"
+    }
+  ]
+}

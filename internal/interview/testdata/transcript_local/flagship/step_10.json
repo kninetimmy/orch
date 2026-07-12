@@ -1,0 +1,51 @@
+{
+  "schema_version": 1,
+  "kind": "questions",
+  "progress": {
+    "index": 10,
+    "total": 13
+  },
+  "questions": [
+    {
+      "id": "hosts.codex.roles.implementer.model",
+      "header": "Implementer",
+      "prompt": "Implementer model (Codex CLI)",
+      "kind": "select",
+      "options": [
+        {
+          "value": "gpt-5.6-sol",
+          "label": "gpt-5.6-sol"
+        },
+        {
+          "value": "gpt-5.6-terra",
+          "label": "gpt-5.6-terra (committed)",
+          "recommended": true
+        }
+      ],
+      "free_text": true,
+      "default": "gpt-5.6-terra"
+    },
+    {
+      "id": "hosts.codex.roles.implementer.effort",
+      "header": "Implementer",
+      "prompt": "Implementer reasoning effort (Codex CLI)",
+      "kind": "select",
+      "options": [
+        {
+          "value": "low",
+          "label": "Low"
+        },
+        {
+          "value": "medium",
+          "label": "Medium"
+        },
+        {
+          "value": "high",
+          "label": "High (committed)",
+          "recommended": true
+        }
+      ],
+      "default": "high"
+    }
+  ]
+}
