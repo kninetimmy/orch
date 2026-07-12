@@ -1,9 +1,12 @@
 // Package claude_test validates the non-Go Claude Code plugin artifacts
 // under this directory: the manifest, the hooks manifest, the agent and
 // skill markdown, and their consistency with the internal/guard
-// PreToolUse contract and internal/run wire contracts they mirror.
-// These are ordinary Go tests so `go test ./...` catches drift without a
-// separate host-specific test runner.
+// PreToolUse contract and internal/run wire contracts they mirror. These
+// are ordinary Go tests so `go test ./...` catches drift without a
+// separate host-specific test runner. Cross-host invariants shared with
+// the Codex adapter live in internal/adaptertest (PRD §23's shared
+// parity layer); this file only holds Claude-specific fixtures and
+// checks.
 package claude_test
 
 import (
@@ -11,13 +14,12 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
-	"regexp"
 	"sort"
 	"strings"
 	"testing"
 
+	"github.com/kninetimmy/orch/internal/adaptertest"
 	"github.com/kninetimmy/orch/internal/guard"
-	"github.com/kninetimmy/orch/internal/run"
 )
 
 // pluginManifest is the strict shape of .claude-plugin/plugin.json.
@@ -127,42 +129,23 @@ func TestMatcherGuardParity(t *testing.T) {
 	if len(m.Hooks.PreToolUse) != 1 {
 		t.Fatalf("PreToolUse has %d entries, want exactly 1", len(m.Hooks.PreToolUse))
 	}
-	matcher := m.Hooks.PreToolUse[0].Matcher
-	got := strings.Split(matcher, "|")
-	sort.Strings(got)
-
-	want := guard.ClaudeTools()
-	sort.Strings(want)
-
-	if len(got) != len(want) {
-		t.Fatalf("matcher tools = %v, want %v", got, want)
-	}
-	for i := range got {
-		if got[i] != want[i] {
-			t.Errorf("matcher tools = %v, want %v", got, want)
-			break
-		}
-	}
+	adaptertest.CheckMatcherEqualsGuardTools(t, m.Hooks.PreToolUse[0].Matcher, guard.ClaudeTools())
 }
-
-// portabilityForbidden are shell metacharacters a bare-argv hook command
-// must never contain: hook commands run directly as argv on every OS, no
-// shell interposed, so a shell-syntax command would work nowhere.
-const portabilityForbidden = "|><&;$%\"'`()"
 
 func TestHookCommandsPortable(t *testing.T) {
 	m := loadHooksManifest(t)
-	check := func(matchers []hookMatcher) {
-		for _, matcher := range matchers {
-			for _, h := range matcher.Hooks {
-				if strings.ContainsAny(h.Command, portabilityForbidden) {
-					t.Errorf("command %q contains a shell metacharacter", h.Command)
-				}
-			}
+	var commands []string
+	for _, matcher := range m.Hooks.PreToolUse {
+		for _, h := range matcher.Hooks {
+			commands = append(commands, h.Command)
 		}
 	}
-	check(m.Hooks.PreToolUse)
-	check(m.Hooks.SessionStart)
+	for _, matcher := range m.Hooks.SessionStart {
+		for _, h := range matcher.Hooks {
+			commands = append(commands, h.Command)
+		}
+	}
+	adaptertest.CheckHookCommandPortability(t, commands)
 }
 
 // TestHookCommandsPinnedToBinaryVerbs drift-pins the hook commands to the
@@ -222,18 +205,23 @@ func splitCSV(s string) []string {
 }
 
 // agentSpec is the committed §10 Claude profile for one agents/*.md
-// role (task 17 plan item 10): its exact model and exact tool set.
+// role's Claude-specific fields not already covered by
+// adaptertest.Profile: its exact tool set. Profile("claude") pins the
+// model directly; Claude frontmatter has no effort field to assert.
 type agentSpec struct {
-	model string
 	tools []string
 }
 
 // agentRoster is the full four-agent Claude profile this plugin ships.
+// Profile("claude") also carries a "reviewer-safe" entry with no Claude
+// agent file — Claude Code has a per-spawn model override, so it needs
+// no safe-downgrade agent of its own, and this roster deliberately does
+// not require a fifth agent to exist.
 var agentRoster = map[string]agentSpec{
-	"orch-scout":       {model: "claude-sonnet-5", tools: []string{"Read", "Grep", "Glob", "WebFetch", "WebSearch"}},
-	"orch-implementer": {model: "claude-sonnet-5", tools: []string{"Read", "Grep", "Glob", "Edit", "Write", "NotebookEdit", "Bash"}},
-	"orch-specialist":  {model: "claude-opus-4-8", tools: []string{"Read", "Grep", "Glob", "Edit", "Write", "NotebookEdit", "Bash"}},
-	"orch-reviewer":    {model: "claude-opus-4-8", tools: []string{"Read", "Grep", "Glob", "Bash"}},
+	"orch-scout":       {tools: []string{"Read", "Grep", "Glob", "WebFetch", "WebSearch"}},
+	"orch-implementer": {tools: []string{"Read", "Grep", "Glob", "Edit", "Write", "NotebookEdit", "Bash"}},
+	"orch-specialist":  {tools: []string{"Read", "Grep", "Glob", "Edit", "Write", "NotebookEdit", "Bash"}},
+	"orch-reviewer":    {tools: []string{"Read", "Grep", "Glob", "Bash"}},
 }
 
 // writeExcludedAgents are the roles that must never carry a write tool
@@ -250,8 +238,9 @@ var writeTools = []string{"Write", "Edit", "MultiEdit", "NotebookEdit"}
 // committed §10 Claude profile: all four agents exist with a complete
 // frontmatter, scout and reviewer exclude every write tool, no agent
 // lists Task or an mcp__ tool (subagents have no memhub write surface),
-// and models match their role exactly.
+// and models match adaptertest.Profile("claude") for their role exactly.
 func TestAgentFrontmatter(t *testing.T) {
+	profile := adaptertest.Profile("claude")
 	for name, want := range agentRoster {
 		t.Run(name, func(t *testing.T) {
 			path := filepath.Join("agents", name+".md")
@@ -266,11 +255,14 @@ func TestAgentFrontmatter(t *testing.T) {
 			if fm["tools"] == "" {
 				t.Fatal("tools is empty")
 			}
-			if fm["model"] != want.model {
-				t.Errorf("model = %q, want %q", fm["model"], want.model)
+
+			role := strings.TrimPrefix(name, "orch-")
+			roleSpec, ok := profile[role]
+			if !ok {
+				t.Fatalf("no adaptertest.Profile(\"claude\") entry for role %q", role)
 			}
-			if fm["model"] != "claude-sonnet-5" && fm["model"] != "claude-opus-4-8" {
-				t.Errorf("model %q is not one of the two committed Claude profile models", fm["model"])
+			if fm["model"] != roleSpec.Model {
+				t.Errorf("model = %q, want %q", fm["model"], roleSpec.Model)
 			}
 
 			tools := splitCSV(fm["tools"])
@@ -310,141 +302,29 @@ func TestAgentFrontmatter(t *testing.T) {
 	}
 }
 
-// skillFiles returns every skills/*/SKILL.md path.
-func skillFiles(t *testing.T) []string {
-	t.Helper()
-	matches, err := filepath.Glob(filepath.Join("skills", "*", "SKILL.md"))
-	if err != nil {
-		t.Fatalf("glob skills/*/SKILL.md: %v", err)
-	}
-	if len(matches) == 0 {
-		t.Fatal("no skills/*/SKILL.md files found")
-	}
-	return matches
-}
+// skillGlob is the pattern every shared skill-drift check in this
+// package scans.
+const skillGlob = "skills/*/SKILL.md"
 
-// runVerbTokens is the closed set every `orch run <word>` token found in
-// a skill must belong to: the 13 document-taking verbs internal/cli/run.go
-// dispatches, plus "status" (orch run status --json, dispatched
-// separately but still spelled "orch run status").
-var runVerbTokens = map[string]bool{
-	"plan": true, "activate": true, "dispatch": true, "pr-open": true,
-	"review": true, "escalate": true, "ci": true, "merge-report": true,
-	"merge": true, "block": true, "abandon": true, "cleanup": true,
-	"complete": true, "status": true,
-}
+const deliverySkillPath = "skills/orch-delivery/SKILL.md"
+const setupSkillPath = "skills/orch-setup/SKILL.md"
 
-var orchRunTokenPattern = regexp.MustCompile(`orch run ([a-z-]+)`)
-
-// TestSkillOrchRunVerbsAreReal drift-pins every `orch run <verb>` token
-// mentioned in a skill against the real verb set: a renamed or removed
-// verb that a skill still mentions fails this test instead of silently
-// documenting a dead command.
 func TestSkillOrchRunVerbsAreReal(t *testing.T) {
-	for _, path := range skillFiles(t) {
-		data, err := os.ReadFile(path)
-		if err != nil {
-			t.Fatalf("read %s: %v", path, err)
-		}
-		for _, m := range orchRunTokenPattern.FindAllStringSubmatch(string(data), -1) {
-			verb := m[1]
-			if !runVerbTokens[verb] {
-				t.Errorf("%s: mentions `orch run %s`, which is not one of the 13 verbs or status", path, verb)
-			}
-		}
-	}
+	adaptertest.CheckRunVerbTokens(t, skillGlob)
 }
 
-// statementConstants maps every internal/run approval/statement literal
-// this plugin's skills may quote to the exported constant it must equal.
-// Importing internal/run here means a rename of any of these constants
-// breaks the build, and a value change makes the map key (read live from
-// the constant, not hardcoded) no longer match the skill's hardcoded
-// prose — either way, drift breaks this test instead of silently
-// documenting a wrong statement.
-var statementConstants = map[string]string{
-	run.ApprovalStatement:      "run.ApprovalStatement",
-	run.MergeApprovalStatement: "run.MergeApprovalStatement",
-	run.AbandonStatement:       "run.AbandonStatement",
-	run.CleanupStatement:       "run.CleanupStatement",
-}
-
-var statementLiteralPattern = regexp.MustCompile(`"statement":\s*"([a-z-]+)"`)
-
-// TestSkillStatementLiteralsPinnedToRunConstants asserts every
-// `"statement": "..."` literal quoted in a skill equals one of the
-// internal/run approval/statement constants, and that every constant
-// appears at least once (so a skill can never silently drop or misquote
-// one of the anti-forgery statements the engine requires verbatim).
 func TestSkillStatementLiteralsPinnedToRunConstants(t *testing.T) {
-	seen := map[string]bool{}
-	for _, path := range skillFiles(t) {
-		data, err := os.ReadFile(path)
-		if err != nil {
-			t.Fatalf("read %s: %v", path, err)
-		}
-		for _, m := range statementLiteralPattern.FindAllStringSubmatch(string(data), -1) {
-			literal := m[1]
-			constName, ok := statementConstants[literal]
-			if !ok {
-				t.Errorf("%s: statement literal %q does not equal any internal/run approval/statement constant", path, literal)
-				continue
-			}
-			seen[constName] = true
-		}
-	}
-	for _, constName := range statementConstants {
-		if !seen[constName] {
-			t.Errorf("no skill quotes the statement literal for %s", constName)
-		}
-	}
+	adaptertest.CheckStatementLiterals(t, skillGlob)
 }
 
-// planGateOptions are the exact §8 four options the orch-delivery skill
-// must present at the plan gate, in order.
-var planGateOptions = []string{
-	"Approve and enter Delivery",
-	"Adjust agent routing",
-	"Revise scope",
-	"Cancel and remain read-only",
-}
-
-// TestDeliverySkillHasPlanGateOptions pins the orch-delivery skill's
-// documented plan-gate AskUserQuestion options against the exact PRD §8
-// four-option set.
 func TestDeliverySkillHasPlanGateOptions(t *testing.T) {
-	data, err := os.ReadFile(filepath.Join("skills", "orch-delivery", "SKILL.md"))
-	if err != nil {
-		t.Fatalf("read orch-delivery/SKILL.md: %v", err)
-	}
-	content := string(data)
-	for _, opt := range planGateOptions {
-		if !strings.Contains(content, opt) {
-			t.Errorf("orch-delivery/SKILL.md does not contain plan-gate option %q", opt)
-		}
-	}
+	adaptertest.CheckPlanGateOptions(t, deliverySkillPath)
 }
 
-// setupTerminalForms are the exact three terminal-form command strings
-// the orch-setup skill must document, one per interview.
-var setupTerminalForms = []string{
-	"orch init --bootstrap",
-	"orch configure --deliver",
-	"orch configure-local --apply",
+func TestDeliverySkillHasMergeGateOptions(t *testing.T) {
+	adaptertest.CheckMergeGateOptions(t, deliverySkillPath)
 }
 
-// TestSetupSkillHasTerminalForms pins the orch-setup skill's documented
-// terminal forms against the exact three commands each interview ends
-// with.
 func TestSetupSkillHasTerminalForms(t *testing.T) {
-	data, err := os.ReadFile(filepath.Join("skills", "orch-setup", "SKILL.md"))
-	if err != nil {
-		t.Fatalf("read orch-setup/SKILL.md: %v", err)
-	}
-	content := string(data)
-	for _, form := range setupTerminalForms {
-		if !strings.Contains(content, form) {
-			t.Errorf("orch-setup/SKILL.md does not contain terminal form %q", form)
-		}
-	}
+	adaptertest.CheckSetupTerminalForms(t, setupSkillPath)
 }
