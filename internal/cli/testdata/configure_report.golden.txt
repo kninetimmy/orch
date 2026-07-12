@@ -1,0 +1,9 @@
+orch configure: committed configuration report
+  committed revision: r1
+  enabled hosts:      claude
+  concurrency:        3
+  merge strategy:     squash
+  memhub mode:        off
+  metrics enabled:    false
+
+this is a report only; an adapter drives the interactive interview through `orch configure --step`.

@@ -69,7 +69,7 @@ func commands() []command {
 		{"init", "Interview and bootstrap this repository", runInit},
 		{"status", "Show mode and configuration summary", noArgs("status", runStatus)},
 		{"doctor", "Check environment and configuration health", noArgs("doctor", runDoctor)},
-		{"configure", "Change committed configuration (not implemented)", noArgs("configure", notImplemented("configure"))},
+		{"configure", "Interview and deliver committed configuration changes", runConfigure},
 		{"configure-local", "Interview and apply machine-local overrides", runConfigureLocal},
 		{"resume", "Reconcile an interrupted Delivery run against GitHub and continue", runResume},
 		{"abort", "Stop dispatch and return to Assist", noArgs("abort", runAbort)},

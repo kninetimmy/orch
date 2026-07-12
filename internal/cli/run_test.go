@@ -10,11 +10,13 @@ import (
 // trailing argument for every PRD §22 command except the ones that parse
 // their own argv: the adapter-plumbing `run` verb, `resume` (which
 // takes flags), `init` (which takes --step/--bootstrap; see
-// init_test.go for its own trailing-argument coverage), and
+// init_test.go for its own trailing-argument coverage),
 // `configure-local` (which takes --step/--apply; see
-// configurelocal_test.go for its own trailing-argument coverage).
+// configurelocal_test.go for its own trailing-argument coverage), and
+// `configure` (which takes --step/--deliver; see configure_test.go for
+// its own trailing-argument coverage).
 func TestNoArgCommandsRejectTrailingArgs(t *testing.T) {
-	for _, name := range []string{"status", "doctor", "configure", "abort", "metrics"} {
+	for _, name := range []string{"status", "doctor", "abort", "metrics"} {
 		t.Run(name, func(t *testing.T) {
 			env, _, stderr := testEnv(t)
 			if code := Run([]string{name, "extra"}, env); code != ExitUsage {
