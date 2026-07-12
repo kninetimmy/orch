@@ -12,10 +12,7 @@ This adapter only translates Claude Code host events into calls against
 that binary, presents native dialogs, and spawns role subagents. It
 never re-derives a decision the engine already made.
 
-## Artifact map (this PR)
-
-After this PR, the plugin carries only enforcement and session-context
-scaffolding:
+## Artifact map
 
 - `.claude-plugin/plugin.json` — the plugin manifest (name, description,
   version, author). Component directories (`commands/`, `agents/`,
@@ -36,11 +33,34 @@ scaffolding:
     (`/orch:init`, `/orch:configure`, `/orch:configure-local`). Outside an
     Orch repository, or if the repository is unreadable, it injects
     nothing and never blocks the session.
-
-Skills (`orch-architect`, `orch-delivery`, `orch-setup`), the three
-`/orch:*` slash commands, and the four `orch-*` subagents are **not**
-part of this PR — they land in the next PR (PR 2), which is what turns
-this scaffolding into a usable end-to-end workflow.
+- `skills/orch-architect/SKILL.md` — the Architect's standing posture:
+  never edit tracked files directly, never re-derive engine policy,
+  the `orch run status --json` / PROJECT.md / memhub-recall session
+  ritual, mode conduct, the four-subagent whitelist and the
+  `concurrency.max_subagents` cap, and memhub write discipline.
+- `skills/orch-delivery/SKILL.md` — the Delivery wire contract: the
+  scratch-file JSON request/response pattern for every `orch run <verb>`
+  call, `PlanDoc` construction, the plan gate and its four-option
+  `AskUserQuestion`, activation, the full per-issue dispatch → execute →
+  pr-open → review → ci → merge-report → merge gate → merge → cleanup
+  loop, completion and the memhub wrap-up cue, escalation, and block/
+  abandon.
+- `skills/orch-setup/SKILL.md` — the shared step-loop driver for the
+  three `orch <cmd> --step` interviews: the resubmitted-in-full
+  `AnswerSet`, batched `AskUserQuestion` presentation of `questions`
+  documents, the `summary`/blockers/`complete`/`aborted` document kinds,
+  and each interview's terminal form.
+- `commands/init.md`, `commands/configure.md`,
+  `commands/configure-local.md` — the `/orch:init`, `/orch:configure`,
+  and `/orch:configure-local` slash commands. Each runs its command's
+  bare human report first, then follows `orch-setup` for the interactive
+  interview and terminal form; none duplicates `orch-setup`'s protocol.
+- `agents/orch-scout.md`, `agents/orch-implementer.md`,
+  `agents/orch-specialist.md`, `agents/orch-reviewer.md` — the four
+  role subagents the Architect spawns during Delivery, each with its own
+  model and tool whitelist (scout and reviewer carry no write tool; no
+  agent carries `Task` or any `mcp__` tool, so subagents have no memhub
+  write surface of their own).
 
 ## Install order
 
