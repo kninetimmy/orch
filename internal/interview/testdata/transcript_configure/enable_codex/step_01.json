@@ -1,0 +1,64 @@
+{
+  "schema_version": 1,
+  "kind": "questions",
+  "progress": {
+    "index": 1,
+    "total": 1
+  },
+  "questions": [
+    {
+      "id": "pick.hosts",
+      "header": "Hosts",
+      "prompt": "Review or change which hosts are enabled?",
+      "kind": "select",
+      "options": [
+        {
+          "value": "yes",
+          "label": "Yes"
+        },
+        {
+          "value": "no",
+          "label": "No",
+          "recommended": true
+        }
+      ],
+      "default": "no"
+    },
+    {
+      "id": "pick.roles.claude",
+      "header": "Claude",
+      "prompt": "Review or change Claude Code's role profiles?",
+      "kind": "select",
+      "options": [
+        {
+          "value": "yes",
+          "label": "Yes"
+        },
+        {
+          "value": "no",
+          "label": "No",
+          "recommended": true
+        }
+      ],
+      "default": "no"
+    },
+    {
+      "id": "pick.settings",
+      "header": "Settings",
+      "prompt": "Review or change concurrency/merge/memhub/metrics settings?",
+      "kind": "select",
+      "options": [
+        {
+          "value": "yes",
+          "label": "Yes"
+        },
+        {
+          "value": "no",
+          "label": "No",
+          "recommended": true
+        }
+      ],
+      "default": "no"
+    }
+  ]
+}

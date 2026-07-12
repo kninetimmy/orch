@@ -1,0 +1,56 @@
+{
+  "schema_version": 1,
+  "kind": "questions",
+  "progress": {
+    "index": 2,
+    "total": 8
+  },
+  "questions": [
+    {
+      "id": "host.claude.role.architect.model",
+      "header": "Architect",
+      "prompt": "Architect model (Claude Code)",
+      "preamble": "Architect: requirements discovery, architecture and design, issue decomposition, routing and escalation, the plan gate, and final review judgment. Never edits tracked files directly.",
+      "kind": "select",
+      "options": [
+        {
+          "value": "claude-opus-4-8",
+          "label": "claude-opus-4-8",
+          "recommended": true
+        },
+        {
+          "value": "claude-sonnet-5",
+          "label": "claude-sonnet-5"
+        }
+      ],
+      "free_text": true,
+      "default": "claude-opus-4-8"
+    },
+    {
+      "id": "host.claude.role.architect.effort",
+      "header": "Architect",
+      "prompt": "Architect reasoning effort (Claude Code)",
+      "kind": "select",
+      "options": [
+        {
+          "value": "low",
+          "label": "Low"
+        },
+        {
+          "value": "medium",
+          "label": "Medium"
+        },
+        {
+          "value": "high",
+          "label": "High"
+        },
+        {
+          "value": "xhigh",
+          "label": "Extra high",
+          "recommended": true
+        }
+      ],
+      "default": "xhigh"
+    }
+  ]
+}
