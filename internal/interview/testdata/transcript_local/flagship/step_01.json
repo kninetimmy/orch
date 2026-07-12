@@ -1,0 +1,64 @@
+{
+  "schema_version": 1,
+  "kind": "questions",
+  "progress": {
+    "index": 1,
+    "total": 1
+  },
+  "questions": [
+    {
+      "id": "pick.claude",
+      "header": "Claude",
+      "prompt": "Review or change Claude Code's local overrides?",
+      "kind": "select",
+      "options": [
+        {
+          "value": "yes",
+          "label": "Yes",
+          "recommended": true
+        },
+        {
+          "value": "no",
+          "label": "No"
+        }
+      ],
+      "default": "yes"
+    },
+    {
+      "id": "pick.codex",
+      "header": "Codex",
+      "prompt": "Review or change Codex CLI's local overrides?",
+      "kind": "select",
+      "options": [
+        {
+          "value": "yes",
+          "label": "Yes"
+        },
+        {
+          "value": "no",
+          "label": "No",
+          "recommended": true
+        }
+      ],
+      "default": "no"
+    },
+    {
+      "id": "pick.settings",
+      "header": "Settings",
+      "prompt": "Review or change local concurrency/metrics overrides?",
+      "kind": "select",
+      "options": [
+        {
+          "value": "yes",
+          "label": "Yes"
+        },
+        {
+          "value": "no",
+          "label": "No",
+          "recommended": true
+        }
+      ],
+      "default": "no"
+    }
+  ]
+}

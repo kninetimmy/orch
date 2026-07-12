@@ -54,13 +54,26 @@ func newLeafClasses() map[string]leafClass {
 	return m
 }
 
+// PreferenceKeys returns every dotted leaf key classified
+// classPreference in leafClasses, sorted — the exact key set
+// config.local.toml may set. interview.NextConfigureLocal's
+// configure-local question IDs are drift-pinned against this list
+// (the closed 30-leaf policy/preference table, decision 18).
+func PreferenceKeys() []string {
+	keys := make([]string, 0, len(leafClasses))
+	for key, class := range leafClasses {
+		if class == classPreference {
+			keys = append(keys, key)
+		}
+	}
+	sort.Strings(keys)
+	return keys
+}
+
 // applyLocalOverride reads the machine-local override file under
 // repoRoot, if present, and merges its permitted preference keys onto
-// committed. committed has already been fully validated on its own
-// and is never mutated in place: the returned Config is a distinct
-// value, and any Host it modifies is a fresh copy (PRD §17 — local
-// overrides never weaken mandatory workflow policy, and the committed
-// file's own meaning must not change underfoot).
+// committed via MergeLocal. A missing file is not an error: committed
+// is returned unchanged.
 func applyLocalOverride(repoRoot string, committed *Config) (*Config, error) {
 	data, err := os.ReadFile(filepath.Join(repoRoot, filepath.FromSlash(LocalOverridePath)))
 	if errors.Is(err, fs.ErrNotExist) {
@@ -69,9 +82,25 @@ func applyLocalOverride(repoRoot string, committed *Config) (*Config, error) {
 	if err != nil {
 		return nil, fmt.Errorf("read %s: %w", LocalOverridePath, err)
 	}
+	return MergeLocal(committed, data)
+}
 
+// MergeLocal merges localTOML's permitted preference keys onto
+// committed. committed has already been fully validated on its own and
+// is never mutated in place: the returned Config is a distinct value,
+// and any Host it modifies is a fresh copy (PRD §17 — local overrides
+// never weaken mandatory workflow policy, and the committed file's own
+// meaning must not change underfoot). Any policy-bearing key, any key
+// naming a host not enabled in committed, or any unknown key in
+// localTOML is a fail-closed error naming every violation found.
+//
+// This is applyLocalOverride's merge body, split out so
+// interview.NextConfigureLocal can run the exact same classification
+// and post-merge validation as an anti-forgery self-check over
+// freshly-rendered bytes, without writing them to disk first.
+func MergeLocal(committed *Config, localTOML []byte) (*Config, error) {
 	var local Config
-	md, err := toml.Decode(string(data), &local)
+	md, err := toml.Decode(string(localTOML), &local)
 	if err != nil {
 		return nil, fmt.Errorf("parse %s: %w", LocalOverridePath, err)
 	}

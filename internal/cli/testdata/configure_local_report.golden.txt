@@ -1,0 +1,5 @@
+orch configure-local: machine-local override report
+  committed revision: r1
+  local overrides:    none (.orchestrator/config.local.toml does not exist)
+
+this is a report only; an adapter drives the interactive interview through `orch configure-local --step`.

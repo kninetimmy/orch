@@ -273,6 +273,62 @@ func TestMergeOverrideDoesNotMutateCommittedHost(t *testing.T) {
 	}
 }
 
+// TestMergeLocalEquivalentToLoad proves MergeLocal, called directly on
+// raw committed and local bytes, produces the same result Load's
+// applyLocalOverride wrapper does when reading those same bytes from
+// disk — the split changed nothing behaviorally.
+func TestMergeLocalEquivalentToLoad(t *testing.T) {
+	committedData, err := os.ReadFile(filepath.Join("testdata", "valid", "full.toml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	committed, err := Parse(committedData)
+	if err != nil {
+		t.Fatal(err)
+	}
+	localData, err := os.ReadFile(filepath.Join("testdata", "local", "valid", "fable_architect.toml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	viaMergeLocal, err := MergeLocal(committed, localData)
+	if err != nil {
+		t.Fatalf("MergeLocal: %v", err)
+	}
+	viaLoad, err := loadOverlayFixture(t, "valid/full.toml", "local/valid/fable_architect.toml")
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+
+	if viaMergeLocal.Hosts.Claude.Roles.Architect.Model != viaLoad.Hosts.Claude.Roles.Architect.Model {
+		t.Errorf("MergeLocal architect model = %q, want %q (Load's)", viaMergeLocal.Hosts.Claude.Roles.Architect.Model, viaLoad.Hosts.Claude.Roles.Architect.Model)
+	}
+	if !equalStrings(viaMergeLocal.Overrides, viaLoad.Overrides) {
+		t.Errorf("MergeLocal Overrides = %v, want %v (Load's)", viaMergeLocal.Overrides, viaLoad.Overrides)
+	}
+}
+
+// TestMergeLocalRejectsPolicyKey proves MergeLocal itself (not just the
+// Load wrapper) still fails closed on a policy-bearing key.
+func TestMergeLocalRejectsPolicyKey(t *testing.T) {
+	committedData, err := os.ReadFile(filepath.Join("testdata", "valid", "full.toml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	committed, err := Parse(committedData)
+	if err != nil {
+		t.Fatal(err)
+	}
+	localData, err := os.ReadFile(filepath.Join("testdata", "local", "invalid", "policy_merge_strategy.toml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := MergeLocal(committed, localData); err == nil {
+		t.Fatal("MergeLocal succeeded, want error for a policy-bearing key")
+	}
+}
+
 func equalStrings(got, want []string) bool {
 	if len(got) != len(want) {
 		return false

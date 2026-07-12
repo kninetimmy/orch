@@ -1,0 +1,59 @@
+{
+  "schema_version": 1,
+  "kind": "questions",
+  "progress": {
+    "index": 2,
+    "total": 13
+  },
+  "questions": [
+    {
+      "id": "hosts.claude.roles.architect.model",
+      "header": "Architect",
+      "prompt": "Architect model (Claude Code)",
+      "kind": "select",
+      "options": [
+        {
+          "value": "claude-opus-4-8",
+          "label": "claude-opus-4-8 (committed)"
+        },
+        {
+          "value": "claude-sonnet-5",
+          "label": "claude-sonnet-5"
+        },
+        {
+          "value": "claude-fable-5",
+          "label": "claude-fable-5",
+          "recommended": true
+        }
+      ],
+      "free_text": true,
+      "default": "claude-fable-5"
+    },
+    {
+      "id": "hosts.claude.roles.architect.effort",
+      "header": "Architect",
+      "prompt": "Architect reasoning effort (Claude Code)",
+      "kind": "select",
+      "options": [
+        {
+          "value": "low",
+          "label": "Low"
+        },
+        {
+          "value": "medium",
+          "label": "Medium"
+        },
+        {
+          "value": "high",
+          "label": "High"
+        },
+        {
+          "value": "xhigh",
+          "label": "Extra high (committed)",
+          "recommended": true
+        }
+      ],
+      "default": "xhigh"
+    }
+  ]
+}

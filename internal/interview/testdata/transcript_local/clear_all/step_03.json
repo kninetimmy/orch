@@ -1,0 +1,59 @@
+{
+  "schema_version": 1,
+  "kind": "questions",
+  "progress": {
+    "index": 3,
+    "total": 7
+  },
+  "questions": [
+    {
+      "id": "hosts.claude.roles.scout.model",
+      "header": "Scout",
+      "prompt": "Scout model (Claude Code)",
+      "kind": "select",
+      "options": [
+        {
+          "value": "claude-opus-4-8",
+          "label": "claude-opus-4-8"
+        },
+        {
+          "value": "claude-sonnet-5",
+          "label": "claude-sonnet-5 (committed)",
+          "recommended": true
+        },
+        {
+          "value": "claude-fable-5",
+          "label": "claude-fable-5"
+        }
+      ],
+      "free_text": true,
+      "default": "claude-sonnet-5"
+    },
+    {
+      "id": "hosts.claude.roles.scout.effort",
+      "header": "Scout",
+      "prompt": "Scout reasoning effort (Claude Code)",
+      "kind": "select",
+      "options": [
+        {
+          "value": "low",
+          "label": "Low (committed)",
+          "recommended": true
+        },
+        {
+          "value": "medium",
+          "label": "Medium"
+        },
+        {
+          "value": "high",
+          "label": "High"
+        },
+        {
+          "value": "xhigh",
+          "label": "Extra high"
+        }
+      ],
+      "default": "low"
+    }
+  ]
+}
