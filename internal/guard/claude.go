@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"path/filepath"
+	"sort"
 )
 
 // ErrUnknownTool reports a PreToolUse event whose tool_name guard does
@@ -22,6 +23,31 @@ type claudeEvent struct {
 	ToolName  string          `json:"tool_name"`
 	ToolInput json.RawMessage `json:"tool_input"`
 	CWD       string          `json:"cwd"`
+}
+
+// claudeToolPathField maps each Claude Code write tool_name guard
+// understands to the tool_input field carrying its write target. It is
+// the single source for both toolTargets dispatch and ClaudeTools, so
+// the two cannot drift apart.
+var claudeToolPathField = map[string]string{
+	"Write":        "file_path",
+	"Edit":         "file_path",
+	"MultiEdit":    "file_path",
+	"NotebookEdit": "notebook_path",
+}
+
+// ClaudeTools returns, sorted, the Claude Code tool_name values guard
+// extracts a write target from. Any other tool_name is ErrUnknownTool
+// (deny by default). It exists so the Claude adapter's plugin_test.go
+// can pin the hooks.json PreToolUse matcher against the exact dispatch
+// set by import instead of duplicating the tool list.
+func ClaudeTools() []string {
+	names := make([]string, 0, len(claudeToolPathField))
+	for name := range claudeToolPathField {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	return names
 }
 
 // PathsFromClaudeEvent decodes a raw PreToolUse event and returns the
@@ -58,26 +84,24 @@ func PathsFromClaudeEvent(payload []byte) ([]string, error) {
 	return out, nil
 }
 
-// toolTargets extracts the raw path field(s) each write tool carries.
+// toolTargets extracts the raw path field(s) each write tool carries,
+// dispatching on claudeToolPathField. A tool_name absent from the table
+// is ErrUnknownTool; a missing path field decodes to "" and is rejected
+// as an empty write path by the caller.
 func toolTargets(ev claudeEvent) ([]string, error) {
-	switch ev.ToolName {
-	case "Write", "Edit", "MultiEdit":
-		var in struct {
-			FilePath string `json:"file_path"`
-		}
-		if err := json.Unmarshal(ev.ToolInput, &in); err != nil {
-			return nil, fmt.Errorf("parse %s tool_input: %w", ev.ToolName, err)
-		}
-		return []string{in.FilePath}, nil
-	case "NotebookEdit":
-		var in struct {
-			NotebookPath string `json:"notebook_path"`
-		}
-		if err := json.Unmarshal(ev.ToolInput, &in); err != nil {
-			return nil, fmt.Errorf("parse %s tool_input: %w", ev.ToolName, err)
-		}
-		return []string{in.NotebookPath}, nil
-	default:
+	field, ok := claudeToolPathField[ev.ToolName]
+	if !ok {
 		return nil, fmt.Errorf("%w %q; guard denies by default", ErrUnknownTool, ev.ToolName)
 	}
+	var in map[string]json.RawMessage
+	if err := json.Unmarshal(ev.ToolInput, &in); err != nil {
+		return nil, fmt.Errorf("parse %s tool_input: %w", ev.ToolName, err)
+	}
+	var path string
+	if raw, ok := in[field]; ok {
+		if err := json.Unmarshal(raw, &path); err != nil {
+			return nil, fmt.Errorf("parse %s tool_input: %w", ev.ToolName, err)
+		}
+	}
+	return []string{path}, nil
 }
