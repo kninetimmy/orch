@@ -21,15 +21,18 @@
 //     validates, and Blockers make approval an error, so a caller
 //     cannot skip either check by hand-crafting a document.
 //   - No Delivery lock (contract call 1): bootstrap never creates
-//     .orchestrator/ in the primary checkout and never touches
-//     internal/state or internal/lockfile. Mutual exclusion against a
-//     concurrent or crashed bootstrap comes entirely from fail-closed
-//     preflights against a fixed branch name, orch/bootstrap — not the
-//     per-issue orch/issue-<n>- scheme internal/run uses, because the
-//     issue number this branch will eventually close does not exist
-//     until Stage 1 creates it. A fixed name is what makes a crashed
-//     re-run collide with its own leftovers instead of sidestepping
-//     them under a fresh number (contract call 3).
+//     .orchestrator/ in the primary checkout and never writes to
+//     internal/state or internal/lockfile (ExecuteConfigure, PR B's
+//     `orch configure` counterpart, does read both — its own Stage 0
+//     refuses to start while a Delivery run is active — but neither
+//     entry point ever creates or mutates either). Mutual exclusion
+//     against a concurrent or crashed bootstrap comes entirely from
+//     fail-closed preflights against a fixed branch name, orch/bootstrap
+//     — not the per-issue orch/issue-<n>- scheme internal/run uses,
+//     because the issue number this branch will eventually close does
+//     not exist until Stage 1 creates it. A fixed name is what makes a
+//     crashed re-run collide with its own leftovers instead of
+//     sidestepping them under a fresh number (contract call 3).
 //
 // Stage 0 (preflights, see preflight.go) performs zero mutations: any
 // failure there changes nothing on disk or on GitHub. Stage 1
@@ -68,6 +71,30 @@ const bootstrapTitle = "Bootstrap orch configuration"
 
 // ReportSchemaVersion is the Report schema this build emits.
 const ReportSchemaVersion = 1
+
+// job parameterizes stage1/stage1AfterIssue/failClosed/requireNoOrphans
+// across Execute's own init-bootstrap flow and ExecuteConfigure's PR B
+// counterpart (configure.go): each names its fixed branch, its
+// issue/PR title, the exact re-run command failClosed's and
+// requireNoOrphans' remediation should name, and the worktree
+// validation hook stage1AfterIssue runs before ever committing
+// (validateInstallation for init, validateConfigure for `orch
+// configure`).
+type job struct {
+	branch   string
+	title    string
+	rerunCmd string
+	validate func(dir string, complete *question.Complete, now time.Time) ([]ValidationEntry, error)
+}
+
+// initJob is Execute's own job: the package's original, byte-stable
+// bootstrap flow.
+var initJob = job{
+	branch:   BootstrapBranch,
+	title:    bootstrapTitle,
+	rerunCmd: "orch init --bootstrap",
+	validate: validateInstallation,
+}
 
 // Deps carries Execute's injectable surface.
 type Deps struct {
@@ -154,7 +181,7 @@ func Execute(ctx context.Context, deps Deps) (Report, error) {
 	if err != nil {
 		return Report{}, err
 	}
-	if err := requireNoOrphans(ctx, git, gh); err != nil {
+	if err := requireNoOrphans(ctx, git, gh, initJob); err != nil {
 		return Report{}, err
 	}
 
@@ -165,7 +192,7 @@ func Execute(ctx context.Context, deps Deps) (Report, error) {
 		return Report{}, fmt.Errorf("parse re-derived configuration: %w", err)
 	}
 
-	return stage1(ctx, deps, git, gh, repo, complete, cfg)
+	return stage1(ctx, deps, git, gh, repo, complete, cfg, initJob)
 }
 
 // stage0 re-derives Complete from deps.Answers and runs every

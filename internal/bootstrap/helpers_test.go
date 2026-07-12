@@ -91,6 +91,16 @@ type muxRunner struct {
 	// after `git worktree add` succeeds, so a pre-commit write failure
 	// can be forced deterministically.
 	corruptAfterAdd bool
+	// injectAfterAdd, when non-empty, writes injectContent to this
+	// worktree-relative path immediately after `git worktree add`
+	// succeeds — before writeFiles runs. Unlike corruptAfterAdd this
+	// targets a file writeFiles itself never touches (one outside
+	// complete.Summary.Files), so the injected content survives through
+	// to validateConfigure's own inspection: `orch configure`'s
+	// disable-validation-failure test uses this to plant a stale
+	// managed block for a host the session never enabled or touched.
+	injectAfterAdd  string
+	injectedContent string
 }
 
 func (m muxRunner) Run(ctx context.Context, c execx.Cmd) (execx.Result, error) {
@@ -101,11 +111,17 @@ func (m muxRunner) Run(ctx context.Context, c execx.Cmd) (execx.Result, error) {
 		return execx.Result{ExitCode: 1, Stderr: "fatal: unable to access '(simulated)': could not resolve host"}, nil
 	}
 	res, err := m.git.Run(ctx, c)
-	if m.corruptAfterAdd && err == nil && res.ExitCode == 0 &&
-		len(c.Args) >= 5 && c.Args[0] == "worktree" && c.Args[1] == "add" {
+	if err == nil && res.ExitCode == 0 && len(c.Args) >= 5 && c.Args[0] == "worktree" && c.Args[1] == "add" {
 		path := c.Args[4]
-		if werr := os.WriteFile(filepath.Join(path, ".orchestrator"), []byte("blocker"), 0o644); werr != nil {
-			return execx.Result{}, fmt.Errorf("test setup: corrupt worktree: %w", werr)
+		if m.corruptAfterAdd {
+			if werr := os.WriteFile(filepath.Join(path, ".orchestrator"), []byte("blocker"), 0o644); werr != nil {
+				return execx.Result{}, fmt.Errorf("test setup: corrupt worktree: %w", werr)
+			}
+		}
+		if m.injectAfterAdd != "" {
+			if werr := os.WriteFile(filepath.Join(path, filepath.FromSlash(m.injectAfterAdd)), []byte(m.injectedContent), 0o644); werr != nil {
+				return execx.Result{}, fmt.Errorf("test setup: inject worktree file: %w", werr)
+			}
 		}
 	}
 	return res, err

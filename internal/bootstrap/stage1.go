@@ -20,7 +20,7 @@ import (
 // every failure after the issue is created is reported through
 // failClosed with the artifacts it left behind and their exact
 // cleanup commands (contract call 3).
-func stage1(ctx context.Context, deps Deps, git *gitops.Git, gh *ghops.GH, repo ghops.Repo, complete *question.Complete, cfg *config.Config) (Report, error) {
+func stage1(ctx context.Context, deps Deps, git *gitops.Git, gh *ghops.GH, repo ghops.Repo, complete *question.Complete, cfg *config.Config, j job) (Report, error) {
 	if _, err := gh.EnsureLabelTaxonomy(ctx); err != nil {
 		return Report{}, err
 	}
@@ -30,26 +30,26 @@ func stage1(ctx context.Context, deps Deps, git *gitops.Git, gh *ghops.GH, repo 
 		return Report{}, err
 	}
 	labels := ghops.Labels{Status: ghops.StatusInProgress, Type: ghops.TypeInfra, Role: ghops.RoleImplementer, Risk: ghops.RiskStandard}
-	issueNumber, issueURL, err := gh.CreateIssue(ctx, bootstrapTitle, issueBody, labels, modelNames(cfg)...)
+	issueNumber, issueURL, err := gh.CreateIssue(ctx, j.title, issueBody, labels, modelNames(cfg)...)
 	if err != nil {
 		return Report{}, err
 	}
 
-	return stage1AfterIssue(ctx, deps, git, gh, repo, complete, issueNumber, issueURL)
+	return stage1AfterIssue(ctx, deps, git, gh, repo, complete, issueNumber, issueURL, j)
 }
 
 // stage1AfterIssue is stage1's tail, split out because every error
 // return from here on must go through failClosed: the issue already
 // exists.
-func stage1AfterIssue(ctx context.Context, deps Deps, git *gitops.Git, gh *ghops.GH, repo ghops.Repo, complete *question.Complete, issueNumber int, issueURL string) (Report, error) {
+func stage1AfterIssue(ctx context.Context, deps Deps, git *gitops.Git, gh *ghops.GH, repo ghops.Repo, complete *question.Complete, issueNumber int, issueURL string, j job) (Report, error) {
 	dir, err := newWorktreeDir()
 	if err != nil {
-		return Report{}, failClosed(ctx, git, gh, issueNumber, issueURL, "", false, fmt.Errorf("create bootstrap worktree directory: %w", err))
+		return Report{}, failClosed(ctx, git, gh, issueNumber, issueURL, "", false, fmt.Errorf("create worktree directory: %w", err), j)
 	}
 
-	wt, err := git.AddWorktree(ctx, dir, BootstrapBranch, "HEAD")
+	wt, err := git.AddWorktree(ctx, dir, j.branch, "HEAD")
 	if err != nil {
-		return Report{}, failClosed(ctx, git, gh, issueNumber, issueURL, "", false, err)
+		return Report{}, failClosed(ctx, git, gh, issueNumber, issueURL, "", false, err, j)
 	}
 
 	// From here, a branch and worktree exist but carry no commit yet:
@@ -57,61 +57,61 @@ func stage1AfterIssue(ctx context.Context, deps Deps, git *gitops.Git, gh *ghops
 	// HEAD), so every failure up through the commit itself cleans up
 	// both.
 	if err := writeFiles(wt.Path, complete); err != nil {
-		return Report{}, failClosed(ctx, git, gh, issueNumber, issueURL, wt.Path, true, err)
+		return Report{}, failClosed(ctx, git, gh, issueNumber, issueURL, wt.Path, true, err, j)
 	}
 
-	validations, err := validateInstallation(wt.Path, complete, deps.now())
+	validations, err := j.validate(wt.Path, complete, deps.now())
 	if err != nil {
-		return Report{}, failClosed(ctx, git, gh, issueNumber, issueURL, wt.Path, true, err)
+		return Report{}, failClosed(ctx, git, gh, issueNumber, issueURL, wt.Path, true, err, j)
 	}
 
-	commitMessage := fmt.Sprintf("%s\n\nCloses #%d\n", bootstrapTitle, issueNumber)
+	commitMessage := fmt.Sprintf("%s\n\nCloses #%d\n", j.title, issueNumber)
 	if err := git.CommitAll(ctx, wt.Path, commitMessage); err != nil {
-		return Report{}, failClosed(ctx, git, gh, issueNumber, issueURL, wt.Path, true, err)
+		return Report{}, failClosed(ctx, git, gh, issueNumber, issueURL, wt.Path, true, err, j)
 	}
 
 	// A commit now exists on the branch: it is preserved work, not a
 	// leftover to auto-delete. Every failure from here removes only
 	// the disposable worktree.
-	if err := git.Push(ctx, wt.Path, "origin", BootstrapBranch); err != nil {
-		return Report{}, failClosed(ctx, git, gh, issueNumber, issueURL, wt.Path, false, err)
+	if err := git.Push(ctx, wt.Path, "origin", j.branch); err != nil {
+		return Report{}, failClosed(ctx, git, gh, issueNumber, issueURL, wt.Path, false, err, j)
 	}
 
 	prBody, err := renderRecord(complete, validations, issueNumber)
 	if err != nil {
-		return Report{}, failClosed(ctx, git, gh, issueNumber, issueURL, wt.Path, false, err)
+		return Report{}, failClosed(ctx, git, gh, issueNumber, issueURL, wt.Path, false, err, j)
 	}
-	prNumber, prURL, err := gh.CreatePR(ctx, ghops.PRSpec{Head: BootstrapBranch, Base: repo.DefaultBranch, Title: bootstrapTitle, Body: prBody})
+	prNumber, prURL, err := gh.CreatePR(ctx, ghops.PRSpec{Head: j.branch, Base: repo.DefaultBranch, Title: j.title, Body: prBody})
 	if err != nil {
-		return Report{}, failClosed(ctx, git, gh, issueNumber, issueURL, wt.Path, false, err)
+		return Report{}, failClosed(ctx, git, gh, issueNumber, issueURL, wt.Path, false, err, j)
 	}
 
 	if err := gh.SetStatus(ctx, issueNumber, ghops.StatusAwaitingReview); err != nil {
 		return Report{}, failClosed(ctx, git, gh, issueNumber, issueURL, wt.Path, false,
-			fmt.Errorf("PR #%d (%s) opened but marking issue #%d awaiting-review failed: %w", prNumber, prURL, issueNumber, err))
+			fmt.Errorf("PR #%d (%s) opened but marking issue #%d awaiting-review failed: %w", prNumber, prURL, issueNumber, err), j)
 	}
 
 	// Everything a human cares about (issue, commit, PR, status) is
 	// already correct; a failure to remove the disposable worktree
 	// here is reported as a plain cleanup note, not routed through
 	// failClosed — flipping the issue back to needs-human would
-	// misrepresent a fully successful bootstrap over a leftover local
-	// temp directory (a deliberate narrower reading of "any
-	// post-mutation failure").
+	// misrepresent a fully successful run over a leftover local temp
+	// directory (a deliberate narrower reading of "any post-mutation
+	// failure").
 	if err := removeWorktree(ctx, git, wt.Path); err != nil {
-		return Report{}, fmt.Errorf("bootstrap succeeded (issue #%d %s, PR #%d %s) but the disposable worktree %s could not be removed: %w; remove it by hand and run `git worktree prune`", issueNumber, issueURL, prNumber, prURL, wt.Path, err)
+		return Report{}, fmt.Errorf("%s succeeded (issue #%d %s, PR #%d %s) but the disposable worktree %s could not be removed: %w; remove it by hand and run `git worktree prune`", j.title, issueNumber, issueURL, prNumber, prURL, wt.Path, err)
 	}
 
 	return Report{
 		SchemaVersion: ReportSchemaVersion,
 		Issue:         ReportRef{Number: issueNumber, URL: issueURL},
 		PR:            ReportRef{Number: prNumber, URL: prURL},
-		Branch:        BootstrapBranch,
+		Branch:        j.branch,
 		Validations:   validations,
 		NextSteps: []string{
 			fmt.Sprintf("review and merge %s", prURL),
 			"git pull",
-			fmt.Sprintf("optionally: git branch -d %s", BootstrapBranch),
+			fmt.Sprintf("optionally: git branch -d %s", j.branch),
 			"orch status",
 		},
 	}, nil
@@ -158,13 +158,13 @@ func removeWorktree(ctx context.Context, git *gitops.Git, dir string) error {
 
 // failClosed finishes a Stage 1 failure (contract call 3): it
 // best-effort marks the issue needs-human, attempts worktree removal
-// whenever worktreeDir is set, force-deletes the local bootstrap
-// branch when deleteBranch is true (only safe pre-commit, when the
-// branch carries no unique work), and returns cause wrapped with the
-// exact remediation commands for whatever it could not undo itself.
+// whenever worktreeDir is set, force-deletes j's local branch when
+// deleteBranch is true (only safe pre-commit, when the branch carries
+// no unique work), and returns cause wrapped with the exact remediation
+// commands (naming j.rerunCmd) for whatever it could not undo itself.
 // Cleanup always runs under context.WithoutCancel (WithBaseWorktree
 // precedent, base.go): a canceled ctx must not skip cleanup.
-func failClosed(ctx context.Context, git *gitops.Git, gh *ghops.GH, issueNumber int, issueURL, worktreeDir string, deleteBranch bool, cause error) error {
+func failClosed(ctx context.Context, git *gitops.Git, gh *ghops.GH, issueNumber int, issueURL, worktreeDir string, deleteBranch bool, cause error, j job) error {
 	cleanupCtx := context.WithoutCancel(ctx)
 	problems := []error{cause}
 	remediation := []string{fmt.Sprintf("issue #%d (%s)", issueNumber, issueURL)}
@@ -175,15 +175,15 @@ func failClosed(ctx context.Context, git *gitops.Git, gh *ghops.GH, issueNumber 
 			remediation = append(remediation, fmt.Sprintf("remove the leftover worktree by hand (`git worktree remove --force %s` or delete the directory, then `git worktree prune`)", worktreeDir))
 		}
 		if deleteBranch {
-			if err := git.ForceDeleteBranch(cleanupCtx, BootstrapBranch, gitops.ExplicitConfirmation()); err != nil {
-				problems = append(problems, fmt.Errorf("force-delete branch %s: %w", BootstrapBranch, err))
-				remediation = append(remediation, fmt.Sprintf("delete the leftover local branch by hand: `git branch -D %s`", BootstrapBranch))
+			if err := git.ForceDeleteBranch(cleanupCtx, j.branch, gitops.ExplicitConfirmation()); err != nil {
+				problems = append(problems, fmt.Errorf("force-delete branch %s: %w", j.branch, err))
+				remediation = append(remediation, fmt.Sprintf("delete the leftover local branch by hand: `git branch -D %s`", j.branch))
 			}
 		} else {
 			// A commit exists on the branch: it is preserved work, not a
 			// leftover to auto-delete (contract call 3: an orphan
 			// artifact is tolerated and named, never destroyed).
-			remediation = append(remediation, fmt.Sprintf("the local branch %s carries the bootstrap commit; delete it by hand once you no longer need it (`git branch -D %s`)", BootstrapBranch, BootstrapBranch))
+			remediation = append(remediation, fmt.Sprintf("the local branch %s carries the %s commit; delete it by hand once you no longer need it (`git branch -D %s`)", j.branch, commitNoun(j.title), j.branch))
 		}
 	}
 
@@ -191,7 +191,23 @@ func failClosed(ctx context.Context, git *gitops.Git, gh *ghops.GH, issueNumber 
 		remediation = append(remediation, fmt.Sprintf("mark issue #%d needs-human by hand: %v", issueNumber, err))
 	}
 
-	return fmt.Errorf("%w; re-run `orch init --bootstrap` from the same answers once cleaned up; %s", errors.Join(problems...), strings.Join(remediation, "; "))
+	return fmt.Errorf("%w; re-run `%s` from the same answers once cleaned up; %s", errors.Join(problems...), j.rerunCmd, strings.Join(remediation, "; "))
+}
+
+// commitNoun derives failClosed's "carries the X commit" remediation
+// phrasing from j.title's first word, lower-cased: init's title
+// "Bootstrap orch configuration" yields "bootstrap" (test-pinned,
+// TestExecutePushFailureLeavesArtifacts's "carries the bootstrap
+// commit" assertion), and configure's title "Update orch
+// configuration" yields "update" — deriving from the existing title
+// field rather than adding a fifth job field for what is otherwise a
+// purely cosmetic difference.
+func commitNoun(title string) string {
+	word := title
+	if i := strings.IndexByte(title, ' '); i >= 0 {
+		word = title[:i]
+	}
+	return strings.ToLower(word)
 }
 
 // modelNames returns cfg's distinct enabled-host model strings
