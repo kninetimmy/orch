@@ -14,10 +14,11 @@ import (
 
 // guardUsage is the one-line usage for the adapter plumbing surface,
 // mirroring runUsage.
-const guardUsage = "orch guard: usage: orch guard check [--role <role>] [--issue <n>] [--] <path>... | orch guard claude [--role <role>] [--issue <n>] (PreToolUse JSON on stdin)"
+const guardUsage = "orch guard: usage: orch guard check [--role <role>] [--issue <n>] [--] <path>... | orch guard claude [--role <role>] [--issue <n>] (PreToolUse JSON on stdin) | orch guard codex [--role <role>] [--issue <n>] (PreToolUse JSON on stdin)"
 
 // runGuard dispatches the pre-write enforcement verbs (PRD §23): `orch
-// guard check` (host-neutral argv) and `orch guard claude` (Claude Code
+// guard check` (host-neutral argv), `orch guard claude` (Claude Code
+// PreToolUse JSON on stdin), and `orch guard codex` (Codex CLI
 // PreToolUse JSON on stdin). Host adapters call it from their own
 // PreToolUse hooks before every agent write; it is never invoked by a
 // human directly.
@@ -30,6 +31,8 @@ func runGuard(env Env, args []string) error {
 		return guardCheck(env, args[1:])
 	case "claude":
 		return guardClaude(env, args[1:])
+	case "codex":
+		return guardCodex(env, args[1:])
 	default:
 		return usageError(guardUsage)
 	}
@@ -62,12 +65,14 @@ func guardCheck(env Env, args []string) error {
 	return fmt.Errorf("%s: %s", v.Path, v.Reason) // exit 1, names path + reason
 }
 
-// guardClaude answers a Claude Code PreToolUse event read from stdin. It
-// never emits a permissionDecision of "allow" — an allow is silence, so
-// guard never bypasses the user's own permission prompts. A denial exits
-// 0 with the hook's deny document on stdout. Any internal failure exits
-// 2 (the hook protocol's blocking code); the verb never exits 1.
-func guardClaude(env Env, args []string) error {
+// guardHostHook answers a PreToolUse event read from stdin, decoded into
+// absolute write targets by decode (guard.PathsFromClaudeEvent or
+// guard.PathsFromCodexEvent). It never emits a permissionDecision of
+// "allow" — an allow is silence, so guard never bypasses the user's own
+// permission prompts. A denial exits 0 with the hook's deny document on
+// stdout. Any internal failure exits 2 (the hook protocol's blocking
+// code); the verb never exits 1.
+func guardHostHook(env Env, args []string, decode func([]byte) ([]string, error)) error {
 	role, issue, rest, err := parseGuardFlags(args)
 	if err != nil {
 		return err
@@ -81,10 +86,10 @@ func guardClaude(env Env, args []string) error {
 		return exitCodeError{code: ExitUsage, err: fmt.Errorf("read stdin: %w", err)}
 	}
 
-	targets, err := guard.PathsFromClaudeEvent(payload)
+	targets, err := decode(payload)
 	if err != nil {
-		if errors.Is(err, guard.ErrUnknownTool) {
-			return emitClaudeDeny(env.Stdout, err.Error())
+		if errors.Is(err, guard.ErrUnknownTool) || errors.Is(err, guard.ErrPatchEnvelope) {
+			return emitPreToolUseDeny(env.Stdout, err.Error())
 		}
 		return exitCodeError{code: ExitUsage, err: err}
 	}
@@ -100,11 +105,22 @@ func guardClaude(env Env, args []string) error {
 	if v.Allow {
 		return nil // exit 0, no output, no opinion
 	}
-	return emitClaudeDeny(env.Stdout, v.Reason)
+	return emitPreToolUseDeny(env.Stdout, v.Reason)
+}
+
+// guardClaude answers a Claude Code PreToolUse event read from stdin.
+func guardClaude(env Env, args []string) error {
+	return guardHostHook(env, args, guard.PathsFromClaudeEvent)
+}
+
+// guardCodex answers a Codex CLI PreToolUse event read from stdin.
+func guardCodex(env Env, args []string) error {
+	return guardHostHook(env, args, guard.PathsFromCodexEvent)
 }
 
 // hookOutput is the PreToolUse response guard writes on a denial. Its
-// shape is fixed by the Claude Code hook protocol.
+// shape is fixed by the PreToolUse hook protocol, which Codex CLI mirrors
+// from Claude Code.
 type hookOutput struct {
 	HookSpecificOutput hookSpecificOutput `json:"hookSpecificOutput"`
 }
@@ -115,10 +131,11 @@ type hookSpecificOutput struct {
 	PermissionDecisionReason string `json:"permissionDecisionReason"`
 }
 
-// emitClaudeDeny writes the deny document to stdout and returns nil so
-// the verb exits 0 (the denial is carried by the document, not the exit
-// code). A stdout write failure is an internal failure → blocking exit 2.
-func emitClaudeDeny(w io.Writer, reason string) error {
+// emitPreToolUseDeny writes the deny document to stdout and returns nil
+// so the verb exits 0 (the denial is carried by the document, not the
+// exit code). A stdout write failure is an internal failure → blocking
+// exit 2.
+func emitPreToolUseDeny(w io.Writer, reason string) error {
 	data, err := json.Marshal(hookOutput{HookSpecificOutput: hookSpecificOutput{
 		HookEventName:            "PreToolUse",
 		PermissionDecision:       "deny",

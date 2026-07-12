@@ -44,6 +44,50 @@ func claudePayload(t *testing.T, tool, pathKey, pathVal, cwd string) string {
 	return string(b)
 }
 
+// codexPayload marshals a minimal Codex CLI PreToolUse event whose
+// tool_input carries envelope as its apply_patch command.
+func codexPayload(t *testing.T, toolName, envelope, cwd string) string {
+	t.Helper()
+	m := map[string]any{
+		"tool_name":  toolName,
+		"tool_input": map[string]string{"command": envelope},
+	}
+	if cwd != "" {
+		m["cwd"] = cwd
+	}
+	b, err := json.Marshal(m)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return string(b)
+}
+
+// deliveryGuardEnv builds a Delivery repo with one dispatched issue
+// (deliveryIssue) and its registered worktree checked out on the
+// matching branch — the shared fixture for every guard test that needs
+// an active run, so check and the host hook verbs exercise the same
+// containment rules.
+func deliveryGuardEnv(t *testing.T) (env Env, stdout, stderr *bytes.Buffer, worktreeAbs string) {
+	t.Helper()
+	env, stdout, stderr, root := guardRepo(t, 1)
+	planned := []state.Issue{{PlanID: "a", Title: "A", Phase: state.PhasePlanned}}
+	plan := state.PlanRef{Title: "t", Digest: "sha256:x", ConfigRevision: "r1"}
+	if _, err := state.EnterDelivery(root, "claude", plan, planned); err != nil {
+		t.Fatal(err)
+	}
+	st, err := state.Load(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	st.Run.Issues = []state.Issue{deliveryIssue()}
+	if err := state.Save(root, st); err != nil {
+		t.Fatal(err)
+	}
+	worktreeAbs = filepath.Join(root, "wt")
+	writeGitPointer(t, worktreeAbs, "ref: refs/heads/feature-3\n")
+	return env, stdout, stderr, worktreeAbs
+}
+
 func TestGuardCheckAllowIgnored(t *testing.T) {
 	env, stdout, stderr, root := guardRepo(t, 0) // 0 = ignored
 	target := filepath.Join(root, "build", "out.o")
@@ -202,28 +246,123 @@ func TestGuardClaudeNeverExitsOne(t *testing.T) {
 }
 
 func TestGuardCheckDeliveryAllows(t *testing.T) {
-	env, _, stderr, root := guardRepo(t, 1)
-	// Enter Delivery with one dispatched issue and a matching worktree.
-	planned := []state.Issue{{PlanID: "a", Title: "A", Phase: state.PhasePlanned}}
-	plan := state.PlanRef{Title: "t", Digest: "sha256:x", ConfigRevision: "r1"}
-	if _, err := state.EnterDelivery(root, "claude", plan, planned); err != nil {
-		t.Fatal(err)
-	}
-	st, err := state.Load(root)
-	if err != nil {
-		t.Fatal(err)
-	}
-	st.Run.Issues = []state.Issue{deliveryIssue()}
-	if err := state.Save(root, st); err != nil {
-		t.Fatal(err)
-	}
-
-	worktreeAbs := filepath.Join(root, "wt")
-	writeGitPointer(t, worktreeAbs, "ref: refs/heads/feature-3\n")
+	env, _, stderr, worktreeAbs := deliveryGuardEnv(t)
 	target := filepath.Join(worktreeAbs, "src", "x.go")
 
 	if code := Run([]string{"guard", "check", "--role", "implementer", "--issue", "3", target}, env); code != ExitOK {
 		t.Fatalf("exit = %d, want %d (stderr %q)", code, ExitOK, stderr.String())
+	}
+}
+
+func TestGuardCodexAllowSilent(t *testing.T) {
+	env, stdout, _, worktreeAbs := deliveryGuardEnv(t)
+	envelope := "*** Begin Patch\n*** Update File: src/x.go\n@@ hunk header\n-old\n+new\n*** End Patch"
+	env.Stdin = strings.NewReader(codexPayload(t, "apply_patch", envelope, worktreeAbs))
+	if code := Run([]string{"guard", "codex", "--role", "implementer", "--issue", "3"}, env); code != ExitOK {
+		t.Fatalf("exit = %d, want %d (stdout %q)", code, ExitOK, stdout.String())
+	}
+	if stdout.String() != "" {
+		t.Errorf("allow emitted output: %q", stdout.String())
+	}
+}
+
+func TestGuardCodexDenyJSON(t *testing.T) {
+	env, stdout, _, root := guardRepo(t, 1) // not ignored → deny
+	envelope := "*** Begin Patch\n*** Update File: src/x.go\n@@ hunk header\n-old\n+new\n*** End Patch"
+	env.Stdin = strings.NewReader(codexPayload(t, "apply_patch", envelope, root))
+	const wantReason = "assist is read-only for repository files; ask for a Delivery plan"
+	want := `{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"deny","permissionDecisionReason":"` + wantReason + `"}}`
+	if code := Run([]string{"guard", "codex"}, env); code != ExitOK {
+		t.Fatalf("exit = %d, want %d", code, ExitOK)
+	}
+	if strings.TrimSpace(stdout.String()) != want {
+		t.Errorf("stdout = %q, want %q", stdout.String(), want)
+	}
+}
+
+func TestGuardCodexUnknownToolDenies(t *testing.T) {
+	env, stdout, _, _ := guardRepo(t, 1)
+	env.Stdin = strings.NewReader(`{"tool_name":"Bash","tool_input":{"command":"rm -rf /"}}`)
+	if code := Run([]string{"guard", "codex"}, env); code != ExitOK {
+		t.Fatalf("exit = %d, want %d", code, ExitOK)
+	}
+	var out struct {
+		HookSpecificOutput struct {
+			PermissionDecision       string `json:"permissionDecision"`
+			PermissionDecisionReason string `json:"permissionDecisionReason"`
+		} `json:"hookSpecificOutput"`
+	}
+	if err := json.Unmarshal(stdout.Bytes(), &out); err != nil {
+		t.Fatalf("stdout is not the deny document: %q (%v)", stdout.String(), err)
+	}
+	if out.HookSpecificOutput.PermissionDecision != "deny" {
+		t.Errorf("permissionDecision = %q, want deny", out.HookSpecificOutput.PermissionDecision)
+	}
+	if !strings.Contains(out.HookSpecificOutput.PermissionDecisionReason, "unrecognized tool_name") {
+		t.Errorf("reason = %q, want unrecognized tool_name", out.HookSpecificOutput.PermissionDecisionReason)
+	}
+}
+
+// TestGuardCodexMalformedEnvelopeDeniesWithJSON confirms a garbage
+// apply_patch envelope is a deny document at exit 0, not the blocking
+// exit 2: ErrPatchEnvelope is guard's other deny-by-default sentinel,
+// same status as ErrUnknownTool.
+func TestGuardCodexMalformedEnvelopeDeniesWithJSON(t *testing.T) {
+	env, stdout, _, root := guardRepo(t, 1)
+	env.Stdin = strings.NewReader(codexPayload(t, "apply_patch", "not a patch envelope at all", root))
+	if code := Run([]string{"guard", "codex"}, env); code != ExitOK {
+		t.Fatalf("exit = %d, want %d (garbage envelope must deny, not block)", code, ExitOK)
+	}
+	var out struct {
+		HookSpecificOutput struct {
+			PermissionDecision       string `json:"permissionDecision"`
+			PermissionDecisionReason string `json:"permissionDecisionReason"`
+		} `json:"hookSpecificOutput"`
+	}
+	if err := json.Unmarshal(stdout.Bytes(), &out); err != nil {
+		t.Fatalf("stdout is not the deny document: %q (%v)", stdout.String(), err)
+	}
+	if out.HookSpecificOutput.PermissionDecision != "deny" {
+		t.Errorf("permissionDecision = %q, want deny", out.HookSpecificOutput.PermissionDecision)
+	}
+}
+
+func TestGuardCodexMalformedJSONExits2(t *testing.T) {
+	env, stdout, _, _ := guardRepo(t, 1)
+	env.Stdin = strings.NewReader(`{ not json`)
+	if code := Run([]string{"guard", "codex"}, env); code != ExitUsage {
+		t.Fatalf("exit = %d, want %d", code, ExitUsage)
+	}
+	if stdout.String() != "" {
+		t.Errorf("internal failure emitted a decision: %q", stdout.String())
+	}
+}
+
+// TestGuardCodexMoveDeniesWhenDestinationOutsideWorktree confirms a Move
+// to destination is checked as its own write target: an Update inside
+// the registered worktree paired with a Move that escapes it must deny,
+// naming the escaping path.
+func TestGuardCodexMoveDeniesWhenDestinationOutsideWorktree(t *testing.T) {
+	env, stdout, _, worktreeAbs := deliveryGuardEnv(t)
+	envelope := "*** Begin Patch\n*** Update File: src/x.go\n@@ hunk header\n-old\n+new\n*** Move to: ../escaped.go\n*** End Patch"
+	env.Stdin = strings.NewReader(codexPayload(t, "apply_patch", envelope, worktreeAbs))
+	if code := Run([]string{"guard", "codex"}, env); code != ExitOK {
+		t.Fatalf("exit = %d, want %d", code, ExitOK)
+	}
+	var out struct {
+		HookSpecificOutput struct {
+			PermissionDecision       string `json:"permissionDecision"`
+			PermissionDecisionReason string `json:"permissionDecisionReason"`
+		} `json:"hookSpecificOutput"`
+	}
+	if err := json.Unmarshal(stdout.Bytes(), &out); err != nil {
+		t.Fatalf("stdout is not the deny document: %q (%v)", stdout.String(), err)
+	}
+	if out.HookSpecificOutput.PermissionDecision != "deny" {
+		t.Errorf("permissionDecision = %q, want deny", out.HookSpecificOutput.PermissionDecision)
+	}
+	if !strings.Contains(out.HookSpecificOutput.PermissionDecisionReason, "outside every registered worktree") {
+		t.Errorf("reason = %q, want outside every registered worktree", out.HookSpecificOutput.PermissionDecisionReason)
 	}
 }
 

@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"path/filepath"
 	"sort"
 )
 
@@ -68,20 +67,7 @@ func PathsFromClaudeEvent(payload []byte) ([]string, error) {
 		return nil, err
 	}
 
-	out := make([]string, 0, len(raw))
-	for _, p := range raw {
-		if p == "" {
-			return nil, fmt.Errorf("PreToolUse %s: empty write path", ev.ToolName)
-		}
-		if !filepath.IsAbs(p) {
-			if ev.CWD == "" {
-				return nil, fmt.Errorf("PreToolUse %s: relative path %q with no cwd in payload", ev.ToolName, p)
-			}
-			p = filepath.Join(ev.CWD, p)
-		}
-		out = append(out, p)
-	}
-	return out, nil
+	return absTargets(ev.ToolName, ev.CWD, raw)
 }
 
 // toolTargets extracts the raw path field(s) each write tool carries,
