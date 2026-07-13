@@ -71,7 +71,7 @@ closed at a read-only preflight if any is missing (create it with
 Call `orch run plan` with the `PlanDoc` on stdin. The result is a
 `GateDoc` (`schema_version: 1`): `plan_digest`, `plan_title`, `host`,
 `config_revision`, `config_overrides`, `merge_strategy`, `memhub`
-(`{mode, probe, detail}`), `ci` (`{workflows_present, statement}`), and
+(`{mode, probe, recall, detail}`), `ci` (`{workflows_present, statement}`), and
 `issues[]` — each with `id`, `title`, `objective`,
 `acceptance_criteria`, `role`, `executor` (`{model, effort}`),
 `reviewer` (`{model, effort}`), `reviewer_downgraded`,
@@ -153,6 +153,11 @@ in flight at once. For each issue:
    recorded server-side regardless; this cue only shapes in-session
    behavior.) Include the worktree path, branch, objective, acceptance
    criteria, and required tests in the prompt.
+
+   Before spawning, you (the Architect) perform whatever memhub recall
+   is relevant to the issue, with the main checkout as cwd — never a
+   worktree. Embed the relevant recall results directly in the dispatch
+   prompt; the executor subagent never invokes memhub itself.
 
 3. **PR-open** — once the executor reports verification evidence, call
    `orch run pr-open`:

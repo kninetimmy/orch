@@ -84,8 +84,8 @@ func TestPlanGoldenTwoIssue(t *testing.T) {
 	if len(doc.ConfigOverrides) != 0 {
 		t.Errorf("ConfigOverrides = %v, want none", doc.ConfigOverrides)
 	}
-	if doc.Memhub.Mode != "off" || doc.Memhub.Probe != "skipped" {
-		t.Errorf("Memhub = %+v, want off/skipped", doc.Memhub)
+	if doc.Memhub.Mode != "off" || doc.Memhub.Probe != "skipped" || doc.Memhub.Recall != "skipped" {
+		t.Errorf("Memhub = %+v, want off/skipped/skipped", doc.Memhub)
 	}
 	if doc.CI.WorkflowsPresent {
 		t.Error("CI.WorkflowsPresent = true, want false (no workflow fixture)")
