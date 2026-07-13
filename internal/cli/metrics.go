@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"io"
 	"sort"
+	"strings"
 
 	"github.com/kninetimmy/orch/internal/config"
 	"github.com/kninetimmy/orch/internal/metrics"
@@ -80,10 +81,9 @@ type runSummary struct {
 	ciByState map[string]int
 
 	// usage sums every event that carries a usage payload; usageEvents
-	// counts how many of totalEvents did.
+	// counts how many of eventCount did.
 	usage       metrics.Usage
 	usageEvents int
-	totalEvents int
 }
 
 // summarizeRun computes runSummary from doc in one pass, trusting the
@@ -95,7 +95,6 @@ func summarizeRun(doc metrics.Document) runSummary {
 		eventCount:   len(doc.Events),
 		blockClasses: map[string]int{},
 		ciByState:    map[string]int{},
-		totalEvents:  len(doc.Events),
 	}
 	if len(doc.Events) > 0 {
 		s.firstAt = doc.Events[0].At
@@ -167,14 +166,7 @@ func sortedCounts(m map[string]int) string {
 	for i, k := range keys {
 		parts[i] = fmt.Sprintf("%s: %d", k, m[k])
 	}
-	out := ""
-	for i, p := range parts {
-		if i > 0 {
-			out += ", "
-		}
-		out += p
-	}
-	return out
+	return strings.Join(parts, ", ")
 }
 
 // printRunSummary writes s in status.go's aligned label style.
@@ -199,6 +191,6 @@ func printRunSummary(w io.Writer, s runSummary) {
 	if s.usageEvents > 0 {
 		fmt.Fprintf(w, "usage:       input %d, output %d, cache read %d, cache creation %d, duration %dms\n",
 			s.usage.InputTokens, s.usage.OutputTokens, s.usage.CacheReadTokens, s.usage.CacheCreationTokens, s.usage.DurationMS)
-		fmt.Fprintf(w, "             usage reported on %d of %d events\n", s.usageEvents, s.totalEvents)
+		fmt.Fprintf(w, "             usage reported on %d of %d events\n", s.usageEvents, s.eventCount)
 	}
 }

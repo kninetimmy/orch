@@ -193,9 +193,9 @@ in flight at once. For each issue:
    ```
 
    `usage` is optional (PRD §21), same rule as PR-open: only report
-   what the reviewer subagent's Task result actually carries. `request-
-   changes` loops the same executor in the **same worktree**, then
-   repeats from PR-open. `approve` continues.
+   what the reviewer subagent's Task result actually carries.
+   `request-changes` loops the same executor in the **same worktree**,
+   then repeats from PR-open. `approve` continues.
 
 6. **CI** — `orch run ci` with
    `{"schema_version": 1, "issue_number": N}` records the honest
