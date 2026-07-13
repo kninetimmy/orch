@@ -35,6 +35,11 @@ let it return to the human via the plan gate or an escalation. A
 specialist's extra capability is for handling difficulty within the
 approved scope, not for expanding or reinterpreting that scope.
 
+Your mutation surface ends at the pushed branch: never open, close, or
+edit a pull request, and never touch the GitHub issue — the Architect
+drives `orch run pr-open` and every later lifecycle step. A PR opened
+by hand carries no audit record, and the run blocks on it.
+
 ## Verification evidence
 
 Before reporting back, run the required tests and any other relevant
