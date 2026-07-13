@@ -50,16 +50,16 @@ do.
   `concurrency.max_subagents` cap, and memhub write discipline.
 - `skills/orch-delivery/SKILL.md` — the Delivery wire contract: the
   scratch-file JSON request/response pattern for every `orch run <verb>`
-  call, `PlanDoc` construction, the plan gate and its four-option `ask`
-  question, activation, the full per-issue dispatch → execute → pr-open
+  call, `PlanDoc` construction, the plan gate and its four-option
+  `request_user_input` question, activation, the full per-issue dispatch → execute → pr-open
   → review → ci → merge-report → merge gate → merge → cleanup loop,
   completion and the memhub wrap-up cue, escalation, and block/abandon.
 - `skills/orch-setup/SKILL.md` — the shared step-loop driver for the
   three `orch <cmd> --step` interviews: the resubmitted-in-full
   `AnswerSet`, one-question-at-a-time presentation of `questions`
-  documents via Codex's `ask` primitive, the `summary`/blockers/
-  `complete`/`aborted` document kinds, and each interview's terminal
-  form.
+  documents via Codex's `request_user_input` primitive, the
+  `summary`/blockers/`complete`/`aborted` document kinds, and each
+  interview's terminal form.
 - `agents/orch-scout.toml`, `agents/orch-implementer.toml`,
   `agents/orch-specialist.toml`, `agents/orch-reviewer.toml`,
   `agents/orch-reviewer-safe.toml` — the five role agents the Architect
@@ -92,7 +92,22 @@ decision, not an oversight).
    Codex plugins cannot bundle agent definitions, so this copy is a
    separate manual step every install of this adapter needs, not
    something the plugin installs for you.
-5. Run `orch doctor` to confirm the environment (Git, GitHub, memhub,
+5. Enable the `request_user_input` question primitive — verified on
+   codex-cli 0.144.1, both of these in `~/.codex/config.toml`:
+
+   ```toml
+   [tools.experimental_request_user_input]
+
+   [features]
+   default_mode_request_user_input = true
+   ```
+
+   (The `[tools]` entry is a struct, not a boolean — the bare table
+   enables it with defaults.) The setup interviews and the plan/merge
+   gates present their questions through `request_user_input`, which
+   is otherwise gated to plan mode; without these the skills degrade
+   to plain-text questions the human answers by typing.
+6. Run `orch doctor` to confirm the environment (Git, GitHub, memhub,
    configuration) is healthy.
 
 ## Known limitations
@@ -156,6 +171,14 @@ which is why the floor is pinned at the first release confirmed to
 include the fix rather than left to a de-facto smoke-tested version, as
 the Claude adapter's is.
 
+Two behaviors verified live in the task-30 parity smoke (codex-cli
+0.144.1, 2026-07-12): PreToolUse hooks **do** fire on dispatched-agent
+(subagent) `apply_patch` calls — load-bearing here, since Codex agent
+definitions carry no tool whitelist, so scout/reviewer read-only
+discipline is mechanically enforced by the guard, not just by
+`developer_instructions` — and `request_user_input` is root-thread
+only, so a dispatched agent can never raise a native question.
+
 As defense in depth — complementary to the guard hook, not a
 substitute for it, and no configuration is shipped by this adapter to
 enforce it — a repository operator adopting this adapter should also
@@ -164,4 +187,9 @@ and a non-`never` `approval_policy`. The guard hook denies by orch's own
 Delivery/Assist policy; Codex CLI's own sandbox and approval settings
 are a second, independent layer that catches what the hook cannot (a
 missing binary, an unapproved plugin, a write the hook fails to
-classify).
+classify). One Windows caveat, observed live: `workspace-write`
+requires Codex's sandbox helper infrastructure to be installed and
+healthy — where it is absent, every agent `apply_patch` fails before
+any mutation (`orchestrator_helper_launch_failed`), which stops
+Delivery execution cold. Verify the sandbox works before adopting that
+mode on Windows.

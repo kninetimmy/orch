@@ -84,10 +84,9 @@ every issue (name the routed model and effort plainly, and explain a
 fields (`plan_title`, `host`, `merge_strategy`, `config_revision` +
 `config_overrides` if any, `memhub`, `ci`).
 
-Then ask, via Codex's `ask` primitive, **one** question — header `Plan
-gate` — offering exactly these four options in order (the primitive
-presents a single question at a time; there is nothing to batch these
-into):
+Then ask, via Codex's `request_user_input` primitive, **one** question
+— header `Plan gate` — offering exactly these four options in order
+(one question, nothing to batch):
 
 - `Approve and enter Delivery`
 - `Adjust agent routing`
@@ -211,9 +210,9 @@ in flight at once. For each issue:
    gates this merge" is never silently implied).
 
 8. **Merge gate** — present the full merge report, then ask, via
-   Codex's `ask` primitive, **one** question — header `Merge gate` —
-   offering exactly `Approve merge` / `Not yet`. This approval is
-   **fresh for every PR**, never inherited.
+   Codex's `request_user_input` primitive, **one** question — header
+   `Merge gate` — offering exactly `Approve merge` / `Not yet`. This
+   approval is **fresh for every PR**, never inherited.
 
 9. **Merge** — on approval, call `orch run merge`:
 
