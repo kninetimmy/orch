@@ -6,6 +6,7 @@ import (
 
 	"github.com/kninetimmy/orch/internal/ghops"
 	"github.com/kninetimmy/orch/internal/manifest"
+	"github.com/kninetimmy/orch/internal/metrics"
 	"github.com/kninetimmy/orch/internal/state"
 )
 
@@ -30,6 +31,9 @@ type ReviewRequest struct {
 	Verdict         string             `json:"verdict"`
 	Summary         string             `json:"summary"`
 	Reviewer        manifest.Selection `json:"reviewer"`
+	// Usage is adapter-reported model usage for this review cycle
+	// (PRD §21 "where available"); optional and best-effort.
+	Usage *metrics.Usage `json:"usage,omitempty"`
 }
 
 // ReviewResult reports the recorded review cycle.
@@ -61,6 +65,9 @@ func Review(ctx context.Context, env Env, reqJSON []byte) (*ReviewResult, error)
 	}
 	if req.Summary == "" {
 		return nil, fmt.Errorf("%w: review summary must not be empty (PRD §12.11: one consolidated report per cycle)", ErrBadRequest)
+	}
+	if err := req.Usage.Validate(); err != nil {
+		return nil, fmt.Errorf("%w: %v", ErrBadRequest, err)
 	}
 
 	c, err := loadVerb(env, req.IssueNumber, []state.Phase{state.PhasePROpen, state.PhaseInReview}, false)
@@ -115,6 +122,17 @@ func Review(ctx context.Context, env Env, reqJSON []byte) (*ReviewResult, error)
 		if err := gh.SetStatus(ctx, issue.Number, ghops.StatusInProgress); err != nil {
 			return nil, wrapAfterMutation(err)
 		}
+	}
+
+	if err := c.recordMetric(metrics.Event{
+		Verb:         "review",
+		IssueNumber:  issue.Number,
+		Verdict:      req.Verdict,
+		ReviewCycles: issue.ReviewCycles,
+		Reviewer:     &req.Reviewer,
+		Usage:        req.Usage,
+	}); err != nil {
+		return nil, err
 	}
 
 	return &ReviewResult{

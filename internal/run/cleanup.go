@@ -6,6 +6,7 @@ import (
 	"fmt"
 
 	"github.com/kninetimmy/orch/internal/gitops"
+	"github.com/kninetimmy/orch/internal/metrics"
 	"github.com/kninetimmy/orch/internal/state"
 )
 
@@ -91,6 +92,13 @@ func Cleanup(ctx context.Context, env Env, reqJSON []byte) (*CleanupResult, erro
 	issue.Phase = state.PhaseCleaned
 	if err := c.save(); err != nil {
 		return nil, wrapAfterMutation(err)
+	}
+
+	if err := c.recordMetric(metrics.Event{
+		Verb:        "cleanup",
+		IssueNumber: issue.Number,
+	}); err != nil {
+		return nil, err
 	}
 
 	return &CleanupResult{

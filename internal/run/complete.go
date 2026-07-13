@@ -5,6 +5,7 @@ import (
 	"fmt"
 
 	"github.com/kninetimmy/orch/internal/gitops"
+	"github.com/kninetimmy/orch/internal/metrics"
 	"github.com/kninetimmy/orch/internal/state"
 )
 
@@ -87,6 +88,14 @@ func Complete(ctx context.Context, env Env, reqJSON []byte) (*CompleteResult, er
 
 	if err := state.CompleteDelivery(env.RepoRoot); err != nil {
 		return nil, wrapAfterMutation(err)
+	}
+
+	if err := c.recordMetric(metrics.Event{
+		Verb:      "complete",
+		Merged:    merged,
+		Abandoned: abandoned,
+	}); err != nil {
+		return nil, err
 	}
 
 	return &CompleteResult{

@@ -6,6 +6,7 @@ import (
 
 	"github.com/kninetimmy/orch/internal/ghops"
 	"github.com/kninetimmy/orch/internal/manifest"
+	"github.com/kninetimmy/orch/internal/metrics"
 	"github.com/kninetimmy/orch/internal/routing"
 	"github.com/kninetimmy/orch/internal/state"
 )
@@ -131,6 +132,18 @@ func escalateReroute(ctx context.Context, env Env, c *verbCtx, gh *ghops.GH, out
 
 	executor := outcome.Decision.Executor
 	reviewer := outcome.Decision.Reviewer
+
+	if err := c.recordMetric(metrics.Event{
+		Verb:         "escalate",
+		IssueNumber:  issue.Number,
+		EscalateKind: string(routing.OutcomeReroute),
+		Executor:     &executor,
+		Reviewer:     &reviewer,
+		Reason:       outcome.Reason,
+	}); err != nil {
+		return nil, err
+	}
+
 	return &EscalateResult{
 		SchemaVersion: EscalateSchemaVersion,
 		IssueNumber:   issue.Number,
@@ -155,6 +168,16 @@ func escalateReturnToArchitect(ctx context.Context, c *verbCtx, gh *ghops.GH, ou
 	if err := gh.SetStatus(ctx, issue.Number, ghops.StatusNeedsHuman); err != nil {
 		return nil, wrapAfterMutation(err)
 	}
+
+	if err := c.recordMetric(metrics.Event{
+		Verb:         "escalate",
+		IssueNumber:  issue.Number,
+		EscalateKind: string(routing.OutcomeReturnToArchitect),
+		Reason:       outcome.Reason,
+	}); err != nil {
+		return nil, err
+	}
+
 	return &EscalateResult{
 		SchemaVersion: EscalateSchemaVersion,
 		IssueNumber:   issue.Number,

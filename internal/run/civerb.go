@@ -7,6 +7,7 @@ import (
 
 	"github.com/kninetimmy/orch/internal/ghops"
 	"github.com/kninetimmy/orch/internal/manifest"
+	"github.com/kninetimmy/orch/internal/metrics"
 	"github.com/kninetimmy/orch/internal/state"
 )
 
@@ -82,6 +83,14 @@ func CI(ctx context.Context, env Env, reqJSON []byte) (*CIResult, error) {
 		return nil, err
 	}
 	if err := writeManifest(ctx, gh, iss, pr, m); err != nil {
+		return nil, err
+	}
+
+	if err := c.recordMetric(metrics.Event{
+		Verb:        "ci",
+		IssueNumber: issue.Number,
+		CIState:     string(summary.State),
+	}); err != nil {
 		return nil, err
 	}
 

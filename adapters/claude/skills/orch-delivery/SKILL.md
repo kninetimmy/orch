@@ -164,11 +164,15 @@ in flight at once. For each issue:
 
    ```json
    {"schema_version": 1, "issue_number": N,
-    "verifications": [{"name": "...", "command": "...", "result": "...", "detail": "..."}]}
+    "verifications": [{"name": "...", "command": "...", "result": "...", "detail": "..."}],
+    "usage": {"input_tokens": 0, "output_tokens": 0, "cache_read_tokens": 0,
+               "cache_creation_tokens": 0, "duration_ms": 0}}
    ```
 
-   At least one verification is required. Result carries `pr_number`,
-   `pr_url`.
+   At least one verification is required. `usage` is optional (PRD
+   §21): supply only the fields the executor's Task result actually
+   reports (token totals and duration), never an estimate. Result
+   carries `pr_number`, `pr_url`.
 
 4. **Spawn the reviewer** — once the PR stops changing, spawn
    `orch-reviewer` **fresh** (a new instance, not the executor
@@ -183,9 +187,13 @@ in flight at once. For each issue:
    ```json
    {"schema_version": 1, "issue_number": N, "reviewed_head_oid": "...",
     "verdict": "approve|request-changes", "summary": "...",
-    "reviewer": {"model": "...", "effort": "..."}}
+    "reviewer": {"model": "...", "effort": "..."},
+    "usage": {"input_tokens": 0, "output_tokens": 0, "cache_read_tokens": 0,
+               "cache_creation_tokens": 0, "duration_ms": 0}}
    ```
 
+   `usage` is optional (PRD §21), same rule as PR-open: only report
+   what the reviewer subagent's Task result actually carries.
    `request-changes` loops the same executor in the **same worktree**,
    then repeats from PR-open. `approve` continues.
 

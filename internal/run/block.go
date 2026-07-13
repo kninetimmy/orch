@@ -5,6 +5,7 @@ import (
 	"fmt"
 
 	"github.com/kninetimmy/orch/internal/ghops"
+	"github.com/kninetimmy/orch/internal/metrics"
 	"github.com/kninetimmy/orch/internal/state"
 )
 
@@ -85,6 +86,15 @@ func Block(ctx context.Context, env Env, reqJSON []byte) (*BlockResult, error) {
 	}
 	if err := gh.SetStatus(ctx, issue.Number, ghops.StatusBlocked); err != nil {
 		return nil, wrapAfterMutation(err)
+	}
+
+	if err := c.recordMetric(metrics.Event{
+		Verb:        "block",
+		IssueNumber: issue.Number,
+		BlockClass:  req.Class,
+		RunStopped:  runStopped,
+	}); err != nil {
+		return nil, err
 	}
 
 	return &BlockResult{
