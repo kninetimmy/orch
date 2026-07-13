@@ -5,7 +5,8 @@ description: >-
   init --step`, `orch configure --step`, `orch configure-local --step`).
   Invoke this skill directly to run any of the three interviews.
   Presents each interview's Document one question at a time via Codex's
-  `ask` primitive and drives the loop to its terminal form.
+  `request_user_input` primitive and drives the loop to its terminal
+  form.
 ---
 
 # Orch Setup
@@ -36,14 +37,16 @@ its own. Never send a partial or incremental update.
 
 ### `kind: "questions"`
 
-`Document.questions` carries 1–4 independent `Question`s. Codex's `ask`
-primitive presents one question at a time, so iterate
-`Document.questions` **in order**, asking each with its own `ask` call
-before moving to the next — there is no batched multi-question call to
-fall back on here.
+`Document.questions` carries 1–4 independent `Question`s. Present them
+via Codex's `request_user_input` primitive: iterate
+`Document.questions` **in order**, asking each with its own
+`request_user_input` call before moving to the next. (If the primitive
+is unavailable in this session — it is gated off outside plan mode
+unless the `default_mode_request_user_input` feature is enabled — say
+so once, then fall back to asking the same questions as plain text.)
 
-For each question, use its `header` and `prompt` as the `ask` call's
-header/prompt, and list its `options[]` with each option's `label` for
+For each question, use its `header` and `prompt` as the
+`request_user_input` call's header/prompt, and list its `options[]` with each option's `label` for
 display and `description` for detail. There is no separate
 "recommended" UI affordance on this host either: if an option has
 `recommended: true`, say so in words in the description text. If the
@@ -54,9 +57,19 @@ When the human answers, record `answers[question.id] = option.value`
 — **the option's `value`, never its `label`**. The label is display
 text only; the value is what the core expects back.
 
-If a question has `kind: "text"`, or `free_text: true` on a `select`
-question, it never carries meaningful options for that path: fall back
-to a plain text prompt instead of an `ask` call with options — put the
+If a `select` question has `free_text: true`, it still carries real
+options — present them through `request_user_input` exactly as above,
+and append one extra option, label `Other — enter a custom value`, as
+the free-text path (`request_user_input` options are selection-only;
+this extra option stands in for the built-in "Other" entry Claude
+Code's question tool has). A listed option records its `value` as
+usual. Only if the human picks Other, ask a plain-text follow-up and
+record what they type verbatim as `answers[question.id]` — do not
+transform or re-validate it yourself; if the core rejects it, its
+re-ask message says why.
+
+If a question has `kind: "text"`, it carries no options at all: fall
+back to a plain text prompt — put the
 question's `prompt` (and `preamble`, if present) to the human as free
 text, and mention any `default` in words. Whatever the human types is
 recorded verbatim as `answers[question.id]` — do not transform or
