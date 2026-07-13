@@ -23,12 +23,37 @@ things:
 
 The full product definition lives in [ORCH-PRD.md](ORCH-PRD.md).
 
-**Status: pre-alpha.** The shared core (a single Go binary) is
-complete and tested; the host adapters that plug it into Claude Code
-and Codex are the current phase of work. Until an adapter lands you
-can install the binary, initialize a repository, and manage
-configuration — but the end-to-end orchestrated workflow is not yet
-drivable from an agent session.
+**Status: early software, but the workflow is real.** The shared Go
+core and both host adapters — Claude Code and Codex CLI — are
+complete, cross-host parity-tested against each other, and
+smoke-validated end to end (see each adapter's README for the honest
+"Known limitations" list). The project already dogfoods itself: `orch
+init` bootstrapped this repository's own `.orchestrator/config.toml`
+through the Claude Code adapter, and the first real Delivery run drove
+an issue through the full pipeline — plan gate, isolated worktree,
+independent review, CI, and a human-approved pinned merge — to land
+[PR #40](https://github.com/kninetimmy/orch/pull/40). It has not yet
+been exercised outside its own repository, so treat it as early: watch
+for rough edges, not as a mature, battle-tested tool.
+
+## Quickstart
+
+1. **Install the binary** — pick a path under [Install](#install)
+   below; the quick-install scripts and the manual download both
+   verify the binary's SHA-256 before anything runs.
+2. **Initialize the repository** — from the repo root, run `orch
+   init`. It detects your environment, interviews you about hosts and
+   models, and delivers `.orchestrator/config.toml` as a pull request
+   for you to review and merge (see [Using it](#using-it)).
+3. **Finish the host-specific setup** — install your host's plugin and
+   follow its install-order steps:
+   [Claude Code](adapters/claude/README.md#install-order) or
+   [Codex CLI](adapters/codex/README.md#install-order).
+4. **Run your first Delivery** — plan a task with your agent in Assist
+   mode; once you approve the plan, Orch opens an issue and worktree
+   per task and walks each one through
+   [the Delivery pipeline](#the-delivery-pipeline) up to the human
+   merge gate on GitHub.
 
 ## How it works, in short
 
@@ -191,6 +216,7 @@ and merge, not as a silent write to your working tree.
 Day-to-day commands:
 
 ```text
+orch init             Interview and bootstrap this repository
 orch status           Show mode and configuration summary
 orch doctor           Check environment and configuration health
 orch configure        Change committed settings (delivered as a PR)
@@ -198,10 +224,11 @@ orch configure-local  Change machine-local overrides (applied directly)
 orch resume           Reconcile an interrupted Delivery run and continue
 orch abort            Stop a Delivery run and return to Assist
 orch metrics          Local usage metrics
+orch render-agents    Render the five Codex agent TOMLs from config into .codex/agents/
 ```
 
-`orch run` and `orch guard` also exist but are plumbing — the host
-adapters drive them; you never call them by hand.
+`orch run`, `orch guard`, and `orch hook` also exist but are plumbing —
+the host adapters drive them; you never call them by hand.
 
 ## Settings — what you can tune
 
@@ -248,6 +275,35 @@ machine, or enable local metrics while experimenting. Every applied
 override is listed by `orch status` and `orch doctor`, so the exact
 models in effect are always visible.
 
+## Memhub integration
+
+memhub is an external, optional, local-first per-repo project-memory
+CLI. Orch integrates with it when it's present but neither requires it
+nor ships it: leave `memhub.mode` at `off` and Orch never looks for
+it.
+
+`memhub.mode` (committed, in `config.toml`) has three values:
+
+- **`off`** — memhub is skipped entirely: no probes, no doctor checks.
+- **`best-effort`** — memhub's health and recall are probed and
+  reported, but a failure never blocks anything.
+- **`required`** — Delivery planning fails closed if either check
+  fails: the plan gate refuses to activate a run.
+
+Both the Delivery plan gate and `orch doctor` run the same two-step
+check: first a `memhub status` health probe, then — only once that
+succeeds — a `memhub recall` call against a fixed canary query, so a
+wedged retrieval path that still exits 0 is caught, not just a dead
+process. `orch doctor` is mode-aware: `off` prints a skip note,
+`best-effort` reports the result as a note without failing the check,
+and `required` fails the check outright if either probe fails.
+
+By discipline, only the Architect role initiates memhub writes (facts,
+decisions, renders, reindexing) — Scouts and executors may only read —
+and every memhub command always runs with the primary checkout as its
+working directory, never inside a per-issue worktree, since worktrees
+never receive a copied memhub database.
+
 ---
 
 ## Under the hood
@@ -280,23 +336,30 @@ A run starts at the **plan gate**: a schema-versioned plan document
 (issues, dependency waves, risk facts) is validated fail-closed, and a
 gate document derives each issue's executor and reviewer from facts
 alone via the routing table — the model never picks its own reviewer.
-Activation then creates the GitHub label taxonomy, one issue per task
-carrying a structured **audit record** (rendered markdown plus
-canonical JSON in a managed body region — exact model, effort, and
-routing rationale, mirrored onto the PR), and one branch + isolated
-worktree per issue under `.orchestrator/worktrees/`.
+The gate also runs the memhub health/recall check described above,
+gated by `memhub.mode`. Activation then creates the GitHub label
+taxonomy, one issue per task carrying a structured **audit record**
+(rendered markdown plus canonical JSON in a managed body region —
+exact model, effort, and routing rationale, mirrored onto the PR), and
+one branch + isolated worktree per issue under
+`.orchestrator/worktrees/`.
 
 Each issue then walks a closed lifecycle driven by plumbing verbs:
 `dispatch` (dependencies must be merged; branch fast-forwarded onto
 the default branch) → `pr-open` (clean, strictly-ahead, orphan-PR
 guarded) → `review` (routed reviewer verified against the live PR
-head) → `ci` → `merge-report` (pins the approved head SHA) → `merge`
-(human-approved, re-checked against the live PR, pinned with
-`--match-head-commit`) → `cleanup` → `complete` (fast-forward the
-primary checkout, auto-return to Assist). Failures route through
-`escalate` (the routing ladder), `block` (closed failure classes; a
-secret found stops the whole run), or `abandon`. Errors never mutate
-state; state advances only on success.
+head) → `ci` (reads required checks as one of four honest states —
+`passing`, `failing`, `pending`, or the explicit `no-checks`, which is
+never conflated with passing) → `merge-report` (pins the approved head
+SHA; carries a `no_ci_statement` in its report whenever `no-checks` is
+what's gating the merge, so "nothing gates this" is always said
+outright, never implied) → `merge` (human-approved, re-checked against
+the live PR, pinned with `--match-head-commit`, and setting the
+issue's terminal `delivered` status label) → `cleanup` → `complete`
+(fast-forward the primary checkout, auto-return to Assist). Failures
+route through `escalate` (the routing ladder), `block` (closed failure
+classes; a secret found stops the whole run), or `abandon`. Errors
+never mutate state; state advances only on success.
 
 `orch resume` reconciles an interrupted run against GitHub reality in
 three strict stages — observe (all reads up front), classify (a pure
@@ -321,23 +384,27 @@ strength on its own.
 | Path | Purpose |
 |---|---|
 | `cmd/orch/` | CLI entry point |
-| `internal/cli/` | Command dispatch: human commands plus the `run`/`guard` plumbing verbs |
+| `internal/cli/` | Command dispatch: human commands plus the `run`/`guard`/`hook` plumbing verbs |
 | `internal/config/` | Committed-config schema, fail-closed validation, local-override overlay, canonical TOML writer |
 | `internal/state/` | Assist/Delivery mode and per-issue run state (schema-versioned JSON, atomic writes) |
 | `internal/lockfile/` | Exclusive cross-host Delivery lock |
 | `internal/paths/` | Safe-path primitives: canonical paths, containment, repo-root discovery |
-| `internal/execx/` | Injectable external-command runner shared by the git/gh callers (+ scripted test fake) |
+| `internal/execx/` | Injectable external-command runner shared by the git/gh/memhub callers (+ scripted test fake) |
 | `internal/gitops/` | Delivery git mechanics: branches, worktrees, push, fast-forward — policy-free |
 | `internal/ghops/` | GitHub mechanics via the `gh` CLI: labels, issues, PRs, gated merge, CI state |
 | `internal/manifest/` | The issue/PR audit record — lossless render/parse over a managed body region |
+| `internal/memhub/` | Read-only client for the external memhub CLI: health probe and fixed-canary recall check |
+| `internal/metrics/` | Local, opt-in per-run JSON metrics recorder (schema-versioned, never transmitted) |
 | `internal/routing/` | Pure role routing and the escalation ladder |
 | `internal/guard/` | Mechanical pre-write enforcement behind host PreToolUse hooks |
 | `internal/run/` | The Delivery run engine: plan gate, activation, per-issue lifecycle, resume |
+| `internal/agents/` | Renders the five Codex agent TOMLs `orch render-agents` writes, substituting model/effort onto the canonical embedded bodies |
 | `internal/instructions/` | Managed instruction-block engine for AGENTS.md/CLAUDE.md |
 | `internal/question/` | Host-neutral native question contract (documents out, answer sets back) |
 | `internal/interview/` | Pure question engines for `init`, `configure`, and `configure-local` |
 | `internal/bootstrap/` | Mechanical PR-flow executors behind `init --bootstrap` and `configure --deliver` |
-| `adapters/claude/`, `adapters/codex/` | Host-adapter artifacts (skills, hooks, templates) — in progress |
+| `internal/adaptertest/` | Shared cross-host parity-test layer consumed by both adapters' plugin tests |
+| `adapters/claude/`, `adapters/codex/` | Host-adapter artifacts (skills, hooks, templates) — shipped, cross-host parity-tested |
 | `ORCH-PRD.md` | Product requirements — source of truth for v1 |
 
 ### Design principles
