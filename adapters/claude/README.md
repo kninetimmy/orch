@@ -77,8 +77,10 @@ claude plugin install orch-claude@orch
 ```
 
 The manifest at the repository root (`.claude-plugin/marketplace.json`)
-lists both hosts' adapters; Claude Code filters the Codex entry
-automatically, so only `orch-claude` appears in its plugin list.
+lists both hosts' adapters — install this host's by its exact name,
+`orch-claude`. The Codex entry (`orch`, source `adapters/codex`) may
+also appear in listings; it bundles Codex-format components and is not
+this adapter.
 
 This ordering matters mechanically, not just procedurally. Both hooks
 above are bare commands (`orch guard claude`, `orch hook claude
