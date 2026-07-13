@@ -15,6 +15,8 @@ import (
 )
 
 func runDoctor(env Env) error {
+	fmt.Fprintf(env.Stdout, "note  orch version: %s\n", Version)
+
 	failed := false
 	check := func(name string, err error) {
 		if err != nil {

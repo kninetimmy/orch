@@ -11,6 +11,8 @@ import (
 )
 
 func runStatus(env Env) error {
+	fmt.Fprintf(env.Stdout, "orch:   %s\n", Version)
+
 	cfg, err := config.Load(env.RepoRoot)
 	if err != nil {
 		return err
