@@ -104,7 +104,11 @@ decision, not an oversight).
    Codex plugins cannot bundle agent definitions, so this copy is a
    separate manual step every install of this adapter needs, not
    something the plugin installs for you — the marketplace install in
-   step 2 does not remove it.
+   step 2 does not remove it. `orch render-agents` (PRD §22) is the
+   mechanical alternative to a manual copy: it renders the same five
+   files, with `model`/`model_reasoning_effort` substituted from the
+   repository's own `hosts.codex.roles`, into the project's
+   `.codex/agents/` directly.
 5. Enable the `request_user_input` question primitive — verified on
    codex-cli 0.144.1, both of these in `~/.codex/config.toml`:
 
@@ -156,12 +160,12 @@ bugs:
   `orch-reviewer-safe` exists specifically so the §10 safe-downgrade row
   has a real installed TOML to dispatch, instead of dead-ending at that
   same stop-and-tell-human rule on every routine downgrade.
-- **A configured non-default model requires hand-editing the installed
-  TOMLs.** There is no `orch` verb today that renders an agent TOML from
-  `config.toml`'s routing configuration; a repository that overrides the
-  §10 defaults has to hand-edit the five files under `.codex/agents/` to
-  match. A future verb that renders TOMLs from config is a plausible
-  follow-up, out of scope for this adapter.
+- **A configured non-default model is applied by `orch render-agents`,
+  not automatically.** A repository that overrides the §10 defaults
+  must run `orch render-agents` (PRD §22) itself — install and upgrade
+  do not run it for you — to re-render the five files under
+  `.codex/agents/` from the current `hosts.codex.roles` before the
+  override takes effect for dispatched agents.
 - **An unrecognized future `apply_patch` envelope directive denies,
   fail-closed.** `internal/guard`'s envelope parser treats any `*** `
   directive line it does not already recognize as a malformed envelope
