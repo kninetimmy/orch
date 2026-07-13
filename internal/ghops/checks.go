@@ -73,6 +73,11 @@ func (g *GH) RequiredCI(ctx context.Context, number int) (CISummary, error) {
 		// the human-output mode; with --json, gh 2.87.3 exits 0 in
 		// every state (verified live, fact 17). All three are accepted
 		// so the state derivation below owns the signal either way.
+		// When the repo has checks but branch protection marks none of
+		// them required, gh 2.87.3 exits 0 with empty stdout (not `[]`)
+		// and the stderr notice "no required checks reported on the
+		// '<branch>' branch" (verified live, dogfooded run #1). Treat
+		// that as zero required checks rather than a parse failure.
 	default:
 		return CISummary{}, fmt.Errorf("gh pr checks in %s exited %d: %s", g.root, res.ExitCode, strings.TrimSpace(res.Stderr))
 	}
@@ -82,8 +87,10 @@ func (g *GH) RequiredCI(ctx context.Context, number int) (CISummary, error) {
 		Bucket string `json:"bucket"`
 		Link   string `json:"link"`
 	}
-	if err := json.Unmarshal([]byte(res.Stdout), &decoded); err != nil {
-		return CISummary{}, fmt.Errorf("gh pr checks in %s returned unparsable JSON: %w", g.root, err)
+	if trimmed := strings.TrimSpace(res.Stdout); trimmed != "" {
+		if err := json.Unmarshal([]byte(trimmed), &decoded); err != nil {
+			return CISummary{}, fmt.Errorf("gh pr checks in %s returned unparsable JSON: %w", g.root, err)
+		}
 	}
 	required := make([]Check, len(decoded))
 	for i, c := range decoded {
