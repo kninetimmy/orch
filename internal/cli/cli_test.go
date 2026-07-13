@@ -95,6 +95,13 @@ type fakeRunner struct {
 	memhubStatusStderr string
 	memhubRecallExit   int
 	memhubRecallStderr string
+	// releaseTag, releaseExit, and releaseStderr script the release
+	// check's `gh api .../releases/latest` call (zero releaseExit with
+	// an empty releaseTag reports "v0.0.0-test", a harmless default
+	// only reachable by tests that stamp Version).
+	releaseTag    string
+	releaseExit   int
+	releaseStderr string
 }
 
 func (f fakeRunner) Run(_ context.Context, c execx.Cmd) (execx.Result, error) {
@@ -120,6 +127,15 @@ func (f fakeRunner) Run(_ context.Context, c execx.Cmd) (execx.Result, error) {
 				j = `{"nameWithOwner":"o/r","defaultBranchRef":{"name":"main"},"url":"https://github.com/o/r"}`
 			}
 			return execx.Result{Stdout: j}, nil
+		case "api":
+			if f.releaseExit != 0 {
+				return execx.Result{Stderr: f.releaseStderr, ExitCode: f.releaseExit}, nil
+			}
+			tag := f.releaseTag
+			if tag == "" {
+				tag = "v0.0.0-test"
+			}
+			return execx.Result{Stdout: tag + "\n"}, nil
 		}
 	case "memhub":
 		switch c.Args[0] {

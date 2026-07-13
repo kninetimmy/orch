@@ -56,6 +56,22 @@ func runDoctor(env Env) error {
 			default:
 				fmt.Fprintf(env.Stdout, "ok    gh repository: %s\n", repo.NameWithOwner)
 			}
+
+			// Best-effort per task 39: a broken network, missing
+			// release, or malformed response degrades to a note and
+			// never fails doctor. Skipped entirely on unstamped "dev"
+			// builds, which have nothing meaningful to compare.
+			if Version != "dev" {
+				latest, relErr := ghops.LatestRelease(context.Background(), env.Runner, env.RepoRoot)
+				switch {
+				case relErr != nil:
+					fmt.Fprintf(env.Stdout, "note  release check: %v\n", relErr)
+				case latest != Version:
+					fmt.Fprintf(env.Stdout, "note  newer release available: installed %s, latest %s; re-run the installer to update\n", Version, latest)
+				default:
+					fmt.Fprintf(env.Stdout, "ok    release: up to date (%s)\n", Version)
+				}
+			}
 		}
 	}
 

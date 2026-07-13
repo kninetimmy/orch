@@ -287,6 +287,73 @@ func exitedPID(t *testing.T) int {
 	return pid
 }
 
+func TestDoctorReleaseCheckSkippedOnDevVersion(t *testing.T) {
+	env, stdout, _ := testEnv(t)
+	writeConfig(t, env.RepoRoot, validTOML)
+	// Version defaults to "dev" (no test in this package stamps it
+	// beforehand), so the release check must not run at all.
+	if code := Run([]string{"doctor"}, env); code != ExitOK {
+		t.Fatalf("exit = %d, want %d\n%s", code, ExitOK, stdout.String())
+	}
+	out := stdout.String()
+	if strings.Contains(out, "release") {
+		t.Errorf("release check ran on a dev build:\n%s", out)
+	}
+}
+
+func TestDoctorReleaseCheckUpToDate(t *testing.T) {
+	old := Version
+	Version = "v1.2.3"
+	t.Cleanup(func() { Version = old })
+
+	env, stdout, _ := testEnv(t)
+	writeConfig(t, env.RepoRoot, validTOML)
+	env.Runner = fakeRunner{toplevel: env.RepoRoot, releaseTag: "v1.2.3"}
+	if code := Run([]string{"doctor"}, env); code != ExitOK {
+		t.Fatalf("exit = %d, want %d\n%s", code, ExitOK, stdout.String())
+	}
+	if !strings.Contains(stdout.String(), "ok    release: up to date (v1.2.3)") {
+		t.Errorf("stdout missing up-to-date release note:\n%s", stdout.String())
+	}
+}
+
+func TestDoctorReleaseCheckNewerAvailable(t *testing.T) {
+	old := Version
+	Version = "v1.2.3"
+	t.Cleanup(func() { Version = old })
+
+	env, stdout, _ := testEnv(t)
+	writeConfig(t, env.RepoRoot, validTOML)
+	env.Runner = fakeRunner{toplevel: env.RepoRoot, releaseTag: "v1.3.0"}
+	if code := Run([]string{"doctor"}, env); code != ExitOK {
+		t.Fatalf("exit = %d, want %d\n%s", code, ExitOK, stdout.String())
+	}
+	out := stdout.String()
+	if !strings.Contains(out, "note  newer release available: installed v1.2.3, latest v1.3.0; re-run the installer to update") {
+		t.Errorf("stdout missing newer-release note:\n%s", out)
+	}
+}
+
+func TestDoctorReleaseCheckQueryFailureDegradesToNote(t *testing.T) {
+	old := Version
+	Version = "v1.2.3"
+	t.Cleanup(func() { Version = old })
+
+	env, stdout, _ := testEnv(t)
+	writeConfig(t, env.RepoRoot, validTOML)
+	env.Runner = fakeRunner{toplevel: env.RepoRoot, releaseExit: 1, releaseStderr: "HTTP 500: internal error"}
+	if code := Run([]string{"doctor"}, env); code != ExitOK {
+		t.Fatalf("exit = %d, want %d (release check must never fail doctor)\n%s", code, ExitOK, stdout.String())
+	}
+	out := stdout.String()
+	if !strings.Contains(out, "note  release check:") {
+		t.Errorf("stdout missing release-failure note:\n%s", out)
+	}
+	if strings.Contains(out, "FAIL") {
+		t.Errorf("release query failure produced a FAIL line:\n%s", out)
+	}
+}
+
 func TestDoctorNotesLocalOverride(t *testing.T) {
 	env, stdout, _ := testEnv(t)
 	writeConfig(t, env.RepoRoot, validTOML)
