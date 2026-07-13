@@ -112,6 +112,65 @@ func TestRequiredCINoneRequired(t *testing.T) {
 	}
 }
 
+// TestRequiredCINoRequiredChecksDiscoveryEmptyStdout pins the gh 2.87.3
+// shape discovered live in this repo's first dogfooded Delivery run:
+// a repo with CI checks but none marked required by branch protection
+// makes `pr checks --required` exit 0 with empty stdout (not `[]`)
+// and the stderr notice below, rather than the `[]` this package's
+// other no-required-checks test scripts.
+func TestRequiredCINoRequiredChecksDiscoveryEmptyStdout(t *testing.T) {
+	root := tempRoot(t)
+	call := checksCall(root, "", 0)
+	call.Stderr = "no required checks reported on the 'main' branch"
+	g, script := openScripted(t, root,
+		rollupCall(root, `{"statusCheckRollup":[{},{}]}`),
+		call,
+	)
+	sum, err := g.RequiredCI(context.Background(), 43)
+	if err != nil {
+		t.Fatalf("RequiredCI: %v", err)
+	}
+	script.AssertExhausted()
+	if sum.State != CINoChecks || sum.Total != 2 || len(sum.Required) != 0 {
+		t.Errorf("sum = %+v, want no-checks with Total 2 and no required checks", sum)
+	}
+}
+
+// TestRequiredCIWhitespaceOnlyStdout confirms whitespace-only stdout
+// (e.g. a stray newline) is treated the same as truly empty stdout,
+// not as malformed JSON.
+func TestRequiredCIWhitespaceOnlyStdout(t *testing.T) {
+	root := tempRoot(t)
+	g, script := openScripted(t, root,
+		rollupCall(root, `{"statusCheckRollup":[{},{}]}`),
+		checksCall(root, "\n  \t\n", 0),
+	)
+	sum, err := g.RequiredCI(context.Background(), 43)
+	if err != nil {
+		t.Fatalf("RequiredCI: %v", err)
+	}
+	script.AssertExhausted()
+	if sum.State != CINoChecks || sum.Total != 2 || len(sum.Required) != 0 {
+		t.Errorf("sum = %+v, want no-checks with Total 2 and no required checks", sum)
+	}
+}
+
+// TestRequiredCIMalformedStdout confirms non-empty stdout that isn't
+// valid JSON still fails closed rather than being silently treated as
+// no required checks.
+func TestRequiredCIMalformedStdout(t *testing.T) {
+	root := tempRoot(t)
+	g, script := openScripted(t, root,
+		rollupCall(root, `{"statusCheckRollup":[{}]}`),
+		checksCall(root, "not json", 0),
+	)
+	_, err := g.RequiredCI(context.Background(), 43)
+	script.AssertExhausted()
+	if err == nil || !strings.Contains(err.Error(), "returned unparsable JSON") {
+		t.Fatalf("err = %v, want unparsable JSON error", err)
+	}
+}
+
 func TestRequiredCIUnexpectedExit(t *testing.T) {
 	root := tempRoot(t)
 	g, script := openScripted(t, root,
