@@ -89,8 +89,11 @@ decision, not an oversight).
    ```
 
    The manifest at the repository root
-   (`.claude-plugin/marketplace.json`) serves both hosts — Codex CLI
-   reads the same file and filters the Claude entry automatically.
+   (`.claude-plugin/marketplace.json`) serves both hosts — install this
+   host's entry by its exact name, `orch`. The Claude entry
+   (`orch-claude`, source `adapters/claude`) also shows up in
+   `codex plugin list` as installable (verified on codex-cli 0.144.1);
+   it bundles Claude-format components and is not this adapter.
 3. **Approve the plugin-bundled hooks' one-time trust prompt.** Codex
    CLI requires the user to review and trust plugin-bundled hooks before
    they run at all. Until that approval happens, `orch guard codex` and
