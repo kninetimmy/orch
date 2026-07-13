@@ -8,6 +8,7 @@ import (
 	"github.com/kninetimmy/orch/internal/ghops"
 	"github.com/kninetimmy/orch/internal/gitops"
 	"github.com/kninetimmy/orch/internal/manifest"
+	"github.com/kninetimmy/orch/internal/metrics"
 	"github.com/kninetimmy/orch/internal/state"
 )
 
@@ -88,6 +89,18 @@ func Dispatch(ctx context.Context, env Env, reqJSON []byte) (*DispatchResult, er
 
 	issue.Phase = state.PhaseDispatched
 	if err := c.save(); err != nil {
+		return nil, err
+	}
+
+	if err := c.recordMetric(metrics.Event{
+		Verb:               "dispatch",
+		IssueNumber:        issue.Number,
+		Role:               string(issue.Decision.Role),
+		Executor:           &issue.Decision.Executor,
+		Reviewer:           &issue.Decision.Reviewer,
+		ReviewerDowngraded: issue.Decision.ReviewerDowngraded,
+		Rationale:          issue.Decision.Rationale,
+	}); err != nil {
 		return nil, err
 	}
 

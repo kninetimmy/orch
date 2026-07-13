@@ -7,6 +7,7 @@ import (
 
 	"github.com/kninetimmy/orch/internal/ghops"
 	"github.com/kninetimmy/orch/internal/manifest"
+	"github.com/kninetimmy/orch/internal/metrics"
 	"github.com/kninetimmy/orch/internal/state"
 )
 
@@ -145,6 +146,13 @@ func Merge(ctx context.Context, env Env, reqJSON []byte) (*MergeResult, error) {
 	issue.Phase = state.PhaseMerged
 	if err := c.save(); err != nil {
 		return nil, wrapAfterMutation(err)
+	}
+
+	if err := c.recordMetric(metrics.Event{
+		Verb:        "merge",
+		IssueNumber: issue.Number,
+	}); err != nil {
+		return nil, err
 	}
 
 	return &MergeResult{

@@ -5,6 +5,7 @@ import (
 	"fmt"
 
 	"github.com/kninetimmy/orch/internal/ghops"
+	"github.com/kninetimmy/orch/internal/metrics"
 	"github.com/kninetimmy/orch/internal/state"
 )
 
@@ -90,6 +91,13 @@ func MergeReport(ctx context.Context, env Env, reqJSON []byte) (*MergeReportResu
 	}
 	if err := gh.SetStatus(ctx, issue.Number, ghops.StatusNeedsHuman); err != nil {
 		return nil, wrapAfterMutation(err)
+	}
+
+	if err := c.recordMetric(metrics.Event{
+		Verb:        "merge-report",
+		IssueNumber: issue.Number,
+	}); err != nil {
+		return nil, err
 	}
 
 	result := &MergeReportResult{
