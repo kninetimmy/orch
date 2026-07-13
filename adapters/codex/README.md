@@ -81,7 +81,16 @@ decision, not an oversight).
    plugin shells out to it with a bare command; if it is not resolvable,
    both hooks fail (see Known limitations).
 2. Install this plugin (`.codex-plugin/plugin.json`, its bundled
-   `hooks/` and `skills/`).
+   `hooks/` and `skills/`) from the repository's marketplace manifest:
+
+   ```sh
+   codex plugin marketplace add kninetimmy/orch
+   codex plugin add orch@orch
+   ```
+
+   The manifest at the repository root
+   (`.claude-plugin/marketplace.json`) serves both hosts — Codex CLI
+   reads the same file and filters the Claude entry automatically.
 3. **Approve the plugin-bundled hooks' one-time trust prompt.** Codex
    CLI requires the user to review and trust plugin-bundled hooks before
    they run at all. Until that approval happens, `orch guard codex` and
@@ -91,7 +100,8 @@ decision, not an oversight).
    `.codex/agents/` (or `~/.codex/agents/` for a user-global install).
    Codex plugins cannot bundle agent definitions, so this copy is a
    separate manual step every install of this adapter needs, not
-   something the plugin installs for you.
+   something the plugin installs for you — the marketplace install in
+   step 2 does not remove it.
 5. Enable the `request_user_input` question primitive — verified on
    codex-cli 0.144.1, both of these in `~/.codex/config.toml`:
 
