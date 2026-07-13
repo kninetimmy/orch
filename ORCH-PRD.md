@@ -504,6 +504,7 @@ orch configure-local
 orch resume
 orch abort
 orch metrics
+orch render-agents
 ```
 
 There is no manual Delivery command. Plan approval activates Delivery, and completion returns to
