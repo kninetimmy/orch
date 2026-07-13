@@ -88,6 +88,13 @@ type fakeRunner struct {
 	// checkIgnoreExit scripts `git check-ignore`: 0 ignored, 1 not
 	// ignored, anything else an error (the guard ignore probe).
 	checkIgnoreExit int
+	// memhubStatusExit/memhubRecallExit script the memhub doctor check
+	// (zero values report healthy; recall answers with valid empty-
+	// results JSON by default).
+	memhubStatusExit   int
+	memhubStatusStderr string
+	memhubRecallExit   int
+	memhubRecallStderr string
 }
 
 func (f fakeRunner) Run(_ context.Context, c execx.Cmd) (execx.Result, error) {
@@ -113,6 +120,16 @@ func (f fakeRunner) Run(_ context.Context, c execx.Cmd) (execx.Result, error) {
 				j = `{"nameWithOwner":"o/r","defaultBranchRef":{"name":"main"},"url":"https://github.com/o/r"}`
 			}
 			return execx.Result{Stdout: j}, nil
+		}
+	case "memhub":
+		switch c.Args[0] {
+		case "status":
+			return execx.Result{Stderr: f.memhubStatusStderr, ExitCode: f.memhubStatusExit}, nil
+		case "recall":
+			if f.memhubRecallExit != 0 {
+				return execx.Result{Stderr: f.memhubRecallStderr, ExitCode: f.memhubRecallExit}, nil
+			}
+			return execx.Result{Stdout: `{"results":[]}`}, nil
 		}
 	}
 	return execx.Result{}, fmt.Errorf("fakeRunner: unexpected command %s %v", c.Name, c.Args)

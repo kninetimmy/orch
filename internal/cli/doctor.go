@@ -11,6 +11,7 @@ import (
 	"github.com/kninetimmy/orch/internal/ghops"
 	"github.com/kninetimmy/orch/internal/gitops"
 	"github.com/kninetimmy/orch/internal/lockfile"
+	"github.com/kninetimmy/orch/internal/memhub"
 	"github.com/kninetimmy/orch/internal/state"
 )
 
@@ -66,6 +67,30 @@ func runDoctor(env Env) error {
 			fmt.Fprintf(env.Stdout, "note  %s applied; overrides: %s\n", config.LocalOverridePath, strings.Join(cfg.Overrides, ", "))
 		} else {
 			fmt.Fprintf(env.Stdout, "note  %s present; no overrides set\n", config.LocalOverridePath)
+		}
+	}
+
+	if cfgErr == nil {
+		switch cfg.Memhub.Mode {
+		case "off":
+			fmt.Fprintf(env.Stdout, "note  memhub: skipped (mode off)\n")
+		default:
+			mh := memhub.New(env.Runner, env.RepoRoot)
+			mhErr := mh.Probe(context.Background())
+			if mhErr == nil {
+				// Health succeeded; only now does recall run, mirroring
+				// the plan/activate gate's skip-recall-on-health-failure
+				// rule (PRD §20): recall against a memhub whose status
+				// already failed tells us nothing new.
+				mhErr = mh.Recall(context.Background())
+			}
+			if cfg.Memhub.Mode == "required" {
+				check("memhub", mhErr)
+			} else if mhErr != nil {
+				fmt.Fprintf(env.Stdout, "note  memhub: %v\n", mhErr)
+			} else {
+				fmt.Fprintf(env.Stdout, "ok    memhub\n")
+			}
 		}
 	}
 

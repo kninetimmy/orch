@@ -123,6 +123,75 @@ func TestDoctorMissingConfig(t *testing.T) {
 	}
 }
 
+func TestDoctorMemhubModeOffNeverProbes(t *testing.T) {
+	env, stdout, _ := testEnv(t)
+	writeConfig(t, env.RepoRoot, validTOML) // memhub mode = "off"
+	if code := Run([]string{"doctor"}, env); code != ExitOK {
+		t.Fatalf("exit = %d, want %d\n%s", code, ExitOK, stdout.String())
+	}
+	if !strings.Contains(stdout.String(), "note  memhub: skipped (mode off)") {
+		t.Errorf("stdout missing memhub skip note:\n%s", stdout.String())
+	}
+}
+
+func TestDoctorMemhubBestEffortHealthy(t *testing.T) {
+	env, stdout, _ := testEnv(t)
+	writeConfig(t, env.RepoRoot, strings.Replace(validTOML, `mode = "off"`, `mode = "best-effort"`, 1))
+	if code := Run([]string{"doctor"}, env); code != ExitOK {
+		t.Fatalf("exit = %d, want %d\n%s", code, ExitOK, stdout.String())
+	}
+	if !strings.Contains(stdout.String(), "ok    memhub") {
+		t.Errorf("stdout missing healthy memhub:\n%s", stdout.String())
+	}
+}
+
+func TestDoctorMemhubBestEffortUnhealthyNonFatal(t *testing.T) {
+	env, stdout, _ := testEnv(t)
+	writeConfig(t, env.RepoRoot, strings.Replace(validTOML, `mode = "off"`, `mode = "best-effort"`, 1))
+	env.Runner = fakeRunner{toplevel: env.RepoRoot, memhubStatusExit: 1, memhubStatusStderr: "down"}
+	if code := Run([]string{"doctor"}, env); code != ExitOK {
+		t.Fatalf("exit = %d, want %d (best-effort must never fail doctor)\n%s", code, ExitOK, stdout.String())
+	}
+	if !strings.Contains(stdout.String(), "note  memhub:") {
+		t.Errorf("stdout missing memhub note:\n%s", stdout.String())
+	}
+}
+
+func TestDoctorMemhubRequiredHealthy(t *testing.T) {
+	env, stdout, _ := testEnv(t)
+	writeConfig(t, env.RepoRoot, strings.Replace(validTOML, `mode = "off"`, `mode = "required"`, 1))
+	if code := Run([]string{"doctor"}, env); code != ExitOK {
+		t.Fatalf("exit = %d, want %d\n%s", code, ExitOK, stdout.String())
+	}
+	if !strings.Contains(stdout.String(), "ok    memhub") {
+		t.Errorf("stdout missing healthy memhub:\n%s", stdout.String())
+	}
+}
+
+func TestDoctorMemhubRequiredHealthFailureFailsDoctor(t *testing.T) {
+	env, stdout, _ := testEnv(t)
+	writeConfig(t, env.RepoRoot, strings.Replace(validTOML, `mode = "off"`, `mode = "required"`, 1))
+	env.Runner = fakeRunner{toplevel: env.RepoRoot, memhubStatusExit: 1, memhubStatusStderr: "unreachable"}
+	if code := Run([]string{"doctor"}, env); code != ExitError {
+		t.Errorf("exit = %d, want %d", code, ExitError)
+	}
+	if !strings.Contains(stdout.String(), "FAIL  memhub") {
+		t.Errorf("stdout missing memhub failure:\n%s", stdout.String())
+	}
+}
+
+func TestDoctorMemhubRequiredRecallFailureFailsDoctor(t *testing.T) {
+	env, stdout, _ := testEnv(t)
+	writeConfig(t, env.RepoRoot, strings.Replace(validTOML, `mode = "off"`, `mode = "required"`, 1))
+	env.Runner = fakeRunner{toplevel: env.RepoRoot, memhubRecallExit: 1, memhubRecallStderr: "wedged"}
+	if code := Run([]string{"doctor"}, env); code != ExitError {
+		t.Errorf("exit = %d, want %d", code, ExitError)
+	}
+	if !strings.Contains(stdout.String(), "FAIL  memhub") {
+		t.Errorf("stdout missing memhub failure:\n%s", stdout.String())
+	}
+}
+
 func TestDoctorConsistentDeliveryPasses(t *testing.T) {
 	env, stdout, _ := testEnv(t)
 	writeConfig(t, env.RepoRoot, validTOML)
