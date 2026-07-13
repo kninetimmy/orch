@@ -1,6 +1,6 @@
 {
   "name": "orch",
   "description": "Claude Code host adapter for the Orch development orchestrator. Thin adapter: all policy lives in the orch binary.",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "author": { "name": "kninetimmy" }
 }
