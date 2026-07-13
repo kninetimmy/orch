@@ -16,3 +16,4 @@ coverage.html
 # Orch machine-local state and lock (PRD §7, §14)
 .orchestrator/state.json
 .orchestrator/delivery.lock
+.orchestrator/worktrees/
