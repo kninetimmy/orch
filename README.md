@@ -61,6 +61,86 @@ escalating back to the Architect if everything else is exhausted.
 
 ## Install
 
+### Quick install (script)
+
+Both scripts download the release binary for your OS and architecture,
+verify its SHA-256 against the release's `SHA256SUMS` **before**
+installing, and fail closed on any mismatch.
+
+Linux / macOS — installs to `~/.local/bin` (override with
+`ORCH_INSTALL_DIR`); pin a version with `ORCH_VERSION=v0.1.0`:
+
+```sh
+curl -fsSLO https://raw.githubusercontent.com/kninetimmy/orch/main/install.sh
+# inspect it, then:
+sh install.sh
+```
+
+Windows (PowerShell) — installs to `%LOCALAPPDATA%\Programs\orch` and
+adds that directory to your user `PATH` (skip the PATH change with
+`-NoPathUpdate`; pin a version with `-Version v0.1.0`):
+
+```powershell
+iwr https://raw.githubusercontent.com/kninetimmy/orch/main/install.ps1 -OutFile install.ps1
+# inspect it, then:
+powershell -ExecutionPolicy Bypass -File .\install.ps1
+```
+
+### Plugin install (two commands per host)
+
+With the binary on `PATH`, each host installs its adapter straight from
+this repository's marketplace manifest:
+
+```sh
+# Claude Code
+claude plugin marketplace add kninetimmy/orch
+claude plugin install orch-claude@orch
+
+# Codex CLI
+codex plugin marketplace add kninetimmy/orch
+codex plugin add orch@orch
+```
+
+Then follow the host-specific steps in the adapter READMEs
+([Claude Code](adapters/claude/README.md#install-order),
+[Codex CLI](adapters/codex/README.md#install-order)) — Codex CLI
+additionally needs the one-time hook trust approval, the five agent
+TOMLs copied, and the `request_user_input` feature enabled.
+
+### Bootstrap with your agent
+
+Paste this into a Claude Code or Codex CLI session to have the agent
+run the install end to end:
+
+```text
+Install the Orch orchestrator from https://github.com/kninetimmy/orch:
+1. Detect my OS and run the matching install script from the repository
+   root (install.sh on Linux/macOS; install.ps1 on Windows — download
+   it, then run: powershell -ExecutionPolicy Bypass -File .\install.ps1).
+   The script verifies the binary's SHA-256 against the release's
+   SHA256SUMS. If that verification fails, STOP and report the failure —
+   never bypass it or install an unverified binary.
+2. Confirm `orch` resolves on PATH and `orch status` prints a release
+   version on its first line. On Windows a new terminal may be needed
+   for the PATH change — ask me instead of guessing.
+3. Install your host's adapter plugin:
+   - Claude Code: claude plugin marketplace add kninetimmy/orch
+     then: claude plugin install orch-claude@orch
+   - Codex CLI: codex plugin marketplace add kninetimmy/orch
+     then: codex plugin add orch@orch
+4. Codex CLI only: copy the five agent TOMLs (orch-scout,
+   orch-implementer, orch-specialist, orch-reviewer, orch-reviewer-safe)
+   from the plugin's agents/ directory into ./.codex/agents/ or
+   ~/.codex/agents/, add the two request_user_input stanzas from
+   adapters/codex/README.md to ~/.codex/config.toml, and tell me that
+   the plugin hook trust prompt is a one-time approval only I can
+   confirm — do not proceed as if hooks are active until I do.
+5. Run `orch doctor`, report what it says, and point me at `orch init`
+   for the repository I want orchestrated.
+```
+
+### Manual download
+
 Download the static binary for your OS and architecture from
 [GitHub Releases](https://github.com/kninetimmy/orch/releases)
 (`orch_<os>_<arch>`, Windows binaries end in `.exe`), then verify its
@@ -79,8 +159,9 @@ Rename it to `orch` (or `orch.exe`) and place it on your PATH.
 `orch status` and `orch doctor` print the binary's release version on
 their first line; adapters and docs pin a release version.
 
-Alternatively, build from source with Go 1.26+ (source builds report
-version `dev`):
+### Build from source
+
+Build with Go 1.26+ (source builds report version `dev`):
 
 ```sh
 git clone https://github.com/kninetimmy/orch.git

@@ -42,3 +42,25 @@ jobs:
       - uses: golangci/golangci-lint-action@v9
         with:
           version: v2.12.2
+
+  scripts:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v7
+      - name: Lint install.sh
+        if: runner.os == 'Linux'
+        run: |
+          sh -n install.sh
+          shellcheck --shell=sh install.sh
+      - name: Lint install.ps1
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          if (-not (Get-Module -ListAvailable PSScriptAnalyzer)) {
+            Install-Module PSScriptAnalyzer -Force -Scope CurrentUser
+          }
+          Invoke-ScriptAnalyzer -Path install.ps1 -Severity Error, Warning -EnableExit
