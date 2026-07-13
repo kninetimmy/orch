@@ -63,8 +63,9 @@ func TestDetectMemhubUnhealthy(t *testing.T) {
 	if facts.MemhubHealthy {
 		t.Error("MemhubHealthy = true, want false on a non-zero exit")
 	}
-	if facts.MemhubDetail != "db locked" {
-		t.Errorf("MemhubDetail = %q, want %q", facts.MemhubDetail, "db locked")
+	const wantDetail = "memhub status exited 1: db locked"
+	if facts.MemhubDetail != wantDetail {
+		t.Errorf("MemhubDetail = %q, want %q", facts.MemhubDetail, wantDetail)
 	}
 }
 

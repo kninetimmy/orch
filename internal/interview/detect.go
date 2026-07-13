@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	"github.com/kninetimmy/orch/internal/execx"
+	"github.com/kninetimmy/orch/internal/memhub"
 )
 
 // Deps carries Detect's injectable surface: LookPath and Runner are
@@ -52,10 +53,9 @@ type Facts struct {
 // Git is probed with a raw `git rev-parse --show-toplevel` through
 // Runner rather than gitops.Open, which asserts .orchestrator/ sits at
 // the git root and so cannot hold before initialization exists.
-// memhub is probed the same way internal/run's unexported execProber
-// does — `memhub status` with the repo root as an explicit working
-// directory (PRD §20) — duplicated here in miniature rather than
-// exported from internal/run, which stays a Delivery-only package.
+// memhub is probed through internal/memhub's Client, the shared PRD
+// §20 client that runs `memhub status` with the repo root as an
+// explicit working directory.
 func Detect(ctx context.Context, deps Deps) Facts {
 	var f Facts
 	f.ClaudeCLI = lookPathOK(deps.LookPath, "claude")
@@ -98,17 +98,12 @@ func detectGitRoot(ctx context.Context, deps Deps) (string, bool) {
 	return strings.TrimSpace(res.Stdout), true
 }
 
-// probeMemhub runs `memhub status` in deps.RepoRoot (PRD §20: the main
-// checkout as an explicit process working directory) and reports
-// whether it exited zero, plus a detail string for the failure case —
-// the spawn error's text, or trimmed stderr for a non-zero exit.
+// probeMemhub runs internal/memhub's Client.Probe against deps.RepoRoot
+// and reports whether it succeeded, plus a detail string for the
+// failure case — Probe's error text verbatim.
 func probeMemhub(ctx context.Context, deps Deps) (healthy bool, detail string) {
-	res, err := deps.Runner.Run(ctx, execx.Cmd{Name: "memhub", Args: []string{"status"}, Dir: deps.RepoRoot})
-	if err != nil {
+	if err := memhub.New(deps.Runner, deps.RepoRoot).Probe(ctx); err != nil {
 		return false, err.Error()
-	}
-	if res.ExitCode != 0 {
-		return false, strings.TrimSpace(res.Stderr)
 	}
 	return true, ""
 }
