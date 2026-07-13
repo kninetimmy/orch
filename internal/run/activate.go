@@ -13,6 +13,7 @@ import (
 	"github.com/kninetimmy/orch/internal/ghops"
 	"github.com/kninetimmy/orch/internal/gitops"
 	"github.com/kninetimmy/orch/internal/manifest"
+	"github.com/kninetimmy/orch/internal/memhub"
 	"github.com/kninetimmy/orch/internal/routing"
 	"github.com/kninetimmy/orch/internal/state"
 )
@@ -206,7 +207,7 @@ func Activate(ctx context.Context, env Env, reqJSON []byte) (*ActivationResult, 
 			return nil, fmt.Errorf("%w: %s; create them in the repository (gh label create <name>) or remove them from the plan, then resubmit for approval", ErrAreaLabelMissing, strings.Join(missing, ", "))
 		}
 	}
-	if _, err := memhubGate(ctx, cfg.Memhub.Mode, execProber{runner: env.Runner, dir: env.RepoRoot}); err != nil {
+	if _, err := memhubGate(ctx, cfg.Memhub.Mode, memhub.New(env.Runner, env.RepoRoot)); err != nil {
 		return nil, err
 	}
 	containerAbs := filepath.Join(env.RepoRoot, filepath.FromSlash(WorktreeContainer))

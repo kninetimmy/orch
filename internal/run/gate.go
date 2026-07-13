@@ -8,6 +8,7 @@ import (
 	"github.com/kninetimmy/orch/internal/config"
 	"github.com/kninetimmy/orch/internal/lockfile"
 	"github.com/kninetimmy/orch/internal/manifest"
+	"github.com/kninetimmy/orch/internal/memhub"
 	"github.com/kninetimmy/orch/internal/state"
 )
 
@@ -87,7 +88,7 @@ func Plan(ctx context.Context, env Env, planJSON []byte) (*GateDoc, error) {
 		return nil, err
 	}
 
-	mh, err := memhubGate(ctx, cfg.Memhub.Mode, execProber{runner: env.Runner, dir: env.RepoRoot})
+	mh, err := memhubGate(ctx, cfg.Memhub.Mode, memhub.New(env.Runner, env.RepoRoot))
 	if err != nil {
 		return nil, err
 	}

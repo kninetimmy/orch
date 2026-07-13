@@ -8,33 +8,12 @@ import (
 
 	"github.com/kninetimmy/orch/internal/execx"
 	"github.com/kninetimmy/orch/internal/execx/execxtest"
+	"github.com/kninetimmy/orch/internal/memhub"
 )
-
-func TestExecProberProbe(t *testing.T) {
-	script := &execxtest.Script{T: t, Calls: []execxtest.Call{{
-		Name: "memhub", Args: []string{"status"}, Dir: "/repo",
-	}}}
-	p := execProber{runner: script, dir: "/repo"}
-	if err := p.Probe(context.Background()); err != nil {
-		t.Fatalf("Probe: %v", err)
-	}
-	script.AssertExhausted()
-}
-
-func TestExecProberNonZeroExit(t *testing.T) {
-	script := &execxtest.Script{T: t, Calls: []execxtest.Call{{
-		Name: "memhub", Args: []string{"status"}, Dir: "/repo", Exit: 1, Stderr: "unreachable",
-	}}}
-	p := execProber{runner: script, dir: "/repo"}
-	if err := p.Probe(context.Background()); err == nil {
-		t.Fatal("Probe succeeded, want error")
-	}
-	script.AssertExhausted()
-}
 
 func TestMemhubGateRequiredHealthy(t *testing.T) {
 	script := &execxtest.Script{T: t, Calls: []execxtest.Call{{Name: "memhub", Args: []string{"status"}, Dir: "/repo"}}}
-	rep, err := memhubGate(context.Background(), "required", execProber{runner: script, dir: "/repo"})
+	rep, err := memhubGate(context.Background(), "required", memhub.New(script, "/repo"))
 	if err != nil {
 		t.Fatalf("memhubGate: %v", err)
 	}
@@ -48,7 +27,7 @@ func TestMemhubGateRequiredExitOneFailsClosed(t *testing.T) {
 	script := &execxtest.Script{T: t, Calls: []execxtest.Call{{
 		Name: "memhub", Args: []string{"status"}, Dir: "/repo", Exit: 1,
 	}}}
-	_, err := memhubGate(context.Background(), "required", execProber{runner: script, dir: "/repo"})
+	_, err := memhubGate(context.Background(), "required", memhub.New(script, "/repo"))
 	if !errors.Is(err, ErrMemhubRequired) {
 		t.Fatalf("err = %v, want ErrMemhubRequired", err)
 	}
@@ -60,7 +39,7 @@ func TestMemhubGateRequiredSpawnErrorFailsClosed(t *testing.T) {
 	script := &execxtest.Script{T: t, Calls: []execxtest.Call{{
 		Name: "memhub", Args: []string{"status"}, Dir: "/repo", Err: sentinel,
 	}}}
-	_, err := memhubGate(context.Background(), "required", execProber{runner: script, dir: "/repo"})
+	_, err := memhubGate(context.Background(), "required", memhub.New(script, "/repo"))
 	if !errors.Is(err, ErrMemhubRequired) {
 		t.Fatalf("err = %v, want ErrMemhubRequired", err)
 	}
@@ -74,7 +53,7 @@ func TestMemhubGateBestEffortRecordsNotFatal(t *testing.T) {
 	script := &execxtest.Script{T: t, Calls: []execxtest.Call{{
 		Name: "memhub", Args: []string{"status"}, Dir: "/repo", Exit: 1, Stderr: "down",
 	}}}
-	rep, err := memhubGate(context.Background(), "best-effort", execProber{runner: script, dir: "/repo"})
+	rep, err := memhubGate(context.Background(), "best-effort", memhub.New(script, "/repo"))
 	if err != nil {
 		t.Fatalf("memhubGate: %v", err)
 	}
@@ -86,7 +65,7 @@ func TestMemhubGateBestEffortRecordsNotFatal(t *testing.T) {
 
 func TestMemhubGateOffSkipsProbe(t *testing.T) {
 	script := &execxtest.Script{T: t} // no calls scripted
-	rep, err := memhubGate(context.Background(), "off", execProber{runner: script, dir: "/repo"})
+	rep, err := memhubGate(context.Background(), "off", memhub.New(script, "/repo"))
 	if err != nil {
 		t.Fatalf("memhubGate: %v", err)
 	}

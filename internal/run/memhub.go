@@ -3,35 +3,13 @@ package run
 import (
 	"context"
 	"fmt"
-	"strings"
-
-	"github.com/kninetimmy/orch/internal/execx"
 )
 
-// Prober checks memhub reachability. execProber is the production
-// implementation; tests inject a fake so they never spawn a real
-// memhub process. The interface is shaped so a future internal/memhub
-// package can absorb it without changing this package's call sites.
+// Prober checks memhub reachability. internal/memhub's Client is the
+// production implementation; tests inject a fake so they never spawn
+// a real memhub process.
 type Prober interface {
 	Probe(ctx context.Context) error
-}
-
-// execProber runs `memhub status` via the injected Runner with the
-// primary checkout as its explicit working directory (PRD §20).
-type execProber struct {
-	runner execx.Runner
-	dir    string
-}
-
-func (p execProber) Probe(ctx context.Context) error {
-	res, err := p.runner.Run(ctx, execx.Cmd{Name: "memhub", Args: []string{"status"}, Dir: p.dir})
-	if err != nil {
-		return err
-	}
-	if res.ExitCode != 0 {
-		return fmt.Errorf("memhub status exited %d: %s", res.ExitCode, strings.TrimSpace(res.Stderr))
-	}
-	return nil
 }
 
 // MemhubReport records a plan/gate document's memhub probe outcome.
