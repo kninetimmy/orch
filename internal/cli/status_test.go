@@ -12,12 +12,17 @@ import (
 )
 
 func TestStatusNotInitialized(t *testing.T) {
-	env, _, stderr := testEnv(t)
+	env, stdout, stderr := testEnv(t)
 	if code := Run([]string{"status"}, env); code != ExitError {
 		t.Errorf("exit = %d, want %d", code, ExitError)
 	}
 	if !strings.Contains(stderr.String(), "not initialized") {
 		t.Errorf("stderr = %q", stderr.String())
+	}
+	// The version line prints before any repository check, so even an
+	// uninitialized repository identifies the binary on PATH.
+	if !strings.Contains(stdout.String(), "orch:   dev") {
+		t.Errorf("stdout missing version line:\n%s", stdout.String())
 	}
 }
 
@@ -28,7 +33,7 @@ func TestStatusValidConfig(t *testing.T) {
 		t.Fatalf("exit = %d, want %d", code, ExitOK)
 	}
 	out := stdout.String()
-	for _, want := range []string{"mode:   assist", `revision "r1"`, "hosts:  claude"} {
+	for _, want := range []string{"orch:   dev", "mode:   assist", `revision "r1"`, "hosts:  claude"} {
 		if !strings.Contains(out, want) {
 			t.Errorf("output missing %q:\n%s", want, out)
 		}

@@ -1,0 +1,54 @@
+name: release
+
+# Tag-driven releases (decision 8): pushing a v* tag cross-compiles the
+# single static orch binary for every supported OS/arch, publishes a
+# SHA256SUMS file alongside, and creates the GitHub Release with
+# generated notes. Installs verify the checksum before use.
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+
+      # A tag is not gated by the PR workflow, so prove the tagged
+      # commit builds and passes tests before anything is published.
+      - run: go build ./...
+      - run: go vet ./...
+      - run: go test ./...
+
+      - name: Cross-compile
+        run: |
+          set -euo pipefail
+          mkdir dist
+          for target in linux/amd64 linux/arm64 darwin/amd64 darwin/arm64 windows/amd64 windows/arm64; do
+            goos=${target%/*}
+            goarch=${target#*/}
+            ext=""
+            [ "$goos" = "windows" ] && ext=".exe"
+            CGO_ENABLED=0 GOOS=$goos GOARCH=$goarch go build -trimpath \
+              -ldflags "-s -w -X github.com/kninetimmy/orch/internal/cli.Version=${GITHUB_REF_NAME}" \
+              -o "dist/orch_${goos}_${goarch}${ext}" ./cmd/orch
+          done
+
+      - name: Checksums
+        run: cd dist && sha256sum * > SHA256SUMS
+
+      - name: Create release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" dist/* \
+            --title "$GITHUB_REF_NAME" \
+            --generate-notes \
+            --verify-tag

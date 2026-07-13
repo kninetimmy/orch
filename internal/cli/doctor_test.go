@@ -19,7 +19,7 @@ func TestDoctorAllChecksPass(t *testing.T) {
 		t.Fatalf("exit = %d, want %d\n%s", code, ExitOK, stdout.String())
 	}
 	out := stdout.String()
-	for _, want := range []string{"ok    git on PATH", "ok    git repository", "ok    gh on PATH", "ok    gh authentication", "ok    gh repository: o/r", "ok    configuration"} {
+	for _, want := range []string{"note  orch version: dev", "ok    git on PATH", "ok    git repository", "ok    gh on PATH", "ok    gh authentication", "ok    gh repository: o/r", "ok    configuration"} {
 		if !strings.Contains(out, want) {
 			t.Errorf("output missing %q:\n%s", want, out)
 		}

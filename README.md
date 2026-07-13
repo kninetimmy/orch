@@ -61,8 +61,26 @@ escalating back to the Architect if everything else is exhausted.
 
 ## Install
 
-There are no binary releases yet (that pipeline is planned). Build
-from source with Go 1.26+:
+Download the static binary for your OS and architecture from
+[GitHub Releases](https://github.com/kninetimmy/orch/releases)
+(`orch_<os>_<arch>`, Windows binaries end in `.exe`), then verify its
+SHA-256 against the `SHA256SUMS` file published with the release
+**before running it** — don't skip this:
+
+```sh
+# Linux / macOS
+sha256sum --check --ignore-missing SHA256SUMS
+
+# Windows (PowerShell): compare against the matching SHA256SUMS line
+(Get-FileHash orch_windows_amd64.exe -Algorithm SHA256).Hash
+```
+
+Rename it to `orch` (or `orch.exe`) and place it on your PATH.
+`orch status` and `orch doctor` print the binary's release version on
+their first line; adapters and docs pin a release version.
+
+Alternatively, build from source with Go 1.26+ (source builds report
+version `dev`):
 
 ```sh
 git clone https://github.com/kninetimmy/orch.git
