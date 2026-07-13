@@ -69,6 +69,17 @@ PRD §18 states this ordering directly: "Global host plugins are
 installed before repository initialization," and the binary is what
 every hook in this plugin shells out to.
 
+Then install the plugin from the repository's marketplace manifest:
+
+```sh
+claude plugin marketplace add kninetimmy/orch
+claude plugin install orch-claude@orch
+```
+
+The manifest at the repository root (`.claude-plugin/marketplace.json`)
+lists both hosts' adapters; Claude Code filters the Codex entry
+automatically, so only `orch-claude` appears in its plugin list.
+
 This ordering matters mechanically, not just procedurally. Both hooks
 above are bare commands (`orch guard claude`, `orch hook claude
 session-start`) with no shell interposed. If `orch` is not resolvable on

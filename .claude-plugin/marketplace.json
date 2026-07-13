@@ -1,0 +1,20 @@
+{
+  "name": "orch",
+  "owner": { "name": "kninetimmy" },
+  "metadata": {
+    "description": "Host adapters for the Orch development orchestrator",
+    "version": "0.1.0"
+  },
+  "plugins": [
+    {
+      "name": "orch-claude",
+      "source": "./adapters/claude",
+      "description": "Claude Code host adapter for the Orch development orchestrator. Thin adapter: all policy lives in the orch binary."
+    },
+    {
+      "name": "orch",
+      "source": "./adapters/codex",
+      "description": "Codex CLI host adapter for the Orch development orchestrator. Thin adapter: all policy lives in the orch binary."
+    }
+  ]
+}
