@@ -190,20 +190,6 @@ func TestRunUnexpectedArgument(t *testing.T) {
 	}
 }
 
-func TestNotImplementedCommandsFailClosed(t *testing.T) {
-	for _, name := range []string{"metrics"} {
-		t.Run(name, func(t *testing.T) {
-			env, _, stderr := testEnv(t)
-			if code := Run([]string{name}, env); code != ExitError {
-				t.Errorf("exit = %d, want %d", code, ExitError)
-			}
-			if !strings.Contains(stderr.String(), "not implemented") {
-				t.Errorf("stderr = %q", stderr.String())
-			}
-		})
-	}
-}
-
 func TestRunDefaultsLookPath(t *testing.T) {
 	// Run must not panic when LookPath is nil (main.go passes none).
 	var stdout, stderr bytes.Buffer
