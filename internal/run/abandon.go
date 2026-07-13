@@ -6,6 +6,7 @@ import (
 
 	"github.com/kninetimmy/orch/internal/ghops"
 	"github.com/kninetimmy/orch/internal/manifest"
+	"github.com/kninetimmy/orch/internal/metrics"
 	"github.com/kninetimmy/orch/internal/state"
 )
 
@@ -105,6 +106,14 @@ func Abandon(ctx context.Context, env Env, reqJSON []byte) (*AbandonResult, erro
 	issue.Phase = state.PhaseAbandoned
 	if err := c.save(); err != nil {
 		return nil, wrapAfterMutation(err)
+	}
+
+	if err := c.recordMetric(metrics.Event{
+		Verb:        "abandon",
+		IssueNumber: issue.Number,
+		Reason:      req.Reason,
+	}); err != nil {
+		return nil, err
 	}
 
 	return &AbandonResult{

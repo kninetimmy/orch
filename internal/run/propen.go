@@ -8,6 +8,7 @@ import (
 	"github.com/kninetimmy/orch/internal/ghops"
 	"github.com/kninetimmy/orch/internal/gitops"
 	"github.com/kninetimmy/orch/internal/manifest"
+	"github.com/kninetimmy/orch/internal/metrics"
 	"github.com/kninetimmy/orch/internal/state"
 )
 
@@ -32,6 +33,9 @@ type PROpenRequest struct {
 	SchemaVersion int                 `json:"schema_version"`
 	IssueNumber   int                 `json:"issue_number"`
 	Verifications []VerificationInput `json:"verifications"`
+	// Usage is adapter-reported model usage for this PR-open call
+	// (PRD §21 "where available"); optional and best-effort.
+	Usage *metrics.Usage `json:"usage,omitempty"`
 }
 
 // PROpenResult reports the opened PR.
@@ -57,6 +61,9 @@ func PROpen(ctx context.Context, env Env, reqJSON []byte) (*PROpenResult, error)
 	}
 	if req.SchemaVersion != PROpenSchemaVersion {
 		return nil, fmt.Errorf("%w: schema_version %d is unsupported (this build supports %d)", ErrBadRequest, req.SchemaVersion, PROpenSchemaVersion)
+	}
+	if err := req.Usage.Validate(); err != nil {
+		return nil, fmt.Errorf("%w: %v", ErrBadRequest, err)
 	}
 	verifications, err := buildVerifications(req.Verifications, env.nowStamp())
 	if err != nil {
@@ -143,6 +150,14 @@ func PROpen(ctx context.Context, env Env, reqJSON []byte) (*PROpenResult, error)
 	}
 	if err := c.save(); err != nil {
 		return nil, wrapAfterMutation(err)
+	}
+
+	if err := c.recordMetric(metrics.Event{
+		Verb:        "pr-open",
+		IssueNumber: issue.Number,
+		Usage:       req.Usage,
+	}); err != nil {
+		return nil, err
 	}
 
 	return &PROpenResult{

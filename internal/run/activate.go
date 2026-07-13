@@ -14,6 +14,7 @@ import (
 	"github.com/kninetimmy/orch/internal/gitops"
 	"github.com/kninetimmy/orch/internal/manifest"
 	"github.com/kninetimmy/orch/internal/memhub"
+	"github.com/kninetimmy/orch/internal/metrics"
 	"github.com/kninetimmy/orch/internal/routing"
 	"github.com/kninetimmy/orch/internal/state"
 )
@@ -300,6 +301,31 @@ func Activate(ctx context.Context, env Env, reqJSON []byte) (*ActivationResult, 
 	if err := state.Save(env.RepoRoot, st); err != nil {
 		return nil, wrapAfterEnter(err)
 	}
+
+	// Metrics (PRD §21): one activate event per issue, gated on the
+	// same cfg.Metrics.Enabled every lifecycle verb checks. Activation
+	// has no verbCtx to hang recordMetric off, so this is a small
+	// gated loop rather than a restructure.
+	if cfg.Metrics.Enabled {
+		for j := range st.Run.Issues {
+			iss := &st.Run.Issues[j]
+			d := iss.Decision
+			ev := metrics.Event{
+				At:                 env.nowStamp(),
+				Verb:               "activate",
+				IssueNumber:        iss.Number,
+				Role:               string(d.Role),
+				Executor:           &d.Executor,
+				Reviewer:           &d.Reviewer,
+				ReviewerDowngraded: d.ReviewerDowngraded,
+				Rationale:          d.Rationale,
+			}
+			if err := metrics.Append(env.RepoRoot, st.Run.ID, ev); err != nil {
+				return nil, wrapAfterEnter(fmt.Errorf("record metrics: %w", err))
+			}
+		}
+	}
+
 	return result, nil
 }
 
