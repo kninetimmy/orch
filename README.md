@@ -197,7 +197,7 @@ orch configure        Change committed settings (delivered as a PR)
 orch configure-local  Change machine-local overrides (applied directly)
 orch resume           Reconcile an interrupted Delivery run and continue
 orch abort            Stop a Delivery run and return to Assist
-orch metrics          Local usage metrics (not implemented yet)
+orch metrics          Local usage metrics
 ```
 
 `orch run` and `orch guard` also exist but are plumbing — the host
