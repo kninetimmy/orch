@@ -243,11 +243,11 @@ All entries use exact model versions.
 
 | Role | Model | Effort |
 |---|---|---|
-| Architect | `claude-opus-4-8` | `xhigh` |
+| Architect | `claude-opus-5` | `xhigh` |
 | Scout | `claude-sonnet-5` | `low` |
 | Implementer | `claude-sonnet-5` | `xhigh` |
-| Specialist | `claude-opus-4-8` | `high` |
-| Reviewer | `claude-opus-4-8` | `high` |
+| Specialist | `claude-opus-5` | `high` |
+| Reviewer | `claude-opus-5` | `high` |
 | Safe review downgrade | `claude-sonnet-5` | `high` |
 
 While available through subscription, a local ignored override may select:

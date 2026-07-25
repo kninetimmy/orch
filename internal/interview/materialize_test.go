@@ -42,8 +42,8 @@ func TestMaterializeDefaults(t *testing.T) {
 	if cfg.Hosts.Claude == nil || cfg.Hosts.Codex == nil {
 		t.Fatal("expected both hosts materialized")
 	}
-	if got := cfg.Hosts.Claude.Roles.Architect.Model; got != "claude-opus-4-8" {
-		t.Errorf("claude architect model = %q, want claude-opus-4-8", got)
+	if got := cfg.Hosts.Claude.Roles.Architect.Model; got != "claude-opus-5" {
+		t.Errorf("claude architect model = %q, want claude-opus-5", got)
 	}
 	if got := cfg.Hosts.Codex.Roles.ReviewDowngrade.Effort; got != "high" {
 		t.Errorf("codex review_downgrade effort = %q, want high", got)

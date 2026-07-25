@@ -2,7 +2,7 @@
 name: orch-reviewer
 description: Spawned by the Architect fresh after a dispatched issue's PR stops changing — reviews the PR against its issue's acceptance criteria and produces one consolidated verdict for orch run review.
 tools: Read, Grep, Glob, Bash
-model: claude-opus-4-8
+model: claude-opus-5
 ---
 
 # Orch Reviewer

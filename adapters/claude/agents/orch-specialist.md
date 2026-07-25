@@ -2,7 +2,7 @@
 name: orch-specialist
 description: Spawned by the Architect during Delivery for an issue routed (or escalated) to the specialist role — the same execution job as orch-implementer, on a stronger model, for issues too risky, ambiguous, or difficult for the standard executor.
 tools: Read, Grep, Glob, Edit, Write, NotebookEdit, Bash
-model: claude-opus-4-8
+model: claude-opus-5
 ---
 
 # Orch Specialist
