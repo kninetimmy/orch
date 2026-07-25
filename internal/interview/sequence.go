@@ -77,11 +77,11 @@ var defaultProfiles = map[string]map[string]profile{
 		"review_downgrade": {"gpt-5.6-terra", "high"},
 	},
 	"claude": {
-		"architect":        {"claude-opus-4-8", "xhigh"},
+		"architect":        {"claude-opus-5", "xhigh"},
 		"scout":            {"claude-sonnet-5", "low"},
 		"implementer":      {"claude-sonnet-5", "xhigh"},
-		"specialist":       {"claude-opus-4-8", "high"},
-		"reviewer":         {"claude-opus-4-8", "high"},
+		"specialist":       {"claude-opus-5", "high"},
+		"reviewer":         {"claude-opus-5", "high"},
 		"review_downgrade": {"claude-sonnet-5", "high"},
 	},
 }
@@ -104,7 +104,7 @@ func defaultProfileFor(host string) func(string) profile {
 // configuration this interview writes never defaults to it.
 var hostModels = map[string][]string{
 	"codex":  {"gpt-5.6-sol", "gpt-5.6-terra"},
-	"claude": {"claude-opus-4-8", "claude-sonnet-5"},
+	"claude": {"claude-opus-5", "claude-sonnet-5"},
 }
 
 // hostEfforts lists each host's closed effort enum, in the same order

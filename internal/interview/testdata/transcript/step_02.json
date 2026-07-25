@@ -14,8 +14,8 @@
       "kind": "select",
       "options": [
         {
-          "value": "claude-opus-4-8",
-          "label": "claude-opus-4-8",
+          "value": "claude-opus-5",
+          "label": "claude-opus-5",
           "recommended": true
         },
         {
@@ -24,7 +24,7 @@
         }
       ],
       "free_text": true,
-      "default": "claude-opus-4-8"
+      "default": "claude-opus-5"
     },
     {
       "id": "host.claude.role.architect.effort",

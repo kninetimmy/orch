@@ -9,8 +9,8 @@ import (
 // TestDefaultProfilesMatchPRD pins defaultProfiles against the PRD §10
 // table verbatim (plan verification string: codex
 // sol-high/terra-low/terra-high/sol-medium/sol-medium/terra-high;
-// claude opus-4-8-xhigh/sonnet-5-low/sonnet-5-xhigh/opus-4-8-high/
-// opus-4-8-high/sonnet-5-high).
+// claude opus-5-xhigh/sonnet-5-low/sonnet-5-xhigh/opus-5-high/
+// opus-5-high/sonnet-5-high).
 func TestDefaultProfilesMatchPRD(t *testing.T) {
 	want := map[string]map[string]profile{
 		"codex": {
@@ -22,11 +22,11 @@ func TestDefaultProfilesMatchPRD(t *testing.T) {
 			"review_downgrade": {"gpt-5.6-terra", "high"},
 		},
 		"claude": {
-			"architect":        {"claude-opus-4-8", "xhigh"},
+			"architect":        {"claude-opus-5", "xhigh"},
 			"scout":            {"claude-sonnet-5", "low"},
 			"implementer":      {"claude-sonnet-5", "xhigh"},
-			"specialist":       {"claude-opus-4-8", "high"},
-			"reviewer":         {"claude-opus-4-8", "high"},
+			"specialist":       {"claude-opus-5", "high"},
+			"reviewer":         {"claude-opus-5", "high"},
 			"review_downgrade": {"claude-sonnet-5", "high"},
 		},
 	}

@@ -261,11 +261,11 @@ so what ran is always auditable. The defaults `orch init` offers:
 
 | Role | Claude Code | Codex |
 |---|---|---|
-| Architect | `claude-opus-4-8` / xhigh | `gpt-5.6-sol` / high |
+| Architect | `claude-opus-5` / xhigh | `gpt-5.6-sol` / high |
 | Scout | `claude-sonnet-5` / low | `gpt-5.6-terra` / low |
 | Implementer | `claude-sonnet-5` / xhigh | `gpt-5.6-terra` / high |
-| Specialist | `claude-opus-4-8` / high | `gpt-5.6-sol` / medium |
-| Reviewer | `claude-opus-4-8` / high | `gpt-5.6-sol` / medium |
+| Specialist | `claude-opus-5` / high | `gpt-5.6-sol` / medium |
+| Reviewer | `claude-opus-5` / high | `gpt-5.6-sol` / medium |
 | Review downgrade | `claude-sonnet-5` / high | `gpt-5.6-terra` / high |
 
 Typical tuning: point a role at a bigger/smaller model on one machine
