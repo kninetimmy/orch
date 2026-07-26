@@ -31,6 +31,13 @@ type ReviewRequest struct {
 	Verdict         string             `json:"verdict"`
 	Summary         string             `json:"summary"`
 	Reviewer        manifest.Selection `json:"reviewer"`
+	// Verifications is optional evidence gathered on this review cycle
+	// (for example, tests re-run on a fix commit), using the same
+	// {name, command, result, detail} input shape pr-open accepts. Each
+	// entry is replace-by-name upserted into the manifest alongside the
+	// review-cycle-N entry this verb already writes, so resubmitting the
+	// same name updates that entry rather than duplicating it.
+	Verifications []VerificationInput `json:"verifications,omitempty"`
 	// Usage is adapter-reported model usage for this review cycle
 	// (PRD §21 "where available"); optional and best-effort.
 	Usage *metrics.Usage `json:"usage,omitempty"`
@@ -50,8 +57,11 @@ type ReviewResult struct {
 // enforces PRD §14's "review begins only after the PR stops changing" by
 // requiring the reviewed head OID to equal the PR's live head — a stale
 // review is rejected so the reviewer re-reads. It advances the issue to
-// in-review, appends the cycle to the issue and PR audit records, and,
-// on request-changes, sets the status back to in-progress.
+// in-review, appends the cycle to the issue and PR audit records
+// alongside any caller-supplied verification evidence (replace-by-name,
+// so a fix-commit re-run reaches the record even though the issue is no
+// longer in phase dispatched), and, on request-changes, sets the status
+// back to in-progress.
 func Review(ctx context.Context, env Env, reqJSON []byte) (*ReviewResult, error) {
 	var req ReviewRequest
 	if err := decodeRequest(reqJSON, &req); err != nil {
@@ -68,6 +78,10 @@ func Review(ctx context.Context, env Env, reqJSON []byte) (*ReviewResult, error)
 	}
 	if err := req.Usage.Validate(); err != nil {
 		return nil, fmt.Errorf("%w: %v", ErrBadRequest, err)
+	}
+	verifications, err := convertVerifications(req.Verifications, env.nowStamp())
+	if err != nil {
+		return nil, err
 	}
 
 	c, err := loadVerb(env, req.IssueNumber, []state.Phase{state.PhasePROpen, state.PhaseInReview}, false)
@@ -108,10 +122,13 @@ func Review(ctx context.Context, env Env, reqJSON []byte) (*ReviewResult, error)
 	if err != nil {
 		return nil, wrapAfterMutation(err)
 	}
+	for _, v := range verifications {
+		setVerification(&m, v)
+	}
 	m.Verifications = append(m.Verifications, manifest.Verification{
 		Name:   fmt.Sprintf("review-cycle-%d", issue.ReviewCycles),
 		Result: req.Verdict,
-		Detail: truncateDetail(req.Summary),
+		Detail: truncateReviewDetail(req.Summary),
 		At:     env.nowStamp(),
 	})
 	if err := writeManifest(ctx, gh, iss, &pr, m); err != nil {

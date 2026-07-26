@@ -16,6 +16,15 @@ import (
 const (
 	// verificationDetailCap bounds one Verification.Detail (characters).
 	verificationDetailCap = 2000
+	// reviewDetailCap bounds a review-cycle Verification.Detail
+	// (characters). A consolidated review summary spanning several
+	// acceptance criteria routinely exceeds verificationDetailCap (task
+	// 46: cycle 1 of issue #57 was cut mid-criterion, permanently
+	// dropping the reviewer's remaining findings), so review-cycle
+	// entries get their own, larger allowance. It stays well under
+	// bodyCapHeadroom, which remains the backstop that rotates or fails
+	// closed regardless of which cap produced a detail.
+	reviewDetailCap = 10000
 	// verificationTruncationMarker flags a detail cut to the cap.
 	verificationTruncationMarker = " … [truncated by orch]"
 	// bodyCapHeadroom is the rendered-body ceiling the engine keeps under
@@ -31,11 +40,24 @@ const (
 // appending the truncation marker when it cuts (PRD §23: the canonical
 // Name/Result/At always survive; only free-text detail is bounded).
 func truncateDetail(detail string) string {
+	return truncateAt(detail, verificationDetailCap)
+}
+
+// truncateReviewDetail caps a review-cycle detail at reviewDetailCap
+// runes (see reviewDetailCap), appending the same truncation marker when
+// it cuts.
+func truncateReviewDetail(detail string) string {
+	return truncateAt(detail, reviewDetailCap)
+}
+
+// truncateAt caps detail at limit runes, appending the truncation marker
+// when it cuts.
+func truncateAt(detail string, limit int) string {
 	r := []rune(detail)
-	if len(r) <= verificationDetailCap {
+	if len(r) <= limit {
 		return detail
 	}
-	return string(r[:verificationDetailCap]) + verificationTruncationMarker
+	return string(r[:limit]) + verificationTruncationMarker
 }
 
 // applyDecision overwrites m's current routing fields (role, executor,

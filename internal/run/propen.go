@@ -169,11 +169,23 @@ func PROpen(ctx context.Context, env Env, reqJSON []byte) (*PROpenResult, error)
 }
 
 // buildVerifications converts the supplied inputs into manifest
-// verifications, requiring at least one (PRD §15), stamping missing At
-// with stamp, and truncating each Detail to the body-cap ceiling.
+// verifications, requiring at least one (PRD §15: pr-open's completion
+// evidence is mandatory), and otherwise defers to convertVerifications.
 func buildVerifications(inputs []VerificationInput, stamp string) ([]manifest.Verification, error) {
 	if len(inputs) == 0 {
 		return nil, fmt.Errorf("%w: pr-open requires at least one verification (PRD §15: completion needs targeted-test evidence)", ErrBadRequest)
+	}
+	return convertVerifications(inputs, stamp)
+}
+
+// convertVerifications converts the supplied inputs into manifest
+// verifications, stamping missing At with stamp and truncating each
+// Detail to the body-cap ceiling. An empty inputs converts to a nil
+// slice with no error, so callers for whom verifications are optional
+// (review) can treat "none supplied" as valid.
+func convertVerifications(inputs []VerificationInput, stamp string) ([]manifest.Verification, error) {
+	if len(inputs) == 0 {
+		return nil, nil
 	}
 	out := make([]manifest.Verification, len(inputs))
 	for i, in := range inputs {
