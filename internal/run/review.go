@@ -129,14 +129,21 @@ func Review(ctx context.Context, env Env, reqJSON []byte) (*ReviewResult, error)
 	if err != nil {
 		return nil, wrapAfterMutation(err)
 	}
+	// Every entry this cycle writes is stamped with the PR's live head as
+	// the engine read it, not with the request's ReviewedHeadOID. The two
+	// are equal — the staleness check above rejects the cycle otherwise —
+	// but the record's provenance should not rest on a request field even
+	// when that field was just validated.
+	stampCommitOID(verifications, pr.HeadRefOid)
 	for _, v := range verifications {
 		setVerification(&m, v)
 	}
 	m.Verifications = append(m.Verifications, manifest.Verification{
-		Name:   fmt.Sprintf("review-cycle-%d", issue.ReviewCycles),
-		Result: req.Verdict,
-		Detail: truncateReviewDetail(req.Summary),
-		At:     env.nowStamp(),
+		Name:      fmt.Sprintf("review-cycle-%d", issue.ReviewCycles),
+		Result:    req.Verdict,
+		Detail:    truncateReviewDetail(req.Summary),
+		CommitOID: pr.HeadRefOid,
+		At:        env.nowStamp(),
 	})
 	if err := writeManifest(ctx, gh, iss, &pr, m); err != nil {
 		return nil, wrapAfterMutation(err)

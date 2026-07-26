@@ -27,10 +27,21 @@ func minimalManifest() Manifest {
 	}
 }
 
+// fixtureCommitOID is the head the fixture's stamped verifications were
+// gathered at, and fixtureFixOID a later head one of them was re-run on,
+// so a golden shows two entries that disagree about which commit they
+// speak for — the distinction the field exists to make.
+const (
+	fixtureCommitOID = "3f6a1c9d8b2e4057a1c3e5079b2d4f6081a3c5e7"
+	fixtureFixOID    = "c5e70981a3f6b2d4079b1c3e52e40578b2e4a1c3"
+)
+
 // fullManifest exercises every optional field and every repeatable one:
 // multi-entry acceptance criteria and required tests, two escalations
 // (an escalation with a role and At, a substitution without), and three
-// verifications, the last a CI-state entry with no command.
+// verifications, the last a CI-state entry with no command. Two carry a
+// commit OID and disagree about which one; the middle entry carries none,
+// so the golden pins both the stamped and the unstamped render.
 func fullManifest() Manifest {
 	m := minimalManifest()
 	m.AcceptanceCriteria = []string{
@@ -56,9 +67,9 @@ func fullManifest() Manifest {
 		},
 	}
 	m.Verifications = []Verification{
-		{Name: "targeted-tests", Command: "go test ./internal/manifest/...", Result: "pass", At: "2026-07-10T14:20:00Z"},
+		{Name: "targeted-tests", Command: "go test ./internal/manifest/...", Result: "pass", CommitOID: fixtureCommitOID, At: "2026-07-10T14:20:00Z"},
 		{Name: "vet", Command: "go vet ./...", Result: "pass", Detail: "no findings"},
-		{Name: "ci", Result: "CLEAN", Detail: "required checks green", At: "2026-07-10T14:45:00Z"},
+		{Name: "ci", Result: "CLEAN", Detail: "required checks green", CommitOID: fixtureFixOID, At: "2026-07-10T14:45:00Z"},
 	}
 	return m
 }
@@ -71,9 +82,9 @@ func fullManifest() Manifest {
 // ampersand; a model with a pipe; a config revision with all three
 // entity characters; an escalation whose reason is a data-close and
 // whose At smuggles a begin-marker line; and a verification whose name,
-// result, and At each smuggle a marker or data-comment line. Render must
-// escape all of it so the region still contains exactly one of each
-// structural line and parses back.
+// result, commit OID, and At each smuggle a marker or data-comment line.
+// Render must escape all of it so the region still contains exactly one
+// of each structural line and parses back.
 func hostileManifest() Manifest {
 	return Manifest{
 		SchemaVersion: SchemaVersion,
@@ -102,10 +113,11 @@ func hostileManifest() Manifest {
 		},
 		Verifications: []Verification{
 			{
-				Name:    "targeted-tests\n" + EndMarker,
-				Command: "go test -run 'A|B' ./... `backtick` && echo done",
-				Result:  "pass\n" + dataOpen,
-				At:      "2026-07-10T14:20:00Z\n" + dataClose,
+				Name:      "targeted-tests\n" + EndMarker,
+				Command:   "go test -run 'A|B' ./... `backtick` && echo done",
+				Result:    "pass\n" + dataOpen,
+				CommitOID: "deadbeef\n" + BeginMarker,
+				At:        "2026-07-10T14:20:00Z\n" + dataClose,
 			},
 		},
 	}
@@ -116,8 +128,9 @@ func TestValidateRejects(t *testing.T) {
 		mutate func(*Manifest)
 		want   string
 	}{
-		"superseded schema version": {func(m *Manifest) { m.SchemaVersion = 1 }, "schema_version 1 is unsupported"},
-		"future schema version":     {func(m *Manifest) { m.SchemaVersion = 3 }, "schema_version 3 is unsupported"},
+		"original schema version":   {func(m *Manifest) { m.SchemaVersion = 1 }, "schema_version 1 is unsupported"},
+		"superseded schema version": {func(m *Manifest) { m.SchemaVersion = 2 }, "schema_version 2 is unsupported"},
+		"future schema version":     {func(m *Manifest) { m.SchemaVersion = 4 }, "schema_version 4 is unsupported"},
 		"absent schema version":     {func(m *Manifest) { m.SchemaVersion = 0 }, "schema_version 0 is unsupported"},
 		"empty objective":           {func(m *Manifest) { m.Objective = "" }, "objective is empty"},
 		"no acceptance criteria":    {func(m *Manifest) { m.AcceptanceCriteria = nil }, "acceptance_criteria is empty"},
@@ -152,6 +165,42 @@ func TestValidateRejects(t *testing.T) {
 				t.Errorf("error %q does not mention %q", err, tt.want)
 			}
 		})
+	}
+}
+
+// TestUnsupportedVersionNamesARealRemediation pins the half of the
+// remediation fix that lives in validate. The message an operator meets
+// on a superseded record must name a command that exists and can
+// actually recover: nothing "regenerates" a posted record, and every
+// body-reading verb fails closed on this same check, so an operator who
+// followed the old advice had nothing to run.
+func TestUnsupportedVersionNamesARealRemediation(t *testing.T) {
+	m := fullManifest()
+	m.SchemaVersion = SchemaVersion - 1
+	_, err := Render(m)
+	if err == nil {
+		t.Fatal("Render accepted a superseded schema version")
+	}
+	if !strings.Contains(err.Error(), "orch abort") {
+		t.Errorf("error %q does not name the abort remediation", err)
+	}
+	if strings.Contains(err.Error(), "regenerate the record") {
+		t.Errorf("error %q still names a remediation that does not exist", err)
+	}
+}
+
+// TestVerificationCommitOIDIsOptional pins the deliberate choice that an
+// empty commit OID validates. One engine site genuinely has no head to
+// read — an issue abandoned before its PR ever opened — and a required
+// field would fail Render there after that verb's GitHub mutations had
+// already landed, leaving a half-written record and no remedy.
+func TestVerificationCommitOIDIsOptional(t *testing.T) {
+	m := fullManifest()
+	for i := range m.Verifications {
+		m.Verifications[i].CommitOID = ""
+	}
+	if err := m.validate(); err != nil {
+		t.Fatalf("validate rejected verifications carrying no commit OID: %v", err)
 	}
 }
 

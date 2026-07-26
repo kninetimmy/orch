@@ -771,6 +771,168 @@ func TestPROpenRejectsEngineOwnedVerificationNames(t *testing.T) {
 	}
 }
 
+// --- Verification commit OIDs (issue #60) ---
+
+// TestReviewStampsTheReviewedHead proves review stamps every entry it
+// writes — the caller-supplied evidence and the review-cycle entry alike
+// — with the PR head the engine read, so a fix commit's re-run evidence
+// is distinguishable from the evidence pr-open recorded at an earlier
+// head.
+func TestReviewStampsTheReviewedHead(t *testing.T) {
+	root := setupDeliveryRepo(t, "r1", []state.Issue{fixtureIssue("a", 1, state.PhaseInReview)})
+	body := baseManifestBody(t)
+	script := &execxtest.Script{T: t, Calls: []execxtest.Call{
+		ghAuth(), ghPRViewCall(10, "OPEN", "head-oid-2"),
+		ghIssueViewCall(t, 1, "OPEN", body), ghSetIssueBodyCall(1), ghSetPRBodyCall(10),
+	}}
+	req := `{"schema_version":1,"issue_number":1,"reviewed_head_oid":"head-oid-2","verdict":"approve","summary":"looks good","reviewer":{"model":"claude-opus-4-8","effort":"high"},"verifications":[{"name":"go test ./...","result":"pass"}]}`
+	if _, err := Review(context.Background(), ghEnv(root, script), []byte(req)); err != nil {
+		t.Fatalf("Review: %v", err)
+	}
+	script.AssertExhausted()
+	for _, name := range []string{"go test ./...", "review-cycle-1"} {
+		if got := findVerification(t, script.StdinAt(3), name).CommitOID; got != "head-oid-2" {
+			t.Errorf("%s commit = %q, want the PR's live head", name, got)
+		}
+	}
+}
+
+// TestCIStampsThePRHead proves the required-ci singleton carries the head
+// its rollup was read at. The entry is replaced by name on every poll, so
+// without the stamp a CI state read before a fix commit and one read
+// after it are the same bytes in the record.
+func TestCIStampsThePRHead(t *testing.T) {
+	root := setupDeliveryRepo(t, "r1", []state.Issue{fixtureIssue("a", 1, state.PhaseInReview)})
+	body := baseManifestBody(t)
+	script := &execxtest.Script{T: t, Calls: []execxtest.Call{
+		ghAuth(), ghRollupEmptyCall(10), ghIssueViewCall(t, 1, "OPEN", body),
+		ghPRViewCall(10, "OPEN", "head-oid-3"), ghSetIssueBodyCall(1), ghSetPRBodyCall(10),
+	}}
+	if _, err := CI(context.Background(), ghEnv(root, script), []byte(`{"schema_version":1,"issue_number":1}`)); err != nil {
+		t.Fatalf("CI: %v", err)
+	}
+	script.AssertExhausted()
+	if got := findVerification(t, script.StdinAt(4), "required-ci").CommitOID; got != "head-oid-3" {
+		t.Errorf("required-ci commit = %q, want the PR's live head", got)
+	}
+}
+
+// TestMergeStampsTheMergedHead proves the terminal merge entry names the
+// commit that actually merged — the head the human approval pinned and
+// `gh pr merge --match-head-commit` matched — which is the reference every
+// earlier entry in the record is read against.
+func TestMergeStampsTheMergedHead(t *testing.T) {
+	iss := fixtureIssue("a", 1, state.PhaseAwaitingMerge)
+	iss.ApprovedHeadOID = "head-oid-2"
+	root := setupDeliveryRepo(t, "r1", []state.Issue{iss})
+	body := baseManifestBody(t)
+	script := &execxtest.Script{T: t, Calls: []execxtest.Call{
+		ghAuth(), ghPRViewCall(10, "OPEN", "head-oid-2"), ghRollupEmptyCall(10),
+		ghMergePRCall(10, "head-oid-2"), ghPRViewCall(10, "MERGED", "head-oid-2"),
+		ghSetStatusCall(1, ghops.StatusDelivered),
+		ghIssueViewCall(t, 1, "OPEN", body), ghCloseIssueCall(1), ghSetIssueBodyCall(1),
+	}}
+	req := `{"schema_version":1,"issue_number":1,"approval":{"pr_number":10,"head_oid":"head-oid-2","approved_by":"a","approved_at":"2026-07-11T12:00:00Z","statement":"approve-merge"}}`
+	if _, err := Merge(context.Background(), ghEnv(root, script), []byte(req)); err != nil {
+		t.Fatalf("Merge: %v", err)
+	}
+	script.AssertExhausted()
+	if got := findVerification(t, script.StdinAt(8), "merge").CommitOID; got != "head-oid-2" {
+		t.Errorf("merge commit = %q, want the merged head", got)
+	}
+}
+
+// TestAbandonStampsThePRHeadWhenThereIsOne proves abandon records the
+// head the work was dropped at when the issue had a PR to read one from.
+func TestAbandonStampsThePRHeadWhenThereIsOne(t *testing.T) {
+	root := setupDeliveryRepo(t, "r1", []state.Issue{fixtureIssue("a", 1, state.PhasePROpen)})
+	body := baseManifestBody(t)
+	script := &execxtest.Script{T: t, Calls: []execxtest.Call{
+		ghAuth(), ghPRViewCall(10, "OPEN", "head-oid-4"),
+		{Name: "gh", Args: []string{"pr", "close", "10"}},
+		ghIssueViewCall(t, 1, "OPEN", body), ghSetIssueBodyCall(1), ghCloseIssueCall(1),
+	}}
+	req := `{"schema_version":1,"issue_number":1,"reason":"scope dropped","statement":"abandon-issue"}`
+	if _, err := Abandon(context.Background(), ghEnv(root, script), []byte(req)); err != nil {
+		t.Fatalf("Abandon: %v", err)
+	}
+	script.AssertExhausted()
+	if got := findVerification(t, script.StdinAt(4), "abandoned").CommitOID; got != "head-oid-4" {
+		t.Errorf("abandoned commit = %q, want the closed PR's head", got)
+	}
+}
+
+// TestAbandonWithoutAPRRecordsNoCommit is the empty-OID case, and the
+// reason the field is optional. An issue abandoned before pr-open has no
+// pushed head — its branch may hold no commits of its own at all — so
+// there is no commit the abandonment is about. The entry must still be
+// written: abandon has already closed the PR and the issue by the time it
+// renders, so a required field would fail here with nothing left to run.
+func TestAbandonWithoutAPRRecordsNoCommit(t *testing.T) {
+	root := setupDeliveryRepo(t, "r1", []state.Issue{fixtureIssue("a", 1, state.PhaseDispatched)})
+	body := baseManifestBody(t)
+	script := &execxtest.Script{T: t, Calls: []execxtest.Call{
+		ghAuth(), ghIssueViewCall(t, 1, "OPEN", body), ghSetIssueBodyCall(1), ghCloseIssueCall(1),
+	}}
+	req := `{"schema_version":1,"issue_number":1,"reason":"scope dropped","statement":"abandon-issue"}`
+	if _, err := Abandon(context.Background(), ghEnv(root, script), []byte(req)); err != nil {
+		t.Fatalf("Abandon: %v", err)
+	}
+	script.AssertExhausted()
+	v := findVerification(t, script.StdinAt(2), "abandoned")
+	if v.CommitOID != "" {
+		t.Errorf("abandoned commit = %q, want empty: there was no head to read", v.CommitOID)
+	}
+	if v.Result != "abandoned" || v.Detail != "scope dropped" {
+		t.Errorf("abandoned entry = %+v, want the reason recorded despite the absent commit", v)
+	}
+	wantPhase(t, root, 1, state.PhaseAbandoned)
+}
+
+// TestVerificationInputRejectsACallerSuppliedCommitOID pins the wire
+// contract on both verbs that take verifications: VerificationInput has
+// no commit-OID field, and decodeRequest disallows unknown fields, so a
+// request asserting which commit its evidence speaks for is refused as
+// ErrBadRequest before any git or gh call rather than quietly ignored.
+// The record's answer to that question stays the engine's, never an
+// executor's or a reviewer's claim.
+func TestVerificationInputRejectsACallerSuppliedCommitOID(t *testing.T) {
+	verbs := map[string]struct {
+		fn    func(context.Context, Env, []byte) error
+		phase state.Phase
+		req   string
+	}{
+		"review": {
+			fn:    func(ctx context.Context, e Env, b []byte) error { _, err := Review(ctx, e, b); return err },
+			phase: state.PhaseInReview,
+			req:   `{"schema_version":1,"issue_number":1,"reviewed_head_oid":"h","verdict":"approve","summary":"s","reviewer":{"model":"claude-opus-4-8","effort":"high"},"verifications":[{"name":"go test","result":"pass","commit_oid":"claimed-head"}]}`,
+		},
+		"pr-open": {
+			fn:    func(ctx context.Context, e Env, b []byte) error { _, err := PROpen(ctx, e, b); return err },
+			phase: state.PhaseDispatched,
+			req:   `{"schema_version":1,"issue_number":1,"verifications":[{"name":"go test","result":"pass","commit_oid":"claimed-head"}]}`,
+		},
+	}
+	for name, tc := range verbs {
+		t.Run(name, func(t *testing.T) {
+			root := setupDeliveryRepo(t, "r1", []state.Issue{fixtureIssue("a", 1, tc.phase)})
+			before := stateBytes(t, root)
+			script := &execxtest.Script{T: t}
+			err := tc.fn(context.Background(), ghEnv(root, script), []byte(tc.req))
+			if !errors.Is(err, ErrBadRequest) {
+				t.Fatalf("err = %v, want ErrBadRequest", err)
+			}
+			if !strings.Contains(err.Error(), "commit_oid") {
+				t.Errorf("err %v does not name the offending field", err)
+			}
+			script.AssertExhausted()
+			if got := stateBytes(t, root); string(got) != string(before) {
+				t.Error("state changed on a request claiming its own commit OID")
+			}
+		})
+	}
+}
+
 // --- Schema v3 persistence ---
 
 func TestActivatePersistsV3Fields(t *testing.T) {

@@ -72,16 +72,21 @@ func CI(ctx context.Context, env Env, reqJSON []byte) (*CIResult, error) {
 	if err != nil {
 		return nil, err
 	}
-	setVerification(&m, manifest.Verification{
-		Name:   "required-ci",
-		Result: string(summary.State),
-		Detail: truncateDetail(ciDetail(summary)),
-		At:     env.nowStamp(),
-	})
+	// The PR is read before the entry is written, not after, because its
+	// head is the commit this CI state describes: a rollup read at an
+	// earlier head must not be indistinguishable in the record from one
+	// read at the head that merges.
 	pr, err := prForIssue(ctx, gh, issue)
 	if err != nil {
 		return nil, err
 	}
+	setVerification(&m, manifest.Verification{
+		Name:      "required-ci",
+		Result:    string(summary.State),
+		Detail:    truncateDetail(ciDetail(summary)),
+		CommitOID: prHeadOID(pr),
+		At:        env.nowStamp(),
+	})
 	if err := writeManifest(ctx, gh, iss, pr, m); err != nil {
 		return nil, err
 	}

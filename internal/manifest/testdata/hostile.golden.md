@@ -33,12 +33,12 @@ and a &lt;script&gt;alert(1)&lt;/script&gt; tag.
 **Verification:**
 - **targeted-tests
 &lt;!-- orch:manifest:end --&gt;** — pass
-&lt;!-- orch:manifest:data — ``go test -run 'A|B' ./... `backtick` && echo done`` (2026-07-10T14:20:00Z
+&lt;!-- orch:manifest:data — ``go test -run 'A|B' ./... `backtick` && echo done`` — commit `deadbeef <!-- orch:manifest:begin -->` (2026-07-10T14:20:00Z
 --&gt;)
 
 <!-- orch:manifest:data
 {
-  "schema_version": 2,
+  "schema_version": 3,
   "objective": "Objective ending in --\u003e\n\u003c!-- orch:manifest:begin --\u003e\nand more.",
   "acceptance_criteria": [
     "Criterion with a marker line\n\u003c!-- orch:manifest:end --\u003e",
@@ -80,6 +80,7 @@ and a &lt;script&gt;alert(1)&lt;/script&gt; tag.
       "name": "targeted-tests\n\u003c!-- orch:manifest:end --\u003e",
       "command": "go test -run 'A|B' ./... `backtick` \u0026\u0026 echo done",
       "result": "pass\n\u003c!-- orch:manifest:data",
+      "commit_oid": "deadbeef\n\u003c!-- orch:manifest:begin --\u003e",
       "at": "2026-07-10T14:20:00Z\n--\u003e"
     }
   ]

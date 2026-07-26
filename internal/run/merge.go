@@ -129,11 +129,15 @@ func Merge(ctx context.Context, env Env, reqJSON []byte) (*MergeResult, error) {
 	}
 
 	// The issue body is the durable audit home once the PR is merged.
+	// The stamped commit is the merged head — the approval pinned it, the
+	// merge matched it — which is what makes every earlier entry in the
+	// record readable as "gathered before the commit that shipped" or not.
 	setVerification(&m, manifest.Verification{
-		Name:   "merge",
-		Result: "merged",
-		Detail: truncateDetail(fmt.Sprintf("%s merge at %s", c.cfg.Merge.Strategy, pr.HeadRefOid)),
-		At:     env.nowStamp(),
+		Name:      "merge",
+		Result:    "merged",
+		Detail:    truncateDetail(fmt.Sprintf("%s merge at %s", c.cfg.Merge.Strategy, pr.HeadRefOid)),
+		CommitOID: pr.HeadRefOid,
+		At:        env.nowStamp(),
 	})
 	issueBody, err := upsertCapped(iss.Body, m)
 	if err != nil {

@@ -54,7 +54,8 @@ const (
 
 // truncateDetail caps one detail string at verificationDetailCap runes,
 // appending the truncation marker when it cuts (PRD §23: the canonical
-// Name/Result/At always survive; only free-text detail is bounded).
+// Name/Result/CommitOID/At always survive, here and under upsertCapped's
+// rotation; only free-text detail is bounded).
 func truncateDetail(detail string) string {
 	return truncateAt(detail, verificationDetailCap)
 }
@@ -99,6 +100,35 @@ func setVerification(m *manifest.Manifest, v manifest.Verification) {
 		}
 	}
 	m.Verifications = append(m.Verifications, v)
+}
+
+// stampCommitOID records oid as the commit every verification in vs was
+// gathered at (manifest.Verification.CommitOID).
+//
+// The engine stamps it and no verb accepts one on the wire. A
+// caller-supplied OID would be an unverifiable claim about which commit
+// an executor's or reviewer's evidence speaks for — exactly the claim
+// the field exists to make checkable — so each verb passes a head it
+// read itself: the pushed branch head at pr-open, the PR's live head at
+// review and ci, the merged head at merge.
+//
+// An empty oid is left as-is rather than treated as an error: it is the
+// honest reading at the one site with no head to read (abandon.go, on an
+// issue abandoned before its PR opened), and manifest.Verification
+// documents why inventing one there would be worse.
+func stampCommitOID(vs []manifest.Verification, oid string) {
+	for i := range vs {
+		vs[i].CommitOID = oid
+	}
+}
+
+// prHeadOID is pr's head commit, or "" when the issue has no PR to read
+// one from (prForIssue returns nil below phase pr-open).
+func prHeadOID(pr *ghops.PR) string {
+	if pr == nil {
+		return ""
+	}
+	return pr.HeadRefOid
 }
 
 // engineVerificationNames are the singleton verification names the

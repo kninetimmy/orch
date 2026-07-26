@@ -23,6 +23,11 @@ const PROpenSchemaVersion = 1
 // review-cycle-<n>) — those are reserved so the engine's own record can
 // never be quietly overwritten or duplicated by a caller-supplied entry
 // (rejectEngineOwnedNames).
+//
+// There is deliberately no commit-OID field: the commit an entry was
+// gathered at is stamped by the engine from a head it read itself
+// (stampCommitOID), so the record's answer to "which commit is this
+// evidence about" is never a caller's assertion.
 type VerificationInput struct {
 	Name    string `json:"name"`
 	Command string `json:"command,omitempty"`
@@ -120,6 +125,18 @@ func PROpen(ctx context.Context, env Env, reqJSON []byte) (*PROpenResult, error)
 	if err := git.Push(ctx, worktree, "origin", issue.Branch); err != nil {
 		return nil, err
 	}
+	// The evidence above was gathered against the commits just pushed, so
+	// the branch head is the commit it speaks for. It is read here, after
+	// the push, and not offered as a request field: the executor reports
+	// what it ran, the engine says where. The PR cannot supply it — the
+	// record is written to the issue body before CreatePR, so there is no
+	// PR to read a head from yet.
+	headOID, err := git.RevParse(ctx, issue.Branch)
+	if err != nil {
+		return nil, err
+	}
+	stampCommitOID(verifications, headOID)
+
 	iss, m, err := readIssueManifest(ctx, gh, issue.Number)
 	if err != nil {
 		return nil, err
@@ -190,6 +207,10 @@ func buildVerifications(inputs []VerificationInput, stamp string) ([]manifest.Ve
 // Detail to the body-cap ceiling. An empty inputs converts to a nil
 // slice with no error, so callers for whom verifications are optional
 // (review) can treat "none supplied" as valid.
+//
+// It leaves CommitOID unset: both callers run this while validating the
+// request, before any GitHub or git read, so the head is not known yet.
+// Each applies stampCommitOID once it has read one.
 func convertVerifications(inputs []VerificationInput, stamp string) ([]manifest.Verification, error) {
 	if len(inputs) == 0 {
 		return nil, nil

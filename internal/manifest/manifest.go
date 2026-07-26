@@ -3,10 +3,11 @@
 // acceptance criteria, and required tests; the selected role, the exact
 // executor/reviewer model+effort and how the host actually delivered
 // that effort; the routing rationale, escalations and substitutions, the
-// config revision, and named verification commands and results.
-// Resume/recovery (PRD §23: interrupted runs resume) rebuilds run state
-// from these posted bodies, so the record must render into a managed
-// markdown region AND parse back out losslessly.
+// config revision, and named verification commands and results with the
+// commit each was gathered at. Resume/recovery (PRD §23: interrupted
+// runs resume) rebuilds run state from these posted bodies, so the
+// record must render into a managed markdown region AND parse back out
+// losslessly.
 //
 // Like gitops and ghops the package is policy-free: it owns the schema,
 // the managed region, and drift detection, while the run engine decides
@@ -35,12 +36,21 @@ import (
 // It lives only in the JSON record (see Manifest.SchemaVersion); the
 // markers are locators, never a second source of truth.
 //
-// v2 adds the approved work text (objective, acceptance criteria,
-// required tests) and the effort-delivery mechanism. There is no
-// migration from v1: a v1 record is missing fields v2 requires, so Parse
-// rejects it through the unsupported-version path rather than accept a
-// record whose approved work would silently read as empty.
-const SchemaVersion = 2
+// v2 added the approved work text (objective, acceptance criteria,
+// required tests) and the effort-delivery mechanism. v3 adds the commit
+// OID each verification was gathered at (Verification.CommitOID).
+//
+// There is no migration, in either direction. Reading down: a v1 record
+// is missing the approved work, which would silently decode as empty,
+// and a v2 record's verifications would decode as gathered at no commit
+// — which in v3 is a claim about the evidence, not an absence of one —
+// so Parse rejects both through the unsupported-version path. Reading
+// up: an older binary handed a newer record would drop the field it
+// does not know on decode, re-render without it, and fail the drift
+// compare with ErrDrift, accusing a human of a hand edit nobody made.
+// Raising this constant is what makes the version check fire first and
+// say the true thing, so it must rise with every rendered field.
+const SchemaVersion = 3
 
 // BeginMarker and EndMarker delimit the managed region. A line is a
 // marker only if, after stripping at most one trailing "\r", it equals
@@ -115,12 +125,28 @@ type Escalation struct {
 // Verification records one named check and its outcome. Command is
 // empty for CI-state entries that report a status without a local
 // command; Result is a free string ("pass", "CLEAN", ...).
+//
+// CommitOID is the commit the check was gathered at, so evidence from
+// an earlier head stays distinguishable from evidence at the head that
+// merges. The run engine stamps it from a head it read itself and
+// accepts none from a caller; which head that is per verb is the
+// engine's business, not this package's.
+//
+// It is optional, and an empty value is a claim, not a gap: it says no
+// commit was in scope when the entry was written. Requiring one instead
+// would force the engine either to invent an OID naming a commit the
+// entry is not about, or to fail Render at a site with no head to read
+// — after that verb's GitHub mutations had already landed, leaving the
+// operator a half-finished record and no remedy. The format is
+// unvalidated, exactly as At carries whatever timestamp it was given:
+// this package owns the schema, not the vocabulary.
 type Verification struct {
-	Name    string `json:"name"`
-	Command string `json:"command,omitempty"`
-	Result  string `json:"result"`
-	Detail  string `json:"detail,omitempty"`
-	At      string `json:"at,omitempty"`
+	Name      string `json:"name"`
+	Command   string `json:"command,omitempty"`
+	Result    string `json:"result"`
+	Detail    string `json:"detail,omitempty"`
+	CommitOID string `json:"commit_oid,omitempty"`
+	At        string `json:"at,omitempty"`
 }
 
 // Manifest is the canonical audit record. SchemaVersion is first and
@@ -151,9 +177,16 @@ type Manifest struct {
 // validate reports the first schema-completeness violation in m. Render
 // treats a violation as a caller bug and returns it plainly; Parse
 // re-wraps a decoded record's violation as ErrBadManifest.
+//
+// The version mismatch names `orch abort` instead of telling the
+// operator to regenerate the record. Nothing regenerates a posted
+// record: every body-reading verb fails closed on this same check, so
+// an operator who followed that advice had no command to run. Naming
+// one concrete command for an unrepairable version mismatch follows
+// state.Load's precedent (internal/state/state.go).
 func (m Manifest) validate() error {
 	if m.SchemaVersion != SchemaVersion {
-		return fmt.Errorf("schema_version %d is unsupported (this build renders %d; regenerate the record)", m.SchemaVersion, SchemaVersion)
+		return fmt.Errorf("schema_version %d is unsupported (this build renders %d; a posted record cannot be migrated in place — run `orch abort` to return to assist, then re-plan and re-activate)", m.SchemaVersion, SchemaVersion)
 	}
 	if m.Objective == "" {
 		return errors.New("objective is empty")

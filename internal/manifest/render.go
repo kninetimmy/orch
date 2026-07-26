@@ -153,10 +153,15 @@ func writeVerifications(b *strings.Builder, vs []Verification) {
 
 // verificationBullet renders one verification as a single list line:
 //
-//   - **<name>** — <result> — `<command>` — <detail> (<at>)
+//   - **<name>** — <result> — `<command>` — <detail> — commit `<oid>` (<at>)
 //
-// The command, detail, and timestamp segments are omitted when their
-// fields are empty.
+// The command, detail, commit, and timestamp segments are omitted when
+// their fields are empty. The commit appears here and not only in the
+// canonical JSON deliberately: the drift check compares a re-render
+// against the found region, so a field with no human view is a field
+// whose only view is the hidden data comment — and this one is what
+// tells a reader whether the evidence above it was gathered at the head
+// that merged or at an earlier one.
 func verificationBullet(v Verification) string {
 	var b strings.Builder
 	fmt.Fprintf(&b, "- **%s** — %s", mdText(v.Name), mdText(v.Result))
@@ -165,6 +170,9 @@ func verificationBullet(v Verification) string {
 	}
 	if v.Detail != "" {
 		fmt.Fprintf(&b, " — %s", mdText(v.Detail))
+	}
+	if v.CommitOID != "" {
+		fmt.Fprintf(&b, " — commit %s", mdCode(v.CommitOID))
 	}
 	if v.At != "" {
 		fmt.Fprintf(&b, " (%s)", mdText(v.At))

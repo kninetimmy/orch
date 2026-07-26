@@ -1,7 +1,9 @@
 package manifest
 
 import (
+	"encoding/json"
 	"errors"
+	"fmt"
 	"reflect"
 	"strings"
 	"testing"
@@ -122,8 +124,8 @@ func TestParseBadManifest(t *testing.T) {
 		"unterminated data":    BeginMarker + "\n" + dataOpen + "\n{}\n" + EndMarker,
 		"double data comment":  BeginMarker + "\n" + dataOpen + "\n{}\n" + dataClose + "\n" + dataOpen + "\n{}\n" + dataClose + "\n" + EndMarker,
 		"bad json":             BeginMarker + "\n" + dataOpen + "\nthis is not json\n" + dataClose + "\n" + EndMarker,
-		"schema version zero":  tamperJSON(valid, `"schema_version": 2`, `"schema_version": 0`),
-		"schema version three": tamperJSON(valid, `"schema_version": 2`, `"schema_version": 3`),
+		"schema version zero":  tamperJSON(valid, `"schema_version": 3`, `"schema_version": 0`),
+		"schema version four":  tamperJSON(valid, `"schema_version": 3`, `"schema_version": 4`),
 		"schema absent":        BeginMarker + "\n" + dataOpen + "\n{\"role\":\"implementer\"}\n" + dataClose + "\n" + EndMarker,
 		"invalid record":       tamperJSON(valid, `"role": "implementer"`, `"role": "wizard"`),
 	}
@@ -138,10 +140,10 @@ func TestParseBadManifest(t *testing.T) {
 }
 
 // schemaOneRegion is a genuine schema-1 record, frozen byte-for-byte as
-// the v1 renderer emitted it. It is not a v2 render with a tampered
+// the v1 renderer emitted it. It is not a later render with a tampered
 // version number: it is the real thing this build must refuse, missing
 // exactly the objective, acceptance criteria, required tests, and
-// effort-delivery fields v2 requires.
+// effort-delivery fields v2 required.
 const schemaOneRegion = BeginMarker + `
 ### Orch audit record
 
@@ -178,8 +180,9 @@ const schemaOneRegion = BeginMarker + `
 
 // TestParseRejectsSchemaOneRecord proves a v1 record fails closed through
 // the unsupported-version path — named as such, before the drift compare
-// — rather than decoding into a v2 struct whose approved work would read
-// as empty. There is no migration: the missing fields cannot be invented.
+// — rather than decoding into this build's struct with approved work
+// that would read as empty. There is no migration: the missing fields
+// cannot be invented.
 func TestParseRejectsSchemaOneRecord(t *testing.T) {
 	_, err := Parse(schemaOneRegion)
 	if !errors.Is(err, ErrBadManifest) {
@@ -193,6 +196,124 @@ func TestParseRejectsSchemaOneRecord(t *testing.T) {
 	}
 }
 
+// schemaTwoRegion is a genuine schema-2 record, frozen byte-for-byte as
+// the v2 renderer emitted it: the minimal fixture plus one verification,
+// which — being v2 — names no commit it was gathered at.
+const schemaTwoRegion = BeginMarker + `
+### Orch audit record
+
+**Objective:** Ship the manifest round trip.
+
+**Acceptance criteria:**
+- Render and Parse agree on every field.
+
+**Required tests:**
+- ` + "`go test ./internal/manifest/...`" + `
+
+| Field | Value |
+| --- | --- |
+| Role | ` + "`implementer`" + ` |
+| Executor | ` + "`opus-4-8`" + ` — effort ` + "`high`" + ` |
+| Reviewer | ` + "`gpt-5.6-sol`" + ` — effort ` + "`medium`" + ` |
+| Effort delivery | ` + "`parameter`" + ` — the host applied the routed effort as a real model parameter |
+| Config revision | ` + "`cfg-2026-07-10`" + ` |
+
+**Routing rationale:** Selected implementer for a bounded single-file change.
+
+**Escalations:** _none_
+
+**Verification:**
+- **targeted-tests** — pass — ` + "`go test ./internal/manifest/...`" + ` (2026-07-10T14:20:00Z)
+
+` + dataOpen + `
+{
+  "schema_version": 2,
+  "objective": "Ship the manifest round trip.",
+  "acceptance_criteria": [
+    "Render and Parse agree on every field."
+  ],
+  "required_tests": [
+    "go test ./internal/manifest/..."
+  ],
+  "role": "implementer",
+  "executor": {
+    "model": "opus-4-8",
+    "effort": "high"
+  },
+  "routing_rationale": "Selected implementer for a bounded single-file change.",
+  "reviewer": {
+    "model": "gpt-5.6-sol",
+    "effort": "medium"
+  },
+  "effort_delivery": "parameter",
+  "config_revision": "cfg-2026-07-10",
+  "verifications": [
+    {
+      "name": "targeted-tests",
+      "command": "go test ./internal/manifest/...",
+      "result": "pass",
+      "at": "2026-07-10T14:20:00Z"
+    }
+  ]
+}
+` + dataClose + `
+` + EndMarker
+
+// TestSchemaTwoRegionIsAGenuineRender guards the fixture above against a
+// typo. No verification in it carries a commit OID, so a v2 render and a
+// v3 render of the same record differ in exactly one place — the
+// schema_version line — and re-rendering the frozen region's own decoded
+// record at this build's version must reproduce it byte for byte. Without
+// this check a mangled fixture would still be rejected, and the rejection
+// test below would pass for the wrong reason.
+func TestSchemaTwoRegionIsAGenuineRender(t *testing.T) {
+	jsonText, err := extractData(schemaTwoRegion)
+	if err != nil {
+		t.Fatalf("extractData: %v", err)
+	}
+	var m Manifest
+	if err := json.Unmarshal([]byte(jsonText), &m); err != nil {
+		t.Fatalf("decode the frozen record: %v", err)
+	}
+	if m.SchemaVersion != 2 {
+		t.Fatalf("frozen record schema_version = %d, want 2", m.SchemaVersion)
+	}
+	m.SchemaVersion = SchemaVersion
+	got, err := Render(m)
+	if err != nil {
+		t.Fatalf("Render: %v", err)
+	}
+	want := tamperJSON(schemaTwoRegion, `"schema_version": 2`, fmt.Sprintf(`"schema_version": %d`, SchemaVersion))
+	if got != want {
+		t.Errorf("the frozen region is not a v2 render of its own record\n--- re-rendered ---\n%s\n--- frozen, version raised ---\n%s", got, want)
+	}
+}
+
+// TestParseRejectsSchemaTwoRecord proves the immediately superseded
+// record fails closed through the same unsupported-version path, before
+// the drift compare, and that the error names a remediation that exists.
+//
+// Nothing else would catch it. A v2 record decodes cleanly into this
+// build's struct and re-renders to the same bytes but for the version
+// line, so its verifications would silently read as gathered at no
+// commit — which in v3 is a claim about the evidence, not the absence of
+// one — and the OID they lack cannot be recovered after the fact.
+func TestParseRejectsSchemaTwoRecord(t *testing.T) {
+	_, err := Parse(schemaTwoRegion)
+	if !errors.Is(err, ErrBadManifest) {
+		t.Fatalf("err = %v, want ErrBadManifest", err)
+	}
+	if !strings.Contains(err.Error(), "schema_version 2 is unsupported") {
+		t.Errorf("err %q does not name the unsupported version", err)
+	}
+	if errors.Is(err, ErrDrift) {
+		t.Error("a v2 record was reported as drift; the version check must come first")
+	}
+	if !strings.Contains(err.Error(), "orch abort") {
+		t.Errorf("err %q does not name a remediation that exists", err)
+	}
+}
+
 func TestParseDrift(t *testing.T) {
 	base := mustRender(t, fullManifest())
 	cases := map[string]string{
@@ -200,8 +321,8 @@ func TestParseDrift(t *testing.T) {
 		"blank line inserted":   strings.Replace(base, "### Orch audit record\n", "### Orch audit record\n\n", 1),
 		"sentence inserted":     strings.Replace(base, "**Verification:**", "An extra human sentence.\n\n**Verification:**", 1),
 		"json keys reordered": strings.Replace(base,
-			"{\n  \"schema_version\": 2,\n  \"objective\": \""+fixtureObjective+"\",",
-			"{\n  \"objective\": \""+fixtureObjective+"\",\n  \"schema_version\": 2,", 1),
+			"{\n  \"schema_version\": 3,\n  \"objective\": \""+fixtureObjective+"\",",
+			"{\n  \"objective\": \""+fixtureObjective+"\",\n  \"schema_version\": 3,", 1),
 	}
 	for name, body := range cases {
 		t.Run(name, func(t *testing.T) {

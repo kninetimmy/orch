@@ -143,10 +143,17 @@ type Issue struct {
 	// Objective, AcceptanceCriteria, and RequiredTests are the approved
 	// plan text, copied at EnterDelivery so dispatch hands the executor a
 	// transcription of what a human approved rather than a recollection
-	// of it. They are optional in the persisted file rather than required
-	// by validateIssues because a run activated by a build older than the
-	// schema-2 audit record carries none; `orch resume` repopulates them
-	// from the issue body, which is their durable home.
+	// of it. Their durable home is the issue body's audit record, and
+	// `orch resume` repopulates them from it on every phase where it
+	// already parses that record.
+	//
+	// They are optional in the persisted file rather than required by
+	// validateIssues because a run activated by a build older than the
+	// schema-2 audit record carries none — and resume cannot repair that
+	// run. Its issue bodies still hold the older record manifest.Parse
+	// refuses, so resume takes its failure path and blocks the issue
+	// instead of repopulating anything. The remediation there is abort,
+	// never resume (internal/run/dispatch.go, checkApprovedWork).
 	Objective          string   `json:"objective,omitempty"`
 	AcceptanceCriteria []string `json:"acceptance_criteria,omitempty"`
 	RequiredTests      []string `json:"required_tests,omitempty"`
