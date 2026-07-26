@@ -211,6 +211,7 @@ in flight at once. For each issue:
    {"schema_version": 1, "issue_number": N, "reviewed_head_oid": "...",
     "verdict": "approve|request-changes", "summary": "...",
     "reviewer": {"model": "...", "effort": "..."},
+    "verifications": [{"name": "...", "command": "...", "result": "...", "detail": "..."}],
     "usage": {"input_tokens": 0, "output_tokens": 0, "cache_read_tokens": 0,
                "cache_creation_tokens": 0, "duration_ms": 0}}
    ```
@@ -220,7 +221,10 @@ in flight at once. For each issue:
    `request-changes` loops the same executor in the **same worktree**
    on the same branch: it fixes and pushes, then a **fresh** reviewer
    is spawned (step 4) and `orch run review` is called again.
-   `orch run pr-open` is not reachable a second time. `approve`
+   `orch run pr-open` is not reachable a second time, so `verifications`
+   is optional and takes pr-open's input shape — use it to carry
+   evidence re-run on the fix commit (e.g. tests re-run before
+   requesting the next review) into the audit record. `approve`
    continues.
 
 6. **CI** — `orch run ci` with

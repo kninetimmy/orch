@@ -384,6 +384,25 @@ func TestReviewWrongReviewerIsPure(t *testing.T) {
 	}
 }
 
+// TestReviewBadVerificationIsBadRequestBeforeMutation proves a malformed
+// entry in review's optional verifications array is rejected as
+// ErrBadRequest before loadVerb ever runs (the same wire-validation
+// ordering as usage), so no gh call happens and state is untouched.
+func TestReviewBadVerificationIsBadRequestBeforeMutation(t *testing.T) {
+	root := setupDeliveryRepo(t, "r1", []state.Issue{fixtureIssue("a", 1, state.PhasePROpen)})
+	before := stateBytes(t, root)
+	script := &execxtest.Script{T: t}
+	req := `{"schema_version":1,"issue_number":1,"reviewed_head_oid":"head","verdict":"approve","summary":"s","reviewer":{"model":"claude-opus-4-8","effort":"high"},"verifications":[{"name":"","result":"pass"}]}`
+	_, err := Review(context.Background(), ghEnv(root, script), []byte(req))
+	if !errors.Is(err, ErrBadRequest) {
+		t.Fatalf("err = %v, want ErrBadRequest", err)
+	}
+	script.AssertExhausted()
+	if got := stateBytes(t, root); string(got) != string(before) {
+		t.Error("state changed on a review request carrying a bad verification")
+	}
+}
+
 func TestBlockGitHubUnavailableIsPure(t *testing.T) {
 	root := setupDeliveryRepo(t, "r1", []state.Issue{fixtureIssue("a", 1, state.PhaseDispatched)})
 	before := stateBytes(t, root)
@@ -456,6 +475,24 @@ func TestTruncateDetail(t *testing.T) {
 	}
 }
 
+// TestTruncateReviewDetail is truncateDetail's cut-path pin but for
+// reviewDetailCap: unchanged under the cap, and a detail over it gets
+// the same truncation marker at reviewDetailCap runes rather than
+// verificationDetailCap's smaller one.
+func TestTruncateReviewDetail(t *testing.T) {
+	if got := truncateReviewDetail("short"); got != "short" {
+		t.Errorf("truncateReviewDetail(short) = %q, want unchanged", got)
+	}
+	long := strings.Repeat("x", reviewDetailCap+500)
+	got := truncateReviewDetail(long)
+	if !strings.HasSuffix(got, verificationTruncationMarker) {
+		t.Errorf("truncated detail missing marker: %q", got[len(got)-40:])
+	}
+	if len([]rune(got)) != reviewDetailCap+len([]rune(verificationTruncationMarker)) {
+		t.Errorf("truncated length = %d, want reviewDetailCap + marker", len([]rune(got)))
+	}
+}
+
 func TestUpsertCappedDropsOldestDetails(t *testing.T) {
 	big := strings.Repeat("x", 25000)
 	m := baseManifest()
@@ -500,6 +537,237 @@ func TestUpsertCappedHardFails(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), fmt.Sprint(githubBodyLimit)) {
 		t.Errorf("err %v does not name GitHub's limit %d", err, githubBodyLimit)
+	}
+}
+
+// --- Review verifications (issue #59) ---
+
+// TestReviewWritesSuppliedVerifications proves review accepts an
+// optional verifications array using pr-open's {name, command, result,
+// detail} input shape, on an issue already in phase in-review, and that
+// the review-cycle-N entry the verb already writes still lands alongside
+// it (AC1, AC2).
+func TestReviewWritesSuppliedVerifications(t *testing.T) {
+	root := setupDeliveryRepo(t, "r1", []state.Issue{fixtureIssue("a", 1, state.PhaseInReview)})
+	body := baseManifestBody(t)
+	script := &execxtest.Script{T: t, Calls: []execxtest.Call{
+		ghAuth(), ghPRViewCall(10, "OPEN", "head-oid-1"),
+		ghIssueViewCall(t, 1, "OPEN", body), ghSetIssueBodyCall(1), ghSetPRBodyCall(10),
+	}}
+	req := `{"schema_version":1,"issue_number":1,"reviewed_head_oid":"head-oid-1","verdict":"approve","summary":"looks good","reviewer":{"model":"claude-opus-4-8","effort":"high"},"verifications":[{"name":"go test ./...","result":"pass","detail":"22 packages ok"}]}`
+	res, err := Review(context.Background(), ghEnv(root, script), []byte(req))
+	if err != nil {
+		t.Fatalf("Review: %v", err)
+	}
+	script.AssertExhausted()
+	if res.ReviewCycles != 1 {
+		t.Fatalf("review cycles = %d, want 1", res.ReviewCycles)
+	}
+
+	m, err := manifest.Parse(script.StdinAt(3))
+	if err != nil {
+		t.Fatalf("Parse the posted issue body: %v", err)
+	}
+	var supplied, cycle *manifest.Verification
+	for i := range m.Verifications {
+		switch m.Verifications[i].Name {
+		case "go test ./...":
+			supplied = &m.Verifications[i]
+		case "review-cycle-1":
+			cycle = &m.Verifications[i]
+		}
+	}
+	if supplied == nil || supplied.Result != "pass" || supplied.Detail != "22 packages ok" {
+		t.Errorf("supplied verification = %+v, want a matching entry in the audit record", supplied)
+	}
+	if cycle == nil || cycle.Result != "approve" || cycle.Detail != "looks good" {
+		t.Errorf("review-cycle-1 = %+v, want the verdict/summary the verb already writes", cycle)
+	}
+}
+
+// TestReviewVerificationReplacesByName proves a caller-supplied
+// verification whose name already exists in the record is replaced in
+// place, not duplicated — the same replace-by-name upsert setVerification
+// gives the engine-owned singletons (AC1).
+func TestReviewVerificationReplacesByName(t *testing.T) {
+	root := setupDeliveryRepo(t, "r1", []state.Issue{fixtureIssue("a", 1, state.PhasePROpen)})
+	seeded := baseManifest()
+	seeded.Verifications = []manifest.Verification{{Name: "go test ./...", Result: "fail", Detail: "2 failures", At: "t0"}}
+	body, err := manifest.Upsert("**Objective**\n\ndo it\n", seeded)
+	if err != nil {
+		t.Fatal(err)
+	}
+	script := &execxtest.Script{T: t, Calls: []execxtest.Call{
+		ghAuth(), ghPRViewCall(10, "OPEN", "head-oid-1"),
+		ghIssueViewCall(t, 1, "OPEN", body), ghSetIssueBodyCall(1), ghSetPRBodyCall(10),
+	}}
+	req := `{"schema_version":1,"issue_number":1,"reviewed_head_oid":"head-oid-1","verdict":"approve","summary":"looks good","reviewer":{"model":"claude-opus-4-8","effort":"high"},"verifications":[{"name":"go test ./...","result":"pass","detail":"all green"}]}`
+	if _, err := Review(context.Background(), ghEnv(root, script), []byte(req)); err != nil {
+		t.Fatalf("Review: %v", err)
+	}
+	script.AssertExhausted()
+
+	m, err := manifest.Parse(script.StdinAt(3))
+	if err != nil {
+		t.Fatalf("Parse the posted issue body: %v", err)
+	}
+	count := 0
+	for _, v := range m.Verifications {
+		if v.Name != "go test ./..." {
+			continue
+		}
+		count++
+		if v.Result != "pass" || v.Detail != "all green" {
+			t.Errorf("verification = %+v, want the resubmitted result/detail", v)
+		}
+	}
+	if count != 1 {
+		t.Errorf("%q appears %d times, want 1 (replace-by-name, not append)", "go test ./...", count)
+	}
+}
+
+// TestReviewSummaryRoundTripsUnderReviewDetailCap proves a review summary
+// longer than verificationDetailCap but shorter than reviewDetailCap
+// carries through to the audit record with no truncation marker (AC3).
+func TestReviewSummaryRoundTripsUnderReviewDetailCap(t *testing.T) {
+	root := setupDeliveryRepo(t, "r1", []state.Issue{fixtureIssue("a", 1, state.PhasePROpen)})
+	body := baseManifestBody(t)
+	script := &execxtest.Script{T: t, Calls: []execxtest.Call{
+		ghAuth(), ghPRViewCall(10, "OPEN", "head-oid-1"),
+		ghIssueViewCall(t, 1, "OPEN", body), ghSetIssueBodyCall(1), ghSetPRBodyCall(10),
+	}}
+	summary := strings.Repeat("a", verificationDetailCap+500)
+	if len(summary) >= reviewDetailCap {
+		t.Fatalf("fixture summary length %d must stay under reviewDetailCap %d", len(summary), reviewDetailCap)
+	}
+	req := fmt.Sprintf(`{"schema_version":1,"issue_number":1,"reviewed_head_oid":"head-oid-1","verdict":"approve","summary":%q,"reviewer":{"model":"claude-opus-4-8","effort":"high"}}`, summary)
+	if _, err := Review(context.Background(), ghEnv(root, script), []byte(req)); err != nil {
+		t.Fatalf("Review: %v", err)
+	}
+	script.AssertExhausted()
+
+	m, err := manifest.Parse(script.StdinAt(3))
+	if err != nil {
+		t.Fatalf("Parse the posted issue body: %v", err)
+	}
+	found := false
+	for _, v := range m.Verifications {
+		if v.Name != "review-cycle-1" {
+			continue
+		}
+		found = true
+		if v.Detail != summary {
+			t.Errorf("review-cycle-1 detail length = %d, want the untruncated %d-rune summary", len([]rune(v.Detail)), len([]rune(summary)))
+		}
+		if strings.Contains(v.Detail, verificationTruncationMarker) {
+			t.Error("review-cycle-1 detail carries the truncation marker though it is under reviewDetailCap")
+		}
+	}
+	if !found {
+		t.Fatal("review-cycle-1 entry not found in the posted audit record")
+	}
+}
+
+// TestReviewSuppliedVerificationStillCappedAtVerificationDetailCap proves
+// a caller-supplied verification's detail — as opposed to the
+// review-cycle-N entry — remains bounded by the existing, smaller
+// verificationDetailCap, unchanged (AC4).
+func TestReviewSuppliedVerificationStillCappedAtVerificationDetailCap(t *testing.T) {
+	root := setupDeliveryRepo(t, "r1", []state.Issue{fixtureIssue("a", 1, state.PhasePROpen)})
+	body := baseManifestBody(t)
+	script := &execxtest.Script{T: t, Calls: []execxtest.Call{
+		ghAuth(), ghPRViewCall(10, "OPEN", "head-oid-1"),
+		ghIssueViewCall(t, 1, "OPEN", body), ghSetIssueBodyCall(1), ghSetPRBodyCall(10),
+	}}
+	long := strings.Repeat("x", verificationDetailCap+500)
+	req := fmt.Sprintf(`{"schema_version":1,"issue_number":1,"reviewed_head_oid":"head-oid-1","verdict":"approve","summary":"looks good","reviewer":{"model":"claude-opus-4-8","effort":"high"},"verifications":[{"name":"go test","result":"pass","detail":%q}]}`, long)
+	if _, err := Review(context.Background(), ghEnv(root, script), []byte(req)); err != nil {
+		t.Fatalf("Review: %v", err)
+	}
+	script.AssertExhausted()
+
+	m, err := manifest.Parse(script.StdinAt(3))
+	if err != nil {
+		t.Fatalf("Parse the posted issue body: %v", err)
+	}
+	found := false
+	for _, v := range m.Verifications {
+		if v.Name != "go test" {
+			continue
+		}
+		found = true
+		if !strings.HasSuffix(v.Detail, verificationTruncationMarker) {
+			t.Errorf("supplied verification detail not truncated at verificationDetailCap: suffix %q", v.Detail[len(v.Detail)-40:])
+		}
+		if len([]rune(v.Detail)) != verificationDetailCap+len([]rune(verificationTruncationMarker)) {
+			t.Errorf("supplied verification detail length = %d, want verificationDetailCap+marker", len([]rune(v.Detail)))
+		}
+	}
+	if !found {
+		t.Fatal("supplied \"go test\" verification not found in the posted audit record")
+	}
+}
+
+// engineOwnedVerificationNames are the names Change 2 reserves: the
+// three singletons the engine's own verbs write by replace-by-name, and
+// one name matching the review-cycle-<n> pattern Review generates.
+var engineOwnedVerificationNames = []string{"required-ci", "merge", "abandoned", "review-cycle-1"}
+
+// TestReviewRejectsEngineOwnedVerificationNames proves a caller-supplied
+// verification whose name collides with an engine-owned entry is
+// rejected as ErrBadRequest before loadVerb ever runs — naming the
+// offending name — so no gh call happens and state is untouched.
+func TestReviewRejectsEngineOwnedVerificationNames(t *testing.T) {
+	for _, name := range engineOwnedVerificationNames {
+		t.Run(name, func(t *testing.T) {
+			root := setupDeliveryRepo(t, "r1", []state.Issue{fixtureIssue("a", 1, state.PhasePROpen)})
+			before := stateBytes(t, root)
+			script := &execxtest.Script{T: t}
+			req := fmt.Sprintf(`{"schema_version":1,"issue_number":1,"reviewed_head_oid":"head","verdict":"approve","summary":"s","reviewer":{"model":"claude-opus-4-8","effort":"high"},"verifications":[{"name":%q,"result":"pass"}]}`, name)
+			_, err := Review(context.Background(), ghEnv(root, script), []byte(req))
+			if !errors.Is(err, ErrBadRequest) {
+				t.Fatalf("err = %v, want ErrBadRequest", err)
+			}
+			if !strings.Contains(err.Error(), name) {
+				t.Errorf("err %v does not name the offending verification %q", err, name)
+			}
+			script.AssertExhausted()
+			if got := stateBytes(t, root); string(got) != string(before) {
+				t.Error("state changed on a review request carrying an engine-owned verification name")
+			}
+		})
+	}
+}
+
+// TestPROpenRejectsEngineOwnedVerificationNames extends the same
+// reservation to pr-open's verifications array. pr-open runs before any
+// of these engine entries exist, but a caller-supplied entry under one
+// of these names would still land in the record: for the singletons, it
+// would sit until the corresponding engine verb next overwrites it
+// (required-ci/merge/abandoned all replace-by-name); for a
+// review-cycle-N name, Review's write is an append, not a replace, so it
+// would become a permanent, confusing duplicate once that cycle really
+// runs. Reserving the names uniformly, on every verb that accepts
+// caller-supplied verifications, closes both.
+func TestPROpenRejectsEngineOwnedVerificationNames(t *testing.T) {
+	for _, name := range engineOwnedVerificationNames {
+		t.Run(name, func(t *testing.T) {
+			root := setupDeliveryRepo(t, "r1", []state.Issue{fixtureIssue("a", 1, state.PhaseDispatched)})
+			before := stateBytes(t, root)
+			script := &execxtest.Script{T: t}
+			req := fmt.Sprintf(`{"schema_version":1,"issue_number":1,"verifications":[{"name":%q,"result":"pass"}]}`, name)
+			_, err := PROpen(context.Background(), ghEnv(root, script), []byte(req))
+			if !errors.Is(err, ErrBadRequest) {
+				t.Fatalf("err = %v, want ErrBadRequest", err)
+			}
+			if !strings.Contains(err.Error(), name) {
+				t.Errorf("err %v does not name the offending verification %q", err, name)
+			}
+			script.AssertExhausted()
+			if got := stateBytes(t, root); string(got) != string(before) {
+				t.Error("state changed on a pr-open request carrying an engine-owned verification name")
+			}
+		})
 	}
 }
 
