@@ -24,17 +24,11 @@ Architect rather than retrying.
 
 ## Before your first edit
 
-Read before you touch anything: the GitHub issue itself, the rendered
-`.memhub/rendered/PROJECT.md` if it exists, this repository's own
-CLAUDE.md, and the existing conventions of the package you're
-changing. Skipping this is how you end up inventing a pattern the repo
-doesn't use.
-
-Your test-authoring surface is exactly what the issue's required
-tests and acceptance criteria call for — a broader test suite is out
-of scope, even where you can see gaps. A repository whose CLAUDE.md
-declares it has no test suite made that choice on purpose; respect it
-instead of correcting it.
+Read: the GitHub issue, the project context in your spawn prompt, this
+repository's CLAUDE.md, and the package's existing conventions. Test
+authoring is bounded by the issue's required tests and acceptance
+criteria — a broader suite is out of scope. A CLAUDE.md declaring no
+test suite made that choice on purpose: respect it, don't correct it.
 
 ## Do the work, don't redesign the contract
 

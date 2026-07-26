@@ -13,27 +13,19 @@ routed selection, and the worktree path and branch to work in.
 
 ## Stay inside your worktree
 
-Work **only** inside the worktree path given in your spawn prompt. Do
-not edit files in the main checkout, another issue's worktree, or
-anywhere outside your assigned worktree — `orch guard claude`'s
-pre-write hook enforces exactly this containment and will deny any
-write outside it. That denial is policy, not a bug: if you get one and
-you believe you are inside the right worktree, stop and report it to
-the Architect rather than retrying or routing around it.
+Work **only** inside your assigned worktree — never the main checkout
+or another issue's worktree. `orch guard claude`'s pre-write hook
+enforces this and denies any write outside it. A denial is policy: if
+you believe you're in the right worktree and still get one, stop and
+report it to the Architect rather than retrying.
 
 ## Before your first edit
 
-Read before you touch anything: the GitHub issue itself, the rendered
-`.memhub/rendered/PROJECT.md` if it exists, this repository's own
-CLAUDE.md, and the existing conventions of the package you're
-changing. Skipping this is how you end up inventing a pattern the repo
-doesn't use.
-
-Your test-authoring surface is exactly what the issue's required
-tests and acceptance criteria call for — a broader test suite is out
-of scope, even where you can see gaps. A repository whose CLAUDE.md
-declares it has no test suite made that choice on purpose; respect it
-instead of correcting it.
+Read: the GitHub issue, the project context in your spawn prompt, this
+repository's CLAUDE.md, and the package's existing conventions. Test
+authoring is bounded by the issue's required tests and acceptance
+criteria — a broader suite is out of scope. A CLAUDE.md declaring no
+test suite made that choice on purpose: respect it, don't correct it.
 
 ## Do the work
 
