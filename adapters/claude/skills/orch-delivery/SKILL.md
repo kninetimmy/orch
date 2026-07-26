@@ -22,10 +22,14 @@ faithfully.
 1. Write the request JSON to a scratch file in the OS temp directory,
    **outside the repository** (never inside the working tree or a
    worktree).
-2. Run `orch run <verb> < <scratch-file>` and capture stdout. On
-   Windows PowerShell, `<` is rejected ("The '<' operator is reserved
-   for future use."); use
-   `Get-Content -Raw <scratch-file> | orch run <verb>` instead.
+2. Run `orch run <verb> < <scratch-file>` and capture stdout.
+   PowerShell (5.1 and pwsh 7) rejects `<` ("The '<' operator is
+   reserved for future use."); use the pipe form instead:
+   `Get-Content -Raw <scratch-file> | orch run <verb>`. On Windows
+   PowerShell 5.1 specifically, that pipe alone silently corrupts
+   non-ASCII (em dashes, `§`) into `?`; guard it with
+   `$OutputEncoding = New-Object System.Text.UTF8Encoding $false;
+   Get-Content -Raw -Encoding UTF8 <scratch-file> | orch run <verb>`.
 3. Exit 0: parse stdout as the verb's JSON result.
 4. Non-zero exit: the engine refused. Present the stderr message
    **verbatim** — never paraphrase, never retry blind, never work
@@ -214,9 +218,10 @@ in flight at once. For each issue:
    `usage` is optional (PRD §21), same rule as PR-open: only report
    what the reviewer subagent's Task result actually carries.
    `request-changes` loops the same executor in the **same worktree**
-   on the same branch: it fixes, then a **fresh** reviewer is spawned
-   (step 4) and `orch run review` is called again. `orch run pr-open`
-   is not reachable a second time. `approve` continues.
+   on the same branch: it fixes and pushes, then a **fresh** reviewer
+   is spawned (step 4) and `orch run review` is called again.
+   `orch run pr-open` is not reachable a second time. `approve`
+   continues.
 
 6. **CI** — `orch run ci` with
    `{"schema_version": 1, "issue_number": N}` records the honest
