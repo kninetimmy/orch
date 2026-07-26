@@ -66,6 +66,16 @@ every one you declare must already exist in the repo — activation fails
 closed at a read-only preflight if any is missing (create it with
 `gh label create <name>` or drop it from the plan).
 
+Write `acceptance_criteria` and `required_tests` as a floor, not a
+survey. Each acceptance criterion names one behavior that must hold once
+the issue is done — a specific, checkable outcome an executor can
+satisfy and a reviewer can confirm without guessing — never an
+open-ended instruction like "handle edge cases" or "add tests" that
+leaves the bar for "done" to be invented later. Each required test names
+the exact command that gates the change (`go test ./...`, `gofmt -l .`);
+it is not an invitation for comprehensive coverage, just the check this
+change must pass.
+
 ## Plan gate
 
 Call `orch run plan` with the `PlanDoc` on stdin. The result is a
@@ -154,11 +164,16 @@ in flight at once. For each issue:
    Routed selection: <model> @ <effort>
    ```
 
-   Effort is a real host parameter on Codex, pinned in the dispatched
-   agent's own TOML — there is no prompt cue to layer on top of it; the
-   opening line is a statement of fact, not a behavioral nudge. Include
-   the worktree path, branch, objective, acceptance criteria, and
-   required tests in the prompt.
+   Effort is a real host parameter on Codex: the host enforces both the
+   routed model and the routed effort together, through the TOML-match
+   rule above — `model_reasoning_effort` is pinned in the dispatched
+   agent's own installed TOML, not layered on afterward, so there is no
+   prompt cue standing in for it the way there is on Claude. The opening
+   line is a statement of fact, not a behavioral nudge. Transcribe
+   `DispatchResult.objective`, `.acceptance_criteria`, and
+   `.required_tests` into the prompt **verbatim** — this is the text a
+   human approved at the plan gate, not the Architect's recollection of
+   it — along with the worktree path and branch.
 
    Before dispatching, you (the Architect) perform whatever memhub
    recall is relevant to the issue, with the main checkout as cwd —

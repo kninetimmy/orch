@@ -66,6 +66,16 @@ every one you declare must already exist in the repo — activation fails
 closed at a read-only preflight if any is missing (create it with
 `gh label create <name>` or drop it from the plan).
 
+Write `acceptance_criteria` and `required_tests` as a floor, not a
+survey. Each acceptance criterion names one behavior that must hold once
+the issue is done — a specific, checkable outcome an executor can
+satisfy and a reviewer can confirm without guessing — never an
+open-ended instruction like "handle edge cases" or "add tests" that
+leaves the bar for "done" to be invented later. Each required test names
+the exact command that gates the change (`go test ./...`, `gofmt -l .`);
+it is not an invitation for comprehensive coverage, just the check this
+change must pass.
+
 ## Plan gate
 
 Call `orch run plan` with the `PlanDoc` on stdin. The result is a
@@ -149,10 +159,16 @@ in flight at once. For each issue:
 
    followed by one sentence: `xhigh`/`high` → "Use maximum reasoning
    depth for this task."; `low` → "Work fast and economically; this
-   task does not need deep reasoning." (The exact routed effort is
-   recorded server-side regardless; this cue only shapes in-session
-   behavior.) Include the worktree path, branch, objective, acceptance
-   criteria, and required tests in the prompt.
+   task does not need deep reasoning." Claude Code subagent spawns take
+   no effort parameter, so this sentence is the only way the routed
+   effort reaches the executor: the host enforces the routed *model*
+   (via the Task tool override above, or by refusing to spawn) but only
+   *conveys* the routed effort as this prompt cue — nothing checks that
+   the executor actually reasoned at that depth. Transcribe
+   `DispatchResult.objective`, `.acceptance_criteria`, and
+   `.required_tests` into the prompt **verbatim** — this is the text a
+   human approved at the plan gate, not the Architect's recollection of
+   it — along with the worktree path and branch.
 
    Before spawning, you (the Architect) perform whatever memhub recall
    is relevant to the issue, with the main checkout as cwd — never a
