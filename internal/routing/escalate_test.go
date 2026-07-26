@@ -355,13 +355,17 @@ func TestEscalateManifestRoundTrip(t *testing.T) {
 				t.Fatalf("kind = %q, want reroute", out.Kind)
 			}
 			m := manifest.Manifest{
-				SchemaVersion:    manifest.SchemaVersion,
-				Role:             out.Decision.Role,
-				Executor:         out.Decision.Executor,
-				RoutingRationale: out.Decision.Rationale,
-				Reviewer:         out.Decision.Reviewer,
-				Escalations:      out.Escalations,
-				ConfigRevision:   "cfg-2026-07-11",
+				SchemaVersion:      manifest.SchemaVersion,
+				Objective:          "Reroute an escalated issue.",
+				AcceptanceCriteria: []string{"The rerouted decision renders."},
+				RequiredTests:      []string{"go test ./internal/routing/..."},
+				Role:               out.Decision.Role,
+				Executor:           out.Decision.Executor,
+				RoutingRationale:   out.Decision.Rationale,
+				Reviewer:           out.Decision.Reviewer,
+				EffortDelivery:     manifest.EffortDeliveryParameter,
+				Escalations:        out.Escalations,
+				ConfigRevision:     "cfg-2026-07-11",
 			}
 			if _, err := manifest.Render(m); err != nil {
 				t.Fatalf("manifest.Render on escalated decision: %v", err)

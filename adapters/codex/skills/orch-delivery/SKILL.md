@@ -132,9 +132,11 @@ Work issues in wave order, never more than `concurrency.max_subagents`
 in flight at once. For each issue:
 
 1. **Dispatch** — `orch run dispatch` with
-   `{"schema_version": 1, "issue_number": N}`. Result
+   `{"schema_version": 2, "issue_number": N}`. Result
    (`DispatchResult`): `branch`, `worktree`, `executor`, `reviewer`,
-   `rationale`.
+   `rationale`, `objective`, `acceptance_criteria`, `required_tests`.
+   The last three are the approved plan text; transcribe them into the
+   dispatch prompt verbatim, never from memory or paraphrase.
 
 2. **Dispatch the executor** — dispatch `orch-implementer` or
    `orch-specialist` (per the routed role) by naming the agent in your
@@ -157,8 +159,8 @@ in flight at once. For each issue:
    Effort is a real host parameter on Codex, pinned in the dispatched
    agent's own TOML — there is no prompt cue to layer on top of it; the
    opening line is a statement of fact, not a behavioral nudge. Include
-   the worktree path, branch, objective, acceptance criteria, and
-   required tests in the prompt.
+   the worktree path, branch, and `DispatchResult`'s `objective`,
+   `acceptance_criteria`, and `required_tests` in the prompt.
 
    Before dispatching, you (the Architect) perform whatever memhub
    recall is relevant to the issue, with the main checkout as cwd —

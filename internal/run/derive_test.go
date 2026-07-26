@@ -24,6 +24,28 @@ func TestHostProfile(t *testing.T) {
 	}
 }
 
+// TestEffortDelivery pins the per-host mechanism the audit record names:
+// Codex applies the routed effort as a real parameter, Claude only as a
+// prompt cue, and an unrecognized host is an error rather than a guess.
+func TestEffortDelivery(t *testing.T) {
+	cases := map[string]manifest.EffortDelivery{
+		"codex":  manifest.EffortDeliveryParameter,
+		"claude": manifest.EffortDeliveryPromptCue,
+	}
+	for host, want := range cases {
+		got, err := effortDelivery(host)
+		if err != nil {
+			t.Fatalf("effortDelivery(%s): %v", host, err)
+		}
+		if got != want {
+			t.Errorf("effortDelivery(%s) = %q, want %q", host, got, want)
+		}
+	}
+	if _, err := effortDelivery("fable"); err == nil {
+		t.Error("effortDelivery accepted an unknown host")
+	}
+}
+
 func TestDecideIssueFacts(t *testing.T) {
 	cfg := testConfigTwoHosts()
 	profile, err := hostProfile(cfg, "claude")

@@ -13,8 +13,11 @@ import (
 )
 
 // DispatchSchemaVersion is the dispatch request/result schema this build
-// accepts and emits.
-const DispatchSchemaVersion = 1
+// accepts and emits. v2 adds the approved objective, acceptance
+// criteria, and required tests to the result, so an adapter's spawn
+// prompt is a transcription of what a human approved rather than the
+// Architect's recollection of it.
+const DispatchSchemaVersion = 2
 
 // DispatchRequest asks to hand one worktree-ready issue to its executor.
 type DispatchRequest struct {
@@ -24,7 +27,8 @@ type DispatchRequest struct {
 
 // DispatchResult carries what the adapter needs to spawn the executor
 // into the issue's worktree (PRD §12 step 8): the branch, the
-// repo-relative worktree, and the routing selection.
+// repo-relative worktree, the routing selection, and the approved work
+// the executor is being handed.
 type DispatchResult struct {
 	SchemaVersion int                `json:"schema_version"`
 	IssueNumber   int                `json:"issue_number"`
@@ -33,6 +37,13 @@ type DispatchResult struct {
 	Executor      manifest.Selection `json:"executor"`
 	Reviewer      manifest.Selection `json:"reviewer"`
 	Rationale     string             `json:"rationale"`
+	// Objective, AcceptanceCriteria, and RequiredTests are the approved
+	// plan text verbatim. The adapter transcribes them into the spawn
+	// prompt; it never paraphrases or re-derives them, because what the
+	// executor is told to build is what the human approved.
+	Objective          string   `json:"objective"`
+	AcceptanceCriteria []string `json:"acceptance_criteria"`
+	RequiredTests      []string `json:"required_tests"`
 }
 
 // Dispatch moves a worktree-ready issue to dispatched: it enforces the
@@ -59,6 +70,9 @@ func Dispatch(ctx context.Context, env Env, reqJSON []byte) (*DispatchResult, er
 	issue := c.issue()
 	if issue.Decision == nil {
 		return nil, fmt.Errorf("issue #%d has no routing decision; run `orch abort`", issue.Number)
+	}
+	if err := checkApprovedWork(issue); err != nil {
+		return nil, err
 	}
 	if err := checkDependencies(c.st.Run, issue); err != nil {
 		return nil, err
@@ -105,14 +119,41 @@ func Dispatch(ctx context.Context, env Env, reqJSON []byte) (*DispatchResult, er
 	}
 
 	return &DispatchResult{
-		SchemaVersion: DispatchSchemaVersion,
-		IssueNumber:   issue.Number,
-		Branch:        issue.Branch,
-		Worktree:      issue.Worktree,
-		Executor:      issue.Decision.Executor,
-		Reviewer:      issue.Decision.Reviewer,
-		Rationale:     issue.Decision.Rationale,
+		SchemaVersion:      DispatchSchemaVersion,
+		IssueNumber:        issue.Number,
+		Branch:             issue.Branch,
+		Worktree:           issue.Worktree,
+		Executor:           issue.Decision.Executor,
+		Reviewer:           issue.Decision.Reviewer,
+		Rationale:          issue.Decision.Rationale,
+		Objective:          issue.Objective,
+		AcceptanceCriteria: issue.AcceptanceCriteria,
+		RequiredTests:      issue.RequiredTests,
 	}, nil
+}
+
+// checkApprovedWork fails closed when the issue carries no approved work
+// text. Activation copies it from the plan and resume repopulates it
+// from the audit record, so the only way to reach dispatch without it is
+// a run activated by a build older than the schema-2 record — where
+// dispatching anyway would hand the executor an empty objective and say
+// nothing about it. Resume is the remediation because the issue body,
+// not run state, is the durable home of the approved text.
+func checkApprovedWork(issue *state.Issue) error {
+	var missing []string
+	if issue.Objective == "" {
+		missing = append(missing, "objective")
+	}
+	if len(issue.AcceptanceCriteria) == 0 {
+		missing = append(missing, "acceptance criteria")
+	}
+	if len(issue.RequiredTests) == 0 {
+		missing = append(missing, "required tests")
+	}
+	if len(missing) == 0 {
+		return nil
+	}
+	return fmt.Errorf("issue #%d carries no %s; run `orch resume` to repopulate the approved work from its audit record", issue.Number, strings.Join(missing, ", "))
 }
 
 // checkDependencies fails closed unless every issue in issue.DependsOn is

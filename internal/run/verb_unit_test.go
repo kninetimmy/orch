@@ -46,16 +46,20 @@ func downgradedDecision() *state.Decision {
 }
 
 // fixtureIssue builds a state.Issue satisfying validateIssues for phase,
-// with the routing fields populated for the dispatched-onward phases.
+// with the routing fields populated for the dispatched-onward phases and
+// the approved work matching baseManifest's record.
 func fixtureIssue(planID string, number int, phase state.Phase) state.Issue {
 	iss := state.Issue{
-		PlanID:   planID,
-		Title:    "T",
-		Phase:    phase,
-		Number:   number,
-		Branch:   fmt.Sprintf("orch/issue-%d", number),
-		Worktree: fmt.Sprintf(".orchestrator/worktrees/issue-%d", number),
-		Decision: implementerDecision(),
+		PlanID:             planID,
+		Title:              "T",
+		Phase:              phase,
+		Number:             number,
+		Branch:             fmt.Sprintf("orch/issue-%d", number),
+		Worktree:           fmt.Sprintf(".orchestrator/worktrees/issue-%d", number),
+		Objective:          fixtureObjective,
+		AcceptanceCriteria: fixtureAcceptance(),
+		RequiredTests:      fixtureTests(),
+		Decision:           implementerDecision(),
 	}
 	switch phase {
 	case state.PhasePROpen, state.PhaseInReview:
@@ -114,7 +118,7 @@ func TestDispatchDependencyEnforcement(t *testing.T) {
 
 	// Unmet: a is not merged/cleaned.
 	script := &execxtest.Script{T: t}
-	_, err := Dispatch(context.Background(), ghEnv(root, script), []byte(`{"schema_version":1,"issue_number":2}`))
+	_, err := Dispatch(context.Background(), ghEnv(root, script), []byte(`{"schema_version":2,"issue_number":2}`))
 	if !errors.Is(err, ErrDependencyUnmet) {
 		t.Fatalf("err = %v, want ErrDependencyUnmet", err)
 	}
@@ -127,11 +131,45 @@ func TestDispatchDependencyEnforcement(t *testing.T) {
 		t.Fatal(err)
 	}
 	script = &execxtest.Script{T: t}
-	_, err = Dispatch(context.Background(), ghEnv(root, script), []byte(`{"schema_version":1,"issue_number":2}`))
+	_, err = Dispatch(context.Background(), ghEnv(root, script), []byte(`{"schema_version":2,"issue_number":2}`))
 	if !errors.Is(err, ErrDependencyAbandoned) {
 		t.Fatalf("err = %v, want ErrDependencyAbandoned", err)
 	}
 	script.AssertExhausted()
+}
+
+// TestDispatchWithoutApprovedWorkFailsClosed proves dispatch refuses an
+// issue whose approved work is missing — the shape a run activated by a
+// pre-schema-2 build has — instead of handing the executor an empty
+// objective, and names resume as the remediation. It fails before any
+// git or gh call and leaves state untouched.
+func TestDispatchWithoutApprovedWorkFailsClosed(t *testing.T) {
+	cases := map[string]func(*state.Issue){
+		"no objective":           func(iss *state.Issue) { iss.Objective = "" },
+		"no acceptance criteria": func(iss *state.Issue) { iss.AcceptanceCriteria = nil },
+		"no required tests":      func(iss *state.Issue) { iss.RequiredTests = nil },
+	}
+	for name, strip := range cases {
+		t.Run(name, func(t *testing.T) {
+			iss := fixtureIssue("a", 1, state.PhaseWorktreeReady)
+			strip(&iss)
+			root := setupDeliveryRepo(t, "r1", []state.Issue{iss})
+			before := stateBytes(t, root)
+
+			script := &execxtest.Script{T: t}
+			_, err := Dispatch(context.Background(), ghEnv(root, script), []byte(`{"schema_version":2,"issue_number":1}`))
+			if err == nil {
+				t.Fatal("Dispatch accepted an issue with no approved work")
+			}
+			if !strings.Contains(err.Error(), "orch resume") {
+				t.Errorf("err %v does not name the resume remediation", err)
+			}
+			script.AssertExhausted() // failed before any git/gh call
+			if string(stateBytes(t, root)) != string(before) {
+				t.Error("state changed on a failed dispatch")
+			}
+		})
+	}
 }
 
 // --- Config drift ---
@@ -139,7 +177,7 @@ func TestDispatchDependencyEnforcement(t *testing.T) {
 func TestConfigDriftFailsClosed(t *testing.T) {
 	root := setupDeliveryRepo(t, "r2", []state.Issue{fixtureIssue("a", 1, state.PhaseWorktreeReady)})
 	script := &execxtest.Script{T: t}
-	_, err := Dispatch(context.Background(), ghEnv(root, script), []byte(`{"schema_version":1,"issue_number":1}`))
+	_, err := Dispatch(context.Background(), ghEnv(root, script), []byte(`{"schema_version":2,"issue_number":1}`))
 	if !errors.Is(err, ErrConfigDrift) {
 		t.Fatalf("err = %v, want ErrConfigDrift", err)
 	}
@@ -415,18 +453,11 @@ func TestTruncateDetail(t *testing.T) {
 
 func TestUpsertCappedDropsOldestDetails(t *testing.T) {
 	big := strings.Repeat("x", 25000)
-	m := manifest.Manifest{
-		SchemaVersion:    manifest.SchemaVersion,
-		Role:             manifest.RoleImplementer,
-		Executor:         manifest.Selection{Model: "m", Effort: "e"},
-		RoutingRationale: "r",
-		Reviewer:         manifest.Selection{Model: "m", Effort: "e"},
-		ConfigRevision:   "r1",
-		Verifications: []manifest.Verification{
-			{Name: "v1", Result: "pass", Detail: big, At: "t1"},
-			{Name: "v2", Result: "pass", Detail: big, At: "t2"},
-			{Name: "v3", Result: "pass", Detail: big, At: "t3"},
-		},
+	m := baseManifest()
+	m.Verifications = []manifest.Verification{
+		{Name: "v1", Result: "pass", Detail: big, At: "t1"},
+		{Name: "v2", Result: "pass", Detail: big, At: "t2"},
+		{Name: "v3", Result: "pass", Detail: big, At: "t3"},
 	}
 	body, err := upsertCapped("prose", m)
 	if err != nil {
@@ -456,15 +487,8 @@ func TestUpsertCappedDropsOldestDetails(t *testing.T) {
 
 func TestUpsertCappedHardFails(t *testing.T) {
 	prose := strings.Repeat("y", githubBodyLimit)
-	m := manifest.Manifest{
-		SchemaVersion:    manifest.SchemaVersion,
-		Role:             manifest.RoleImplementer,
-		Executor:         manifest.Selection{Model: "m", Effort: "e"},
-		RoutingRationale: "r",
-		Reviewer:         manifest.Selection{Model: "m", Effort: "e"},
-		ConfigRevision:   "r1",
-		Verifications:    []manifest.Verification{{Name: "v", Result: "pass", Detail: "d", At: "t"}},
-	}
+	m := baseManifest()
+	m.Verifications = []manifest.Verification{{Name: "v", Result: "pass", Detail: "d", At: "t"}}
 	_, err := upsertCapped(prose, m)
 	if !errors.Is(err, ErrBodyTooLarge) {
 		t.Fatalf("err = %v, want ErrBodyTooLarge", err)

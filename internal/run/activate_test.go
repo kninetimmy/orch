@@ -16,6 +16,7 @@ import (
 	"github.com/kninetimmy/orch/internal/ghops"
 	"github.com/kninetimmy/orch/internal/gitops"
 	"github.com/kninetimmy/orch/internal/lockfile"
+	"github.com/kninetimmy/orch/internal/manifest"
 	"github.com/kninetimmy/orch/internal/paths"
 	"github.com/kninetimmy/orch/internal/state"
 )
@@ -280,6 +281,65 @@ func TestActivateHappyPathTwoIssuesTwoWaves(t *testing.T) {
 		if got.PlanID != want.PlanID || got.Phase != want.Phase || got.Number != want.Number || got.Branch != want.Branch || got.Worktree != want.Worktree {
 			t.Errorf("Issues[%d] = %+v, want %+v", i, got, want)
 		}
+	}
+}
+
+// TestActivateRecordsApprovedWork proves activation writes the approved
+// plan text to both places the rest of the lifecycle reads it from: run
+// state (which dispatch transcribes into the spawn prompt) and the
+// issue's audit record (which resume rebuilds state from). It also pins
+// the effort-delivery mechanism the record names for a claude run: the
+// host has no per-spawn effort knob, so the routed effort is a prompt
+// cue, and the record must say so rather than imply an enforcement.
+func TestActivateRecordsApprovedWork(t *testing.T) {
+	root := newActivateRepo(t)
+	taxonomy := fullTaxonomyScript()
+	calls := append(taxonomy,
+		ghIssueCreateCall("Issue A", []string{"ready", "feature", "implementer", "standard"}, 1),
+		ghIssueCreateCall("Issue B", []string{"ready", "feature", "specialist", "critical"}, 2),
+	)
+	script := &execxtest.Script{T: t, Calls: calls}
+	env := Env{RepoRoot: root, Runner: muxRunner{git: execx.Local{}, gh: script}, Now: fixedNow}
+	if _, err := Activate(context.Background(), env, activationJSON(t, twoIssuePlanJSON())); err != nil {
+		t.Fatalf("Activate: %v", err)
+	}
+	script.AssertExhausted()
+
+	// The posted audit record carries the approved work and the honest
+	// effort-delivery mechanism.
+	m, err := manifest.Parse(script.StdinAt(len(taxonomy)))
+	if err != nil {
+		t.Fatalf("Parse the created issue body: %v", err)
+	}
+	if m.SchemaVersion != manifest.SchemaVersion {
+		t.Errorf("schema_version = %d, want %d", m.SchemaVersion, manifest.SchemaVersion)
+	}
+	if m.Objective != "Do A" {
+		t.Errorf("objective = %q, want the plan's", m.Objective)
+	}
+	if len(m.AcceptanceCriteria) != 1 || m.AcceptanceCriteria[0] != "A works" {
+		t.Errorf("acceptance_criteria = %q, want the plan's", m.AcceptanceCriteria)
+	}
+	if len(m.RequiredTests) != 1 || m.RequiredTests[0] != "go test ./..." {
+		t.Errorf("required_tests = %q, want the plan's", m.RequiredTests)
+	}
+	if m.EffortDelivery != manifest.EffortDeliveryPromptCue {
+		t.Errorf("effort_delivery = %q, want %q for a claude run", m.EffortDelivery, manifest.EffortDeliveryPromptCue)
+	}
+
+	// Run state carries the same text, so dispatch never has to re-read
+	// the plan or recall it.
+	st, err := state.Load(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	a := st.Run.Issues[0]
+	if a.Objective != "Do A" || len(a.AcceptanceCriteria) != 1 || len(a.RequiredTests) != 1 {
+		t.Errorf("issue a approved work = %+v, want the plan's objective, criteria, and tests", a)
+	}
+	b := st.Run.Issues[1]
+	if b.Objective != "Do B" {
+		t.Errorf("issue b objective = %q, want the plan's", b.Objective)
 	}
 }
 

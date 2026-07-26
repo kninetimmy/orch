@@ -21,22 +21,42 @@ import (
 // reads in the scripted transcript match exactly.
 const prFieldsRun = "number,state,title,url,headRefName,baseRefName,headRefOid,mergeStateStatus,mergedAt,body"
 
+// fixtureObjective and the two fixture lists are the approved work every
+// run-package fixture carries. The scripted audit records below and
+// fixtureIssue's state both use them, so resume — which repopulates the
+// approved work from the record — reads back what state already holds
+// and stays a byte-level no-op on a converged fixture.
+const fixtureObjective = "Fix the status lock race."
+
+func fixtureAcceptance() []string { return []string{"No data race under -race."} }
+
+func fixtureTests() []string { return []string{"go test ./..."} }
+
 // baseManifestBody renders a minimal valid audit record on some prose, so
 // a scripted issue view returns a body manifest.Parse accepts.
 func baseManifestBody(t *testing.T) string {
 	t.Helper()
-	body, err := manifest.Upsert("**Objective**\n\ndo it\n", manifest.Manifest{
-		SchemaVersion:    manifest.SchemaVersion,
-		Role:             manifest.RoleImplementer,
-		Executor:         manifest.Selection{Model: "claude-sonnet-5", Effort: "xhigh"},
-		RoutingRationale: "impl",
-		Reviewer:         manifest.Selection{Model: "claude-opus-4-8", Effort: "high"},
-		ConfigRevision:   "r1",
-	})
+	body, err := manifest.Upsert("**Objective**\n\ndo it\n", baseManifest())
 	if err != nil {
 		t.Fatal(err)
 	}
 	return body
+}
+
+// baseManifest is the audit record the scripted issue bodies carry.
+func baseManifest() manifest.Manifest {
+	return manifest.Manifest{
+		SchemaVersion:      manifest.SchemaVersion,
+		Objective:          fixtureObjective,
+		AcceptanceCriteria: fixtureAcceptance(),
+		RequiredTests:      fixtureTests(),
+		Role:               manifest.RoleImplementer,
+		Executor:           manifest.Selection{Model: "claude-sonnet-5", Effort: "xhigh"},
+		RoutingRationale:   "impl",
+		Reviewer:           manifest.Selection{Model: "claude-opus-4-8", Effort: "high"},
+		EffortDelivery:     manifest.EffortDeliveryPromptCue,
+		ConfigRevision:     "r1",
+	}
 }
 
 func jsonQuote(t *testing.T, s string) string {
@@ -188,10 +208,23 @@ func TestLifecycleWalk(t *testing.T) {
 	script.AssertExhausted()
 	wantPhase(t, root, 1, state.PhaseWorktreeReady)
 
-	// dispatch.
-	runVerb(t, root, Dispatch, `{"schema_version":1,"issue_number":1}`,
+	// dispatch. The result is the adapter's whole spawn brief, so it must
+	// carry the approved work verbatim alongside the routed selection.
+	dispatched := runVerb(t, root, Dispatch, `{"schema_version":2,"issue_number":1}`,
 		ghAuth(), ghRepoViewCall("main"), ghSetStatusCall(1, ghops.StatusInProgress))
 	wantPhase(t, root, 1, state.PhaseDispatched)
+	if dispatched.Objective != "Make status reporting race-free" {
+		t.Errorf("dispatch objective = %q, want the approved plan text", dispatched.Objective)
+	}
+	if len(dispatched.AcceptanceCriteria) != 1 || dispatched.AcceptanceCriteria[0] != "no data race under -race" {
+		t.Errorf("dispatch acceptance criteria = %q, want the approved plan text", dispatched.AcceptanceCriteria)
+	}
+	if len(dispatched.RequiredTests) != 1 || dispatched.RequiredTests[0] != "go test ./..." {
+		t.Errorf("dispatch required tests = %q, want the approved plan text", dispatched.RequiredTests)
+	}
+	if dispatched.SchemaVersion != DispatchSchemaVersion {
+		t.Errorf("dispatch schema_version = %d, want %d", dispatched.SchemaVersion, DispatchSchemaVersion)
+	}
 
 	// The executor commits work into the worktree.
 	wtDir := filepath.Join(root, ".orchestrator", "worktrees", "issue-1")

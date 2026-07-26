@@ -1,11 +1,25 @@
 <!-- orch:manifest:begin -->
 ### Orch audit record
 
+**Objective:** Objective ending in --&gt;
+&lt;!-- orch:manifest:begin --&gt;
+and more.
+
+**Acceptance criteria:**
+- Criterion with a marker line
+&lt;!-- orch:manifest:end --&gt;
+- Criterion with &amp;&lt;&gt; entities and a | pipe.
+
+**Required tests:**
+- `-->`
+- `go test -run 'A|B' ./...`
+
 | Field | Value |
 | --- | --- |
 | Role | `reviewer` |
 | Executor | `weird\|model` — effort `high` |
 | Reviewer | `opus-4-8` — effort `low` |
+| Effort delivery | `prompt-cue` — this host has no effort parameter; the routed effort reached the executor as a prompt cue only |
 | Config revision | `rev&<>` |
 
 **Routing rationale:** Rationale with a marker attempt --&gt;
@@ -24,7 +38,16 @@ and a &lt;script&gt;alert(1)&lt;/script&gt; tag.
 
 <!-- orch:manifest:data
 {
-  "schema_version": 1,
+  "schema_version": 2,
+  "objective": "Objective ending in --\u003e\n\u003c!-- orch:manifest:begin --\u003e\nand more.",
+  "acceptance_criteria": [
+    "Criterion with a marker line\n\u003c!-- orch:manifest:end --\u003e",
+    "Criterion with \u0026\u003c\u003e entities and a | pipe."
+  ],
+  "required_tests": [
+    "--\u003e",
+    "go test -run 'A|B' ./..."
+  ],
   "role": "reviewer",
   "executor": {
     "model": "weird|model",
@@ -35,6 +58,7 @@ and a &lt;script&gt;alert(1)&lt;/script&gt; tag.
     "model": "opus-4-8",
     "effort": "low"
   },
+  "effort_delivery": "prompt-cue",
   "escalations": [
     {
       "kind": "escalation",

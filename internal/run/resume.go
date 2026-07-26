@@ -26,6 +26,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"slices"
 
 	"github.com/kninetimmy/orch/internal/config"
 	"github.com/kninetimmy/orch/internal/ghops"
@@ -121,17 +122,29 @@ type ResumeDoc struct {
 // zero API calls (planned, cleaned, abandoned).
 type issueObservations struct {
 	read          bool
-	issueState    string    // "" when the issue was not read
-	manifestOK    *bool     // nil when the manifest was not parsed
-	manifestErr   error     // set when manifestOK points to false
-	verifications int       // verification count in the audit record
-	pr            *ghops.PR // issue.PRNumber read (pr-open onward)
-	prForBranch   *ghops.PR // open PR for the branch (worktree-ready/dispatched)
+	issueState    string        // "" when the issue was not read
+	manifestOK    *bool         // nil when the manifest was not parsed
+	manifestErr   error         // set when manifestOK points to false
+	verifications int           // verification count in the audit record
+	work          *approvedWork // nil unless the audit record parsed cleanly
+	pr            *ghops.PR     // issue.PRNumber read (pr-open onward)
+	prForBranch   *ghops.PR     // open PR for the branch (worktree-ready/dispatched)
 	ciRead        bool
 	ci            ghops.CIState
 	localBranch   *bool
 	worktree      *bool
 	remoteBranch  *bool
+}
+
+// approvedWork is the approved plan text an audit record carries. Run
+// state holds the same three fields, but the record is their durable
+// home: state.json is machine-local and an interrupted run is rebuilt
+// from the posted bodies, so resume carries them back rather than let a
+// resumed run dispatch an empty objective.
+type approvedWork struct {
+	objective          string
+	acceptanceCriteria []string
+	requiredTests      []string
 }
 
 // outcome is reconcileIssue's verdict for one issue: the resulting action
@@ -146,6 +159,10 @@ type outcome struct {
 	adoptWorktree string
 	// clearApproval drops ApprovedHeadOID and LastReviewVerdict (demotion).
 	clearApproval bool
+	// work is the approved text read back from the audit record, applied
+	// on every classification alike (it is a fact the record proves, not a
+	// consequence of the verdict). nil leaves the issue's copy untouched.
+	work *approvedWork
 	// warnings are run-level notices appended to ResumeDoc.Warnings.
 	warnings []string
 }
@@ -345,6 +362,12 @@ func applyOutcome(iss *state.Issue, o outcome) bool {
 		iss.LastReviewVerdict = ""
 		changed = true
 	}
+	if o.work != nil && !sameWork(iss, *o.work) {
+		iss.Objective = o.work.objective
+		iss.AcceptanceCriteria = o.work.acceptanceCriteria
+		iss.RequiredTests = o.work.requiredTests
+		changed = true
+	}
 	// A blocked outcome records its reason; every other outcome clears any
 	// stale BlockedReason so an unblocked issue leaves the phase cleanly.
 	reason := ""
@@ -356,6 +379,14 @@ func applyOutcome(iss *state.Issue, o outcome) bool {
 		changed = true
 	}
 	return changed
+}
+
+// sameWork reports whether iss already carries w, so a converged resume
+// stays a byte-level no-op instead of rewriting identical text.
+func sameWork(iss *state.Issue, w approvedWork) bool {
+	return iss.Objective == w.objective &&
+		slices.Equal(iss.AcceptanceCriteria, w.acceptanceCriteria) &&
+		slices.Equal(iss.RequiredTests, w.requiredTests)
 }
 
 // --- classify (pure) ---
@@ -376,12 +407,18 @@ func reconcileIssue(iss state.Issue, obs issueObservations) outcome {
 		// R1: planned and issue-created issues (and any issue missing the
 		// fields a blocked phase requires) can never be blocked — fall back
 		// to keep plus a run-level warning.
-		return outcome{
+		o = outcome{
 			action: ActionKept, phase: iss.Phase,
 			reason:   "kept; classification wanted to block but the issue lacks the number, branch, worktree, or routing decision a blocked phase requires",
 			warnings: []string{fmt.Sprintf("issue %s (%s) could not be blocked (missing number, branch, worktree, or routing decision); run `orch abort`", iss.PlanID, iss.Phase)},
 		}
 	}
+	// The approved work rides on every outcome the table can produce, so
+	// a resumed run dispatches the text an unresumed run would no matter
+	// which row classified the issue. It is nil unless the audit record
+	// parsed cleanly, so a blocked or unparsed record never overwrites
+	// what state already holds.
+	o.work = obs.work
 	return o
 }
 
@@ -767,6 +804,11 @@ func observeIssue(ctx context.Context, gh *ghops.GH, git *gitops.Git, worktrees 
 			yes := true
 			obs.manifestOK = &yes
 			obs.verifications = len(m.Verifications)
+			obs.work = &approvedWork{
+				objective:          m.Objective,
+				acceptanceCriteria: m.AcceptanceCriteria,
+				requiredTests:      m.RequiredTests,
+			}
 		}
 	}
 
@@ -808,7 +850,10 @@ func observeIssue(ctx context.Context, gh *ghops.GH, git *gitops.Git, worktrees 
 }
 
 // parsesManifest reports the phases whose audit record resume parses:
-// issue-created through awaiting-merge.
+// issue-created through awaiting-merge. Every one of them both
+// classifies on the record's health and repopulates the approved work
+// from it, so an issue that was resumed dispatches the same text an
+// issue that was not would.
 func parsesManifest(p state.Phase) bool {
 	switch p {
 	case state.PhaseIssueCreated, state.PhaseWorktreeReady, state.PhaseDispatched,

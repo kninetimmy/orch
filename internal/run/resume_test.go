@@ -463,6 +463,91 @@ func TestResumeSafeAtEveryPhase(t *testing.T) {
 	}
 }
 
+// --- Approved work repopulation ---
+
+// TestResumeRepopulatesApprovedWork proves that on every phase where
+// resume parses the audit record it also carries the approved work back
+// into run state, so a resumed run dispatches the text an unresumed run
+// would. Each fixture starts with the work stripped — the shape a run
+// activated by a pre-schema-2 build has, and the shape a resume would
+// otherwise leave behind silently. A second, identical resume must then
+// be a byte-level no-op: repopulation converges instead of rewriting.
+func TestResumeRepopulatesApprovedWork(t *testing.T) {
+	body := baseManifestBody(t)
+	phases := []state.Phase{
+		state.PhaseIssueCreated, state.PhaseWorktreeReady, state.PhaseDispatched,
+		state.PhasePROpen, state.PhaseInReview, state.PhaseAwaitingMerge,
+		state.PhaseBlocked,
+	}
+	for _, ph := range phases {
+		t.Run(string(ph), func(t *testing.T) {
+			iss := fixtureIssue("a", 1, ph)
+			iss.Objective = ""
+			iss.AcceptanceCriteria = nil
+			iss.RequiredTests = nil
+			root := setupDeliveryGitRepo(t, "r1", []state.Issue{iss})
+
+			var calls []execxtest.Call
+			switch ph {
+			case state.PhaseIssueCreated:
+				calls = []execxtest.Call{ghAuth(), ghIssueViewCall(t, 1, "OPEN", body)}
+			case state.PhaseWorktreeReady, state.PhaseDispatched, state.PhaseBlocked:
+				createBranchWorktree(t, root, "orch/issue-1")
+				calls = []execxtest.Call{ghAuth(), ghIssueViewCall(t, 1, "OPEN", body), ghPRListEmptyCall("orch/issue-1")}
+			case state.PhasePROpen, state.PhaseInReview:
+				createBranchWorktree(t, root, "orch/issue-1")
+				calls = []execxtest.Call{ghAuth(), ghIssueViewCall(t, 1, "OPEN", body), ghPRViewCall(10, "OPEN", "head"), ghRollupEmptyCall(10)}
+			case state.PhaseAwaitingMerge:
+				calls = []execxtest.Call{ghAuth(), ghIssueViewCall(t, 1, "OPEN", body), ghPRViewCall(10, "OPEN", "head-oid")}
+			}
+
+			_, script := resumeMux(t, root, ResumeRequest{}, calls...)
+			script.AssertExhausted()
+
+			got := loadRun(t, root).Run.Issues[0]
+			if got.Objective != fixtureObjective {
+				t.Errorf("objective = %q, want the record's %q", got.Objective, fixtureObjective)
+			}
+			if len(got.AcceptanceCriteria) != 1 || got.AcceptanceCriteria[0] != fixtureAcceptance()[0] {
+				t.Errorf("acceptance criteria = %q, want the record's %q", got.AcceptanceCriteria, fixtureAcceptance())
+			}
+			if len(got.RequiredTests) != 1 || got.RequiredTests[0] != fixtureTests()[0] {
+				t.Errorf("required tests = %q, want the record's %q", got.RequiredTests, fixtureTests())
+			}
+
+			before := stateBytes(t, root)
+			_, script2 := resumeMux(t, root, ResumeRequest{}, calls...)
+			script2.AssertExhausted()
+			if string(stateBytes(t, root)) != string(before) {
+				t.Error("a converged repopulation rewrote state")
+			}
+		})
+	}
+}
+
+// TestResumeKeepsApprovedWorkWhenRecordUnusable proves an unreadable
+// audit record contributes nothing: resume blocks on the drift, and the
+// approved work state already holds survives untouched rather than being
+// overwritten with the empty strings a failed parse would yield.
+func TestResumeKeepsApprovedWorkWhenRecordUnusable(t *testing.T) {
+	iss := fixtureIssue("a", 1, state.PhaseWorktreeReady)
+	o := reconcileIssue(iss, issueObservations{
+		read: true, issueState: "OPEN",
+		manifestOK: pbool(false), manifestErr: manifest.ErrDrift,
+		localBranch: pbool(true), worktree: pbool(true),
+	})
+	if o.action != ActionBlocked {
+		t.Fatalf("action = %q, want blocked on a drifted record", o.action)
+	}
+	if o.work != nil {
+		t.Fatal("a drifted record contributed approved work")
+	}
+	applyOutcome(&iss, o)
+	if iss.Objective != fixtureObjective || len(iss.AcceptanceCriteria) != 1 || len(iss.RequiredTests) != 1 {
+		t.Errorf("approved work was disturbed: %+v", iss)
+	}
+}
+
 // --- Integration: adopt an orphan PR left by a crashed pr-open ---
 
 // TestResumeAdoptsOrphanPR simulates a pr-open that created the PR but
@@ -482,7 +567,7 @@ func TestResumeAdoptsOrphanPR(t *testing.T) {
 	}
 	script.AssertExhausted()
 
-	runVerb(t, root, Dispatch, `{"schema_version":1,"issue_number":1}`,
+	runVerb(t, root, Dispatch, `{"schema_version":2,"issue_number":1}`,
 		ghAuth(), ghRepoViewCall("main"), ghSetStatusCall(1, ghops.StatusInProgress))
 
 	wtDir := filepath.Join(root, ".orchestrator", "worktrees", "issue-1")
@@ -592,15 +677,9 @@ func prJSONStdout(number int, prState, headOID string) string {
 // verification, the evidence resume requires to adopt an orphan PR.
 func manifestBodyWithVerification(t *testing.T) string {
 	t.Helper()
-	body, err := manifest.Upsert("**Objective**\n\ndo it\n", manifest.Manifest{
-		SchemaVersion:    manifest.SchemaVersion,
-		Role:             manifest.RoleImplementer,
-		Executor:         manifest.Selection{Model: "claude-sonnet-5", Effort: "xhigh"},
-		RoutingRationale: "impl",
-		Reviewer:         manifest.Selection{Model: "claude-opus-4-8", Effort: "high"},
-		ConfigRevision:   "r1",
-		Verifications:    []manifest.Verification{{Name: "go test", Result: "pass", At: "2026-07-11T12:00:00Z"}},
-	})
+	m := baseManifest()
+	m.Verifications = []manifest.Verification{{Name: "go test", Result: "pass", At: "2026-07-11T12:00:00Z"}}
+	body, err := manifest.Upsert("**Objective**\n\ndo it\n", m)
 	if err != nil {
 		t.Fatal(err)
 	}
