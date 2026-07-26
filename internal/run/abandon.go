@@ -66,12 +66,15 @@ func Abandon(ctx context.Context, env Env, reqJSON []byte) (*AbandonResult, erro
 		return nil, err
 	}
 
-	// Close an open PR (if any).
+	// Close an open PR (if any), keeping its head as the commit the work
+	// was abandoned at.
+	headOID := ""
 	if issue.PRNumber > 0 {
 		pr, err := gh.PR(ctx, issue.PRNumber)
 		if err != nil {
 			return nil, err
 		}
+		headOID = pr.HeadRefOid
 		if pr.State == "OPEN" {
 			if err := gh.ClosePR(ctx, issue.PRNumber, ghops.ExplicitConfirmation()); err != nil {
 				return nil, err
@@ -79,16 +82,22 @@ func Abandon(ctx context.Context, env Env, reqJSON []byte) (*AbandonResult, erro
 		}
 	}
 
-	// Record the abandonment on the durable issue audit record.
+	// Record the abandonment on the durable issue audit record. This is
+	// the one entry that can carry no commit: an issue abandoned before
+	// pr-open has no pushed head, and its branch may hold no commits of
+	// its own at all, so an OID here would name a commit the abandonment
+	// is not about. The empty value says that, and abandon must be able
+	// to finish regardless — its PR close has already happened.
 	iss, m, err := readIssueManifest(ctx, gh, issue.Number)
 	if err != nil {
 		return nil, err
 	}
 	setVerification(&m, manifest.Verification{
-		Name:   "abandoned",
-		Result: "abandoned",
-		Detail: truncateDetail(req.Reason),
-		At:     env.nowStamp(),
+		Name:      "abandoned",
+		Result:    "abandoned",
+		Detail:    truncateDetail(req.Reason),
+		CommitOID: headOID,
+		At:        env.nowStamp(),
 	})
 	issueBody, err := upsertCapped(iss.Body, m)
 	if err != nil {

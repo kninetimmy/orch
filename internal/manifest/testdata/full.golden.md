@@ -26,13 +26,13 @@
 - substitution: `opus-4-8` (effort `high`) → `opus-4-8` (effort `medium`) — Downgraded effort after the fix landed.
 
 **Verification:**
-- **targeted-tests** — pass — `go test ./internal/manifest/...` (2026-07-10T14:20:00Z)
+- **targeted-tests** — pass — `go test ./internal/manifest/...` — commit `3f6a1c9d8b2e4057a1c3e5079b2d4f6081a3c5e7` (2026-07-10T14:20:00Z)
 - **vet** — pass — `go vet ./...` — no findings
-- **ci** — CLEAN — required checks green (2026-07-10T14:45:00Z)
+- **ci** — CLEAN — required checks green — commit `c5e70981a3f6b2d4079b1c3e52e40578b2e4a1c3` (2026-07-10T14:45:00Z)
 
 <!-- orch:manifest:data
 {
-  "schema_version": 2,
+  "schema_version": 3,
   "objective": "Ship the manifest round trip.",
   "acceptance_criteria": [
     "Render and Parse agree on every field.",
@@ -87,6 +87,7 @@
       "name": "targeted-tests",
       "command": "go test ./internal/manifest/...",
       "result": "pass",
+      "commit_oid": "3f6a1c9d8b2e4057a1c3e5079b2d4f6081a3c5e7",
       "at": "2026-07-10T14:20:00Z"
     },
     {
@@ -99,6 +100,7 @@
       "name": "ci",
       "result": "CLEAN",
       "detail": "required checks green",
+      "commit_oid": "c5e70981a3f6b2d4079b1c3e52e40578b2e4a1c3",
       "at": "2026-07-10T14:45:00Z"
     }
   ]

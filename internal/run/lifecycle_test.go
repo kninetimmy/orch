@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"strconv"
+	"strings"
 	"testing"
 
 	"github.com/kninetimmy/orch/internal/execx"
@@ -151,9 +152,11 @@ func newLifecycleRepo(t *testing.T) string {
 	return root
 }
 
-// runVerb runs one lifecycle verb against a mux runner (real git,
-// scripted gh) and asserts the scripted gh transcript was fully consumed.
-func runVerb[T any](t *testing.T, root string, fn func(context.Context, Env, []byte) (T, error), reqJSON string, calls ...execxtest.Call) T {
+// runVerbScript runs one lifecycle verb against a mux runner (real git,
+// scripted gh), asserts the scripted gh transcript was fully consumed,
+// and hands back the script so a caller can assert on a body the verb
+// posted (Script.StdinAt) and not only on the resulting phase.
+func runVerbScript[T any](t *testing.T, root string, fn func(context.Context, Env, []byte) (T, error), reqJSON string, calls ...execxtest.Call) (T, *execxtest.Script) {
 	t.Helper()
 	script := &execxtest.Script{T: t, Calls: calls}
 	env := Env{RepoRoot: root, Runner: muxRunner{git: execx.Local{}, gh: script}, Now: fixedNow}
@@ -162,7 +165,34 @@ func runVerb[T any](t *testing.T, root string, fn func(context.Context, Env, []b
 		t.Fatalf("verb: %v", err)
 	}
 	script.AssertExhausted()
+	return out, script
+}
+
+// runVerb is runVerbScript for the common case that only needs the
+// verb's own result.
+func runVerb[T any](t *testing.T, root string, fn func(context.Context, Env, []byte) (T, error), reqJSON string, calls ...execxtest.Call) T {
+	t.Helper()
+	out, _ := runVerbScript(t, root, fn, reqJSON, calls...)
 	return out
+}
+
+// findVerification returns the named entry from the audit record in a
+// posted body, failing the test when the body does not parse or carries
+// no such entry — so an assertion cannot pass vacuously against an entry
+// that silently stopped being written.
+func findVerification(t *testing.T, body, name string) manifest.Verification {
+	t.Helper()
+	m, err := manifest.Parse(body)
+	if err != nil {
+		t.Fatalf("parse the posted audit record: %v", err)
+	}
+	for _, v := range m.Verifications {
+		if v.Name == name {
+			return v
+		}
+	}
+	t.Fatalf("verification %q not found in the posted audit record", name)
+	return manifest.Verification{}
 }
 
 func loadRun(t *testing.T, root string) *state.State {
@@ -234,12 +264,21 @@ func TestLifecycleWalk(t *testing.T) {
 	rawGit(t, wtDir, "add", "-A")
 	rawGit(t, wtDir, "commit", "-m", "work")
 
-	// pr-open.
-	runVerb(t, root, PROpen, `{"schema_version":1,"issue_number":1,"verifications":[{"name":"go test","result":"pass"}]}`,
+	// pr-open. The evidence the executor reports is stamped by the engine
+	// with the head it just pushed — read from git here, since the record
+	// is written before the PR exists to read a head from — and the same
+	// stamped record is mirrored onto the PR body it creates.
+	_, prOpen := runVerbScript(t, root, PROpen, `{"schema_version":1,"issue_number":1,"verifications":[{"name":"go test","result":"pass"}]}`,
 		ghAuth(), ghRepoViewCall("main"), ghPRListEmptyCall(branch),
 		ghIssueViewCall(t, 1, "OPEN", body), ghSetIssueBodyCall(1),
 		ghCreatePRCall(branch, title, 10), ghSetStatusCall(1, ghops.StatusAwaitingReview))
 	wantPhase(t, root, 1, state.PhasePROpen)
+	pushedHead := strings.TrimSpace(rawGit(t, wtDir, "rev-parse", "HEAD"))
+	for view, posted := range map[string]string{"issue body": prOpen.StdinAt(4), "PR body": prOpen.StdinAt(5)} {
+		if got := findVerification(t, posted, "go test").CommitOID; got != pushedHead {
+			t.Errorf("%s: pr-open verification commit = %q, want the pushed head %q", view, got, pushedHead)
+		}
+	}
 
 	// review: request-changes.
 	runVerb(t, root, Review, `{"schema_version":1,"issue_number":1,"reviewed_head_oid":"head-oid-1","verdict":"request-changes","summary":"fix things","reviewer":{"model":"claude-opus-4-8","effort":"high"}}`,

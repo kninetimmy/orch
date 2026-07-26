@@ -46,6 +46,30 @@ func TestRenderGolden(t *testing.T) {
 	}
 }
 
+// TestRenderShowsCommitOIDInBothViews pins the commit OID into the human
+// markdown as well as the canonical JSON. A field emitted only into the
+// data comment is invisible to anyone reading the record on GitHub —
+// where the comment does not display at all — and the drift check would
+// still pass, so nothing else would catch the omission.
+func TestRenderShowsCommitOIDInBothViews(t *testing.T) {
+	got, err := Render(fullManifest())
+	if err != nil {
+		t.Fatalf("Render: %v", err)
+	}
+	human, data, ok := strings.Cut(got, "\n"+dataOpen+"\n")
+	if !ok {
+		t.Fatal("could not split the region into its human and JSON views")
+	}
+	for _, oid := range []string{fixtureCommitOID, fixtureFixOID} {
+		if !strings.Contains(human, oid) {
+			t.Errorf("the human markdown does not show commit %s", oid)
+		}
+		if !strings.Contains(data, `"commit_oid": "`+oid+`"`) {
+			t.Errorf("the canonical JSON does not carry commit_oid %s", oid)
+		}
+	}
+}
+
 func TestRenderDeterministic(t *testing.T) {
 	for name, m := range goldenCases() {
 		t.Run(name, func(t *testing.T) {
