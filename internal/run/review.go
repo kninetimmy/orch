@@ -36,7 +36,11 @@ type ReviewRequest struct {
 	// {name, command, result, detail} input shape pr-open accepts. Each
 	// entry is replace-by-name upserted into the manifest alongside the
 	// review-cycle-N entry this verb already writes, so resubmitting the
-	// same name updates that entry rather than duplicating it.
+	// same name updates that entry rather than duplicating it. A name
+	// colliding with an engine-owned entry (required-ci, merge,
+	// abandoned, or review-cycle-<n>) is rejected — those are never
+	// caller-suppliable, so the engine's own record can never be quietly
+	// overwritten or duplicated.
 	Verifications []VerificationInput `json:"verifications,omitempty"`
 	// Usage is adapter-reported model usage for this review cycle
 	// (PRD §21 "where available"); optional and best-effort.
@@ -81,6 +85,9 @@ func Review(ctx context.Context, env Env, reqJSON []byte) (*ReviewResult, error)
 	}
 	verifications, err := convertVerifications(req.Verifications, env.nowStamp())
 	if err != nil {
+		return nil, err
+	}
+	if err := rejectEngineOwnedNames(verifications); err != nil {
 		return nil, err
 	}
 

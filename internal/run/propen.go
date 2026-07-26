@@ -18,7 +18,11 @@ const PROpenSchemaVersion = 1
 
 // VerificationInput is one required-test evidence entry the executor
 // supplies (PRD §15: completion requires targeted-test evidence). A
-// missing At is stamped by the engine.
+// missing At is stamped by the engine. Name must not collide with an
+// engine-owned verification (required-ci, merge, abandoned, or
+// review-cycle-<n>) — those are reserved so the engine's own record can
+// never be quietly overwritten or duplicated by a caller-supplied entry
+// (rejectEngineOwnedNames).
 type VerificationInput struct {
 	Name    string `json:"name"`
 	Command string `json:"command,omitempty"`
@@ -67,6 +71,9 @@ func PROpen(ctx context.Context, env Env, reqJSON []byte) (*PROpenResult, error)
 	}
 	verifications, err := buildVerifications(req.Verifications, env.nowStamp())
 	if err != nil {
+		return nil, err
+	}
+	if err := rejectEngineOwnedNames(verifications); err != nil {
 		return nil, err
 	}
 

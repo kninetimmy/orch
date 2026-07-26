@@ -3,6 +3,7 @@ package run
 import (
 	"context"
 	"fmt"
+	"regexp"
 
 	"github.com/kninetimmy/orch/internal/ghops"
 	"github.com/kninetimmy/orch/internal/manifest"
@@ -21,10 +22,25 @@ const (
 	// acceptance criteria routinely exceeds verificationDetailCap (task
 	// 46: cycle 1 of issue #57 was cut mid-criterion, permanently
 	// dropping the reviewer's remaining findings), so review-cycle
-	// entries get their own, larger allowance. It stays well under
-	// bodyCapHeadroom, which remains the backstop that rotates or fails
-	// closed regardless of which cap produced a detail.
-	reviewDetailCap = 10000
+	// entries get their own, larger allowance — but not an unbounded one.
+	//
+	// Every Detail renders twice — once as a human-readable markdown
+	// bullet, once inside the canonical JSON data comment below it — so
+	// its cost against the body is roughly double its rune count for
+	// plain ASCII text, and more for HTML-escaped ("&", "<", ">") or
+	// multi-byte runes, which both renders escape. Measured directly
+	// with manifest.Upsert against this issue's own audit record (#59/PR
+	// #61) with its one review cycle stripped — a ~10,300-byte base
+	// carrying the approved work, routing table, and five pr-open
+	// verifications — about 4 maximal-length review cycles fit at this
+	// cap before bodyCapHeadroom's 60,000-byte ceiling starts rotating
+	// detail out, versus roughly 11 at the smaller verificationDetailCap.
+	// Rotation drops the OLDEST verification's detail first
+	// (upsertCapped), which means pr-open's mandatory PRD §15 test
+	// evidence would be discarded before an early review-cycle summary;
+	// this cap is kept well short of that trade becoming routine rather
+	// than rare.
+	reviewDetailCap = 6000
 	// verificationTruncationMarker flags a detail cut to the cap.
 	verificationTruncationMarker = " … [truncated by orch]"
 	// bodyCapHeadroom is the rendered-body ceiling the engine keeps under
@@ -83,6 +99,38 @@ func setVerification(m *manifest.Manifest, v manifest.Verification) {
 		}
 	}
 	m.Verifications = append(m.Verifications, v)
+}
+
+// engineVerificationNames are the singleton verification names the
+// engine's own verbs write through setVerification's replace-by-name
+// path: required-ci (civerb.go), merge (merge.go), and abandoned
+// (abandon.go).
+var engineVerificationNames = map[string]bool{
+	"required-ci": true,
+	"merge":       true,
+	"abandoned":   true,
+}
+
+// reviewCycleNamePattern matches the per-cycle names Review appends
+// (review-cycle-<n>), which is the same shape a caller-supplied
+// verification must also avoid — that write is an append, not a
+// replace-by-name, so a caller-supplied entry under an existing cycle's
+// name would sit as a permanent, confusing duplicate rather than being
+// superseded.
+var reviewCycleNamePattern = regexp.MustCompile(`^review-cycle-[0-9]+$`)
+
+// rejectEngineOwnedNames fails closed with ErrBadRequest naming the
+// first verification in vs whose name collides with an engine-owned
+// singleton or a review-cycle-N entry, so the audit record's
+// engine-written entries can never be quietly overwritten — or quietly
+// duplicated — by a caller-supplied verification of the same name.
+func rejectEngineOwnedNames(vs []manifest.Verification) error {
+	for _, v := range vs {
+		if engineVerificationNames[v.Name] || reviewCycleNamePattern.MatchString(v.Name) {
+			return fmt.Errorf("%w: verification name %q is engine-owned and cannot be supplied by a caller", ErrBadRequest, v.Name)
+		}
+	}
+	return nil
 }
 
 // prForIssue reads the issue's PR when it has one (PRNumber > 0), or
