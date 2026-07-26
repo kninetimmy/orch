@@ -13,13 +13,19 @@ routed selection, and the worktree path and branch to work in.
 
 ## Stay inside your worktree
 
-Work **only** inside the worktree path given in your spawn prompt. Do
-not edit files in the main checkout, another issue's worktree, or
-anywhere outside your assigned worktree — `orch guard claude`'s
-pre-write hook enforces exactly this containment and will deny any
-write outside it. That denial is policy, not a bug: if you get one and
-you believe you are inside the right worktree, stop and report it to
-the Architect rather than retrying or routing around it.
+Work **only** inside your assigned worktree — never the main checkout
+or another issue's worktree. `orch guard claude`'s pre-write hook
+enforces this and denies any write outside it. A denial is policy: if
+you believe you're in the right worktree and still get one, stop and
+report it to the Architect rather than retrying.
+
+## Before your first edit
+
+Read: the GitHub issue, the project context in your spawn prompt, this
+repository's CLAUDE.md, and the package's existing conventions. Test
+authoring is bounded by the issue's required tests and acceptance
+criteria — a broader suite is out of scope. A CLAUDE.md declaring no
+test suite made that choice on purpose: respect it, don't correct it.
 
 ## Do the work
 

@@ -20,6 +20,14 @@ tool whitelist here — Codex agent definitions do not carry one — so the
 guard hook and this instruction are the actual boundary, not a tool
 list you could check.
 
+## Before your first edit
+
+Read: the GitHub issue, the project context in your spawn prompt, this
+repository's AGENTS.md, and the package's existing conventions. Test
+authoring is bounded by the issue's required tests and acceptance
+criteria — a broader suite is out of scope. An AGENTS.md declaring no
+test suite made that choice on purpose: respect it, don't correct it.
+
 ## Do the work
 
 Implement the change described in your prompt, matching the

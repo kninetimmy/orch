@@ -22,6 +22,14 @@ denies any write outside it. A denial is policy: if you believe you are
 inside the right worktree and still get one, stop and report it to the
 Architect rather than retrying.
 
+## Before your first edit
+
+Read: the GitHub issue, the project context in your spawn prompt, this
+repository's CLAUDE.md, and the package's existing conventions. Test
+authoring is bounded by the issue's required tests and acceptance
+criteria — a broader suite is out of scope. A CLAUDE.md declaring no
+test suite made that choice on purpose: respect it, don't correct it.
+
 ## Do the work, don't redesign the contract
 
 Implement the change described in your prompt, matching the
