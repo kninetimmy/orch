@@ -199,14 +199,16 @@ func buildVerifications(inputs []VerificationInput, stamp string) ([]manifest.Ve
 }
 
 // prProse is the human-readable portion of a PR body: a one-line summary,
-// the Closes link that closes the issue on merge (PRD §12 step 17), and
-// the plan digest. The full objective and acceptance criteria live on
-// the linked issue.
+// the Closes link that closes the issue on merge (PRD §12 step 17), the
+// plan digest, and a pointer to the audit record. The objective and
+// acceptance criteria are not restated in the prose because the record
+// upsertCapped appends below it carries them, on the PR exactly as on
+// the issue (manifest schema 2).
 func prProse(issue *state.Issue, digest string) string {
 	var b strings.Builder
 	fmt.Fprintf(&b, "Delivers issue #%d: %s\n\n", issue.Number, issue.Title)
 	fmt.Fprintf(&b, "Closes #%d\n\n", issue.Number)
 	fmt.Fprintf(&b, "**Plan digest:** `%s`\n\n", digest)
-	b.WriteString("The full objective and acceptance criteria are on the linked issue.\n")
+	b.WriteString("The approved objective and acceptance criteria are in the audit record below.\n")
 	return b.String()
 }

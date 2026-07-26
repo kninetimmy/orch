@@ -133,12 +133,18 @@ func Dispatch(ctx context.Context, env Env, reqJSON []byte) (*DispatchResult, er
 }
 
 // checkApprovedWork fails closed when the issue carries no approved work
-// text. Activation copies it from the plan and resume repopulates it
-// from the audit record, so the only way to reach dispatch without it is
-// a run activated by a build older than the schema-2 record — where
-// dispatching anyway would hand the executor an empty objective and say
-// nothing about it. Resume is the remediation because the issue body,
-// not run state, is the durable home of the approved text.
+// text. Activation copies it from the plan, so the only way to reach
+// dispatch without it is a run activated by a build older than the
+// schema-2 audit record — where dispatching anyway would hand the
+// executor an empty objective and say nothing about it.
+//
+// The remediation is abort, never resume. State missing the approved
+// work implies an issue body still carrying a schema-1 record, which
+// this build's manifest.Parse rejects; resume would therefore take its
+// failure path and block the issue rather than repopulate anything,
+// leaving the operator worse off than before they followed the advice.
+// Naming one concrete command for an unrepairable version mismatch
+// follows state.Load's precedent.
 func checkApprovedWork(issue *state.Issue) error {
 	var missing []string
 	if issue.Objective == "" {
@@ -153,7 +159,7 @@ func checkApprovedWork(issue *state.Issue) error {
 	if len(missing) == 0 {
 		return nil
 	}
-	return fmt.Errorf("issue #%d carries no %s; run `orch resume` to repopulate the approved work from its audit record", issue.Number, strings.Join(missing, ", "))
+	return fmt.Errorf("issue #%d carries no %s; this run predates the schema-2 audit record and cannot be repaired in place — run `orch abort` to return to assist, then re-plan and re-activate", issue.Number, strings.Join(missing, ", "))
 }
 
 // checkDependencies fails closed unless every issue in issue.DependsOn is

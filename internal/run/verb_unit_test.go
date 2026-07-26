@@ -141,8 +141,10 @@ func TestDispatchDependencyEnforcement(t *testing.T) {
 // TestDispatchWithoutApprovedWorkFailsClosed proves dispatch refuses an
 // issue whose approved work is missing — the shape a run activated by a
 // pre-schema-2 build has — instead of handing the executor an empty
-// objective, and names resume as the remediation. It fails before any
-// git or gh call and leaves state untouched.
+// objective. It names abort, not resume: the same run's issue body still
+// carries a schema-1 record, so a resume would block the issue rather
+// than repair it. It fails before any git or gh call and leaves state
+// untouched.
 func TestDispatchWithoutApprovedWorkFailsClosed(t *testing.T) {
 	cases := map[string]func(*state.Issue){
 		"no objective":           func(iss *state.Issue) { iss.Objective = "" },
@@ -161,8 +163,11 @@ func TestDispatchWithoutApprovedWorkFailsClosed(t *testing.T) {
 			if err == nil {
 				t.Fatal("Dispatch accepted an issue with no approved work")
 			}
-			if !strings.Contains(err.Error(), "orch resume") {
-				t.Errorf("err %v does not name the resume remediation", err)
+			if !strings.Contains(err.Error(), "orch abort") {
+				t.Errorf("err %v does not name the abort remediation", err)
+			}
+			if strings.Contains(err.Error(), "orch resume") {
+				t.Errorf("err %v names resume, which blocks this issue instead of repairing it", err)
 			}
 			script.AssertExhausted() // failed before any git/gh call
 			if string(stateBytes(t, root)) != string(before) {

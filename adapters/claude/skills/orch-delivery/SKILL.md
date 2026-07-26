@@ -134,8 +134,6 @@ in flight at once. For each issue:
    `{"schema_version": 2, "issue_number": N}`. Result
    (`DispatchResult`): `branch`, `worktree`, `executor`, `reviewer`,
    `rationale`, `objective`, `acceptance_criteria`, `required_tests`.
-   The last three are the approved plan text; transcribe them into the
-   spawn prompt verbatim, never from memory or paraphrase.
 
 2. **Spawn the executor** — spawn `orch-implementer` or
    `orch-specialist` (per the routed role) via the Task tool, passing
@@ -153,9 +151,8 @@ in flight at once. For each issue:
    depth for this task."; `low` → "Work fast and economically; this
    task does not need deep reasoning." (The exact routed effort is
    recorded server-side regardless; this cue only shapes in-session
-   behavior.) Include the worktree path, branch, and `DispatchResult`'s
-   `objective`, `acceptance_criteria`, and `required_tests` in the
-   prompt.
+   behavior.) Include the worktree path, branch, objective, acceptance
+   criteria, and required tests in the prompt.
 
    Before spawning, you (the Architect) perform whatever memhub recall
    is relevant to the issue, with the main checkout as cwd — never a
