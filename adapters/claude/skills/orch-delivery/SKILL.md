@@ -192,7 +192,10 @@ in flight at once. For each issue:
                "cache_creation_tokens": 0, "duration_ms": 0}}
    ```
 
-   At least one verification is required. `usage` is optional (PRD
+   At least one verification is required. The verification names
+   `required-ci`, `merge`, `abandoned`, and `review-cycle-<n>` are
+   engine-owned and are rejected with `ErrBadRequest` before any
+   mutation when supplied by a caller. `usage` is optional (PRD
    §21): supply only the fields the executor's Task result actually
    reports (token totals and duration), never an estimate. Result
    carries `pr_number`, `pr_url`.
@@ -224,8 +227,11 @@ in flight at once. For each issue:
    `orch run pr-open` is not reachable a second time, so `verifications`
    is optional and takes pr-open's input shape — use it to carry
    evidence re-run on the fix commit (e.g. tests re-run before
-   requesting the next review) into the audit record. `approve`
-   continues.
+   requesting the next review) into the audit record. The same
+   verification names as pr-open — `required-ci`, `merge`, `abandoned`,
+   and `review-cycle-<n>` — are engine-owned and are rejected with
+   `ErrBadRequest` before any mutation when supplied by a caller.
+   `approve` continues.
 
 6. **CI** — `orch run ci` with
    `{"schema_version": 1, "issue_number": N}` records the honest

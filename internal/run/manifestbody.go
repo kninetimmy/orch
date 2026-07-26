@@ -30,16 +30,20 @@ const (
 	// plain ASCII text, and more for HTML-escaped ("&", "<", ">") or
 	// multi-byte runes, which both renders escape. Measured directly
 	// with manifest.Upsert against this issue's own audit record (#59/PR
-	// #61) with its one review cycle stripped — a ~10,300-byte base
-	// carrying the approved work, routing table, and five pr-open
-	// verifications — about 4 maximal-length review cycles fit at this
-	// cap before bodyCapHeadroom's 60,000-byte ceiling starts rotating
-	// detail out, versus roughly 11 at the smaller verificationDetailCap.
-	// Rotation drops the OLDEST verification's detail first
-	// (upsertCapped), which means pr-open's mandatory PRD §15 test
-	// evidence would be discarded before an early review-cycle summary;
-	// this cap is kept well short of that trade becoming routine rather
-	// than rare.
+	// #61) with its one review cycle stripped, at both bases
+	// writeManifest maintains: the issue body is the durable audit
+	// home, the PR body only a mirror of it while the PR stays open. A
+	// ~10,362-byte PR-body base (carrying the approved work, routing
+	// table, and five pr-open verifications) fits about 4
+	// maximal-length review cycles before bodyCapHeadroom's 60,000-byte
+	// ceiling starts rotating detail out; the larger ~12,157-byte
+	// issue-body base fits about 3. So this cap holds 3-4
+	// maximal-length review cycles in practice, versus roughly 11 at
+	// the smaller verificationDetailCap. Rotation drops the OLDEST
+	// verification's detail first (upsertCapped), which means
+	// pr-open's mandatory PRD §15 test evidence would be discarded
+	// before an early review-cycle summary; this cap is kept well
+	// short of that trade becoming routine rather than rare.
 	reviewDetailCap = 6000
 	// verificationTruncationMarker flags a detail cut to the cap.
 	verificationTruncationMarker = " … [truncated by orch]"
