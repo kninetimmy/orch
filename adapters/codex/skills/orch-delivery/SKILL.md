@@ -132,9 +132,9 @@ Work issues in wave order, never more than `concurrency.max_subagents`
 in flight at once. For each issue:
 
 1. **Dispatch** — `orch run dispatch` with
-   `{"schema_version": 1, "issue_number": N}`. Result
+   `{"schema_version": 2, "issue_number": N}`. Result
    (`DispatchResult`): `branch`, `worktree`, `executor`, `reviewer`,
-   `rationale`.
+   `rationale`, `objective`, `acceptance_criteria`, `required_tests`.
 
 2. **Dispatch the executor** — dispatch `orch-implementer` or
    `orch-specialist` (per the routed role) by naming the agent in your

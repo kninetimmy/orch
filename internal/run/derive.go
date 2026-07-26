@@ -37,6 +37,25 @@ func hostProfile(cfg *config.Config, host string) (routing.Profile, error) {
 	}, nil
 }
 
+// effortDelivery reports how host actually applies a routed reasoning
+// effort to a spawned executor, for the audit record. Codex pins
+// model_reasoning_effort in the dispatched agent's own TOML, so the
+// routed effort is a real parameter there; Claude Code subagent spawns
+// take no effort knob, so it reaches the executor only as a prompt cue.
+// An unknown host is an error rather than a guess: recording an effort
+// without saying how it was delivered is the claim this field exists to
+// stop making.
+func effortDelivery(host string) (manifest.EffortDelivery, error) {
+	switch host {
+	case "codex":
+		return manifest.EffortDeliveryParameter, nil
+	case "claude":
+		return manifest.EffortDeliveryPromptCue, nil
+	default:
+		return "", fmt.Errorf("host %q has no recorded effort-delivery mechanism", host)
+	}
+}
+
 // issueTask converts a plan issue's facts into the routing.Task Decide
 // consumes.
 func issueTask(i PlanIssue) routing.Task {

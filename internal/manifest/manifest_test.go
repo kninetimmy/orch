@@ -5,24 +5,40 @@ import (
 	"testing"
 )
 
+// fixtureObjective is the approved objective every fixture but the
+// hostile one carries, pinned as a constant so a drift case can rewrite
+// it by exact bytes without guessing at the fixture's text.
+const fixtureObjective = "Ship the manifest round trip."
+
 // minimalManifest is a valid record with no escalations or
 // verifications — the smallest thing Render accepts.
 func minimalManifest() Manifest {
 	return Manifest{
-		SchemaVersion:    SchemaVersion,
-		Role:             RoleImplementer,
-		Executor:         Selection{Model: "opus-4-8", Effort: "high"},
-		RoutingRationale: "Selected implementer for a bounded single-file change.",
-		Reviewer:         Selection{Model: "gpt-5.6-sol", Effort: "medium"},
-		ConfigRevision:   "cfg-2026-07-10",
+		SchemaVersion:      SchemaVersion,
+		Objective:          fixtureObjective,
+		AcceptanceCriteria: []string{"Render and Parse agree on every field."},
+		RequiredTests:      []string{"go test ./internal/manifest/..."},
+		Role:               RoleImplementer,
+		Executor:           Selection{Model: "opus-4-8", Effort: "high"},
+		RoutingRationale:   "Selected implementer for a bounded single-file change.",
+		Reviewer:           Selection{Model: "gpt-5.6-sol", Effort: "medium"},
+		EffortDelivery:     EffortDeliveryParameter,
+		ConfigRevision:     "cfg-2026-07-10",
 	}
 }
 
-// fullManifest exercises every optional field: two escalations (an
-// escalation with a role and At, a substitution without) and three
+// fullManifest exercises every optional field and every repeatable one:
+// multi-entry acceptance criteria and required tests, two escalations
+// (an escalation with a role and At, a substitution without), and three
 // verifications, the last a CI-state entry with no command.
 func fullManifest() Manifest {
 	m := minimalManifest()
+	m.AcceptanceCriteria = []string{
+		"Render and Parse agree on every field.",
+		"A hand-edited region fails closed.",
+	}
+	m.RequiredTests = []string{"go test ./internal/manifest/...", "go vet ./..."}
+	m.EffortDelivery = EffortDeliveryPromptCue
 	m.Escalations = []Escalation{
 		{
 			Kind:   "escalation",
@@ -48,23 +64,32 @@ func fullManifest() Manifest {
 }
 
 // hostileManifest packs marker-forging and markdown-breaking content
-// into every free-text field: a rationale containing "-->", a line
-// equal to EndMarker, a CRLF pair, and a <script> tag; a command with
-// backticks, pipes, and an ampersand; a model with a pipe; a config
-// revision with all three entity characters; an escalation whose reason
-// is a data-close and whose At smuggles a begin-marker line; and a
-// verification whose name, result, and At each smuggle a marker or
-// data-comment line. Render must escape all of it so the region still
-// contains exactly one of each structural line and parses back.
+// into every free-text field: an objective and an acceptance criterion
+// each smuggling a marker line, a required test that is exactly the
+// data-close; a rationale containing "-->", a line equal to EndMarker, a
+// CRLF pair, and a <script> tag; a command with backticks, pipes, and an
+// ampersand; a model with a pipe; a config revision with all three
+// entity characters; an escalation whose reason is a data-close and
+// whose At smuggles a begin-marker line; and a verification whose name,
+// result, and At each smuggle a marker or data-comment line. Render must
+// escape all of it so the region still contains exactly one of each
+// structural line and parses back.
 func hostileManifest() Manifest {
 	return Manifest{
 		SchemaVersion: SchemaVersion,
+		Objective:     "Objective ending in " + dataClose + "\n" + BeginMarker + "\nand more.",
+		AcceptanceCriteria: []string{
+			"Criterion with a marker line\n" + EndMarker,
+			"Criterion with &<> entities and a | pipe.",
+		},
+		RequiredTests: []string{dataClose, "go test -run 'A|B' ./..."},
 		Role:          RoleReviewer,
 		Executor:      Selection{Model: "weird|model", Effort: "high"},
 		RoutingRationale: "Rationale with a marker attempt -->\r\n" +
 			EndMarker + "\n" +
 			"and a <script>alert(1)</script> tag.",
 		Reviewer:       Selection{Model: "opus-4-8", Effort: "low"},
+		EffortDelivery: EffortDeliveryPromptCue,
 		ConfigRevision: "rev&<>",
 		Escalations: []Escalation{
 			{
@@ -91,13 +116,21 @@ func TestValidateRejects(t *testing.T) {
 		mutate func(*Manifest)
 		want   string
 	}{
-		"bad schema version":        {func(m *Manifest) { m.SchemaVersion = 2 }, "schema_version 2 is unsupported"},
+		"superseded schema version": {func(m *Manifest) { m.SchemaVersion = 1 }, "schema_version 1 is unsupported"},
+		"future schema version":     {func(m *Manifest) { m.SchemaVersion = 3 }, "schema_version 3 is unsupported"},
 		"absent schema version":     {func(m *Manifest) { m.SchemaVersion = 0 }, "schema_version 0 is unsupported"},
+		"empty objective":           {func(m *Manifest) { m.Objective = "" }, "objective is empty"},
+		"no acceptance criteria":    {func(m *Manifest) { m.AcceptanceCriteria = nil }, "acceptance_criteria is empty"},
+		"empty acceptance criteria": {func(m *Manifest) { m.AcceptanceCriteria[1] = "" }, "acceptance_criteria[1] is empty"},
+		"no required tests":         {func(m *Manifest) { m.RequiredTests = nil }, "required_tests is empty"},
+		"empty required test":       {func(m *Manifest) { m.RequiredTests[0] = "" }, "required_tests[0] is empty"},
 		"unknown role":              {func(m *Manifest) { m.Role = "wizard" }, `role "wizard" is not one of`},
 		"empty executor model":      {func(m *Manifest) { m.Executor.Model = "" }, "executor.model is empty"},
 		"empty executor effort":     {func(m *Manifest) { m.Executor.Effort = "" }, "executor.effort is empty"},
 		"empty reviewer model":      {func(m *Manifest) { m.Reviewer.Model = "" }, "reviewer.model is empty"},
 		"empty reviewer effort":     {func(m *Manifest) { m.Reviewer.Effort = "" }, "reviewer.effort is empty"},
+		"absent effort delivery":    {func(m *Manifest) { m.EffortDelivery = "" }, `effort_delivery "" is not one of`},
+		"unknown effort delivery":   {func(m *Manifest) { m.EffortDelivery = "telepathy" }, `effort_delivery "telepathy" is not one of`},
 		"empty rationale":           {func(m *Manifest) { m.RoutingRationale = "" }, "routing_rationale is empty"},
 		"empty config revision":     {func(m *Manifest) { m.ConfigRevision = "" }, "config_revision is empty"},
 		"bad escalation kind":       {func(m *Manifest) { m.Escalations[0].Kind = "demotion" }, `escalations[0]: kind "demotion" is not one of`},

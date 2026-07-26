@@ -339,10 +339,11 @@ alone via the routing table — the model never picks its own reviewer.
 The gate also runs the memhub health/recall check described above,
 gated by `memhub.mode`. Activation then creates the GitHub label
 taxonomy, one issue per task carrying a structured **audit record**
-(rendered markdown plus canonical JSON in a managed body region —
-exact model, effort, and routing rationale, mirrored onto the PR), and
-one branch + isolated worktree per issue under
-`.orchestrator/worktrees/`.
+(rendered markdown plus canonical JSON in a managed body region — the
+approved objective, acceptance criteria, and required tests, plus the
+exact model, effort, how the host actually delivered that effort, and
+the routing rationale, mirrored onto the PR), and one branch +
+isolated worktree per issue under `.orchestrator/worktrees/`.
 
 Each issue then walks a closed lifecycle driven by plumbing verbs:
 `dispatch` (dependencies must be merged; branch fast-forwarded onto

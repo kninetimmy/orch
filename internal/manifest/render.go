@@ -42,17 +42,20 @@ func Render(m Manifest) (string, error) {
 }
 
 // writeHuman renders the human-readable markdown between the begin
-// marker and the data comment. Its shape is fixed: a heading, a summary
-// table, the routing rationale as a paragraph (never a table cell), then
-// the escalations and verifications sections, each always present so the
+// marker and the data comment. Its shape is fixed and follows the JSON
+// record's field order: a heading, the approved work, a summary table,
+// the routing rationale as a paragraph (never a table cell), then the
+// escalations and verifications sections, each always present so the
 // layout is deterministic.
 func writeHuman(b *strings.Builder, m Manifest) {
 	b.WriteString("### Orch audit record\n\n")
+	writeWork(b, m)
 	b.WriteString("| Field | Value |\n")
 	b.WriteString("| --- | --- |\n")
 	fmt.Fprintf(b, "| Role | %s |\n", mdCodeCell(string(m.Role)))
 	fmt.Fprintf(b, "| Executor | %s — effort %s |\n", mdCodeCell(m.Executor.Model), mdCodeCell(m.Executor.Effort))
 	fmt.Fprintf(b, "| Reviewer | %s — effort %s |\n", mdCodeCell(m.Reviewer.Model), mdCodeCell(m.Reviewer.Effort))
+	fmt.Fprintf(b, "| Effort delivery | %s — %s |\n", mdCodeCell(string(m.EffortDelivery)), effortDeliveryNote(m.EffortDelivery))
 	fmt.Fprintf(b, "| Config revision | %s |\n", mdCodeCell(m.ConfigRevision))
 	b.WriteByte('\n')
 	fmt.Fprintf(b, "**Routing rationale:** %s\n", mdText(m.RoutingRationale))
@@ -60,6 +63,44 @@ func writeHuman(b *strings.Builder, m Manifest) {
 	writeEscalations(b, m.Escalations)
 	b.WriteByte('\n')
 	writeVerifications(b, m.Verifications)
+}
+
+// writeWork renders the approved work the record carries: the objective
+// as a paragraph, then the acceptance criteria and the required tests as
+// bullet lists (tests are commands, so they render as code spans).
+//
+// It repeats prose the created issue body already carries above the
+// managed region, deliberately: the drift check compares a re-render of
+// the decoded record against the found region, so a field with no human
+// view is a field whose only view is the hidden JSON, and every one of
+// these carries text an executor is handed as approved.
+func writeWork(b *strings.Builder, m Manifest) {
+	fmt.Fprintf(b, "**Objective:** %s\n\n", mdText(m.Objective))
+	b.WriteString("**Acceptance criteria:**\n")
+	for _, ac := range m.AcceptanceCriteria {
+		fmt.Fprintf(b, "- %s\n", mdText(ac))
+	}
+	b.WriteString("\n**Required tests:**\n")
+	for _, rt := range m.RequiredTests {
+		fmt.Fprintf(b, "- %s\n", mdCode(rt))
+	}
+	b.WriteByte('\n')
+}
+
+// effortDeliveryNote is the clause rendered beside an EffortDelivery
+// value in the summary table. Without it the table names an exact effort
+// next to nothing that says whether the host enforced it, which reads as
+// a guarantee the host may not have made.
+func effortDeliveryNote(d EffortDelivery) string {
+	switch d {
+	case EffortDeliveryParameter:
+		return "the host applied the routed effort as a real model parameter"
+	case EffortDeliveryPromptCue:
+		return "this host has no effort parameter; the routed effort reached the executor as a prompt cue only"
+	default:
+		// Unreachable: validate rejects any other value before Render.
+		return "unrecognized effort delivery"
+	}
 }
 
 func writeEscalations(b *strings.Builder, es []Escalation) {

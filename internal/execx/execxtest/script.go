@@ -43,7 +43,21 @@ type Script struct {
 	T     *testing.T
 	Calls []Call
 
-	next int
+	next   int
+	stdins []string
+}
+
+// StdinAt returns the standard input the i-th consumed call received
+// (0-based, "" when that call had none). It exists for bodies a test
+// wants to assert on structurally — parse the posted issue body and
+// check the record — rather than spell out byte-for-byte in a Call.Stdin
+// expectation, which would only restate the code that produced it.
+func (s *Script) StdinAt(i int) string {
+	s.T.Helper()
+	if i < 0 || i >= len(s.stdins) {
+		s.T.Fatalf("StdinAt(%d): only %d calls were made", i, len(s.stdins))
+	}
+	return s.stdins[i]
 }
 
 // Run asserts that c matches the next scripted call and returns its
@@ -67,16 +81,23 @@ func (s *Script) Run(_ context.Context, c execx.Cmd) (execx.Result, error) {
 	if want.Env != nil && !slices.Equal(c.Env, want.Env) {
 		s.T.Fatalf("call %d: %s env\ngot  %q\nwant %q", s.next, c.Name, c.Env, want.Env)
 	}
-	if want.Stdin != "" {
-		if c.Stdin == nil {
-			s.T.Fatalf("call %d: %s stdin\ngot  no stdin\nwant %q", s.next, c.Name, want.Stdin)
-		}
+	// Stdin is always drained and recorded, so StdinAt can answer for any
+	// call, not only the ones carrying an expectation.
+	stdin := ""
+	if c.Stdin != nil {
 		got, err := io.ReadAll(c.Stdin)
 		if err != nil {
 			s.T.Fatalf("call %d: %s stdin read: %v", s.next, c.Name, err)
 		}
-		if string(got) != want.Stdin {
-			s.T.Fatalf("call %d: %s stdin\ngot  %q\nwant %q", s.next, c.Name, got, want.Stdin)
+		stdin = string(got)
+	}
+	s.stdins = append(s.stdins, stdin)
+	if want.Stdin != "" {
+		if c.Stdin == nil {
+			s.T.Fatalf("call %d: %s stdin\ngot  no stdin\nwant %q", s.next, c.Name, want.Stdin)
+		}
+		if stdin != want.Stdin {
+			s.T.Fatalf("call %d: %s stdin\ngot  %q\nwant %q", s.next, c.Name, stdin, want.Stdin)
 		}
 	}
 	if want.Err != nil {

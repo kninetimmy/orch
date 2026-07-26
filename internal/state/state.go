@@ -140,6 +140,17 @@ type Issue struct {
 	DependsOn []string `json:"depends_on,omitempty"`
 	Wave      int      `json:"wave,omitempty"`
 
+	// Objective, AcceptanceCriteria, and RequiredTests are the approved
+	// plan text, copied at EnterDelivery so dispatch hands the executor a
+	// transcription of what a human approved rather than a recollection
+	// of it. They are optional in the persisted file rather than required
+	// by validateIssues because a run activated by a build older than the
+	// schema-2 audit record carries none; `orch resume` repopulates them
+	// from the issue body, which is their durable home.
+	Objective          string   `json:"objective,omitempty"`
+	AcceptanceCriteria []string `json:"acceptance_criteria,omitempty"`
+	RequiredTests      []string `json:"required_tests,omitempty"`
+
 	// Decision is the current routing for the issue, set at activation
 	// and updated by escalate. Required from the dispatched phase onward.
 	Decision *Decision `json:"decision,omitempty"`

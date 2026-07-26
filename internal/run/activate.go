@@ -155,6 +155,10 @@ func Activate(ctx context.Context, env Env, reqJSON []byte) (*ActivationResult, 
 	if err != nil {
 		return nil, err
 	}
+	delivery, err := effortDelivery(plan.Host)
+	if err != nil {
+		return nil, err
+	}
 	denylist := modelDenylist(cfg)
 	decisionByID := make(map[string]routing.Decision, len(plan.Issues))
 	labelsByID := make(map[string]ghops.Labels, len(plan.Issues))
@@ -225,16 +229,20 @@ func Activate(ctx context.Context, env Env, reqJSON []byte) (*ActivationResult, 
 	ordered := plan.issuesInWaveOrder()
 	stateIssues := make([]state.Issue, len(ordered))
 	for i, pi := range ordered {
-		// Persist the plan's dependency edges, wave, and the derived
-		// routing decision so the PR B verbs can enforce dependencies and
-		// spawn executors without re-taking the plan document.
+		// Persist the plan's dependency edges, wave, approved work text,
+		// and the derived routing decision so the PR B verbs can enforce
+		// dependencies and spawn executors on approved text without
+		// re-taking the plan document.
 		stateIssues[i] = state.Issue{
-			PlanID:    pi.ID,
-			Title:     pi.Title,
-			Phase:     state.PhasePlanned,
-			DependsOn: pi.DependsOn,
-			Wave:      pi.Wave,
-			Decision:  fromRoutingDecision(decisionByID[pi.ID]),
+			PlanID:             pi.ID,
+			Title:              pi.Title,
+			Phase:              state.PhasePlanned,
+			DependsOn:          pi.DependsOn,
+			Wave:               pi.Wave,
+			Objective:          pi.Objective,
+			AcceptanceCriteria: pi.AcceptanceCriteria,
+			RequiredTests:      pi.RequiredTests,
+			Decision:           fromRoutingDecision(decisionByID[pi.ID]),
 		}
 	}
 	planRef := state.PlanRef{
@@ -258,12 +266,16 @@ func Activate(ctx context.Context, env Env, reqJSON []byte) (*ActivationResult, 
 
 		body := issueBody(pi, waveByID, digest)
 		body, err = manifest.Upsert(body, manifest.Manifest{
-			SchemaVersion:    manifest.SchemaVersion,
-			Role:             d.Role,
-			Executor:         d.Executor,
-			RoutingRationale: d.Rationale,
-			Reviewer:         d.Reviewer,
-			ConfigRevision:   cfg.ConfigRevision,
+			SchemaVersion:      manifest.SchemaVersion,
+			Objective:          pi.Objective,
+			AcceptanceCriteria: pi.AcceptanceCriteria,
+			RequiredTests:      pi.RequiredTests,
+			Role:               d.Role,
+			Executor:           d.Executor,
+			RoutingRationale:   d.Rationale,
+			Reviewer:           d.Reviewer,
+			EffortDelivery:     delivery,
+			ConfigRevision:     cfg.ConfigRevision,
 		})
 		if err != nil {
 			return nil, wrapAfterEnter(err)
