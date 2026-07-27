@@ -346,11 +346,14 @@ Models do not become GitHub labels.
 Orch fails closed.
 
 - Assist denies tracked-file mutation.
-- Only the registered executor may write in Delivery.
+- The guard enforces containment and cannot attribute a write to a role or a specific executor.
 - Writes must remain inside the registered worktree.
 - The active branch must not be `main`.
 - Completion requires a commit, pushed branch, PR, targeted-test evidence, and explicit CI state.
-- Reviewers are mechanically read-only.
+- Read-only roles are held read-only by per-agent tool whitelists on Claude Code and by agent
+  instructions on Codex, not by the guard.
+- Neither closes the shell-write gap: the pre-write hook covers only the file-write tools, so a
+  shell-mediated write falls to the host's own approval prompts.
 - No agent may merge.
 - Hook, authentication, GitHub, or validation failures produce a blocked run.
 - Blocked worktrees and branches are preserved.
