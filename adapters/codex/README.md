@@ -154,8 +154,12 @@ bugs:
   a worktree the guard currently treats as writable, including the one
   under review. Their read-only discipline is stated in their
   `developer_instructions` and rests there. The Claude adapter leaves
-  `--role` unused for the same reason, but backs role read-only-ness
-  with a per-subagent tool whitelist this host has no equivalent for.
+  `--role` unused for the same reason. Its tool whitelist backs
+  `orch-scout`'s read-only-ness fully — `orch-scout` carries no `Bash`
+  — but `orch-reviewer` and `orch-reviewer-safe` both carry `Bash`,
+  so their whitelist excludes only the four guarded write tools there
+  too; their read-only discipline for anything Bash-mediated rests on
+  instructions, same as this host's.
 - **A missing `orch` binary fails open, not closed.** As described
   under Install order: a hook command that cannot be found exits
   non-blocking by the hook protocol's own rules, so both the write

@@ -8,9 +8,9 @@
 //
 // All decision logic lives here in the Go core, not in adapter shell
 // (PRD §6: adapters stay thin). The package is policy-mechanical: it
-// enforces the Assist read-only rule (PRD §7), the Delivery
-// containment/branch/phase rules and role read-only-ness (PRD §15), and
-// treats orchestrator internals and git internals as never writable.
+// enforces the Assist read-only rule (PRD §7) and the Delivery
+// containment/branch/phase rules (PRD §15), and treats orchestrator
+// internals and git internals as never writable.
 //
 // The verdict is split into a pure decision (evaluate, over a resolved
 // facts value, no I/O — the normative decision table as data) and the
