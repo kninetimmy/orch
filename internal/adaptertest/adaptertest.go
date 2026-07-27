@@ -15,6 +15,13 @@
 // plugin_test.go already makes, since `go test` runs a package's tests
 // with that package's directory as the process cwd.
 //
+// These helpers pin the presence of instruction text in shipped skill
+// markdown; they cannot pin its meaning. Every prose-phrase comparison
+// runs through NormalizeWhitespace on both sides deliberately, so a
+// pinned phrase that a markdown reflow happens to hard-wrap across a
+// line break still counts as present — the pins track whether the
+// words are there, not how the file happens to be line-wrapped.
+//
 // It may import internal/run (the four statement constants) and
 // internal/guard (a caller may pass guard.ClaudeTools()/CodexTools()
 // into CheckMatcherEqualsGuardTools) and nothing else in this module —
@@ -114,6 +121,28 @@ func globFiles(t *testing.T, pattern string) []string {
 	return matches
 }
 
+// normalizeWhitespace collapses every run of whitespace in s — including
+// a hard-wrapped line break — to a single space, and trims leading and
+// trailing whitespace. It is the only place this normalization logic is
+// written; every prose-phrase comparison in this package, and the two
+// adapters' own prose-phrase checks via NormalizeWhitespace, is written
+// in terms of it, so a pinned phrase a markdown reflow happens to split
+// across a line break still compares equal to the same phrase read from
+// the reflowed file.
+func normalizeWhitespace(s string) string {
+	return strings.Join(strings.Fields(s), " ")
+}
+
+// NormalizeWhitespace exports normalizeWhitespace for the two adapters'
+// own plugin_test.go prose-phrase checks (TestDeliverySkillStatesFrontmatterMatchRule
+// and TestDeliverySkillStatesTOMLMatchRule), which live outside this
+// package and so cannot call the unexported form directly. It performs
+// no normalization logic of its own beyond delegating to
+// normalizeWhitespace.
+func NormalizeWhitespace(s string) string {
+	return normalizeWhitespace(s)
+}
+
 // CheckRunVerbTokens drift-pins every `orch run <verb>` token mentioned
 // in a skill (found by skillGlob, e.g. "skills/*/SKILL.md") against the
 // real verb set: a renamed or removed verb that a skill still mentions
@@ -185,12 +214,15 @@ var planGateOptions = []string{
 }
 
 // CheckPlanGateOptions pins deliverySkillPath's documented plan-gate
-// question options against the exact PRD §8 four-option set.
+// question options against the exact PRD §8 four-option set. The
+// comparison runs on whitespace-normalized text on both sides, so an
+// option string a markdown reflow happens to hard-wrap across a line
+// break still counts as present.
 func CheckPlanGateOptions(t *testing.T, deliverySkillPath string) {
 	t.Helper()
-	content := readFile(t, deliverySkillPath)
+	content := normalizeWhitespace(readFile(t, deliverySkillPath))
 	for _, opt := range planGateOptions {
-		if !strings.Contains(content, opt) {
+		if !strings.Contains(content, normalizeWhitespace(opt)) {
 			t.Errorf("%s does not contain plan-gate option %q", deliverySkillPath, opt)
 		}
 	}
@@ -204,12 +236,15 @@ var mergeGateOptions = []string{
 }
 
 // CheckMergeGateOptions pins deliverySkillPath's documented merge-gate
-// question options against the exact two-option set.
+// question options against the exact two-option set. The comparison
+// runs on whitespace-normalized text on both sides, so an option string
+// a markdown reflow happens to hard-wrap across a line break still
+// counts as present.
 func CheckMergeGateOptions(t *testing.T, deliverySkillPath string) {
 	t.Helper()
-	content := readFile(t, deliverySkillPath)
+	content := normalizeWhitespace(readFile(t, deliverySkillPath))
 	for _, opt := range mergeGateOptions {
-		if !strings.Contains(content, opt) {
+		if !strings.Contains(content, normalizeWhitespace(opt)) {
 			t.Errorf("%s does not contain merge-gate option %q", deliverySkillPath, opt)
 		}
 	}
@@ -224,12 +259,15 @@ var setupTerminalForms = []string{
 }
 
 // CheckSetupTerminalForms pins setupSkillPath's documented terminal
-// forms against the exact three commands each interview ends with.
+// forms against the exact three commands each interview ends with. The
+// comparison runs on whitespace-normalized text on both sides, so a
+// terminal form a markdown reflow happens to hard-wrap across a line
+// break still counts as present.
 func CheckSetupTerminalForms(t *testing.T, setupSkillPath string) {
 	t.Helper()
-	content := readFile(t, setupSkillPath)
+	content := normalizeWhitespace(readFile(t, setupSkillPath))
 	for _, form := range setupTerminalForms {
-		if !strings.Contains(content, form) {
+		if !strings.Contains(content, normalizeWhitespace(form)) {
 			t.Errorf("%s does not contain terminal form %q", setupSkillPath, form)
 		}
 	}
@@ -260,11 +298,14 @@ const routedSelectionCue = "Routed selection: <model> @ <effort>"
 
 // CheckRoutedSelectionCue pins skillPath's documented spawn/dispatch
 // prompt against the exact routed-selection opening line every issue's
-// executor (and reviewer) prompt must open with.
+// executor (and reviewer) prompt must open with. The comparison runs on
+// whitespace-normalized text on both sides, so the cue would still count
+// as present even if a markdown reflow hard-wrapped it across a line
+// break.
 func CheckRoutedSelectionCue(t *testing.T, skillPath string) {
 	t.Helper()
-	content := readFile(t, skillPath)
-	if !strings.Contains(content, routedSelectionCue) {
+	content := normalizeWhitespace(readFile(t, skillPath))
+	if !strings.Contains(content, normalizeWhitespace(routedSelectionCue)) {
 		t.Errorf("%s does not contain the routed-selection prompt cue %q", skillPath, routedSelectionCue)
 	}
 }

@@ -287,13 +287,18 @@ const tomlMatchRuleSentence = "stop and tell the human"
 // adapters/claude/plugin_test.go — its Task tool's model parameter is a
 // coarse tier-alias enum, so a per-spawn override cannot express an
 // exact routed version there either, and only an installed agent
-// definition's frontmatter pins one.
+// definition's frontmatter pins one. The containment check runs on
+// whitespace-normalized text on both sides (via
+// adaptertest.NormalizeWhitespace), so a site the markdown hard-wraps
+// across a line break still counts.
 func TestDeliverySkillStatesTOMLMatchRule(t *testing.T) {
 	data, err := os.ReadFile(deliverySkillPath)
 	if err != nil {
 		t.Fatalf("read %s: %v", deliverySkillPath, err)
 	}
-	if !strings.Contains(string(data), tomlMatchRuleSentence) {
+	content := adaptertest.NormalizeWhitespace(string(data))
+	phrase := adaptertest.NormalizeWhitespace(tomlMatchRuleSentence)
+	if !strings.Contains(content, phrase) {
 		t.Errorf("%s does not contain the verbatim phrase %q", deliverySkillPath, tomlMatchRuleSentence)
 	}
 }
