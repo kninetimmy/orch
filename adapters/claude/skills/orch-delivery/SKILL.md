@@ -160,9 +160,11 @@ in flight at once. For each issue:
    `fable` — never an exact version string like `claude-sonnet-5` — so
    an override can never express a routed selection, and is never the
    way to honor routing. Before spawning, confirm that the installed
-   executor agent's frontmatter `model` equals
-   `DispatchResult.executor.model`. Compare against the **installed**
-   plugin copy under the Claude Code plugin cache
+   executor agent's frontmatter `model` equals the selection
+   **currently in force**: `EscalateResult.executor.model` when an
+   escalation has rerouted the issue since dispatch, or
+   `DispatchResult.executor.model` otherwise. Compare against the
+   **installed** plugin copy under the Claude Code plugin cache
    (`~/.claude/plugins/cache/orch/orch-claude/<version>/agents/`), not
    this repository's `adapters/claude/agents/` copy — a plugin version
    behind head can still carry an older pin. **If the routed model
@@ -224,9 +226,11 @@ in flight at once. For each issue:
    cannot express a routed selection and an override is never the way
    to honor routing — only the installed agent definition's
    frontmatter pins an exact model. Before spawning, confirm that the
-   selected reviewer agent's frontmatter `model` equals
-   `DispatchResult.reviewer.model`. Compare against the **installed**
-   plugin copy under the Claude Code plugin cache
+   selected reviewer agent's frontmatter `model` equals the selection
+   **currently in force**: `EscalateResult.reviewer.model` when an
+   escalation has rerouted the issue since dispatch, or
+   `DispatchResult.reviewer.model` otherwise. Compare against the
+   **installed** plugin copy under the Claude Code plugin cache
    (`~/.claude/plugins/cache/orch/orch-claude/<version>/agents/`), not
    this repository's `adapters/claude/agents/` copy — a plugin version
    behind head can still carry an older pin. **If the routed model
@@ -326,7 +330,13 @@ failure, call `orch run escalate`:
 Result `kind`:
 
 - `reroute` — carries a new `executor`/`reviewer` and `rationale`;
-  spawn the new selection into the **same worktree**, never a new one.
+  before spawning either into the **same worktree** (never a new
+  one), confirm the new selection's `model` against an installed
+  agent definition's frontmatter under the same match rule as the
+  spawn steps above — **if the new selection matches no installed
+  agent's frontmatter, stop and tell the human — never spawn a
+  mismatched agent, and never report the routed selection as if it
+  ran.**
 - `return-to-architect` — the issue is blocked for human design work;
   report `reason` and do not push it forward yourself.
 
