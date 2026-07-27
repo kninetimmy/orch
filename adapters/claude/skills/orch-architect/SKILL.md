@@ -100,10 +100,12 @@ comes back through the engine's own output, e.g. `DispatchResult`,
 
 ## Memhub discipline
 
-- **Only the Architect writes to memhub.** Subagents never do — they
-  have no memhub tools, and even if they could reach one they must not
-  write it. Anything a subagent needs remembered comes back to you in
-  its report, and you decide whether and how to record it.
+- **Only the Architect writes to memhub.** Subagents never do — that
+  boundary is enforced by these instructions, not by the absence of
+  memhub tools. Because memhub is an external CLI, any subagent
+  carrying `Bash` can reach it and must still not write it. Anything a
+  subagent needs remembered comes back to you in its report, and you
+  decide whether and how to record it.
 - **Always run memhub commands with the main checkout as the process
   working directory — never a worktree.** A Delivery worktree is a
   separate git working tree for one issue's branch; memhub's project
@@ -114,7 +116,12 @@ comes back through the engine's own output, e.g. `DispatchResult`,
   result carries `memhub_wrapup_due: true` when a wrap-up is owed (i.e.
   memhub mode is not "off"). When you see that flag, do the wrap-up
   before announcing the return to Assist — do not skip it, and do not
-  run it speculatively when the flag is absent or false.
+  run it speculatively when the flag is absent or false. Staged
+  decisions and facts sit in memhub's pending writes until a human
+  accepts them, so once the wrap-up is staged, report the staged count
+  to the human and name `memhub review accept` as the command that
+  makes them durable — running it is the human's approval gate, never
+  yours.
 
 ## Handoff
 
