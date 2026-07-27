@@ -36,7 +36,7 @@ never re-derives a decision the engine already made.
 - `skills/orch-architect/SKILL.md` — the Architect's standing posture:
   never edit tracked files directly, never re-derive engine policy,
   the `orch run status --json` / PROJECT.md / memhub-recall session
-  ritual, mode conduct, the four-subagent whitelist and the
+  ritual, mode conduct, the five-subagent whitelist and the
   `concurrency.max_subagents` cap, and memhub write discipline.
 - `skills/orch-delivery/SKILL.md` — the Delivery wire contract: the
   scratch-file JSON request/response pattern for every `orch run <verb>`
@@ -56,11 +56,19 @@ never re-derives a decision the engine already made.
   bare human report first, then follows `orch-setup` for the interactive
   interview and terminal form; none duplicates `orch-setup`'s protocol.
 - `agents/orch-scout.md`, `agents/orch-implementer.md`,
-  `agents/orch-specialist.md`, `agents/orch-reviewer.md` — the four
-  role subagents the Architect spawns during Delivery, each with its own
-  model and tool whitelist (scout and reviewer carry no write tool; no
-  agent carries `Task` or any `mcp__` tool, so subagents have no memhub
-  write surface of their own).
+  `agents/orch-specialist.md`, `agents/orch-reviewer.md`,
+  `agents/orch-reviewer-safe.md` — the five role subagents the Architect
+  spawns during Delivery, each with its own model and tool whitelist
+  (scout, reviewer, and reviewer-safe carry no write tool; no agent
+  carries `Task` or any `mcp__` tool, so subagents have no memhub write
+  surface of their own). `orch-reviewer-safe` is the §10 safe-review
+  downgrade encoding: Claude Code's Task tool `model` parameter only
+  takes coarse tier aliases (`sonnet`/`opus`/`haiku`/`fable`), not an
+  exact version string, so the downgrade the engine computes for a
+  mechanical/low-risk/fully-specified/unsurprising issue has to be an
+  installed agent definition of its own — only its frontmatter can pin
+  `claude-sonnet-5` exactly — spawned by name exactly like
+  `orch-reviewer`.
 
 ## Install order
 

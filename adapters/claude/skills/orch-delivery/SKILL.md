@@ -200,10 +200,19 @@ in flight at once. For each issue:
    reports (token totals and duration), never an estimate. Result
    carries `pr_number`, `pr_url`.
 
-4. **Spawn the reviewer** — once the PR stops changing, spawn
-   `orch-reviewer` **fresh** (a new instance, not the executor
-   continuing). `reviewed_head_oid` must be the PR's **live** head OID
-   at review time (e.g. via `gh pr view`), never a cached value.
+4. **Spawn the reviewer** — once the PR stops changing, spawn the
+   reviewer **fresh** (a new instance, not the executor continuing):
+   `orch-reviewer-safe` when the routed reviewer names the §10
+   safe-downgrade profile — the `reviewer_downgraded` routing the
+   `GateDoc` showed at the plan gate, carried in
+   `DispatchResult.reviewer` and superseded by any later escalation's
+   new reviewer — `orch-reviewer` otherwise. Spawn with **no model
+   override on either** — each agent's frontmatter pins its exact
+   model, so that pin is what runs. **If the host cannot honor the
+   routed model, stop and tell the human — never spawn a different
+   model and report the routed one as if it ran.** `reviewed_head_oid`
+   must be the PR's **live** head OID at review time (e.g. via `gh pr
+   view`), never a cached value.
 
 5. **Review** — the reviewer produces **one consolidated report**
    (acceptance criteria, scope, correctness, tests, CI, security,

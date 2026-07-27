@@ -78,8 +78,8 @@ func TestPluginManifestStrict(t *testing.T) {
 	if m.Description == "" {
 		t.Error("description is empty")
 	}
-	if m.Version != "0.5.1" {
-		t.Errorf("version = %q, want 0.5.1", m.Version)
+	if m.Version != "0.5.2" {
+		t.Errorf("version = %q, want 0.5.2", m.Version)
 	}
 	if m.Author.Name == "" {
 		t.Error("author.name is empty")
@@ -212,33 +212,38 @@ type agentSpec struct {
 	tools []string
 }
 
-// agentRoster is the full four-agent Claude profile this plugin ships.
-// Profile("claude") also carries a "reviewer-safe" entry with no Claude
-// agent file — Claude Code has a per-spawn model override, so it needs
-// no safe-downgrade agent of its own, and this roster deliberately does
-// not require a fifth agent to exist.
+// agentRoster is the full five-agent Claude profile this plugin ships.
+// Profile("claude") also carries a "reviewer-safe" entry, matched here by
+// orch-reviewer-safe: Claude Code's Task tool model parameter only takes
+// coarse tier aliases (sonnet/opus/haiku/fable), not an exact version
+// string, so a per-spawn override cannot pin claude-sonnet-5 for the
+// §10 safe-downgrade review — only an installed agent's frontmatter
+// can, which is why this fifth agent exists.
 var agentRoster = map[string]agentSpec{
-	"orch-scout":       {tools: []string{"Read", "Grep", "Glob", "WebFetch", "WebSearch"}},
-	"orch-implementer": {tools: []string{"Read", "Grep", "Glob", "Edit", "Write", "NotebookEdit", "Bash"}},
-	"orch-specialist":  {tools: []string{"Read", "Grep", "Glob", "Edit", "Write", "NotebookEdit", "Bash"}},
-	"orch-reviewer":    {tools: []string{"Read", "Grep", "Glob", "Bash"}},
+	"orch-scout":         {tools: []string{"Read", "Grep", "Glob", "WebFetch", "WebSearch"}},
+	"orch-implementer":   {tools: []string{"Read", "Grep", "Glob", "Edit", "Write", "NotebookEdit", "Bash"}},
+	"orch-specialist":    {tools: []string{"Read", "Grep", "Glob", "Edit", "Write", "NotebookEdit", "Bash"}},
+	"orch-reviewer":      {tools: []string{"Read", "Grep", "Glob", "Bash"}},
+	"orch-reviewer-safe": {tools: []string{"Read", "Grep", "Glob", "Bash"}},
 }
 
 // writeExcludedAgents are the roles that must never carry a write tool
 // (PRD-adjacent read-only-by-construction requirement): scout because it
-// only ever investigates, reviewer because "you did not write this
-// change" is enforced by its tool list, not just its prompt.
-var writeExcludedAgents = map[string]bool{"orch-scout": true, "orch-reviewer": true}
+// only ever investigates, reviewer and reviewer-safe because "you did
+// not write this change" is enforced by their tool list, not just their
+// prompt.
+var writeExcludedAgents = map[string]bool{"orch-scout": true, "orch-reviewer": true, "orch-reviewer-safe": true}
 
 // writeTools are the four tools the PreToolUse guard hook mediates; a
 // read-only agent must list none of them.
 var writeTools = []string{"Write", "Edit", "MultiEdit", "NotebookEdit"}
 
 // TestAgentFrontmatter validates every agents/*.md file against the
-// committed §10 Claude profile: all four agents exist with a complete
-// frontmatter, scout and reviewer exclude every write tool, no agent
-// lists Task or an mcp__ tool (subagents have no memhub write surface),
-// and models match adaptertest.Profile("claude") for their role exactly.
+// committed §10 Claude profile: all five agents exist with a complete
+// frontmatter, scout, reviewer, and reviewer-safe exclude every write
+// tool, no agent lists Task or an mcp__ tool (subagents have no memhub
+// write surface), and models match adaptertest.Profile("claude") for
+// their role exactly.
 func TestAgentFrontmatter(t *testing.T) {
 	profile := adaptertest.Profile("claude")
 	for name, want := range agentRoster {
