@@ -202,9 +202,12 @@ in flight at once. For each issue:
 
 4. **Spawn the reviewer** — once the PR stops changing, spawn the
    reviewer **fresh** (a new instance, not the executor continuing):
-   `orch-reviewer-safe` when `GateDoc`/`DispatchResult` reports
-   `reviewer_downgraded`, `orch-reviewer` otherwise. Spawn with **no
-   model override on either** — each agent's frontmatter pins its exact
+   `orch-reviewer-safe` when the routed reviewer names the §10
+   safe-downgrade profile — the `reviewer_downgraded` routing the
+   `GateDoc` showed at the plan gate, carried in
+   `DispatchResult.reviewer` and superseded by any later escalation's
+   new reviewer — `orch-reviewer` otherwise. Spawn with **no model
+   override on either** — each agent's frontmatter pins its exact
    model, so that pin is what runs. **If the host cannot honor the
    routed model, stop and tell the human — never spawn a different
    model and report the routed one as if it ran.** `reviewed_head_oid`

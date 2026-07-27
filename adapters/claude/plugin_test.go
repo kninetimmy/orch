@@ -217,8 +217,8 @@ type agentSpec struct {
 // orch-reviewer-safe: Claude Code's Task tool model parameter only takes
 // coarse tier aliases (sonnet/opus/haiku/fable), not an exact version
 // string, so a per-spawn override cannot pin claude-sonnet-5 for the
-// section 10 safe-downgrade review — only an installed agent's
-// frontmatter can, which is why this fifth agent exists.
+// §10 safe-downgrade review — only an installed agent's frontmatter
+// can, which is why this fifth agent exists.
 var agentRoster = map[string]agentSpec{
 	"orch-scout":         {tools: []string{"Read", "Grep", "Glob", "WebFetch", "WebSearch"}},
 	"orch-implementer":   {tools: []string{"Read", "Grep", "Glob", "Edit", "Write", "NotebookEdit", "Bash"}},
@@ -239,10 +239,11 @@ var writeExcludedAgents = map[string]bool{"orch-scout": true, "orch-reviewer": t
 var writeTools = []string{"Write", "Edit", "MultiEdit", "NotebookEdit"}
 
 // TestAgentFrontmatter validates every agents/*.md file against the
-// committed §10 Claude profile: all four agents exist with a complete
-// frontmatter, scout and reviewer exclude every write tool, no agent
-// lists Task or an mcp__ tool (subagents have no memhub write surface),
-// and models match adaptertest.Profile("claude") for their role exactly.
+// committed §10 Claude profile: all five agents exist with a complete
+// frontmatter, scout, reviewer, and reviewer-safe exclude every write
+// tool, no agent lists Task or an mcp__ tool (subagents have no memhub
+// write surface), and models match adaptertest.Profile("claude") for
+// their role exactly.
 func TestAgentFrontmatter(t *testing.T) {
 	profile := adaptertest.Profile("claude")
 	for name, want := range agentRoster {

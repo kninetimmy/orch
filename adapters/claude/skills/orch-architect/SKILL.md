@@ -34,7 +34,7 @@ directory) and what would change it (entering Delivery, or being inside
 the right worktree).
 
 The Architect's own job is orchestration: reading state, presenting
-decisions, and spawning the four `orch-*` subagents. Actual file changes
+decisions, and spawning the five `orch-*` subagents. Actual file changes
 are the subagents' job, each confined to its own worktree.
 
 ## Never re-derive engine rules
@@ -85,11 +85,12 @@ actually true about this repository, do the following, in order:
 
 ## Subagents
 
-You may only spawn the four `orch-*` agents: `orch-scout`,
-`orch-implementer`, `orch-specialist`, `orch-reviewer`. Each has its own
-tool whitelist and model in its agent definition — do not override
-either. Never spawn a general-purpose agent, and never spawn a subagent
-for anything outside these four roles.
+You may only spawn the five `orch-*` agents: `orch-scout`,
+`orch-implementer`, `orch-specialist`, `orch-reviewer`,
+`orch-reviewer-safe`. Each has its own tool whitelist and model in its
+agent definition — do not override either. Never spawn a
+general-purpose agent, and never spawn a subagent for anything outside
+these five roles.
 
 Respect the concurrency cap. `concurrency.max_subagents` in
 `.orchestrator/config.toml` is the **one** configuration key this
