@@ -334,6 +334,10 @@ func TestSetupSkillHasTerminalForms(t *testing.T) {
 	adaptertest.CheckSetupTerminalForms(t, setupSkillPath)
 }
 
+func TestDeliverySkillHasRoutedSelectionCue(t *testing.T) {
+	adaptertest.CheckRoutedSelectionCue(t, deliverySkillPath)
+}
+
 // frontmatterMatchRuleSentence is the exact phrase
 // orch-delivery/SKILL.md must state: Claude Code's Task tool model
 // parameter is a coarse tier-alias enum (sonnet/opus/haiku/fable), so

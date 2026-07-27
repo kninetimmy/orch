@@ -3,9 +3,9 @@
 // profiles) and assertion helpers (skill/manifest drift pins) so
 // cross-host invariants — the run-verb allowlist, the four
 // anti-forgery statement literals, the plan/merge gate option text, the
-// setup interview's terminal forms, hook command portability, and
-// matcher/guard parity — have exactly one source instead of a copy per
-// adapter that can silently drift apart.
+// setup interview's terminal forms, hook command portability, matcher/
+// guard parity, and the routed-selection prompt cue — have exactly one
+// source instead of a copy per adapter that can silently drift apart.
 //
 // This package carries no Test functions and tests nothing of its own;
 // it is test-support only, imported by adapters/claude/plugin_test.go
@@ -248,6 +248,24 @@ func CheckHookCommandPortability(t *testing.T, commands []string) {
 		if strings.ContainsAny(cmd, portabilityForbidden) {
 			t.Errorf("command %q contains a shell metacharacter", cmd)
 		}
+	}
+}
+
+// routedSelectionCue is the exact opening line every Delivery spawn/
+// dispatch prompt must open with (fenced as its own code block in the
+// skill): the only channel carrying routed effort to a Claude Code
+// subagent, since subagent spawns take no effort parameter, and a plain
+// statement of fact on Codex, where effort is a real host parameter.
+const routedSelectionCue = "Routed selection: <model> @ <effort>"
+
+// CheckRoutedSelectionCue pins skillPath's documented spawn/dispatch
+// prompt against the exact routed-selection opening line every issue's
+// executor (and reviewer) prompt must open with.
+func CheckRoutedSelectionCue(t *testing.T, skillPath string) {
+	t.Helper()
+	content := readFile(t, skillPath)
+	if !strings.Contains(content, routedSelectionCue) {
+		t.Errorf("%s does not contain the routed-selection prompt cue %q", skillPath, routedSelectionCue)
 	}
 }
 

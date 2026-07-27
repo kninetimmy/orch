@@ -127,8 +127,10 @@ bugs:
   (low/high/xhigh) is approximated by a prompt cue in the subagent's
   instructions rather than an actual host parameter. The exact routed
   effort is still recorded in the engine's audit trail; only the
-  in-session behavior is an approximation. Parity tests (task 21) assert
-  the prompt cue is present, not that it changed model behavior.
+  in-session behavior is an approximation.
+  `internal/adaptertest.CheckRoutedSelectionCue`, called from both
+  adapters' `plugin_test.go`, pins that the prompt cue text is present in
+  `orch-delivery/SKILL.md`, not that it changed model behavior.
 - **`orch guard`'s `--role` narrowing is unused by this adapter.** Hooks
   in Claude Code are plugin-global, not scoped per subagent, so the
   adapter never passes `--role` when invoking guard. Read-only role
