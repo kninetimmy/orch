@@ -238,8 +238,15 @@ in flight at once. For each issue:
 
 5. **Review** — the reviewer produces **one consolidated report**
    (acceptance criteria, scope, correctness, tests, CI, security,
-   manifest accuracy). Call `orch run review`, echoing
-   `DispatchResult.reviewer` **verbatim**:
+   manifest accuracy). Call `orch run review` with `reviewer` set to
+   the selection **currently in force**: `EscalateResult.reviewer` when
+   an escalation has rerouted the issue since dispatch, or
+   `DispatchResult.reviewer` otherwise. `orch run review` compares the
+   submitted `reviewer` against the issue's current routing decision and
+   refuses a mismatch; `orch run dispatch` cannot be re-run to refresh a
+   stale value — it accepts only the `worktree-ready` phase, which a
+   dispatched issue has already left, so you must track whichever value
+   is current yourself:
 
    ```json
    {"schema_version": 1, "issue_number": N, "reviewed_head_oid": "...",
