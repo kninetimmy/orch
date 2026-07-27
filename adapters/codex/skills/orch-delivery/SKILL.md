@@ -83,6 +83,10 @@ the exact command that gates the change (`go test ./...`, `gofmt -l .`);
 it is not an invitation for comprehensive coverage, just the check this
 change must pass.
 
+Plan text must never reference machine-local or gitignored paths such
+as `.memhub/` or `.orchestrator/` — an executor sees only the committed
+tree inside its worktree, and neither exists there.
+
 ## Plan gate
 
 Call `orch run plan` with the `PlanDoc` on stdin. The result is a
@@ -159,27 +163,33 @@ in flight at once. For each issue:
    actually runs is whatever its installed TOML (`model`,
    `model_reasoning_effort`) pins. Before dispatching, the selection
    **currently in force** for the routed role — `DispatchResult`'s
-   `(model, effort)`, superseded by any later escalation's new
-   selection (`EscalateResult`'s `(model, effort)`), never the
-   dispatch-time value once superseded — **must match an installed
-   `orch-*` agent TOML exactly** — `orch-scout` gpt-5.6-terra/low,
-   `orch-implementer` gpt-5.6-terra/high, `orch-specialist`
-   gpt-5.6-sol/medium, `orch-reviewer` gpt-5.6-sol/medium,
-   `orch-reviewer-safe` gpt-5.6-terra/high. **If no installed TOML
-   matches the routed selection, stop and tell the human — never
-   dispatch a mismatched agent, and never report the routed selection as
-   if it ran.** Every dispatch prompt opens with:
+   `(model, effort)`, superseded by the most recent `EscalateResult`'s
+   `(model, effort)` if the issue has been rerouted since dispatch,
+   never the dispatch-time value once superseded — **must match an
+   installed `orch-*` agent TOML exactly**. The installed TOMLs are the
+   authority for what that match requires, not this list: by default
+   they pin `orch-scout` gpt-5.6-terra/low, `orch-implementer`
+   gpt-5.6-terra/high, `orch-specialist` gpt-5.6-sol/medium,
+   `orch-reviewer` gpt-5.6-sol/medium, `orch-reviewer-safe`
+   gpt-5.6-terra/high, but a repository that overrides
+   `hosts.codex.roles` and re-renders with `orch render-agents` gets
+   different pins. **If no installed TOML matches the routed selection,
+   stop and tell the human — never dispatch a mismatched agent, and
+   never report the routed selection as if it ran.** Every dispatch
+   prompt opens with:
 
    ```
    Routed selection: <model> @ <effort>
    ```
 
-   Effort is a real host parameter on Codex: the host enforces both the
-   routed model and the routed effort together, through the TOML-match
-   rule above — `model_reasoning_effort` is pinned in the dispatched
-   agent's own installed TOML, not layered on afterward, so there is no
-   prompt cue standing in for it the way there is on Claude. The opening
-   line is a statement of fact, not a behavioral nudge. Transcribe
+   Effort is a real host parameter on Codex: `model_reasoning_effort` is
+   pinned in the dispatched agent's own installed TOML and is what
+   actually runs, not layered on afterward, so there is no prompt cue
+   standing in for it the way there is on Claude. The host enforces
+   whatever TOML was dispatched, not that it matches the routed
+   selection — dispatching the TOML matching the routed selection above
+   is Architect discipline the engine does not verify. The opening line
+   is a statement of fact, not a behavioral nudge. Transcribe
    `DispatchResult.objective`, `.acceptance_criteria`, and
    `.required_tests` into the prompt **verbatim** — this is the text a
    human approved at the plan gate, not the Architect's recollection of
@@ -211,9 +221,10 @@ in flight at once. For each issue:
    `orch-reviewer` **fresh** (a new instance, not the executor
    continuing), following the same TOML-match rule as the executor
    above. Base the choice on the reviewer selection **currently in
-   force** — `DispatchResult.reviewer`, superseded by any later
-   escalation's new reviewer (`EscalateResult.reviewer`), never the
-   dispatch-time value once superseded. If that selection names the §10
+   force** — `DispatchResult.reviewer`, superseded by the most recent
+   `EscalateResult.reviewer` if the issue has been rerouted since
+   dispatch, never the dispatch-time value once superseded. If that
+   selection names the §10
    safe-downgrade profile instead of the standard reviewer profile,
    dispatch `orch-reviewer-safe` by name — it is the installed TOML that
    encodes that downgrade, since Codex has no per-spawn model override
@@ -224,14 +235,16 @@ in flight at once. For each issue:
 5. **Review** — the reviewer produces **one consolidated report**
    (acceptance criteria, scope, correctness, tests, CI, security,
    manifest accuracy). Call `orch run review` with `reviewer` set to
-   the selection **currently in force**: `EscalateResult.reviewer` when
-   an escalation has rerouted the issue since dispatch, or
-   `DispatchResult.reviewer` otherwise. `orch run review` compares the
-   submitted `reviewer` against the issue's current routing decision and
-   refuses a mismatch; `orch run dispatch` cannot be re-run to refresh a
-   stale value — it accepts only the `worktree-ready` phase, which a
-   dispatched issue has already left, so you must track whichever value
-   is current yourself:
+   the selection **currently in force**: the most recent
+   `EscalateResult.reviewer` when an escalation has rerouted the issue
+   since dispatch, or `DispatchResult.reviewer` otherwise.
+   `orch run review` compares the submitted `reviewer`
+   against the issue's current routing decision and
+   refuses a mismatch; `orch run dispatch` cannot be
+   re-run to refresh a stale value — it accepts only the
+   `worktree-ready` phase, which a dispatched issue has
+   already left, so you must track whichever value is
+   current yourself:
 
    ```json
    {"schema_version": 1, "issue_number": N, "reviewed_head_oid": "...",
@@ -311,13 +324,17 @@ failure, call `orch run escalate`:
 `weak-model-failure`, `reviewer-uncertainty`, `architectural-ambiguity`.
 Result `kind`:
 
-- `reroute` — carries a new `executor`/`reviewer` and `rationale`;
-  before dispatching either into the **same worktree** (never a new
-  one), confirm the new selection's `(model, effort)` against an
-  installed `orch-*` agent TOML under the same match rule as the
-  dispatch steps above — **if no installed TOML matches the new
-  selection, stop and tell the human — never dispatch a mismatched
-  agent, and never report the routed selection as if it ran.**
+- `reroute` — carries a new `executor`/`reviewer` and `rationale`; on a
+  chain of two or more reroutes on the same issue, each call's result
+  fully replaces the routing decision, so this is now the most recent
+  `EscalateResult` and the only one describing the routing in force,
+  for both roles even if only one changed. Before dispatching either
+  into the **same worktree** (never a new one), confirm the new
+  selection's `(model, effort)` against an installed `orch-*` agent
+  TOML under the same match rule as the dispatch steps above — **if no
+  installed TOML matches the new selection, stop and tell the human —
+  never dispatch a mismatched agent, and never report the routed
+  selection as if it ran.**
 - `return-to-architect` — the issue is blocked for human design work;
   report `reason` and do not push it forward yourself.
 
