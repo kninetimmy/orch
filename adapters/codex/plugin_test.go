@@ -270,6 +270,10 @@ func TestSetupSkillHasTerminalForms(t *testing.T) {
 	adaptertest.CheckSetupTerminalForms(t, setupSkillPath)
 }
 
+func TestDeliverySkillHasRoutedSelectionCue(t *testing.T) {
+	adaptertest.CheckRoutedSelectionCue(t, deliverySkillPath)
+}
+
 // tomlMatchRuleSentence is the exact phrase orch-delivery/SKILL.md must
 // state: on Codex there is no per-spawn model override, so a routed
 // selection that matches no installed orch-* TOML must stop and tell
