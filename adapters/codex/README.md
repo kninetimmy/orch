@@ -149,17 +149,24 @@ bugs:
   approval is outstanding. Install order, `orch doctor`, and the visible
   absence of session-start context are the mitigations; there is no way
   to make either gap fail closed from inside the hook itself.
-- **No per-spawn model override.** Unlike Claude Code (which can at
-  least prompt-cue an effort it cannot enforce), Codex CLI dispatches an
-  agent with whatever `model`/`model_reasoning_effort` its installed
-  TOML pins — there is no host mechanism to override either per
-  dispatch. `orch-delivery`'s spawn step therefore requires the routed
-  `(model, effort)` to match an installed `orch-*` TOML exactly, and
-  stops and tells the human rather than silently substituting a
-  mismatched agent or reporting the routed selection as if it ran.
-  `orch-reviewer-safe` exists specifically so the §10 safe-downgrade row
-  has a real installed TOML to dispatch, instead of dead-ending at that
-  same stop-and-tell-human rule on every routine downgrade.
+- **No per-spawn model override.** Codex CLI dispatches an agent with
+  whatever `model`/`model_reasoning_effort` its installed TOML pins —
+  there is no host mechanism to override either per dispatch. This is
+  not a Codex-specific constraint relative to Claude Code: both hosts
+  require the routed selection to match an installed agent definition
+  exactly, because Claude Code's Task tool `model` parameter only
+  accepts coarse tier aliases (`sonnet`/`opus`/`haiku`/`fable`), never
+  an exact version string, so a per-spawn override cannot express a
+  routed selection there either. `orch-delivery`'s spawn step therefore
+  stops and tells the human on a mismatch, on either host, rather than
+  silently substituting a mismatched agent or reporting the routed
+  selection as if it ran. The genuine Codex-specific piece is effort:
+  it is pinned in the installed TOML and enforced by the host, whereas
+  Claude Code subagent spawns take no effort parameter at all and the
+  routed effort is only conveyed as a prompt cue. `orch-reviewer-safe`
+  exists specifically so the §10 safe-downgrade row has a real
+  installed TOML to dispatch, instead of dead-ending at that same
+  stop-and-tell-human rule on every routine downgrade.
 - **A configured non-default model is applied by `orch render-agents`,
   not automatically.** A repository that overrides the §10 defaults
   must run `orch render-agents` (PRD §22) itself — install and upgrade

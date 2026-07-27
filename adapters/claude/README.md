@@ -132,9 +132,9 @@ bugs:
 - **`orch guard`'s `--role` narrowing is unused by this adapter.** Hooks
   in Claude Code are plugin-global, not scoped per subagent, so the
   adapter never passes `--role` when invoking guard. Read-only role
-  enforcement (scout and reviewer must never write) instead comes from
-  each subagent's own tool whitelist in its agent definition (PR 2), not
-  from guard's role-narrowing flag.
+  enforcement (scout, reviewer, and reviewer-safe must never write)
+  instead comes from each subagent's own tool whitelist in its agent
+  definition (PR 2), not from guard's role-narrowing flag.
 
 ## Host version
 
