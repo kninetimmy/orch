@@ -141,6 +141,21 @@ bugs:
   shared task-27 core feature (closing this gap for real) more
   tractable on this host than on Claude Code, where no comparable hook
   point exists for shell-mediated writes today.
+- **Role read-only-ness rests on `developer_instructions`, not on the
+  guard.** `orch guard`'s `--role` narrowing is the only mechanism that
+  could make a role mechanically read-only, and this adapter never
+  passes it: Codex hooks are plugin-global rather than scoped per
+  dispatched agent, so `hooks/hooks.json` runs the bare
+  `orch guard codex` command. What the guard enforces is containment —
+  inside a registered worktree, on its registered branch, in a writable
+  phase — applied to every agent alike; it cannot attribute a write to
+  a role. Since Codex agent definitions carry no tool whitelist, nothing
+  mechanical stops `orch-scout` or either reviewer from writing inside
+  a worktree the guard currently treats as writable, including the one
+  under review. Their read-only discipline is stated in their
+  `developer_instructions` and rests there. The Claude adapter leaves
+  `--role` unused for the same reason, but backs role read-only-ness
+  with a per-subagent tool whitelist this host has no equivalent for.
 - **A missing `orch` binary fails open, not closed.** As described
   under Install order: a hook command that cannot be found exits
   non-blocking by the hook protocol's own rules, so both the write
@@ -197,11 +212,11 @@ the Claude adapter's is.
 
 Two behaviors verified live in the task-30 parity smoke (codex-cli
 0.144.1, 2026-07-12): PreToolUse hooks **do** fire on dispatched-agent
-(subagent) `apply_patch` calls — load-bearing here, since Codex agent
-definitions carry no tool whitelist, so scout/reviewer read-only
-discipline is mechanically enforced by the guard, not just by
-`developer_instructions` — and `request_user_input` is root-thread
-only, so a dispatched agent can never raise a native question.
+(subagent) `apply_patch` calls — load-bearing here, since it puts every
+dispatched agent's writes under the guard's worktree, branch, and phase
+containment, the only mechanical write boundary this adapter ships —
+and `request_user_input` is root-thread only, so a dispatched agent can
+never raise a native question.
 
 As defense in depth — complementary to the guard hook, not a
 substitute for it, and no configuration is shipped by this adapter to
