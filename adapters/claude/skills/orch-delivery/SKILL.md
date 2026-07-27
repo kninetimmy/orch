@@ -153,12 +153,22 @@ in flight at once. For each issue:
    `rationale`, `objective`, `acceptance_criteria`, `required_tests`.
 
 2. **Spawn the executor** — spawn `orch-implementer` or
-   `orch-specialist` (per the routed role) via the Task tool, passing
-   `DispatchResult.executor.model` as the model override; the agent
-   frontmatter `model` is only the fallback if the Task tool gives no
-   override for this spawn. **If the host cannot honor the routed
-   model, stop and tell the human — never spawn a different model and
-   report the routed one as if it ran.** Every spawn prompt opens with:
+   `orch-specialist` (per the routed role) via the Task tool **by
+   name, with no model override**, so the installed agent definition's
+   frontmatter `model` is what runs. The Task tool's `model` parameter
+   accepts only the coarse tier aliases `sonnet`, `opus`, `haiku` and
+   `fable` — never an exact version string like `claude-sonnet-5` — so
+   an override can never express a routed selection, and is never the
+   way to honor routing. Before spawning, confirm that the installed
+   executor agent's frontmatter `model` equals
+   `DispatchResult.executor.model`. Compare against the **installed**
+   plugin copy under the Claude Code plugin cache
+   (`~/.claude/plugins/cache/orch/orch-claude/<version>/agents/`), not
+   this repository's `adapters/claude/agents/` copy — a plugin version
+   behind head can still carry an older pin. **If the routed model
+   matches no installed agent's frontmatter, stop and tell the human —
+   never spawn a mismatched agent, and never report the routed
+   selection as if it ran.** Every spawn prompt opens with:
 
    ```
    Routed selection: <model> @ <effort>
@@ -168,10 +178,10 @@ in flight at once. For each issue:
    depth for this task."; `low` → "Work fast and economically; this
    task does not need deep reasoning." Claude Code subagent spawns take
    no effort parameter, so this sentence is the only way the routed
-   effort reaches the executor: the host enforces the routed *model*
-   (via the Task tool override above, or by refusing to spawn) but only
-   *conveys* the routed effort as this prompt cue — nothing checks that
-   the executor actually reasoned at that depth. Transcribe
+   effort reaches the executor: the routed *model* is pinned by the
+   installed agent definition the match rule above checks, but the
+   routed *effort* is only *conveyed* as this prompt cue — nothing
+   checks that the executor actually reasoned at that depth. Transcribe
    `DispatchResult.objective`, `.acceptance_criteria`, and
    `.required_tests` into the prompt **verbatim** — this is the text a
    human approved at the plan gate, not the Architect's recollection of
@@ -206,13 +216,25 @@ in flight at once. For each issue:
    safe-downgrade profile — the `reviewer_downgraded` routing the
    `GateDoc` showed at the plan gate, carried in
    `DispatchResult.reviewer` and superseded by any later escalation's
-   new reviewer — `orch-reviewer` otherwise. Spawn with **no model
-   override on either** — each agent's frontmatter pins its exact
-   model, so that pin is what runs. **If the host cannot honor the
-   routed model, stop and tell the human — never spawn a different
-   model and report the routed one as if it ran.** `reviewed_head_oid`
-   must be the PR's **live** head OID at review time (e.g. via `gh pr
-   view`), never a cached value.
+   new reviewer — `orch-reviewer` otherwise. Spawn whichever of the
+   two that selection names, by name and with **no model override on
+   either**, under the same rule as the executor: the Task tool's
+   `model` parameter accepts only the coarse tier aliases `sonnet`,
+   `opus`, `haiku` and `fable`, never an exact version string, so it
+   cannot express a routed selection and an override is never the way
+   to honor routing — only the installed agent definition's
+   frontmatter pins an exact model. Before spawning, confirm that the
+   selected reviewer agent's frontmatter `model` equals
+   `DispatchResult.reviewer.model`. Compare against the **installed**
+   plugin copy under the Claude Code plugin cache
+   (`~/.claude/plugins/cache/orch/orch-claude/<version>/agents/`), not
+   this repository's `adapters/claude/agents/` copy — a plugin version
+   behind head can still carry an older pin. **If the routed model
+   matches no installed agent's frontmatter, stop and tell the human —
+   never spawn a mismatched agent, and never report the routed
+   selection as if it ran.** `reviewed_head_oid` must be the PR's
+   **live** head OID at review time (e.g. via `gh pr view`), never a
+   cached value.
 
 5. **Review** — the reviewer produces **one consolidated report**
    (acceptance criteria, scope, correctness, tests, CI, security,
