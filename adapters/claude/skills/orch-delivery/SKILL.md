@@ -84,8 +84,9 @@ it is not an invitation for comprehensive coverage, just the check this
 change must pass.
 
 Plan text must never reference machine-local or gitignored paths such
-as `.memhub/` or `.orchestrator/` — an executor sees only the committed
-tree inside its worktree, and neither exists there.
+as `.memhub/`, `.orchestrator/state.json`, or
+`.orchestrator/config.local.toml` — an executor sees only the committed
+tree inside its worktree, and none of these exist there.
 
 ## Plan gate
 
@@ -251,13 +252,11 @@ in flight at once. For each issue:
    the selection **currently in force**: the most recent
    `EscalateResult.reviewer` when an escalation has rerouted the issue
    since dispatch, or `DispatchResult.reviewer` otherwise.
-   `orch run review` compares the submitted `reviewer`
-   against the issue's current routing decision and
-   refuses a mismatch; `orch run dispatch` cannot be
-   re-run to refresh a stale value — it accepts only the
-   `worktree-ready` phase, which a dispatched issue has
-   already left, so you must track whichever value is
-   current yourself:
+   `orch run review` compares the submitted `reviewer` against the
+   issue's current routing decision and refuses a mismatch;
+   `orch run dispatch` cannot be re-run to refresh a stale value — it
+   accepts only the `worktree-ready` phase, which a dispatched issue has
+   already left, so you must track whichever value is current yourself:
 
    ```json
    {"schema_version": 1, "issue_number": N, "reviewed_head_oid": "...",
@@ -338,15 +337,15 @@ Result `kind`:
 
 - `reroute` — carries a new `executor`/`reviewer` and `rationale`; on a
   chain of two or more reroutes on the same issue, each call's result
-  fully replaces the routing decision, so this is now the most recent
-  `EscalateResult` and the only one describing the routing in force,
-  for both roles even if only one changed. Before spawning either into
-  the **same worktree** (never a new one), confirm the new selection's
-  `model` against an installed agent definition's frontmatter under the
-  same match rule as the spawn steps above — **if the new selection
-  matches no installed agent's frontmatter, stop and tell the human —
-  never spawn a mismatched agent, and never report the routed selection
-  as if it ran.**
+  fully replaces the routing decision, so this result is now the most
+  recent `EscalateResult` and the only one describing the routing in
+  force, for both roles even if only one changed. Before spawning
+  either into the **same worktree** (never a new one), confirm the new
+  selection's `model` against an installed agent definition's
+  frontmatter under the same match rule as the spawn steps above — **if
+  the new selection matches no installed agent's frontmatter, stop and
+  tell the human — never spawn a mismatched agent, and never report the
+  routed selection as if it ran.**
 - `return-to-architect` — the issue is blocked for human design work;
   report `reason` and do not push it forward yourself.
 
