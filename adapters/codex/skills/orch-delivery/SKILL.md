@@ -207,17 +207,28 @@ in flight at once. For each issue:
 4. **Dispatch the reviewer** — once the PR stops changing, dispatch
    `orch-reviewer` **fresh** (a new instance, not the executor
    continuing), following the same TOML-match rule as the executor
-   above. If `DispatchResult.reviewer` names the §10 safe-downgrade
-   profile instead of the standard reviewer profile, dispatch
-   `orch-reviewer-safe` by name — it is the installed TOML that encodes
-   that downgrade, since Codex has no per-spawn model override to apply
-   it ad hoc. `reviewed_head_oid` must be the PR's **live** head OID at
-   review time (e.g. via `gh pr view`), never a cached value.
+   above. Base the choice on the reviewer selection **currently in
+   force** — `DispatchResult.reviewer`, superseded by any later
+   escalation's new reviewer (`EscalateResult.reviewer`), never the
+   dispatch-time value once superseded. If that selection names the §10
+   safe-downgrade profile instead of the standard reviewer profile,
+   dispatch `orch-reviewer-safe` by name — it is the installed TOML that
+   encodes that downgrade, since Codex has no per-spawn model override
+   to apply it ad hoc. `reviewed_head_oid` must be the PR's **live**
+   head OID at review time (e.g. via `gh pr view`), never a cached
+   value.
 
 5. **Review** — the reviewer produces **one consolidated report**
    (acceptance criteria, scope, correctness, tests, CI, security,
-   manifest accuracy). Call `orch run review`, echoing
-   `DispatchResult.reviewer` **verbatim**:
+   manifest accuracy). Call `orch run review` with `reviewer` set to
+   the selection **currently in force**: `EscalateResult.reviewer` when
+   an escalation has rerouted the issue since dispatch, or
+   `DispatchResult.reviewer` otherwise. `orch run review` compares the
+   submitted `reviewer` against the issue's current routing decision and
+   refuses a mismatch; `orch run dispatch` cannot be re-run to refresh a
+   stale value — it accepts only the `worktree-ready` phase, which a
+   dispatched issue has already left, so you must track whichever value
+   is current yourself:
 
    ```json
    {"schema_version": 1, "issue_number": N, "reviewed_head_oid": "...",
