@@ -88,6 +88,31 @@ as `.memhub/`, `.orchestrator/state.json`, or
 `.orchestrator/config.local.toml` — an executor sees only the committed
 tree inside its worktree, and none of these exist there.
 
+Before submitting a `PlanDoc`, verify every fact an acceptance
+criterion asserts about the repository — a path, a file, a symbol,
+or a count — by running the command that checks it: `git ls-files`,
+`git check-ignore`, or a grep whose output you actually read. A
+count you have not confirmed this way belongs in the criterion as
+"every site", not a specific number like "the five sites" — a form
+an off-by-one cannot falsify. Read one issue's acceptance criteria
+together as a set, not one at a time, and confirm that a single
+implementation can satisfy all of them simultaneously. Symbol
+visibility across a package boundary is a concrete way a set
+becomes contradictory — an unexported symbol one criterion requires
+while another criterion requires a different package to reach it is
+unsatisfiable by construction — so prefer a criterion stating the
+invariant actually wanted ("normalization logic has exactly one
+source in the module") over one prescribing the mechanism you
+imagine delivering it ("a single unexported function"); the
+invariant stays satisfiable however the executor structures the
+code. When a criterion is justified by a claim that something
+currently fails silently or passes while broken, run that failing
+case once yourself and read its actual outcome before writing the
+criterion — a mechanism that looks fragile can fail loudly on
+exactly the change you feared it would miss — and treat a memhub
+note or a prior finding you are relying on as a lead to verify, not
+evidence to inherit.
+
 ## Plan gate
 
 Call `orch run plan` with the `PlanDoc` on stdin. The result is a
