@@ -157,8 +157,11 @@ in flight at once. For each issue:
    `orch-specialist` (per the routed role) by naming the agent in your
    prompt; Codex has no per-spawn model override, so the agent that
    actually runs is whatever its installed TOML (`model`,
-   `model_reasoning_effort`) pins. Before dispatching, `DispatchResult`'s
-   `(model, effort)` for the routed role **must match an installed
+   `model_reasoning_effort`) pins. Before dispatching, the selection
+   **currently in force** for the routed role — `DispatchResult`'s
+   `(model, effort)`, superseded by any later escalation's new
+   selection (`EscalateResult`'s `(model, effort)`), never the
+   dispatch-time value once superseded — **must match an installed
    `orch-*` agent TOML exactly** — `orch-scout` gpt-5.6-terra/low,
    `orch-implementer` gpt-5.6-terra/high, `orch-specialist`
    gpt-5.6-sol/medium, `orch-reviewer` gpt-5.6-sol/medium,
@@ -309,8 +312,12 @@ failure, call `orch run escalate`:
 Result `kind`:
 
 - `reroute` — carries a new `executor`/`reviewer` and `rationale`;
-  dispatch the new selection into the **same worktree**, never a new
-  one.
+  before dispatching either into the **same worktree** (never a new
+  one), confirm the new selection's `(model, effort)` against an
+  installed `orch-*` agent TOML under the same match rule as the
+  dispatch steps above — **if no installed TOML matches the new
+  selection, stop and tell the human — never dispatch a mismatched
+  agent, and never report the routed selection as if it ran.**
 - `return-to-architect` — the issue is blocked for human design work;
   report `reason` and do not push it forward yourself.
 
