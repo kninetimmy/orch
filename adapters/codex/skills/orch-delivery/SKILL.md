@@ -328,7 +328,7 @@ Result `kind`:
   fully replaces the routing decision, so this result is now the most
   recent `EscalateResult` and the only one describing the routing in
   force, for both roles even if only one changed. Before dispatching
-  into the **same worktree** (never a new one), confirm the new
+  either into the **same worktree** (never a new one), confirm the new
   selection's `(model, effort)` against an installed `orch-*` agent
   TOML under the same match rule as the dispatch steps above — **if no
   installed TOML matches the new selection, stop and tell the human —
