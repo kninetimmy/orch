@@ -134,8 +134,10 @@ func normalizeWhitespace(s string) string {
 }
 
 // NormalizeWhitespace exports normalizeWhitespace for the two adapters'
-// own plugin_test.go prose-phrase checks (TestDeliverySkillStatesFrontmatterMatchRule
-// and TestDeliverySkillStatesTOMLMatchRule), which live outside this
+// own plugin_test.go prose-phrase checks
+// (TestDeliverySkillStatesFrontmatterMatchRule,
+// TestDeliverySkillStatesTOMLMatchRule, and the Codex adapter's
+// TestAgentTOMLs read-only sentinel check), which live outside this
 // package and so cannot call the unexported form directly. It performs
 // no normalization logic of its own beyond delegating to
 // normalizeWhitespace.

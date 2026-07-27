@@ -60,14 +60,13 @@ never re-derives a decision the engine already made.
   `agents/orch-reviewer-safe.md` — the five role subagents the Architect
   spawns during Delivery, each with its own model and tool whitelist
   (scout, reviewer, and reviewer-safe carry no write tool; no agent
-  carries `Task` or any `mcp__` tool, so subagents have no memhub write
-  surface of their own). `orch-reviewer-safe` is the §10 safe-review
-  downgrade encoding: Claude Code's Task tool `model` parameter only
-  takes coarse tier aliases (`sonnet`/`opus`/`haiku`/`fable`), not an
-  exact version string, so the downgrade the engine computes for a
-  mechanical/low-risk/fully-specified/unsurprising issue has to be an
-  installed agent definition of its own — only its frontmatter can pin
-  `claude-sonnet-5` exactly — spawned by name exactly like
+  carries `Task` or any `mcp__` tool). `orch-reviewer-safe` is the §10
+  safe-review downgrade encoding: Claude Code's Task tool `model` parameter
+  only takes coarse tier aliases (`sonnet`/`opus`/`haiku`/`fable`),
+  not an exact version string, so the downgrade the engine computes
+  for a mechanical/low-risk/fully-specified/unsurprising issue has to
+  be an installed agent definition of its own — only its frontmatter
+  can pin `claude-sonnet-5` exactly — spawned by name exactly like
   `orch-reviewer`.
 
 ## Install order
@@ -131,12 +130,16 @@ bugs:
   `internal/adaptertest.CheckRoutedSelectionCue`, called from both
   adapters' `plugin_test.go`, pins that the prompt cue text is present in
   `orch-delivery/SKILL.md`, not that it changed model behavior.
-- **`orch guard`'s `--role` narrowing is unused by this adapter.** Hooks
-  in Claude Code are plugin-global, not scoped per subagent, so the
-  adapter never passes `--role` when invoking guard. Read-only role
-  enforcement (scout, reviewer, and reviewer-safe must never write)
-  instead comes from each subagent's own tool whitelist in its agent
-  definition (PR 2), not from guard's role-narrowing flag.
+- **`orch guard`'s `--role` narrowing is unused by this adapter.**
+  Hooks in Claude Code are plugin-global, not scoped per subagent, so
+  the adapter never passes `--role` when invoking guard. Read-only role
+  enforcement instead comes from each subagent's own tool whitelist in its
+  agent definition (PR 2), not from guard's role-narrowing flag — but
+  the whitelist accounts fully only for `orch-scout`, which carries no
+  `Bash`. `orch-reviewer` and `orch-reviewer-safe` both carry `Bash`,
+  so their whitelist excludes only the four guarded write tools; their
+  read-only discipline for anything Bash-mediated rests on their own
+  instructions, same as the Bash-mediated write gap above.
 
 ## Host version
 

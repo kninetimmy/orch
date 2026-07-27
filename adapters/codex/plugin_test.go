@@ -180,10 +180,11 @@ var agentFiles = []string{
 
 // readOnlyAgents are the roles whose developer_instructions must state
 // they must not modify the repository — scout because it only ever
-// investigates, reviewer because "you did not write this change" is a
-// contract enforced by instructions and the guard hook, not a tool
-// whitelist, on a host with no per-agent tool whitelist at all.
-var readOnlyAgents = map[string]bool{"orch-scout": true, "orch-reviewer": true}
+// investigates, reviewer and reviewer-safe because "you did not write
+// this change" is a contract enforced by instructions alone: this host
+// has no per-agent tool whitelist at all, and the guard hook enforces
+// containment only, not role read-only-ness.
+var readOnlyAgents = map[string]bool{"orch-scout": true, "orch-reviewer": true, "orch-reviewer-safe": true}
 
 // readOnlySentinel is the phrase this test standardizes across the
 // read-only agents' developer_instructions to assert read-only
@@ -233,11 +234,15 @@ func TestAgentTOMLs(t *testing.T) {
 			}
 
 			if strings.Contains(a.DeveloperInstructions, "mcp__") {
-				t.Errorf("%s: developer_instructions mentions an mcp__ tool; agents have no memhub write surface", path)
+				t.Errorf("%s: developer_instructions mentions an mcp__ tool; memhub writes are Architect-only", path)
 			}
 
-			if readOnlyAgents[name] && !strings.Contains(a.DeveloperInstructions, readOnlySentinel) {
-				t.Errorf("%s: developer_instructions does not contain the read-only sentinel %q", path, readOnlySentinel)
+			if readOnlyAgents[name] {
+				normalized := adaptertest.NormalizeWhitespace(a.DeveloperInstructions)
+				sentinel := adaptertest.NormalizeWhitespace(readOnlySentinel)
+				if !strings.Contains(normalized, sentinel) {
+					t.Errorf("%s: developer_instructions does not contain the read-only sentinel %q", path, readOnlySentinel)
+				}
 			}
 		})
 	}

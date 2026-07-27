@@ -241,9 +241,11 @@ var writeTools = []string{"Write", "Edit", "MultiEdit", "NotebookEdit"}
 // TestAgentFrontmatter validates every agents/*.md file against the
 // committed §10 Claude profile: all five agents exist with a complete
 // frontmatter, scout, reviewer, and reviewer-safe exclude every write
-// tool, no agent lists Task or an mcp__ tool (subagents have no memhub
-// write surface), and models match adaptertest.Profile("claude") for
-// their role exactly.
+// tool, no agent lists Task or an mcp__ tool (memhub writes are
+// Architect-only policy; banning mcp__ removes a direct memhub write
+// surface but does not by itself make a Bash-carrying agent
+// memhub-incapable, since memhub is an external CLI), and models match
+// adaptertest.Profile("claude") for their role exactly.
 func TestAgentFrontmatter(t *testing.T) {
 	profile := adaptertest.Profile("claude")
 	for name, want := range agentRoster {
@@ -278,7 +280,7 @@ func TestAgentFrontmatter(t *testing.T) {
 					t.Error("tools list includes Task; no agent may spawn its own subagents")
 				}
 				if strings.HasPrefix(tool, "mcp__") {
-					t.Errorf("tools list includes mcp__ tool %q; subagents have no memhub write surface", tool)
+					t.Errorf("tools list includes mcp__ tool %q; memhub writes are Architect-only", tool)
 				}
 			}
 			wantTools := append([]string(nil), want.tools...)
