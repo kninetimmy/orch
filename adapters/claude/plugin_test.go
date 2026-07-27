@@ -351,13 +351,18 @@ const frontmatterMatchRuleSentence = "stop and tell the human"
 // the Codex adapter's TestDeliverySkillStatesTOMLMatchRule: the no-match
 // escalation rule must be stated verbatim, not just implied. Both spawn
 // steps carry it — the executor spawn and the reviewer spawn — so the
-// phrase is required at least twice, not merely present somewhere.
+// phrase is required at least twice, not merely present somewhere. The
+// count runs on whitespace-normalized text on both sides (via
+// adaptertest.NormalizeWhitespace), so a site the markdown hard-wraps
+// across a line break still counts.
 func TestDeliverySkillStatesFrontmatterMatchRule(t *testing.T) {
 	data, err := os.ReadFile(deliverySkillPath)
 	if err != nil {
 		t.Fatalf("read %s: %v", deliverySkillPath, err)
 	}
-	if got := strings.Count(string(data), frontmatterMatchRuleSentence); got < 2 {
+	content := adaptertest.NormalizeWhitespace(string(data))
+	phrase := adaptertest.NormalizeWhitespace(frontmatterMatchRuleSentence)
+	if got := strings.Count(content, phrase); got < 2 {
 		t.Errorf("%s contains the verbatim phrase %q %d time(s), want it at both the executor and reviewer spawn steps",
 			deliverySkillPath, frontmatterMatchRuleSentence, got)
 	}
