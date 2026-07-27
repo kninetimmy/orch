@@ -276,10 +276,14 @@ func TestSetupSkillHasTerminalForms(t *testing.T) {
 // the human rather than silently dispatching a mismatched agent.
 const tomlMatchRuleSentence = "stop and tell the human"
 
-// TestDeliverySkillStatesTOMLMatchRule is a Codex-only pin (Claude Code
-// has no equivalent installed-TOML-match concern, since its Task tool
-// takes a per-spawn model override): orch-delivery/SKILL.md must state
-// the no-match escalation rule verbatim, not just imply it.
+// TestDeliverySkillStatesTOMLMatchRule pins the Codex half of a rule
+// both hosts carry: orch-delivery/SKILL.md must state the no-match
+// escalation rule verbatim, not just imply it. Claude Code's twin is
+// TestDeliverySkillStatesFrontmatterMatchRule in
+// adapters/claude/plugin_test.go — its Task tool's model parameter is a
+// coarse tier-alias enum, so a per-spawn override cannot express an
+// exact routed version there either, and only an installed agent
+// definition's frontmatter pins one.
 func TestDeliverySkillStatesTOMLMatchRule(t *testing.T) {
 	data, err := os.ReadFile(deliverySkillPath)
 	if err != nil {
