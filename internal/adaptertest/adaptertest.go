@@ -81,15 +81,15 @@ func Profile(host string) map[string]RoleSpec {
 }
 
 // runVerbTokens is the closed set every `orch run <word>` token found in
-// a skill must belong to: the 13 document-taking verbs internal/cli/run.go
+// a skill must belong to: the 14 document-taking verbs internal/cli/run.go
 // dispatches, plus "status" (orch run status --json, dispatched
 // separately but still spelled "orch run status"). Moved verbatim from
 // adapters/claude/plugin_test.go so both hosts pin against the same set.
 var runVerbTokens = map[string]bool{
 	"plan": true, "activate": true, "dispatch": true, "pr-open": true,
-	"review": true, "escalate": true, "ci": true, "merge-report": true,
-	"merge": true, "block": true, "abandon": true, "cleanup": true,
-	"complete": true, "status": true,
+	"review-worktree": true, "review": true, "escalate": true, "ci": true,
+	"merge-report": true, "merge": true, "block": true, "abandon": true,
+	"cleanup": true, "complete": true, "status": true,
 }
 
 var orchRunTokenPattern = regexp.MustCompile(`orch run ([a-z-]+)`)
@@ -156,7 +156,7 @@ func CheckRunVerbTokens(t *testing.T, skillGlob string) {
 		for _, m := range orchRunTokenPattern.FindAllStringSubmatch(content, -1) {
 			verb := m[1]
 			if !runVerbTokens[verb] {
-				t.Errorf("%s: mentions `orch run %s`, which is not one of the 13 verbs or status", path, verb)
+				t.Errorf("%s: mentions `orch run %s`, which is not one of the 14 verbs or status", path, verb)
 			}
 		}
 	}

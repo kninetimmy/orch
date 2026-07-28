@@ -157,6 +157,127 @@ func TestAddWorktreeExistingPathFailsClosed(t *testing.T) {
 	}
 }
 
+func TestAddDetachedWorktree(t *testing.T) {
+	root := tempRoot(t)
+	path := canon(t, filepath.Join(root, ".orchestrator", "worktrees", "review-issue-4"))
+	rel, err := filepath.Rel(root, path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	const head = "6666666666666666666666666666666666666666"
+	g, script := openScripted(t, root,
+		execxtest.Call{Name: "git", Args: []string{"check-ignore", "-q", "--", filepath.ToSlash(rel) + "/"}, Dir: root},
+		execxtest.Call{Name: "git", Args: []string{"worktree", "add", "--detach", path, "6666666"}, Dir: root},
+		// The resolved HEAD is read back inside the new checkout, so an
+		// abbreviated commit-ish comes back in full.
+		execxtest.Call{Name: "git", Args: []string{"rev-parse", "--verify", "HEAD^{commit}"}, Dir: path, Stdout: head + "\n"},
+	)
+	wt, err := g.AddDetachedWorktree(context.Background(), path, "6666666")
+	script.AssertExhausted()
+	if err != nil {
+		t.Fatalf("AddDetachedWorktree: %v", err)
+	}
+	want := Worktree{Path: path, Head: head, Detached: true}
+	if *wt != want {
+		t.Errorf("worktree = %+v, want %+v", *wt, want)
+	}
+}
+
+func TestAddDetachedWorktreeExistingPathFailsClosed(t *testing.T) {
+	g, script := openScripted(t, tempRoot(t))
+	existing := t.TempDir()
+	_, err := g.AddDetachedWorktree(context.Background(), existing, "6666666666666666666666666666666666666666")
+	script.AssertExhausted() // fail closed before any git call
+	if err == nil || !strings.Contains(err.Error(), "already exists") {
+		t.Fatalf("err = %v, want clobber refusal", err)
+	}
+}
+
+func TestAddDetachedWorktreeInsidePrimaryNotIgnoredFailsClosed(t *testing.T) {
+	root := tempRoot(t)
+	path := filepath.Join(root, "review")
+	rel, err := filepath.Rel(root, path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	g, script := openScripted(t, root, execxtest.Call{
+		Name: "git", Args: []string{"check-ignore", "-q", "--", filepath.ToSlash(rel) + "/"}, Dir: root, Exit: 1,
+	})
+	_, err = g.AddDetachedWorktree(context.Background(), path, "6666666666666666666666666666666666666666")
+	script.AssertExhausted() // no `worktree add` followed
+	if !errors.Is(err, ErrNotIgnored) {
+		t.Fatalf("err = %v, want ErrNotIgnored", err)
+	}
+}
+
+func TestRemoveDetachedWorktree(t *testing.T) {
+	root := tempRoot(t)
+	wt := tempRoot(t)
+	g, script := openScripted(t, root,
+		execxtest.Call{Name: "git", Args: listArgs, Stdout: porcelain(
+			"worktree "+root, "HEAD 1111", "branch refs/heads/main", "",
+			"worktree "+wt, "HEAD 2222", "detached",
+		)},
+		// No cleanliness check: the checkout is disposable, and a reviewer
+		// legitimately leaves test output in it.
+		execxtest.Call{Name: "git", Args: []string{"worktree", "remove", "--force", wt}, Dir: root},
+		execxtest.Call{Name: "git", Args: []string{"worktree", "prune"}, Dir: root},
+	)
+	if err := g.RemoveDetachedWorktree(context.Background(), wt); err != nil {
+		t.Fatalf("RemoveDetachedWorktree: %v", err)
+	}
+	script.AssertExhausted()
+}
+
+func TestRemoveDetachedWorktreeUnknownPath(t *testing.T) {
+	root := tempRoot(t)
+	stray := tempRoot(t)
+	g, script := openScripted(t, root, execxtest.Call{
+		Name: "git", Args: listArgs,
+		Stdout: porcelain("worktree "+root, "HEAD 1111", "branch refs/heads/main"),
+	})
+	err := g.RemoveDetachedWorktree(context.Background(), stray)
+	script.AssertExhausted() // no forced removal of a directory git does not know
+	if !errors.Is(err, ErrUnknownWorktree) {
+		t.Fatalf("err = %v, want ErrUnknownWorktree", err)
+	}
+}
+
+// TestRemoveDetachedWorktreeBranchRefused proves the gate that stands in
+// for RemoveWorktree's Confirmation: a worktree holding a branch — where
+// committed work lives — never reaches the forced removal.
+func TestRemoveDetachedWorktreeBranchRefused(t *testing.T) {
+	root := tempRoot(t)
+	wt := tempRoot(t)
+	g, script := openScripted(t, root, execxtest.Call{
+		Name: "git", Args: listArgs, Stdout: porcelain(
+			"worktree "+root, "HEAD 1111", "branch refs/heads/main", "",
+			"worktree "+wt, "HEAD 2222", "branch refs/heads/orch/issue-4",
+		),
+	})
+	err := g.RemoveDetachedWorktree(context.Background(), wt)
+	script.AssertExhausted()
+	if err == nil || !strings.Contains(err.Error(), "orch/issue-4") {
+		t.Fatalf("err = %v, want a refusal naming the branch", err)
+	}
+}
+
+// TestRemoveDetachedWorktreePrimaryRefused pins the primary check ahead
+// of the detached check: a primary checkout left on a detached HEAD (the
+// shape a mis-targeted checkout leaves behind) is still refused.
+func TestRemoveDetachedWorktreePrimaryRefused(t *testing.T) {
+	root := tempRoot(t)
+	g, script := openScripted(t, root, execxtest.Call{
+		Name: "git", Args: listArgs,
+		Stdout: porcelain("worktree "+root, "HEAD 1111", "detached"),
+	})
+	err := g.RemoveDetachedWorktree(context.Background(), root)
+	script.AssertExhausted()
+	if err == nil || !strings.Contains(err.Error(), "primary checkout") {
+		t.Fatalf("err = %v, want primary-checkout refusal", err)
+	}
+}
+
 func TestRemoveWorktreeUnconfirmed(t *testing.T) {
 	g, script := openScripted(t, tempRoot(t))
 	err := g.RemoveWorktree(context.Background(), t.TempDir(), Confirmation{})

@@ -1,17 +1,18 @@
 // This file holds the shared infrastructure for the per-issue Delivery
 // lifecycle verbs (PRD §12 steps 8-22), each in its own file:
 //
-//	dispatch      worktree-ready → dispatched
-//	pr-open       dispatched     → pr-open
-//	review        pr-open/in-review → in-review
-//	escalate      dispatched/pr-open/in-review → reroute (same) or blocked
-//	ci            pr-open/in-review/awaiting-merge → same (manifest only)
-//	merge-report  in-review      → awaiting-merge
-//	merge         awaiting-merge → merged
-//	block         any non-terminal → blocked
-//	abandon       any non-terminal → abandoned
-//	cleanup       merged/abandoned → cleaned
-//	complete      run-level; requires every issue cleaned
+//	dispatch         worktree-ready → dispatched
+//	pr-open          dispatched     → pr-open
+//	review-worktree  pr-open/in-review → same (git only, no state write)
+//	review           pr-open/in-review → in-review
+//	escalate         dispatched/pr-open/in-review → reroute (same) or blocked
+//	ci               pr-open/in-review/awaiting-merge → same (manifest only)
+//	merge-report     in-review      → awaiting-merge
+//	merge            awaiting-merge → merged
+//	block            any non-terminal → blocked
+//	abandon          any non-terminal → abandoned
+//	cleanup          merged/abandoned → cleaned
+//	complete         run-level; requires every issue cleaned
 //
 // Failure semantics are pure (PRD §15, resolved 2026-07-11): no verb
 // mutates phase, state, GitHub, or git as a side effect of failing.

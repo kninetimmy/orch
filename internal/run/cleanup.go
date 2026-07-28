@@ -15,8 +15,12 @@ import (
 const CleanupSchemaVersion = 1
 
 // CleanupStatement is the exact confirmation cleanup requires: one
-// statement covers the verb's three deletions — remote branch, worktree,
-// and local branch — because they are one act (PRD §15).
+// statement covers the verb's three confirmed deletions — remote
+// branch, worktree, and local branch — because they are one act
+// (PRD §15). Cleanup also removes the disposable review checkout; that
+// removal needs no confirmation of its own: it is detached, so it holds
+// no branch and none of the committed work a confirmation protects
+// (gitops.RemoveDetachedWorktree).
 const CleanupStatement = "cleanup-issue"
 
 // CleanupRequest removes a merged or abandoned issue's git artifacts.
@@ -34,11 +38,12 @@ type CleanupResult struct {
 }
 
 // Cleanup deletes a merged or abandoned issue's remote branch, worktree,
-// and local branch (PRD §12 steps 18-19), then marks the issue cleaned
-// (terminal). Each deletion is pre-checked so a crashed cleanup re-runs
-// cleanly; the only state write is the final Save. A failure mid-cleanup
-// leaves the run incomplete (PRD §16) — the phase stays put and cleanup
-// re-runs.
+// and local branch (PRD §12 steps 18-19) along with any disposable
+// review checkout a review cycle left behind, then marks the issue
+// cleaned (terminal). Each deletion is pre-checked so a crashed cleanup
+// re-runs cleanly; the only state write is the final Save. A failure
+// mid-cleanup leaves the run incomplete (PRD §16) — the phase stays put
+// and cleanup re-runs.
 func Cleanup(ctx context.Context, env Env, reqJSON []byte) (*CleanupResult, error) {
 	var req CleanupRequest
 	if err := decodeRequest(reqJSON, &req); err != nil {
@@ -81,7 +86,17 @@ func Cleanup(ctx context.Context, env Env, reqJSON []byte) (*CleanupResult, erro
 		return nil, err
 	}
 
-	// 3. Local branch (idempotent: only force-delete when it still
+	// 3. Review worktree, when a review cycle provisioned one
+	// (idempotent the same way, and tolerant of the same
+	// ErrUnknownWorktree). No field of the run state names it — see
+	// ReviewWorktree for why that absence is deliberate — so cleanup
+	// derives its path exactly as the verb that created it does rather
+	// than reading state that was never written.
+	if err := git.RemoveDetachedWorktree(ctx, reviewWorktreeAbs(env.RepoRoot, issue.Number)); err != nil && !errors.Is(err, gitops.ErrUnknownWorktree) {
+		return nil, err
+	}
+
+	// 4. Local branch (idempotent: only force-delete when it still
 	// resolves — a squash merge leaves it unmerged by design).
 	if _, err := git.RevParse(ctx, issue.Branch); err == nil {
 		if err := git.ForceDeleteBranch(ctx, issue.Branch, confirm); err != nil {

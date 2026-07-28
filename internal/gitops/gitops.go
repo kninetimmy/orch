@@ -6,9 +6,13 @@
 // The package is policy-free: callers supply branch names, worktree
 // paths, remotes, and protected-branch lists — naming and placement
 // policy belongs to the run engine. Every operation fails closed: any
-// git error propagates, destructive operations require an explicit
-// Confirmation (PRD §15: blocked worktrees and branches are
-// preserved), and --force never touches user work.
+// git error propagates, and a destructive operation that can reach
+// committed work requires an explicit Confirmation (PRD §15: blocked
+// worktrees and branches are preserved). The two removals that pass
+// --force differ only in mechanism: WithBaseWorktree force-removes the
+// detached checkout it created itself, and RemoveDetachedWorktree
+// refuses any worktree that is not detached, so neither can reach a
+// branch or the commits on it.
 //
 // Operations that pre-check and then act (for example AddWorktree)
 // are not atomic; the run engine serializes potentially conflicting

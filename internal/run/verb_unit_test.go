@@ -80,6 +80,14 @@ func fixtureIssue(planID string, number int, phase state.Phase) state.Issue {
 func setupDeliveryRepo(t *testing.T, planRev string, issues []state.Issue) string {
 	t.Helper()
 	root := setupRepo(t, testConfigTOML)
+	enterDeliveryAt(t, root, planRev, issues)
+	return root
+}
+
+// enterDeliveryAt is setupDeliveryRepo's state half, split out for the
+// tests whose root is a real git sandbox built elsewhere.
+func enterDeliveryAt(t *testing.T, root, planRev string, issues []state.Issue) {
+	t.Helper()
 	planned := make([]state.Issue, len(issues))
 	for i := range issues {
 		planned[i] = state.Issue{PlanID: issues[i].PlanID, Phase: state.PhasePlanned}
@@ -92,7 +100,6 @@ func setupDeliveryRepo(t *testing.T, planRev string, issues []state.Issue) strin
 	if err := state.Save(root, st); err != nil {
 		t.Fatal(err)
 	}
-	return root
 }
 
 func ghEnv(root string, script *execxtest.Script) Env {
