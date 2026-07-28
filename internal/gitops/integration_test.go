@@ -394,8 +394,15 @@ func TestIntegrationRequireIgnoredEmptyPatternHazard(t *testing.T) {
 
 			// Criterion 2: a directory covered only by a directory-only
 			// pattern and not yet on disk must still come back ignored,
-			// hazard line notwithstanding — this must not regress.
-			covered := filepath.Join(root, ".orchestrator", "worktrees", "issue-9")
+			// hazard line notwithstanding — this must not regress. The
+			// query must be the container itself (what
+			// internal/run/activate.go actually checks), not a path
+			// nested a level deeper under it: a nested path's directory
+			// pattern lands on a non-final component of the query, which
+			// git resolves as a directory regardless of query shape and
+			// so cannot discriminate a correct query from a bare,
+			// unmodified one.
+			covered := filepath.Join(root, ".orchestrator", "worktrees")
 			if err := g.RequireIgnored(ctx, covered); err != nil {
 				t.Errorf("dir-only pattern with hazard present: RequireIgnored(%s) = %v, want nil", covered, err)
 			}
@@ -409,6 +416,52 @@ func TestIntegrationRequireIgnoredEmptyPatternHazard(t *testing.T) {
 			}
 		})
 	}
+}
+
+// TestIntegrationRequireIgnoredProbeBasenameCollisionHazard pins the
+// fix for a second, distinct fail-open: a .gitignore glob that has
+// nothing to do with the directory being checked but happens to match
+// RequireIgnored's own fixed probe basename by coincidence. A repo
+// building a binary named orch is a realistic source of such a glob —
+// "orch-*" or "orch*" cover cross-compiled release artifacts (a
+// standard Go release convention, e.g. "orch-linux-amd64"). A single,
+// fixed probe basename cannot tell that match apart from the directory
+// genuinely being ignored; requiring two probes that share no prefix,
+// suffix, or substring can, because no single one of these patterns
+// matches both. Each subtest fails if RequireIgnored queries only
+// requireIgnoredProbes[0].
+func TestIntegrationRequireIgnoredProbeBasenameCollisionHazard(t *testing.T) {
+	setupGitEnv(t)
+	ctx := context.Background()
+
+	globs := []string{"orch-*", "orch*", "*probe*", requireIgnoredProbes[0]}
+	for _, glob := range globs {
+		t.Run(glob, func(t *testing.T) {
+			g, root := newRepo(t)
+			if err := os.WriteFile(filepath.Join(root, ".gitignore"), []byte(glob+"\n"), 0o644); err != nil {
+				t.Fatal(err)
+			}
+
+			uncovered := filepath.Join(root, "scratch", "issue-9")
+			if err := g.RequireIgnored(ctx, uncovered); !errors.Is(err, ErrNotIgnored) {
+				t.Errorf(".gitignore %q coincidentally matching one probe: RequireIgnored(%s) err = %v, want ErrNotIgnored", glob, uncovered, err)
+			}
+		})
+	}
+
+	// A genuine directory-only pattern must still be honored: the
+	// defense against basename collisions must not turn into a refusal
+	// of every real pattern.
+	t.Run("genuine directory pattern still allowed", func(t *testing.T) {
+		g, root := newRepo(t)
+		if err := os.WriteFile(filepath.Join(root, ".gitignore"), []byte(".orchestrator/worktrees/\n"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		covered := filepath.Join(root, ".orchestrator", "worktrees")
+		if err := g.RequireIgnored(ctx, covered); err != nil {
+			t.Errorf("genuine dir-only pattern: RequireIgnored(%s) = %v, want nil", covered, err)
+		}
+	})
 }
 
 func TestIntegrationWithBaseWorktree(t *testing.T) {

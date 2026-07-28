@@ -73,14 +73,18 @@ func (g *Git) RevParse(ctx context.Context, ref string) (string, error) {
 	return g.git(ctx, g.root, "rev-parse", "--verify", ref+"^{commit}")
 }
 
-// requireIgnoredProbe is the basename RequireIgnored appends to the
+// requireIgnoredProbes are the basenames RequireIgnored appends to the
 // directory it is checking before asking git about it — see the
-// function doc for why a bare directory query is unsafe. It is
-// deliberately not dot-prefixed: a leading dot risks being swallowed
-// by an unrelated ".*" convention some repositories use to ignore all
-// hidden files, which would report the probe "ignored" for a reason
-// that says nothing about whether the directory itself is covered.
-const requireIgnoredProbe = "orch-check-ignore-probe"
+// function doc for why a single, fixed basename is unsafe on its own
+// and why two structurally dissimilar ones close that gap. Neither is
+// dot-prefixed (a leading dot risks being swallowed by an unrelated
+// ".*" convention some repositories use to ignore all hidden files),
+// and the two are chosen to have as little in common as possible —
+// one descriptive and orch-namespaced for readability in failure
+// output, the other a single bare digit sharing no substring, prefix,
+// or shape with the first — so that no single realistic .gitignore
+// glob is likely to match both by coincidence.
+var requireIgnoredProbes = [2]string{"orch-check-ignore-probe", "0"}
 
 // RequireIgnored returns nil only when path is git-ignored relative to
 // the primary checkout (F1: an inside-primary worktree relaxation is
@@ -92,11 +96,14 @@ const requireIgnoredProbe = "orch-check-ignore-probe"
 // to root before the check. A path outside root is an error: this
 // check only makes sense for a candidate inside-primary location.
 //
-// The query sent to git is not path itself but a synthetic child of
-// it — path plus "/" plus the fixed probe basename requireIgnoredProbe
-// — rather than path alone with a bare trailing slash. Two properties
-// are both needed, and a trailing slash on path alone provides only
-// the first while silently breaking the second:
+// The queries sent to git are not path itself but synthetic children
+// of it — path plus "/" plus each of requireIgnoredProbes in turn,
+// never path alone with a bare trailing slash. All probes must come
+// back ignored for RequireIgnored to return nil; any one reporting
+// not-ignored is decisive proof path is not covered and short-circuits
+// the rest. Three properties are all needed, and a trailing slash on
+// path alone provides only the first while silently breaking the
+// other two:
 //
 //   - Every caller passes a directory (a worktree or its container).
 //     A directory-only .gitignore pattern (the common case, e.g.
@@ -116,8 +123,23 @@ const requireIgnoredProbe = "orch-check-ignore-probe"
 //     empty pattern matches an empty basename, so a trailing-slash-only
 //     query comes back "ignored" against such a .gitignore regardless
 //     of whether path is covered by any real pattern (verified against
-//     real git 2.53). Appending a non-empty probe basename closes this
-//     off: an empty pattern can never match a non-empty basename.
+//     real git 2.53). Giving the query a non-empty basename closes
+//     this off: an empty pattern can never match a non-empty basename.
+//   - A single fixed, non-empty probe basename is not enough by
+//     itself: it reopens the same class of bug through a different
+//     trigger. A .gitignore line unrelated to path — "orch-*", "orch*",
+//     "*probe*", or the literal probe basename itself, none of them
+//     contrived for a binary named orch — matches that one basename by
+//     coincidence and reports every uncovered directory in the
+//     repository "ignored" (verified against real git). Querying two
+//     probes that share no prefix, suffix, or substring and requiring
+//     both to match closes this off too: a single unrelated pattern
+//     would need to separately and coincidentally match both an
+//     orch-namespaced, multi-word name and a bare digit to reproduce
+//     the failure, which no realistic .gitignore line does. A pattern
+//     that legitimately matches everything under path (e.g. a bare
+//     "*") still matches both probes and is correctly treated as
+//     ignored.
 func (g *Git) RequireIgnored(ctx context.Context, path string) error {
 	canon, err := paths.Canonical(path)
 	if err != nil {
@@ -127,17 +149,21 @@ func (g *Git) RequireIgnored(ctx context.Context, path string) error {
 	if err != nil {
 		return fmt.Errorf("compute path for %s relative to %s: %w", canon, g.root, err)
 	}
-	query := filepath.ToSlash(rel) + "/" + requireIgnoredProbe
-	res, err := g.run(ctx, g.root, "check-ignore", "-q", "--", query)
-	if err != nil {
-		return err
+	relSlash := filepath.ToSlash(rel)
+	for _, probe := range requireIgnoredProbes {
+		query := relSlash + "/" + probe
+		res, err := g.run(ctx, g.root, "check-ignore", "-q", "--", query)
+		if err != nil {
+			return err
+		}
+		switch res.ExitCode {
+		case 0:
+			continue
+		case 1:
+			return fmt.Errorf("%w: %s; add a line like \"%s/\" to .gitignore", ErrNotIgnored, canon, relSlash)
+		default:
+			return fmt.Errorf("git check-ignore in %s exited %d: %s", g.root, res.ExitCode, strings.TrimSpace(res.Stderr))
+		}
 	}
-	switch res.ExitCode {
-	case 0:
-		return nil
-	case 1:
-		return fmt.Errorf("%w: %s; add a line like \"%s/\" to .gitignore", ErrNotIgnored, canon, filepath.ToSlash(rel))
-	default:
-		return fmt.Errorf("git check-ignore in %s exited %d: %s", g.root, res.ExitCode, strings.TrimSpace(res.Stderr))
-	}
+	return nil
 }

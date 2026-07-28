@@ -110,7 +110,7 @@ func TestAddWorktreeInsidePrimaryNotIgnoredFailsClosed(t *testing.T) {
 		t.Fatal(err)
 	}
 	g, script := openScripted(t, root, execxtest.Call{
-		Name: "git", Args: []string{"check-ignore", "-q", "--", filepath.ToSlash(rel) + "/" + requireIgnoredProbe}, Dir: root, Exit: 1,
+		Name: "git", Args: []string{"check-ignore", "-q", "--", filepath.ToSlash(rel) + "/" + requireIgnoredProbes[0]}, Dir: root, Exit: 1,
 	})
 	_, err = g.AddWorktree(context.Background(), path, "orch/issue-4", "main")
 	script.AssertExhausted()
@@ -131,7 +131,8 @@ func TestAddWorktreeInsidePrimaryIgnoredSucceeds(t *testing.T) {
 	}
 	const head = "5555555555555555555555555555555555555555"
 	g, script := openScripted(t, root,
-		execxtest.Call{Name: "git", Args: []string{"check-ignore", "-q", "--", filepath.ToSlash(rel) + "/" + requireIgnoredProbe}, Dir: root},
+		execxtest.Call{Name: "git", Args: []string{"check-ignore", "-q", "--", filepath.ToSlash(rel) + "/" + requireIgnoredProbes[0]}, Dir: root},
+		execxtest.Call{Name: "git", Args: []string{"check-ignore", "-q", "--", filepath.ToSlash(rel) + "/" + requireIgnoredProbes[1]}, Dir: root},
 		execxtest.Call{Name: "git", Args: []string{"rev-parse", "--verify", "--quiet", "refs/heads/orch/issue-4"}, Dir: root, Exit: 1},
 		execxtest.Call{Name: "git", Args: []string{"worktree", "add", "-b", "orch/issue-4", path, "main"}, Dir: root},
 		execxtest.Call{Name: "git", Args: []string{"rev-parse", "--verify", "orch/issue-4^{commit}"}, Stdout: head + "\n"},
@@ -166,7 +167,8 @@ func TestAddDetachedWorktree(t *testing.T) {
 	}
 	const head = "6666666666666666666666666666666666666666"
 	g, script := openScripted(t, root,
-		execxtest.Call{Name: "git", Args: []string{"check-ignore", "-q", "--", filepath.ToSlash(rel) + "/" + requireIgnoredProbe}, Dir: root},
+		execxtest.Call{Name: "git", Args: []string{"check-ignore", "-q", "--", filepath.ToSlash(rel) + "/" + requireIgnoredProbes[0]}, Dir: root},
+		execxtest.Call{Name: "git", Args: []string{"check-ignore", "-q", "--", filepath.ToSlash(rel) + "/" + requireIgnoredProbes[1]}, Dir: root},
 		execxtest.Call{Name: "git", Args: []string{"worktree", "add", "--detach", path, "6666666"}, Dir: root},
 		// The resolved HEAD is read back inside the new checkout, so an
 		// abbreviated commit-ish comes back in full.
@@ -201,7 +203,7 @@ func TestAddDetachedWorktreeInsidePrimaryNotIgnoredFailsClosed(t *testing.T) {
 		t.Fatal(err)
 	}
 	g, script := openScripted(t, root, execxtest.Call{
-		Name: "git", Args: []string{"check-ignore", "-q", "--", filepath.ToSlash(rel) + "/" + requireIgnoredProbe}, Dir: root, Exit: 1,
+		Name: "git", Args: []string{"check-ignore", "-q", "--", filepath.ToSlash(rel) + "/" + requireIgnoredProbes[0]}, Dir: root, Exit: 1,
 	})
 	_, err = g.AddDetachedWorktree(context.Background(), path, "6666666666666666666666666666666666666666")
 	script.AssertExhausted() // no `worktree add` followed
