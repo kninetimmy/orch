@@ -116,7 +116,7 @@ func TestRequireIgnored(t *testing.T) {
 
 	t.Run("ignored", func(t *testing.T) {
 		g, script := openScripted(t, root, execxtest.Call{
-			Name: "git", Args: []string{"check-ignore", "-q", "--", filepath.ToSlash(rel) + "/"}, Dir: root,
+			Name: "git", Args: []string{"check-ignore", "-q", "--", filepath.ToSlash(rel) + "/" + requireIgnoredProbe}, Dir: root,
 		})
 		if err := g.RequireIgnored(context.Background(), abs); err != nil {
 			t.Errorf("RequireIgnored: %v", err)
@@ -126,7 +126,7 @@ func TestRequireIgnored(t *testing.T) {
 
 	t.Run("not ignored", func(t *testing.T) {
 		g, script := openScripted(t, root, execxtest.Call{
-			Name: "git", Args: []string{"check-ignore", "-q", "--", filepath.ToSlash(rel) + "/"}, Dir: root, Exit: 1,
+			Name: "git", Args: []string{"check-ignore", "-q", "--", filepath.ToSlash(rel) + "/" + requireIgnoredProbe}, Dir: root, Exit: 1,
 		})
 		err := g.RequireIgnored(context.Background(), abs)
 		script.AssertExhausted()
@@ -140,7 +140,7 @@ func TestRequireIgnored(t *testing.T) {
 
 	t.Run("other exit code", func(t *testing.T) {
 		g, script := openScripted(t, root, execxtest.Call{
-			Name: "git", Args: []string{"check-ignore", "-q", "--", filepath.ToSlash(rel) + "/"}, Dir: root,
+			Name: "git", Args: []string{"check-ignore", "-q", "--", filepath.ToSlash(rel) + "/" + requireIgnoredProbe}, Dir: root,
 			Stderr: "fatal: bad", Exit: 128,
 		})
 		err := g.RequireIgnored(context.Background(), abs)

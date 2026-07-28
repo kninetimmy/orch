@@ -73,6 +73,15 @@ func (g *Git) RevParse(ctx context.Context, ref string) (string, error) {
 	return g.git(ctx, g.root, "rev-parse", "--verify", ref+"^{commit}")
 }
 
+// requireIgnoredProbe is the basename RequireIgnored appends to the
+// directory it is checking before asking git about it — see the
+// function doc for why a bare directory query is unsafe. It is
+// deliberately not dot-prefixed: a leading dot risks being swallowed
+// by an unrelated ".*" convention some repositories use to ignore all
+// hidden files, which would report the probe "ignored" for a reason
+// that says nothing about whether the directory itself is covered.
+const requireIgnoredProbe = "orch-check-ignore-probe"
+
 // RequireIgnored returns nil only when path is git-ignored relative to
 // the primary checkout (F1: an inside-primary worktree relaxation is
 // only safe because an ignored path never appears in
@@ -83,12 +92,32 @@ func (g *Git) RevParse(ctx context.Context, ref string) (string, error) {
 // to root before the check. A path outside root is an error: this
 // check only makes sense for a candidate inside-primary location.
 //
-// The query is always sent to git with a trailing slash: path is
-// always a directory in every caller of this method (a worktree or
-// its container), and a directory-only .gitignore pattern (the common
-// case, e.g. "foo/") only matches a bare, non-existent path when git
-// is told it is a directory this way — without it, `check-ignore`
-// silently refuses to match.
+// The query sent to git is not path itself but a synthetic child of
+// it — path plus "/" plus the fixed probe basename requireIgnoredProbe
+// — rather than path alone with a bare trailing slash. Two properties
+// are both needed, and a trailing slash on path alone provides only
+// the first while silently breaking the second:
+//
+//   - Every caller passes a directory (a worktree or its container).
+//     A directory-only .gitignore pattern (the common case, e.g.
+//     "foo/") does not match a path that does not yet exist on disk
+//     unless git is told the path is a directory. Querying a child
+//     path inside the directory accomplishes that without needing a
+//     trailing slash on path itself, and the match still holds when
+//     the directory is nested several levels deep under the pattern
+//     (verified against real git).
+//   - A bare trailing slash on path (e.g. "foo/") produces a query
+//     whose final path component is empty. Git does not always skip a
+//     blank .gitignore line before turning it into a pattern: a line
+//     that is empty except for a trailing CRLF, and a line containing
+//     only whitespace under a plain LF file, both trim down to an
+//     empty pattern rather than being dropped — on any OS, since
+//     neither case depends on how the file itself is line-ended. An
+//     empty pattern matches an empty basename, so a trailing-slash-only
+//     query comes back "ignored" against such a .gitignore regardless
+//     of whether path is covered by any real pattern (verified against
+//     real git 2.53). Appending a non-empty probe basename closes this
+//     off: an empty pattern can never match a non-empty basename.
 func (g *Git) RequireIgnored(ctx context.Context, path string) error {
 	canon, err := paths.Canonical(path)
 	if err != nil {
@@ -98,7 +127,7 @@ func (g *Git) RequireIgnored(ctx context.Context, path string) error {
 	if err != nil {
 		return fmt.Errorf("compute path for %s relative to %s: %w", canon, g.root, err)
 	}
-	query := filepath.ToSlash(rel) + "/"
+	query := filepath.ToSlash(rel) + "/" + requireIgnoredProbe
 	res, err := g.run(ctx, g.root, "check-ignore", "-q", "--", query)
 	if err != nil {
 		return err

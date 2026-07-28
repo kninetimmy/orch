@@ -365,6 +365,52 @@ func TestIntegrationAddWorktreeInsidePrimary(t *testing.T) {
 	}
 }
 
+// TestIntegrationRequireIgnoredEmptyPatternHazard pins the fix for the
+// empty-.gitignore-pattern hazard: a bare trailing-slash query (path +
+// "/") has an empty final path component, and git accepts a line that
+// trims down to an empty pattern from two distinct sources — a blank
+// line whose own terminator is CRLF (which survives git's
+// skip-if-blank check before the CR is trimmed off) and a
+// whitespace-only line under a plain LF file (which trims the same
+// way, independent of the file's line endings). Either produces an
+// empty pattern that matches the empty basename a bare trailing-slash
+// query produces, making every path in the repository look "ignored"
+// regardless of any real pattern. Each subtest fails against the
+// pre-fix trailing-slash-only query.
+func TestIntegrationRequireIgnoredEmptyPatternHazard(t *testing.T) {
+	setupGitEnv(t)
+	ctx := context.Background()
+
+	hazards := map[string]string{
+		"crlf blank line":               ".orchestrator/worktrees/\n\r\n",
+		"whitespace-only line under lf": ".orchestrator/worktrees/\n \n",
+	}
+	for name, gitignore := range hazards {
+		t.Run(name, func(t *testing.T) {
+			g, root := newRepo(t)
+			if err := os.WriteFile(filepath.Join(root, ".gitignore"), []byte(gitignore), 0o644); err != nil {
+				t.Fatal(err)
+			}
+
+			// Criterion 2: a directory covered only by a directory-only
+			// pattern and not yet on disk must still come back ignored,
+			// hazard line notwithstanding — this must not regress.
+			covered := filepath.Join(root, ".orchestrator", "worktrees", "issue-9")
+			if err := g.RequireIgnored(ctx, covered); err != nil {
+				t.Errorf("dir-only pattern with hazard present: RequireIgnored(%s) = %v, want nil", covered, err)
+			}
+
+			// Criterion 1: a path no pattern covers must not be reported
+			// ignored merely because the .gitignore also carries a line
+			// that trims to an empty pattern.
+			uncovered := filepath.Join(root, "scratch", "issue-9")
+			if err := g.RequireIgnored(ctx, uncovered); !errors.Is(err, ErrNotIgnored) {
+				t.Errorf("uncovered path with hazard present: RequireIgnored(%s) err = %v, want ErrNotIgnored", uncovered, err)
+			}
+		})
+	}
+}
+
 func TestIntegrationWithBaseWorktree(t *testing.T) {
 	setupGitEnv(t)
 	g, _ := newRepo(t)
