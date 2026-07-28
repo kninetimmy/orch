@@ -14,7 +14,7 @@ read and approved. Each task in that plan becomes a GitHub issue, a
 branch, and its own git worktree; the work happens there, lands as a
 pull request, is reviewed by a separate agent, runs CI, and waits for
 you to approve the merge. When every task is merged or abandoned, the
-repository returns to Assist on its own.
+run's last step puts the repository back in Assist.
 
 **Six roles.** Delivery work is split across roles, and you pin each
 one to an exact model version and reasoning-effort level:
@@ -458,7 +458,7 @@ agents keep running the model pinned in the installed TOMLs until you
 re-render. On Claude Code the failure is louder: if the routed model
 matches no installed agent's frontmatter, the spawn stops and the
 Architect tells you, rather than silently running a different model.
-Either way, changing a role's model — which the Settings section below
+Either way, changing a role's model — which the Settings section above
 recommends as ordinary tuning — is not finished until the installed
 agent definitions carry it too.
 
