@@ -105,6 +105,80 @@ func TestMetricsSummarizesFixtureRun(t *testing.T) {
 	}
 }
 
+// TestMetricsReportsPerEventUsageAttributedByRoleAndCycle pins item 5's
+// rework: per-event usage detail attributed by role, and by review
+// cycle for review events, alongside the run-level totals. It also
+// pins the reviewCycles fix that goes with it: a review-verb event
+// with no Verdict (the executor's fix-cycle usage sibling, item 3)
+// shares its ReviewCycles number with the reviewer's own event rather
+// than counting as an additional cycle.
+func TestMetricsReportsPerEventUsageAttributedByRoleAndCycle(t *testing.T) {
+	env, stdout, _ := testEnv(t)
+	writeConfig(t, env.RepoRoot, validTOML)
+
+	prOpenUsage := &metrics.Usage{InputTokens: 10, OutputTokens: 5}
+	reviewerUsage := &metrics.Usage{InputTokens: 80, OutputTokens: 30}
+	executorUsage := &metrics.Usage{InputTokens: 300, OutputTokens: 120, TotalTokens: 420}
+	doc := metrics.Document{
+		SchemaVersion: metrics.SchemaVersion,
+		RunID:         "run-20260713T000000Z-cccccccc",
+		Events: []metrics.Event{
+			{At: "t0", Verb: "dispatch", IssueNumber: 1, Role: "implementer"},
+			{At: "t1", Verb: "pr-open", IssueNumber: 1, Role: "implementer", Usage: prOpenUsage},
+			{At: "t2", Verb: "review", IssueNumber: 1, Verdict: "request-changes", ReviewCycles: 1, Usage: reviewerUsage},
+			{At: "t3", Verb: "review", IssueNumber: 1, ReviewCycles: 1, Role: "implementer", Usage: executorUsage},
+			{At: "t4", Verb: "review", IssueNumber: 1, Verdict: "approve", ReviewCycles: 2, Usage: reviewerUsage},
+		},
+	}
+	writeMetricsFixture(t, env.RepoRoot, doc.RunID, doc)
+
+	if code := Run([]string{"metrics"}, env); code != ExitOK {
+		t.Fatalf("exit = %d, want %d\n%s", code, ExitOK, stdout.String())
+	}
+	out := stdout.String()
+	for _, want := range []string{
+		"reviews:     2 cycles; first-pass approve: 0 of 1 reviewed issues",
+		"usage by event:",
+		"role implementer",
+		"role reviewer",
+		"cycle 1",
+		"cycle 2",
+		"total 420",
+	} {
+		if !strings.Contains(out, want) {
+			t.Errorf("output missing %q:\n%s", want, out)
+		}
+	}
+	// dispatch never carries usage, so it must not appear in the
+	// per-event usage detail (only pr-open and review do).
+	if strings.Contains(out, "1. dispatch") {
+		t.Errorf("usage detail lists a dispatch event, which never carries usage:\n%s", out)
+	}
+}
+
+// TestMetricsUsageDetailUnattributedWhenRoleMissing pins the fallback
+// for a usage-carrying event recorded before this build started
+// attributing pr-open by role: it prints plainly as unattributed
+// rather than guessing.
+func TestMetricsUsageDetailUnattributedWhenRoleMissing(t *testing.T) {
+	env, stdout, _ := testEnv(t)
+	writeConfig(t, env.RepoRoot, validTOML)
+	doc := metrics.Document{
+		SchemaVersion: metrics.SchemaVersion,
+		RunID:         "run-20260713T000000Z-eeeeeeee",
+		Events: []metrics.Event{
+			{At: "t0", Verb: "pr-open", IssueNumber: 1, Usage: &metrics.Usage{InputTokens: 5}},
+		},
+	}
+	writeMetricsFixture(t, env.RepoRoot, doc.RunID, doc)
+	if code := Run([]string{"metrics"}, env); code != ExitOK {
+		t.Fatalf("exit = %d, want %d\n%s", code, ExitOK, stdout.String())
+	}
+	if !strings.Contains(stdout.String(), "role unattributed") {
+		t.Errorf("output missing the unattributed fallback for a Role-less pr-open event:\n%s", stdout.String())
+	}
+}
+
 func TestMetricsOmitsUsageLinesWhenNoEventCarriesUsage(t *testing.T) {
 	env, stdout, _ := testEnv(t)
 	writeConfig(t, env.RepoRoot, validTOML)

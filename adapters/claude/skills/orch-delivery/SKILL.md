@@ -231,16 +231,18 @@ in flight at once. For each issue:
    {"schema_version": 1, "issue_number": N,
     "verifications": [{"name": "...", "command": "...", "result": "...", "detail": "..."}],
     "usage": {"input_tokens": 0, "output_tokens": 0, "cache_read_tokens": 0,
-               "cache_creation_tokens": 0, "duration_ms": 0}}
+               "cache_creation_tokens": 0, "total_tokens": 0, "duration_ms": 0}}
    ```
 
    At least one verification is required. The verification names
    `required-ci`, `merge`, `abandoned`, and `review-cycle-<n>` are
    engine-owned and are rejected with `ErrBadRequest` before any
    mutation when supplied by a caller. `usage` is optional (PRD
-   §21): supply only the fields the executor's Task result actually
-   reports (token totals and duration), never an estimate. Result
-   carries `pr_number`, `pr_url`.
+   §21) and is the executor's own cost: supply only the fields the
+   executor's Task result actually reports — token totals, duration,
+   and `total_tokens` when that is what it reports instead of the
+   input/output/cache split — never an estimate. Result carries
+   `pr_number`, `pr_url`.
 
 4. **Spawn the reviewer** — once the PR stops changing, spawn the
    reviewer **fresh** (a new instance, not the executor continuing):
@@ -289,14 +291,23 @@ in flight at once. For each issue:
     "reviewer": {"model": "...", "effort": "..."},
     "verifications": [{"name": "...", "command": "...", "result": "...", "detail": "..."}],
     "usage": {"input_tokens": 0, "output_tokens": 0, "cache_read_tokens": 0,
-               "cache_creation_tokens": 0, "duration_ms": 0}}
+               "cache_creation_tokens": 0, "total_tokens": 0, "duration_ms": 0},
+    "executor_usage": {"input_tokens": 0, "output_tokens": 0, "cache_read_tokens": 0,
+               "cache_creation_tokens": 0, "total_tokens": 0, "duration_ms": 0}}
    ```
 
-   `usage` is optional (PRD §21), same rule as PR-open: only report
-   what the reviewer subagent's Task result actually carries.
+   `usage` is optional (PRD §21), same rule as PR-open: it is the
+   reviewer's own cost — only report what the reviewer subagent's
+   Task result actually carries, including `total_tokens` when that
+   is what it reports instead of the input/output/cache split.
    `request-changes` loops the same executor in the **same worktree**
    on the same branch: it fixes and pushes, then a **fresh** reviewer
-   is spawned (step 4) and `orch run review` is called again.
+   is spawned (step 4) and `orch run review` is called again. Because
+   this is the only verb call on that cycle, `executor_usage` (same
+   optional shape as `usage`) carries the executor's fix-and-push
+   cost for the cycle just finished — report only what its Task
+   result actually gives you, never an estimate, and omit it when
+   there was no fix cycle (the first review after pr-open).
    `orch run pr-open` is not reachable a second time, so `verifications`
    is optional and takes pr-open's input shape — use it to carry
    evidence re-run on the fix commit (e.g. tests re-run before

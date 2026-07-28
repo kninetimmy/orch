@@ -35,6 +35,7 @@ func TestAppendThenLoadAllRoundTrip(t *testing.T) {
 	root := t.TempDir()
 	executor := manifest.Selection{Model: "claude-sonnet-5", Effort: "xhigh"}
 	reviewer := manifest.Selection{Model: "claude-opus-4-8", Effort: "high"}
+	usage := Usage{InputTokens: 10, TotalTokens: 42}
 	ev := Event{
 		At:                 "2026-07-13T00:00:00Z",
 		Verb:               "dispatch",
@@ -44,6 +45,7 @@ func TestAppendThenLoadAllRoundTrip(t *testing.T) {
 		Reviewer:           &reviewer,
 		ReviewerDowngraded: false,
 		Rationale:          "impl",
+		Usage:              &usage,
 	}
 	if err := Append(root, "run-1", ev); err != nil {
 		t.Fatalf("Append: %v", err)
@@ -72,6 +74,9 @@ func TestAppendThenLoadAllRoundTrip(t *testing.T) {
 	}
 	if got.Reviewer == nil || *got.Reviewer != *ev.Reviewer {
 		t.Errorf("reviewer = %+v, want %+v", got.Reviewer, ev.Reviewer)
+	}
+	if got.Usage == nil || *got.Usage != *ev.Usage {
+		t.Errorf("usage = %+v, want %+v", got.Usage, ev.Usage)
 	}
 }
 
@@ -146,6 +151,13 @@ func TestAppendFailClosed(t *testing.T) {
 			ev:      Event{At: "t", Verb: "pr-open", Usage: &Usage{InputTokens: -1}},
 			wantMsg: "input_tokens",
 		},
+		{
+			name:    "negative total tokens",
+			setup:   func(t *testing.T, root string) {},
+			runID:   "run-1",
+			ev:      Event{At: "t", Verb: "pr-open", Usage: &Usage{TotalTokens: -1}},
+			wantMsg: "total_tokens",
+		},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -201,6 +213,7 @@ func TestUsageValidate(t *testing.T) {
 		{OutputTokens: -1},
 		{CacheReadTokens: -1},
 		{CacheCreationTokens: -1},
+		{TotalTokens: -1},
 		{DurationMS: -1},
 	}
 	for _, u := range cases {
