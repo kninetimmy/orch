@@ -59,7 +59,12 @@ type Usage struct {
 	OutputTokens        int64 `json:"output_tokens,omitempty"`
 	CacheReadTokens     int64 `json:"cache_read_tokens,omitempty"`
 	CacheCreationTokens int64 `json:"cache_creation_tokens,omitempty"`
-	DurationMS          int64 `json:"duration_ms,omitempty"`
+	// TotalTokens is for a host that reports one aggregate token count
+	// with no input/output/cache split; it is independent of the four
+	// fields above; a caller reporting both is not reconciled against
+	// each other by this package.
+	TotalTokens int64 `json:"total_tokens,omitempty"`
+	DurationMS  int64 `json:"duration_ms,omitempty"`
 }
 
 // Validate reports the first negative field in u. A nil u is valid —
@@ -78,6 +83,8 @@ func (u *Usage) Validate() error {
 		return fmt.Errorf("usage.cache_read_tokens is negative (%d)", u.CacheReadTokens)
 	case u.CacheCreationTokens < 0:
 		return fmt.Errorf("usage.cache_creation_tokens is negative (%d)", u.CacheCreationTokens)
+	case u.TotalTokens < 0:
+		return fmt.Errorf("usage.total_tokens is negative (%d)", u.TotalTokens)
 	case u.DurationMS < 0:
 		return fmt.Errorf("usage.duration_ms is negative (%d)", u.DurationMS)
 	default:

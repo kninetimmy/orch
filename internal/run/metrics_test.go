@@ -3,6 +3,7 @@ package run
 import (
 	"context"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"testing"
@@ -10,6 +11,7 @@ import (
 
 	"github.com/kninetimmy/orch/internal/execx"
 	"github.com/kninetimmy/orch/internal/execx/execxtest"
+	"github.com/kninetimmy/orch/internal/ghops"
 	"github.com/kninetimmy/orch/internal/metrics"
 	"github.com/kninetimmy/orch/internal/paths"
 	"github.com/kninetimmy/orch/internal/state"
@@ -70,6 +72,21 @@ func newActivateRepoWithConfig(t *testing.T, tomlContent string) string {
 	return root
 }
 
+// newLifecycleRepoWithConfig mirrors lifecycle_test.go's newLifecycleRepo
+// but writes tomlContent instead of the fixed testConfigTOML, so a
+// metrics test can enable metrics on disk while still driving PROpen's
+// real git preconditions (a pushed origin, a worktree with a commit
+// ahead of it).
+func newLifecycleRepoWithConfig(t *testing.T, tomlContent string) string {
+	t.Helper()
+	root := newActivateRepoWithConfig(t, tomlContent)
+	origin := filepath.Join(t.TempDir(), "origin.git")
+	rawGit(t, filepath.Dir(origin), "init", "--bare", origin)
+	rawGit(t, root, "remote", "add", "origin", origin)
+	rawGit(t, root, "push", "origin", "main")
+	return root
+}
+
 func loadMetricsDocs(t *testing.T, root string) []metrics.Document {
 	t.Helper()
 	docs, err := metrics.LoadAll(root)
@@ -96,6 +113,17 @@ func reviewApproveJSON(usage string) string {
 		extra = `,"usage":` + usage
 	}
 	return `{"schema_version":1,"issue_number":1,"reviewed_head_oid":"head-oid-1","verdict":"approve","summary":"looks good","reviewer":{"model":"claude-opus-4-8","effort":"high"}` + extra + `}`
+}
+
+// reviewApproveJSONWithExecutorUsage extends reviewApproveJSON's request
+// with an executor_usage field, for the tests pinning the executor
+// fix-cycle event Review records as its own metrics event.
+func reviewApproveJSONWithExecutorUsage(usage, executorUsage string) string {
+	extra := ""
+	if usage != "" {
+		extra = `,"usage":` + usage
+	}
+	return `{"schema_version":1,"issue_number":1,"reviewed_head_oid":"head-oid-1","verdict":"approve","summary":"looks good","reviewer":{"model":"claude-opus-4-8","effort":"high"}` + extra + `,"executor_usage":` + executorUsage + `}`
 }
 
 // TestReviewRecordsMetricWhenEnabled pins internal/run/metrics.go's
@@ -146,6 +174,51 @@ func TestReviewRecordsMetricWhenEnabled(t *testing.T) {
 	}
 }
 
+// TestReviewRecordsExecutorUsageAsDistinctEvent pins the wiring the
+// spec adds to Review: a request carrying executor_usage records it as
+// its own metrics event, separate from the review event carrying the
+// reviewer's own usage, both sharing the same review cycle number, with
+// Role on the new event set to the issue's executor role so the two
+// are distinguishable — and the new event carries no Verdict, so a
+// report counting review cycles by Verdict never double-counts it.
+func TestReviewRecordsExecutorUsageAsDistinctEvent(t *testing.T) {
+	root := setupDeliveryRepoWithConfig(t, metricsEnabledConfigTOML, "r1", []state.Issue{fixtureIssue("a", 1, state.PhasePROpen)})
+	body := baseManifestBody(t)
+	script := &execxtest.Script{T: t, Calls: []execxtest.Call{
+		ghAuth(), ghPRViewCall(10, "OPEN", "head-oid-1"),
+		ghIssueViewCall(t, 1, "OPEN", body), ghSetIssueBodyCall(1), ghSetPRBodyCall(10),
+	}}
+	reviewerUsage := `{"input_tokens":100,"output_tokens":50}`
+	executorUsage := `{"input_tokens":300,"output_tokens":120,"total_tokens":420}`
+	req := reviewApproveJSONWithExecutorUsage(reviewerUsage, executorUsage)
+	_, err := Review(context.Background(), ghEnv(root, script), []byte(req))
+	if err != nil {
+		t.Fatalf("Review: %v", err)
+	}
+	script.AssertExhausted()
+
+	docs := loadMetricsDocs(t, root)
+	if len(docs) != 1 || len(docs[0].Events) != 2 {
+		t.Fatalf("docs = %+v, want 1 doc with 2 events", docs)
+	}
+	reviewEv, executorEv := docs[0].Events[0], docs[0].Events[1]
+	if reviewEv.Verb != "review" || reviewEv.Verdict != "approve" || reviewEv.Usage == nil || reviewEv.Usage.InputTokens != 100 {
+		t.Errorf("review event = %+v, want the reviewer's usage and a verdict", reviewEv)
+	}
+	if executorEv.Verb != "review" || executorEv.Verdict != "" {
+		t.Errorf("executor event = %+v, want verb review and no verdict", executorEv)
+	}
+	if executorEv.Role != "implementer" {
+		t.Errorf("executor event role = %q, want the issue's executor role", executorEv.Role)
+	}
+	if executorEv.Usage == nil || executorEv.Usage.InputTokens != 300 || executorEv.Usage.TotalTokens != 420 {
+		t.Errorf("executor event usage = %+v, want the request's executor_usage", executorEv.Usage)
+	}
+	if executorEv.ReviewCycles != reviewEv.ReviewCycles {
+		t.Errorf("executor event cycle = %d, want the review event's cycle %d", executorEv.ReviewCycles, reviewEv.ReviewCycles)
+	}
+}
+
 // TestReviewMetricsDisabledCreatesNoStorage pins PRD §23: the same
 // successful verb call against the ordinary (metrics-disabled)
 // testConfigTOML never creates .orchestrator/metrics at all.
@@ -184,6 +257,26 @@ func TestReviewNegativeUsageIsBadRequestBeforeMutation(t *testing.T) {
 	assertNoMetricsDir(t, root)
 }
 
+// TestReviewNegativeExecutorUsageIsBadRequestBeforeMutation is the
+// executor_usage half of the same wire validation: a negative value
+// there is rejected as ErrBadRequest before any mutation, exactly as
+// the existing usage field is.
+func TestReviewNegativeExecutorUsageIsBadRequestBeforeMutation(t *testing.T) {
+	root := setupDeliveryRepo(t, "r1", []state.Issue{fixtureIssue("a", 1, state.PhasePROpen)})
+	before := stateBytes(t, root)
+	script := &execxtest.Script{T: t}
+	req := reviewApproveJSONWithExecutorUsage("", `{"input_tokens":-1}`)
+	_, err := Review(context.Background(), ghEnv(root, script), []byte(req))
+	if !errors.Is(err, ErrBadRequest) {
+		t.Fatalf("err = %v, want ErrBadRequest", err)
+	}
+	script.AssertExhausted()
+	if got := stateBytes(t, root); string(got) != string(before) {
+		t.Error("state changed on a negative-executor_usage review request")
+	}
+	assertNoMetricsDir(t, root)
+}
+
 // TestPROpenNegativeUsageIsBadRequestBeforeMutation is the pr-open
 // half of the same wire validation.
 func TestPROpenNegativeUsageIsBadRequestBeforeMutation(t *testing.T) {
@@ -200,6 +293,63 @@ func TestPROpenNegativeUsageIsBadRequestBeforeMutation(t *testing.T) {
 		t.Error("state changed on a negative-usage pr-open request")
 	}
 	assertNoMetricsDir(t, root)
+}
+
+// TestPROpenRecordsExecutorRoleWhenEnabled pins the spec's item 4: the
+// pr-open metrics event's Role is set to the issue's executor role, so
+// its usage is attributable rather than, as before, unattributed. It
+// drives a real activate/dispatch/pr-open sequence (PROpen's git
+// preconditions need a real sandbox, unlike Review's).
+func TestPROpenRecordsExecutorRoleWhenEnabled(t *testing.T) {
+	root := newLifecycleRepoWithConfig(t, metricsEnabledConfigTOML)
+	body := baseManifestBody(t)
+	const branch = "orch/issue-1-fix-the-status-lock-race"
+	const title = "Fix the status lock race"
+
+	activateCalls := append(fullTaxonomyScript(), ghIssueCreateCall(title, []string{"ready", "bug", "implementer", "standard"}, 1))
+	script := &execxtest.Script{T: t, Calls: activateCalls}
+	env := Env{RepoRoot: root, Runner: muxRunner{git: execx.Local{}, gh: script}, Now: fixedNow}
+	if _, err := Activate(context.Background(), env, activationJSON(t, validPlanJSON())); err != nil {
+		t.Fatalf("Activate: %v", err)
+	}
+	script.AssertExhausted()
+
+	runVerb(t, root, Dispatch, `{"schema_version":2,"issue_number":1}`,
+		ghAuth(), ghRepoViewCall("main"), ghSetStatusCall(1, ghops.StatusInProgress))
+
+	wtDir := filepath.Join(root, ".orchestrator", "worktrees", "issue-1")
+	if err := os.WriteFile(filepath.Join(wtDir, "feature.go"), []byte("package feature\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	rawGit(t, wtDir, "add", "-A")
+	rawGit(t, wtDir, "commit", "-m", "work")
+
+	usageJSON := `{"input_tokens":10,"output_tokens":5}`
+	req := fmt.Sprintf(`{"schema_version":1,"issue_number":1,"verifications":[{"name":"go test","result":"pass"}],"usage":%s}`, usageJSON)
+	runVerb(t, root, PROpen, req,
+		ghAuth(), ghRepoViewCall("main"), ghPRListEmptyCall(branch),
+		ghIssueViewCall(t, 1, "OPEN", body), ghSetIssueBodyCall(1),
+		ghCreatePRCall(branch, title, 10), ghSetStatusCall(1, ghops.StatusAwaitingReview))
+
+	docs := loadMetricsDocs(t, root)
+	if len(docs) != 1 {
+		t.Fatalf("docs = %+v, want 1", docs)
+	}
+	var prOpenEv *metrics.Event
+	for i := range docs[0].Events {
+		if docs[0].Events[i].Verb == "pr-open" {
+			prOpenEv = &docs[0].Events[i]
+		}
+	}
+	if prOpenEv == nil {
+		t.Fatalf("events = %+v, want a pr-open event", docs[0].Events)
+	}
+	if prOpenEv.Role != "implementer" {
+		t.Errorf("pr-open event role = %q, want the issue's executor role %q", prOpenEv.Role, "implementer")
+	}
+	if prOpenEv.Usage == nil || prOpenEv.Usage.InputTokens != 10 {
+		t.Errorf("pr-open event usage = %+v, want the request's usage", prOpenEv.Usage)
+	}
 }
 
 // TestActivateRecordsOneMetricPerIssueWhenEnabled pins activate.go's

@@ -43,8 +43,16 @@ type ReviewRequest struct {
 	// overwritten or duplicated.
 	Verifications []VerificationInput `json:"verifications,omitempty"`
 	// Usage is adapter-reported model usage for this review cycle
-	// (PRD §21 "where available"); optional and best-effort.
+	// (PRD §21 "where available"); optional and best-effort. This is
+	// the reviewer's own usage — the cost of producing this review.
 	Usage *metrics.Usage `json:"usage,omitempty"`
+	// ExecutorUsage is adapter-reported model usage for the executor's
+	// fix-and-push work on this cycle (PRD §21 "where available");
+	// optional and best-effort. A request-changes verdict loops the
+	// same executor in the same worktree to fix and push, and this
+	// verb is the only call that happens on each such cycle — without
+	// this field the executor's fix-cycle cost has nowhere to go.
+	ExecutorUsage *metrics.Usage `json:"executor_usage,omitempty"`
 }
 
 // ReviewResult reports the recorded review cycle.
@@ -81,6 +89,9 @@ func Review(ctx context.Context, env Env, reqJSON []byte) (*ReviewResult, error)
 		return nil, fmt.Errorf("%w: review summary must not be empty (PRD §12.11: one consolidated report per cycle)", ErrBadRequest)
 	}
 	if err := req.Usage.Validate(); err != nil {
+		return nil, fmt.Errorf("%w: %v", ErrBadRequest, err)
+	}
+	if err := req.ExecutorUsage.Validate(); err != nil {
 		return nil, fmt.Errorf("%w: %v", ErrBadRequest, err)
 	}
 	verifications, err := convertVerifications(req.Verifications, env.nowStamp())
@@ -164,6 +175,23 @@ func Review(ctx context.Context, env Env, reqJSON []byte) (*ReviewResult, error)
 		Usage:        req.Usage,
 	}); err != nil {
 		return nil, err
+	}
+	// The executor's fix-cycle usage, when supplied, is recorded as its
+	// own event rather than folded into the reviewer's event above: the
+	// two carry different roles' cost, and Role is what keeps them
+	// distinguishable after the fact (this event carries no Verdict, so
+	// it is never mistaken for a review decision when a report counts
+	// review cycles).
+	if req.ExecutorUsage != nil {
+		if err := c.recordMetric(metrics.Event{
+			Verb:         "review",
+			IssueNumber:  issue.Number,
+			ReviewCycles: issue.ReviewCycles,
+			Role:         string(issue.Decision.Role),
+			Usage:        req.ExecutorUsage,
+		}); err != nil {
+			return nil, err
+		}
 	}
 
 	return &ReviewResult{

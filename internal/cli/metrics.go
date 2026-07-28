@@ -84,6 +84,54 @@ type runSummary struct {
 	// counts how many of eventCount did.
 	usage       metrics.Usage
 	usageEvents int
+
+	// usageDetail is one row per event that carries a usage payload, in
+	// document order — the per-event, role- and cycle-attributed detail
+	// that the run-level usage totals above erase. A summed total hides
+	// exactly the signal this exists to show: a per-dispatch or
+	// per-cycle cost that rises while the work it is buying shrinks.
+	usageDetail []usageEventRow
+}
+
+// usageEventRow is one printable per-event usage line: which event
+// (its 1-based position in the document) carried the usage, whose
+// cost it is (role, when attributable), and — for a review event —
+// which review cycle it belongs to.
+type usageEventRow struct {
+	index       int
+	verb        string
+	issueNumber int
+	role        string
+	reviewCycle int // 0 when the event is not a review-verb event
+	usage       metrics.Usage
+}
+
+// eventRole reports the role display label for ev's usage: its own
+// Role field when set (dispatch, activate, pr-open, and a review
+// event's executor fix-cycle sibling all carry one — PRD §21's
+// attribution), and otherwise "reviewer" for a plain review event's
+// own usage — the only other usage-carrying verb, whose cost is
+// unambiguously the reviewer's by construction (including on documents
+// recorded before this field existed on pr-open, which still report
+// "" rather than a guess).
+func eventRole(ev metrics.Event) string {
+	if ev.Role != "" {
+		return ev.Role
+	}
+	if ev.Verb == "review" {
+		return "reviewer"
+	}
+	return ""
+}
+
+// eventReviewCycle reports ev.ReviewCycles for a review-verb event
+// (both the verdict-bearing event and its executor-usage sibling carry
+// the same cycle number) and 0 for every other verb.
+func eventReviewCycle(ev metrics.Event) int {
+	if ev.Verb != "review" {
+		return 0
+	}
+	return ev.ReviewCycles
 }
 
 // summarizeRun computes runSummary from doc in one pass, trusting the
@@ -107,7 +155,7 @@ func summarizeRun(doc metrics.Document) runSummary {
 	firstReviewVerdict := map[int]string{}
 	ciLastState := map[int]string{}
 
-	for _, ev := range doc.Events {
+	for i, ev := range doc.Events {
 		if ev.IssueNumber != 0 {
 			issuesSeen[ev.IssueNumber] = true
 		}
@@ -122,9 +170,17 @@ func summarizeRun(doc metrics.Document) runSummary {
 		case "escalate":
 			s.escalations++
 		case "review":
-			s.reviewCycles++
-			if _, ok := firstReviewVerdict[ev.IssueNumber]; !ok {
-				firstReviewVerdict[ev.IssueNumber] = ev.Verdict
+			// A review-verb event with no verdict is the executor's
+			// fix-cycle usage sibling (PRD §21's executor_usage), not a
+			// reviewed cycle: only the verdict-bearing event counts
+			// toward cycles and first-pass approval, so the sibling
+			// never double-counts a cycle it merely shares a number
+			// with.
+			if ev.Verdict != "" {
+				s.reviewCycles++
+				if _, ok := firstReviewVerdict[ev.IssueNumber]; !ok {
+					firstReviewVerdict[ev.IssueNumber] = ev.Verdict
+				}
 			}
 		case "ci":
 			ciLastState[ev.IssueNumber] = ev.CIState
@@ -135,7 +191,16 @@ func summarizeRun(doc metrics.Document) runSummary {
 			s.usage.OutputTokens += ev.Usage.OutputTokens
 			s.usage.CacheReadTokens += ev.Usage.CacheReadTokens
 			s.usage.CacheCreationTokens += ev.Usage.CacheCreationTokens
+			s.usage.TotalTokens += ev.Usage.TotalTokens
 			s.usage.DurationMS += ev.Usage.DurationMS
+			s.usageDetail = append(s.usageDetail, usageEventRow{
+				index:       i + 1,
+				verb:        ev.Verb,
+				issueNumber: ev.IssueNumber,
+				role:        eventRole(ev),
+				reviewCycle: eventReviewCycle(ev),
+				usage:       *ev.Usage,
+			})
 		}
 	}
 
@@ -192,5 +257,30 @@ func printRunSummary(w io.Writer, s runSummary) {
 		fmt.Fprintf(w, "usage:       input %d, output %d, cache read %d, cache creation %d, duration %dms\n",
 			s.usage.InputTokens, s.usage.OutputTokens, s.usage.CacheReadTokens, s.usage.CacheCreationTokens, s.usage.DurationMS)
 		fmt.Fprintf(w, "             usage reported on %d of %d events\n", s.usageEvents, s.eventCount)
+		printUsageDetail(w, s.usageDetail)
+	}
+}
+
+// printUsageDetail writes one line per event that carried usage, in
+// document order, attributed by role and — for a review event — by
+// review cycle: the per-dispatch/per-cycle detail a run-level total
+// erases. The role column reads "unattributed" only for a usage-
+// carrying event recorded before this build started attributing it
+// (an old pr-open event, for instance) — never a guess at whose cost
+// it was.
+func printUsageDetail(w io.Writer, rows []usageEventRow) {
+	fmt.Fprintln(w, "usage by event:")
+	for _, u := range rows {
+		role := u.role
+		if role == "" {
+			role = "unattributed"
+		}
+		cycle := ""
+		if u.reviewCycle > 0 {
+			cycle = fmt.Sprintf(" cycle %d", u.reviewCycle)
+		}
+		fmt.Fprintf(w, "  %3d. %-9s issue #%-5d role %-13s%-9s input %d, output %d, cache read %d, cache creation %d, total %d, duration %dms\n",
+			u.index, u.verb, u.issueNumber, role, cycle,
+			u.usage.InputTokens, u.usage.OutputTokens, u.usage.CacheReadTokens, u.usage.CacheCreationTokens, u.usage.TotalTokens, u.usage.DurationMS)
 	}
 }
