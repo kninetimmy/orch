@@ -26,14 +26,16 @@ one to an exact model version and reasoning-effort level:
 | Implementer | Writes the code inside the issue's worktree |
 | Specialist | Takes the issues routing marks risky or unusually difficult |
 | Reviewer | Reviews the pull request in a separate dispatch from the one that wrote it |
-| Review downgrade | A cheaper reviewer, allowed only when the change is provably low-risk |
+| Review downgrade | A cheaper reviewer, allowed only when the plan affirms the change is mechanical and low-risk |
 
 Which role gets an issue is derived from the issue's own facts by a
 deterministic table, not chosen by the model that will run it. The
-reviewer is always a separate dispatch, never the session that wrote
-the code — but it is not always a different model: with the shipped
-defaults a downgraded review runs the same model as the implementer
-(on Codex, at the same effort too).
+reviewer is always a separate dispatch and never the session that wrote
+the code, but it is often not a different model: the shipped defaults
+put the specialist and the reviewer on one model, and the implementer
+and the downgraded reviewer on another. Any specialist run and any
+downgraded review therefore has the same model on both sides — on
+Codex, at the same effort as well.
 
 **The guard.** None of the above is an instruction the agent is asked
 to honor. Both host adapters wire the CLI's pre-write hook to `orch
@@ -57,8 +59,9 @@ Concretely, asking for a change goes like this:
 3. Each issue gets a branch and a worktree. An implementer or a
    specialist does the work there and pushes.
 4. A reviewer reviews the pull request. CI runs.
-5. You merge on GitHub. Orch pins the head commit you approved and
-   refuses if the pull request moved after you approved it.
+5. You approve the merge, and it runs against GitHub pinned to the
+   commit that approval names — it fails closed if the pull request
+   moved after that.
 
 The full product definition lives in [ORCH-PRD.md](ORCH-PRD.md).
 
@@ -69,14 +72,21 @@ through v0.5.4) and 65 merged pull requests, 28 of which carry an Orch
 audit record in their body — every merge from PR #40 through PR #97
 except #50, which `orch configure` delivered in its own format. Since
 PR #40, this repository has been built through the pipeline described
-above: a plan gate, an isolated worktree per issue, a review by a
-model that did not write the code, CI, and a merge no agent can
-perform.
+above: a plan gate, an isolated worktree per issue, a review dispatched
+separately from the work, CI, and a merge that fails closed unless it
+carries an approval pinned to the commit `merge-report` recorded.
+
+In 12 of those 28 the reviewer ran the same model as the executor — 6
+specialist runs and 6 downgraded reviews, both of which the shipped
+defaults put on one model. The reviewer's independence is a separate
+dispatch against the pull request, not a different model.
 
 All of that evidence comes from one repository: this one.
 
+## Known issues and limitations
+
 <details>
-<summary><b>Known issues and limitations</b> — what will bite you today</summary>
+<summary>What will bite you today — symptom, cause, workaround</summary>
 
 **Writes made through the shell are not guarded.** The pre-write hook
 covers Claude Code's `Write`, `Edit`, `MultiEdit` and `NotebookEdit`
@@ -137,13 +147,19 @@ than something the host applied. The record says so outright, as
 `Effort delivery: prompt-cue`. Codex pins effort in the installed
 agent TOML and the host enforces it.
 
-**On Codex, agent definitions are a separate install step and a
-configuration change does not reach them by itself.** Codex plugins
-cannot bundle agent TOMLs, so the marketplace install does not put
-them in place — you copy them or run `orch render-agents`. If you
-later change `hosts.codex.roles`, dispatched agents keep running the
-model pinned in the installed TOMLs until you re-run `orch
-render-agents`.
+**A model override does not reach a dispatched agent by itself, on
+either host.** Neither host can override a model per spawn, so the
+routed selection has to match an installed agent definition. On Codex
+that means the five agent TOMLs are a separate install step the
+marketplace install does not perform — you copy them or run `orch
+render-agents` — and after you change `hosts.codex.roles`, dispatched
+agents keep running the model pinned in the installed TOMLs until you
+re-render. On Claude Code the failure is louder: if the routed model
+matches no installed agent's frontmatter, the spawn stops and the
+Architect tells you, rather than silently running a different model.
+Either way, changing a role's model — which the Settings section below
+recommends as ordinary tuning — is not finished until the installed
+agent definitions carry it too.
 
 **A Codex CLI upgrade that adds a new `apply_patch` directive causes
 denials until `orch` catches up.** The guard's envelope parser treats
@@ -151,6 +167,19 @@ any `*** ` directive line it does not recognize as a malformed
 envelope and denies the write. That is deliberate — an unparsed write
 must never be allowed — but it means a host upgrade can produce
 spurious denials. Workaround: update `orch`.
+
+**The merge gate cannot tell a human's approval from an agent's.** The
+engine requires an approval carrying the exact literal `approve-merge`,
+pinned to the pull request and head commit `merge-report` recorded, and
+`gh pr merge --match-head-commit` refuses if that commit is no longer
+the head — so a stale or swapped merge fails closed. What none of that
+establishes is who produced the approval: the agent assembles that JSON
+itself, and `internal/run/merge.go` says so outright ("the engine
+cannot verify a human, so this recorded string is the proof one
+approved this specific merge"). Symptom: the audit trail's approval is
+the agent's assertion that you approved. Workaround: the merge runs
+through `gh` against GitHub, so GitHub-side branch protection is the
+one control on this path that does not depend on the agent.
 
 **A crashed run leaves the Delivery lock held; there is no automatic
 takeover.** `.orchestrator/delivery.lock` is created with `O_EXCL` and
@@ -161,8 +190,10 @@ continue, or `orch abort` to end it.
 
 </details>
 
+## Fixed
+
 <details>
-<summary><b>Fixed</b> — defects already corrected, newest first</summary>
+<summary>Defects already corrected, newest first</summary>
 
 Everything here is merged on `main`. The top entry landed after v0.5.4
 was tagged, so it ships in the next release rather than the current
@@ -279,11 +310,17 @@ on this machine. Work in a scratch directory, not in one of my projects.
       not report the install as finished as though the hooks were live.
 
 5. Run `orch doctor` and report its full output to me, including every
-   note and every failing check. Run outside an initialized repository it
-   reports the git-repository and configuration checks as failures; say so
-   rather than hiding it.
+   note and every failing check. When run outside an initialized
+   repository it reports the git-repository and configuration checks as
+   failures; say so rather than hiding it.
 
-6. Finish by telling me all three of these: `orch init` has to be run once
+6. Tell me to restart this CLI once you are done. A plugin installed
+   during a running session does not load its hooks into that session,
+   so the guard and the session-start context are not live until I start
+   a new one. After I restart, the tell that it worked is an Orch block
+   at session start inside an initialized repository.
+
+7. Finish by telling me all three of these: `orch init` has to be run once
    inside every repository I want orchestrated; Orch does nothing at all
    in a repository that has not been initialized; and `orch init` does not
    write the configuration into my working tree — it opens a pull request
@@ -442,8 +479,9 @@ local override can never weaken a shared workflow rule.
 
 Every enabled host carries the same six roles: `architect`, `scout`,
 `implementer`, `specialist`, `reviewer`, and `review_downgrade` (the
-cheaper reviewer Orch may use only when routing proves the change is
-mechanical, low-risk, fully specified and unsurprising). Each role
+cheaper reviewer Orch may use only when the plan affirms all four of
+mechanical, low-risk, fully specified and unsurprising — claims routing
+takes at face value rather than checks). Each role
 names one model string; the interview offers exact versions rather
 than tier aliases, and whatever string is configured is the one that
 lands in the audit record, so the record says what ran instead of what
