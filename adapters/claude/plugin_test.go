@@ -78,8 +78,8 @@ func TestPluginManifestStrict(t *testing.T) {
 	if m.Description == "" {
 		t.Error("description is empty")
 	}
-	if m.Version != "0.5.5" {
-		t.Errorf("version = %q, want 0.5.5", m.Version)
+	if m.Version != "0.5.7" {
+		t.Errorf("version = %q, want 0.5.7", m.Version)
 	}
 	if m.Author.Name == "" {
 		t.Error("author.name is empty")
@@ -338,6 +338,10 @@ func TestSetupSkillHasTerminalForms(t *testing.T) {
 
 func TestDeliverySkillHasRoutedSelectionCue(t *testing.T) {
 	adaptertest.CheckRoutedSelectionCue(t, deliverySkillPath)
+}
+
+func TestDeliverySkillHasBranchScopeVerificationGuidance(t *testing.T) {
+	adaptertest.CheckBranchScopeVerificationGuidance(t, deliverySkillPath)
 }
 
 // frontmatterMatchRuleSentence is the exact phrase

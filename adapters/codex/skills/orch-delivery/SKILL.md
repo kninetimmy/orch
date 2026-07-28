@@ -303,6 +303,17 @@ in flight at once. For each issue:
    verification names as pr-open — `required-ci`, `merge`, `abandoned`,
    and `review-cycle-<n>` — are engine-owned and are rejected with
    `ErrBadRequest` before any mutation when supplied by a caller.
+   A verification whose text describes the branch as a whole —
+   commit counts, file counts, diff totals, or scope claims —
+   becomes false as soon as the executor pushes a fix commit, and
+   must be resubmitted on every subsequent review cycle. This
+   works because verification entries are replace-by-name
+   upserts: submitting the same `name` again on `orch run review`
+   re-stamps that entry at the live head and supersedes its stale
+   text. Prefix such an entry's `name` with `branch-scope:` to mark
+   it as branch-scoped, and therefore resubmit-on-every-cycle; this
+   prefix does not collide with the engine-owned names `required-ci`,
+   `merge`, `abandoned`, and `review-cycle-<n>`.
    `approve` continues.
 
 6. **CI** — `orch run ci` with
