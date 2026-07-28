@@ -186,7 +186,7 @@ func Activate(ctx context.Context, env Env, reqJSON []byte) (*ActivationResult, 
 		return nil, err
 	}
 	if err := git.RequireClean(ctx, ""); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("%w%s", err, metrics.ExplainTrap(cfg.Metrics.Enabled, env.RepoRoot))
 	}
 	gh, err := ghops.Open(ctx, env.Runner, env.RepoRoot)
 	if err != nil {

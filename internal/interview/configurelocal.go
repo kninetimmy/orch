@@ -13,6 +13,7 @@ import (
 
 	"github.com/kninetimmy/orch/internal/config"
 	"github.com/kninetimmy/orch/internal/instructions"
+	"github.com/kninetimmy/orch/internal/metrics"
 	"github.com/kninetimmy/orch/internal/question"
 )
 
@@ -736,12 +737,33 @@ func buildSummaryLocal(committed *config.Config, overrides map[string]string, re
 		blockers = append(blockers, "no local override changes; nothing to write")
 	}
 
+	trapped, err := metrics.TrapActive(effectiveMetricsEnabled(committed, overrides), repoRoot)
+	if err != nil {
+		return question.Summary{}, err
+	}
+	if trapped {
+		blockers = append(blockers, fmt.Sprintf("this change's effective configuration would enable metrics while %s is not yet in .gitignore; orch configure (not configure-local) is the flow that adds that line — run it first, then re-enable metrics here", metrics.GitignoreLine))
+	}
+
 	return question.Summary{
 		ConfigTOML:     newContent,
 		ConfigRevision: committed.ConfigRevision,
 		Files:          []question.FileChange{change},
 		Blockers:       blockers,
 	}, nil
+}
+
+// effectiveMetricsEnabled resolves overrides' final metrics.enabled
+// value: overrides[idMetricsEnabled] parsed as a bool when present
+// (materializeLocal's canonical true/false string form), else
+// committed's own value.
+func effectiveMetricsEnabled(committed *config.Config, overrides map[string]string) bool {
+	v, ok := overrides[idMetricsEnabled]
+	if !ok {
+		return committed.Metrics.Enabled
+	}
+	b, err := strconv.ParseBool(v)
+	return err == nil && b
 }
 
 // approvalQuestionLocal is approvalQuestion with configure-local's own

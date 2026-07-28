@@ -478,7 +478,7 @@ func buildConfigureSummary(cfg, committed *config.Config, committedRaw []byte, r
 		conflictLines = append(conflictLines, fmt.Sprintf("%s: %s", filepath.ToSlash(rel), c.Report.Detail))
 	}
 
-	gitignore, err := gitignoreLines(repoRoot, cfg.Metrics.Enabled)
+	gitignore, err := gitignoreLines(repoRoot)
 	if err != nil {
 		return question.Summary{}, err
 	}

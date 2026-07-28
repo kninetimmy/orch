@@ -21,7 +21,8 @@
         ".orchestrator/worktrees/",
         ".orchestrator/config.local.toml",
         ".orchestrator/state.json",
-        ".orchestrator/delivery.lock"
+        ".orchestrator/delivery.lock",
+        ".orchestrator/metrics/"
       ],
       "config_diff": "@@ -3,13 +3,13 @@\n # a Delivery PR.\n \n schema_version  = 1\n-config_revision = \"sha256:6240dc99e81e\"\n+config_revision = \"sha256:9040056536a9\"\n \n [concurrency]\n max_subagents = 3\n \n [merge]\n-strategy = \"squash\"\n+strategy = \"rebase\"\n \n [memhub]\n mode = \"off\"\n@@ -22,7 +22,7 @@\n effort = \"xhigh\"\n \n [hosts.claude.roles.scout]\n-model  = \"claude-sonnet-5\"\n+model  = \"claude-opus-4-8\"\n effort = \"low\"\n \n [hosts.claude.roles.implementer]\n"
     },
