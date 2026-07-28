@@ -26,7 +26,7 @@ one to an exact model version and reasoning-effort level:
 | Implementer | Writes the code inside the issue's worktree |
 | Specialist | Takes the issues routing marks risky or unusually difficult |
 | Reviewer | Reviews the pull request in a separate dispatch from the one that wrote it |
-| Review downgrade | A cheaper reviewer, allowed only when the plan affirms the change is mechanical and low-risk |
+| Review downgrade | A cheaper reviewer, allowed only when the plan affirms all four of mechanical, low-risk, fully specified, unsurprising |
 
 Which role gets an issue is derived from the issue's own facts by a
 deterministic table, not chosen by the model that will run it. The
@@ -34,8 +34,9 @@ reviewer is always a separate dispatch and never the session that wrote
 the code, but it is often not a different model: the shipped defaults
 put the specialist and the reviewer on one model, and the implementer
 and the downgraded reviewer on another. Any specialist run and any
-downgraded review therefore has the same model on both sides — on
-Codex, at the same effort as well.
+downgraded review therefore has the same model on both sides. For a
+specialist run the effort matches too, on either host; only a Claude
+downgrade drops it.
 
 **The guard.** None of the above is an instruction the agent is asked
 to honor. Both host adapters wire the CLI's pre-write hook to `orch
@@ -44,10 +45,11 @@ agent writes a file and answers allow or deny. In Assist it denies
 every write to a file git does not ignore. In Delivery it allows a
 write only inside a worktree registered to the running plan, on that
 worktree's registered branch, in a phase where writing is allowed.
-`.orchestrator/` and anything under `.git` are never writable. It
-fails closed: anything it cannot establish is a denial. What it
-enforces is containment — it cannot tell which role is writing, and a
-file written by a shell command never reaches it at all (see
+Git internals are never writable, and neither is the orchestrator
+state your session is running against. It fails closed: anything it
+cannot establish is a denial. What it enforces is containment — it
+cannot tell which role is writing, and a file written by a shell
+command never reaches it at all (see
 [Known issues](#known-issues-and-limitations)).
 
 Concretely, asking for a change goes like this:
@@ -82,163 +84,6 @@ defaults put on one model. The reviewer's independence is a separate
 dispatch against the pull request, not a different model.
 
 All of that evidence comes from one repository: this one.
-
-## Known issues and limitations
-
-<details>
-<summary>What will bite you today — symptom, cause, workaround</summary>
-
-**Writes made through the shell are not guarded.** The pre-write hook
-covers Claude Code's `Write`, `Edit`, `MultiEdit` and `NotebookEdit`
-and Codex CLI's `apply_patch`. A file written by a shell command —
-`echo > file`, a script, a `git checkout` — never reaches `orch
-guard`, so neither Assist's read-only rule nor Delivery's worktree
-containment applies to it. Symptom: an agent modifies your working
-tree in Assist and nothing denies it. Workaround: the host's own
-permission and approval prompts on shell commands are the only
-backstop; leave them on.
-
-**The guard cannot tell one role from another.** `orch guard` has a
-`--role` flag that would make a role mechanically read-only. Neither
-adapter passes it: host hooks are plugin-global rather than scoped per
-dispatched agent, so both `hooks.json` files run the bare command.
-Inside a worktree the guard treats as writable, a scout or a
-reviewer is no more restricted than the implementer. On Claude Code
-the `orch-scout` subagent's tool whitelist does close its write
-surface — it carries no `Bash` — but `orch-reviewer` and
-`orch-reviewer-safe` both carry `Bash`, so their read-only discipline
-rests on their instructions. Codex agent definitions carry no tool
-whitelist at all.
-
-**An `orch run` verb invoked from inside a Delivery worktree reports
-Assist and names the wrong fix.** Every `orch` command resolves
-`.orchestrator/` from its own working directory. A Delivery worktree
-carries the committed `.orchestrator/config.toml` but no
-`state.json` — that file is machine-local and gitignored — so `orch
-status` run there prints `mode: assist` while a run is active, and a
-lifecycle verb fails with ``no delivery run is active; run `orch run
-activate` to enter Delivery first``. Activating a second run is exactly
-the wrong move. Workaround: run every `orch run` verb with the primary
-checkout as the working directory.
-
-**A missing binary fails open, not closed.** Both adapters' hooks are
-bare `orch guard <host>` commands. If `orch` does not resolve on
-`PATH`, the hook exits with a shell "command not found", which both
-hook protocols treat as non-blocking: the guard silently stops
-enforcing and the session-start context stops being injected. No
-error, no denial. On Codex CLI the same is true while the plugin's
-one-time hook trust approval is outstanding — until you approve it,
-the bundled hooks do not run at all. Symptom: no denial where you
-expected one, and no Orch block at session start. Workaround: install
-the binary before the plugin, approve the trust prompt, and run `orch
-doctor`; a missing session-start block is the visible tell.
-
-**Codex `workspace-write` sandbox mode on Windows fails every agent
-write where the sandbox helper infrastructure is absent.** Observed
-live: every `apply_patch` fails with `orchestrator_helper_launch_failed`
-before any mutation, which stops Delivery execution cold. Workaround:
-confirm the sandbox actually works on that machine before setting
-`sandbox_mode = "workspace-write"` there.
-
-**Claude Code has no per-subagent effort parameter.** The routed
-effort reaches a Claude subagent as a cue in its prompt, not as a host
-parameter, so the effort in the audit record is what was routed rather
-than something the host applied. The record says so outright, as
-`Effort delivery: prompt-cue`. Codex pins effort in the installed
-agent TOML and the host enforces it.
-
-**A model override does not reach a dispatched agent by itself, on
-either host.** Neither host can override a model per spawn, so the
-routed selection has to match an installed agent definition. On Codex
-that means the five agent TOMLs are a separate install step the
-marketplace install does not perform — you copy them or run `orch
-render-agents` — and after you change `hosts.codex.roles`, dispatched
-agents keep running the model pinned in the installed TOMLs until you
-re-render. On Claude Code the failure is louder: if the routed model
-matches no installed agent's frontmatter, the spawn stops and the
-Architect tells you, rather than silently running a different model.
-Either way, changing a role's model — which the Settings section below
-recommends as ordinary tuning — is not finished until the installed
-agent definitions carry it too.
-
-**A Codex CLI upgrade that adds a new `apply_patch` directive causes
-denials until `orch` catches up.** The guard's envelope parser treats
-any `*** ` directive line it does not recognize as a malformed
-envelope and denies the write. That is deliberate — an unparsed write
-must never be allowed — but it means a host upgrade can produce
-spurious denials. Workaround: update `orch`.
-
-**The merge gate cannot tell a human's approval from an agent's.** The
-engine requires an approval carrying the exact literal `approve-merge`,
-pinned to the pull request and head commit `merge-report` recorded, and
-`gh pr merge --match-head-commit` refuses if that commit is no longer
-the head — so a stale or swapped merge fails closed. What none of that
-establishes is who produced the approval: the agent assembles that JSON
-itself, and `internal/run/merge.go` says so outright ("the engine
-cannot verify a human, so this recorded string is the proof one
-approved this specific merge"). Symptom: the audit trail's approval is
-the agent's assertion that you approved. Workaround: the merge runs
-through `gh` against GitHub, so GitHub-side branch protection is the
-one control on this path that does not depend on the agent.
-
-**A crashed run leaves the Delivery lock held; there is no automatic
-takeover.** `.orchestrator/delivery.lock` is created with `O_EXCL` and
-Orch never steals it on a staleness guess. Symptom: the next run
-refuses to start, and `orch doctor` notes that the acquiring process
-is no longer running. Workaround: `orch resume` to reconcile and
-continue, or `orch abort` to end it.
-
-</details>
-
-## Fixed
-
-<details>
-<summary>Defects already corrected, newest first</summary>
-
-Everything here is merged on `main`. The top entry landed after v0.5.4
-was tagged, so it ships in the next release rather than the current
-one.
-
-- Both adapters stopped claiming that per-agent tool whitelists make
-  every read-only role unable to write; the shipped prose now matches
-  what the guard actually enforces —
-  [#90](https://github.com/kninetimmy/orch/pull/90)
-- After two or more escalations on one issue, the skills resolve the
-  routing in force from the most recent escalation instead of an
-  unqualified one —
-  [#84](https://github.com/kninetimmy/orch/pull/84)
-- A rerouted issue's agent definition is checked against the model it
-  was rerouted to, not the one it was dispatched with —
-  [#76](https://github.com/kninetimmy/orch/pull/76)
-- A review submitted after an escalation is no longer rejected as a
-  reviewer mismatch: the skills echo the reviewer currently in force —
-  [#71](https://github.com/kninetimmy/orch/pull/71)
-- Claude spawns stopped passing a coarse tier alias as the model,
-  which could never express an exact routed version; a spawn now
-  matches the installed agent's frontmatter or stops —
-  [#70](https://github.com/kninetimmy/orch/pull/70)
-- Claude Code gained an `orch-reviewer-safe` agent, so a routed
-  reviewer downgrade dispatches the reviewer the audit record names —
-  [#66](https://github.com/kninetimmy/orch/pull/66)
-- Verification entries carry the commit they were gathered at, so
-  evidence from an earlier head is distinguishable from evidence at
-  the head that merges —
-  [#62](https://github.com/kninetimmy/orch/pull/62)
-- A review summary gets a 6000-character allowance of its own instead
-  of the 2000 that cut a real reviewer's findings mid-criterion, and
-  evidence re-run on a fix commit can now reach the audit record —
-  [#61](https://github.com/kninetimmy/orch/pull/61)
-- A requested-changes cycle no longer sends the issue back through
-  `pr-open`, and the skills' stdin form works under PowerShell —
-  [#58](https://github.com/kninetimmy/orch/pull/58)
-- A pull request with no required checks reports `no-checks` instead
-  of erroring on an empty response from `gh pr checks --required` —
-  [#44](https://github.com/kninetimmy/orch/pull/44)
-- On Windows, a just-exited process no longer probes as still running,
-  so `orch doctor`'s dead-acquirer note can fire at all —
-  [#7](https://github.com/kninetimmy/orch/pull/7)
-
-</details>
 
 ## Install
 
@@ -314,11 +159,10 @@ on this machine. Work in a scratch directory, not in one of my projects.
    repository it reports the git-repository and configuration checks as
    failures; say so rather than hiding it.
 
-6. Tell me to restart this CLI once you are done. A plugin installed
-   during a running session does not load its hooks into that session,
-   so the guard and the session-start context are not live until I start
-   a new one. After I restart, the tell that it worked is an Orch block
-   at session start inside an initialized repository.
+6. Tell me to restart this CLI before relying on any of it, and to treat
+   the hooks as not yet running until I have. Do not assume a plugin
+   installed mid-session is live in this session. The tell that it took
+   is an Orch block at session start inside an initialized repository.
 
 7. Finish by telling me all three of these: `orch init` has to be run once
    inside every repository I want orchestrated; Orch does nothing at all
@@ -343,6 +187,11 @@ review and merge, not as a silent write to your working tree.
 Delivery additionally needs `git` and the
 [GitHub CLI](https://cli.github.com/) (`gh`) authenticated against the
 repository's remote. Assist works without a remote.
+
+Each adapter's README carries its host's exact install order and its
+own known limitations, worth reading once for the host you use:
+[Claude Code](adapters/claude/README.md#install-order),
+[Codex CLI](adapters/codex/README.md#install-order).
 
 <details>
 <summary><b>Install it yourself</b> — scripts, plugins, manual download, source builds</summary>
@@ -535,6 +384,163 @@ Every memhub command runs with the primary checkout as its working
 directory, never inside a per-issue worktree, because worktrees never
 receive a copy of the memhub database.
 
+## Known issues and limitations
+
+<details>
+<summary>What will bite you today — symptom, cause, workaround</summary>
+
+**Writes made through the shell are not guarded.** The pre-write hook
+covers Claude Code's `Write`, `Edit`, `MultiEdit` and `NotebookEdit`
+and Codex CLI's `apply_patch`. A file written by a shell command —
+`echo > file`, a script, a `git checkout` — never reaches `orch
+guard`, so neither Assist's read-only rule nor Delivery's worktree
+containment applies to it. Symptom: an agent modifies your working
+tree in Assist and nothing denies it. Workaround: the host's own
+permission and approval prompts on shell commands are the only
+backstop; leave them on.
+
+**The guard cannot tell one role from another.** `orch guard` has a
+`--role` flag that would make a role mechanically read-only. Neither
+adapter passes it: host hooks are plugin-global rather than scoped per
+dispatched agent, so both `hooks.json` files run the bare command.
+Inside a worktree the guard treats as writable, a scout or a
+reviewer is no more restricted than the implementer. On Claude Code
+the `orch-scout` subagent's tool whitelist does close its write
+surface — it carries no `Bash` — but `orch-reviewer` and
+`orch-reviewer-safe` both carry `Bash`, so their read-only discipline
+rests on their instructions. Codex agent definitions carry no tool
+whitelist at all.
+
+**An `orch run` verb invoked from inside a Delivery worktree reports
+Assist and names the wrong fix.** Every `orch` command resolves
+`.orchestrator/` from its own working directory. A Delivery worktree
+carries the committed `.orchestrator/config.toml` but no
+`state.json` — that file is machine-local and gitignored — so `orch
+status` run there prints `mode: assist` while a run is active, and a
+lifecycle verb fails with ``no delivery run is active; run `orch run
+activate` to enter Delivery first``. Activating a second run is exactly
+the wrong move. Workaround: run every `orch run` verb with the primary
+checkout as the working directory.
+
+**A missing binary fails open, not closed.** Both adapters' hooks are
+bare `orch guard <host>` commands. If `orch` does not resolve on
+`PATH`, the hook exits with a shell "command not found", which both
+hook protocols treat as non-blocking: the guard silently stops
+enforcing and the session-start context stops being injected. No
+error, no denial. On Codex CLI the same is true while the plugin's
+one-time hook trust approval is outstanding — until you approve it,
+the bundled hooks do not run at all. Symptom: no denial where you
+expected one, and no Orch block at session start. Workaround: install
+the binary before the plugin, approve the trust prompt, and run `orch
+doctor`; a missing session-start block is the visible tell.
+
+**Codex `workspace-write` sandbox mode on Windows fails every agent
+write where the sandbox helper infrastructure is absent.** Observed
+live: every `apply_patch` fails with `orchestrator_helper_launch_failed`
+before any mutation, which stops Delivery execution cold. Workaround:
+confirm the sandbox actually works on that machine before setting
+`sandbox_mode = "workspace-write"` there.
+
+**Claude Code has no per-subagent effort parameter.** The routed
+effort reaches a Claude subagent as a cue in its prompt, not as a host
+parameter, so the effort in the audit record is what was routed rather
+than something the host applied. The record says so outright, as
+`Effort delivery: prompt-cue`. Codex pins effort in the installed
+agent TOML and the host enforces it.
+
+**A model override does not reach a dispatched agent by itself, on
+either host.** Neither host can override a model per spawn, so the
+routed selection has to match an installed agent definition. On Codex
+that means the five agent TOMLs are a separate install step the
+marketplace install does not perform — you copy them or run `orch
+render-agents` — and after you change `hosts.codex.roles`, dispatched
+agents keep running the model pinned in the installed TOMLs until you
+re-render. On Claude Code the failure is louder: if the routed model
+matches no installed agent's frontmatter, the spawn stops and the
+Architect tells you, rather than silently running a different model.
+Either way, changing a role's model — which the Settings section below
+recommends as ordinary tuning — is not finished until the installed
+agent definitions carry it too.
+
+**A Codex CLI upgrade that adds a new `apply_patch` directive causes
+denials until `orch` catches up.** The guard's envelope parser treats
+any `*** ` directive line it does not recognize as a malformed
+envelope and denies the write. That is deliberate — an unparsed write
+must never be allowed — but it means a host upgrade can produce
+spurious denials. Workaround: update `orch`.
+
+**The merge gate cannot tell a human's approval from an agent's.** The
+engine requires an approval carrying the exact literal `approve-merge`,
+pinned to the pull request and head commit `merge-report` recorded, and
+`gh pr merge --match-head-commit` refuses if that commit is no longer
+the head — so a stale or swapped merge fails closed. What none of that
+establishes is who produced the approval: the agent assembles that JSON
+itself, and `internal/run/merge.go` says so outright ("the engine
+cannot verify a human, so this recorded string is the proof one
+approved this specific merge"). Symptom: the audit trail's approval is
+the agent's assertion that you approved. Workaround: the merge runs
+through `gh` against GitHub, so GitHub-side branch protection is the
+one control on this path that does not depend on the agent.
+
+**A crashed run leaves the Delivery lock held; there is no automatic
+takeover.** `.orchestrator/delivery.lock` is created with `O_EXCL` and
+Orch never steals it on a staleness guess. Symptom: the next run
+refuses to start, and `orch doctor` notes that the acquiring process
+is no longer running. Workaround: `orch resume` to reconcile and
+continue, or `orch abort` to end it.
+
+</details>
+
+## Fixed
+
+<details>
+<summary>Defects already corrected, newest first</summary>
+
+Everything here is merged on `main`. The top entry landed after v0.5.4
+was tagged, so it ships in the next release rather than the current
+one.
+
+- Both adapters stopped claiming that per-agent tool whitelists make
+  every read-only role unable to write; the shipped prose now matches
+  what the guard actually enforces —
+  [#90](https://github.com/kninetimmy/orch/pull/90)
+- After two or more escalations on one issue, the skills resolve the
+  routing in force from the most recent escalation instead of an
+  unqualified one —
+  [#84](https://github.com/kninetimmy/orch/pull/84)
+- A rerouted issue's agent definition is checked against the model it
+  was rerouted to, not the one it was dispatched with —
+  [#76](https://github.com/kninetimmy/orch/pull/76)
+- A review submitted after an escalation is no longer rejected as a
+  reviewer mismatch: the skills echo the reviewer currently in force —
+  [#71](https://github.com/kninetimmy/orch/pull/71)
+- Claude spawns stopped passing a coarse tier alias as the model,
+  which could never express an exact routed version; a spawn now
+  matches the installed agent's frontmatter or stops —
+  [#70](https://github.com/kninetimmy/orch/pull/70)
+- Claude Code gained an `orch-reviewer-safe` agent, so a routed
+  reviewer downgrade dispatches the reviewer the audit record names —
+  [#66](https://github.com/kninetimmy/orch/pull/66)
+- Verification entries carry the commit they were gathered at, so
+  evidence from an earlier head is distinguishable from evidence at
+  the head that merges —
+  [#62](https://github.com/kninetimmy/orch/pull/62)
+- A review summary gets a 6000-character allowance of its own instead
+  of the 2000 that cut a real reviewer's findings mid-criterion, and
+  evidence re-run on a fix commit can now reach the audit record —
+  [#61](https://github.com/kninetimmy/orch/pull/61)
+- A requested-changes cycle no longer sends the issue back through
+  `pr-open`, and the skills' stdin form works under PowerShell —
+  [#58](https://github.com/kninetimmy/orch/pull/58)
+- A pull request with no required checks reports `no-checks` instead
+  of erroring on an empty response from `gh pr checks --required` —
+  [#44](https://github.com/kninetimmy/orch/pull/44)
+- On Windows, a just-exited process no longer probes as still running,
+  so `orch doctor`'s dead-acquirer note can fire at all —
+  [#7](https://github.com/kninetimmy/orch/pull/7)
+
+</details>
+
 ---
 
 ## Under the hood
@@ -549,10 +555,24 @@ The mode rules are resolved by a closed decision table in
 Assist, a write to any in-repo file git does not ignore is denied;
 git-ignored paths are allowed as local scratch. In Delivery, a write
 is allowed only inside a worktree registered to the active run, in a
-writable phase, with that worktree's HEAD on its registered branch.
-`.orchestrator/` and anything under `.git` are never writable. If the
-guard cannot determine a fact — an unreadable state file, a path it
+writable phase, with that worktree's HEAD on its registered branch. If
+the guard cannot determine a fact — an unreadable state file, a path it
 cannot canonicalize, an ignore probe that fails to run — it denies.
+
+Two things are off limits in either mode, and one that looks like it
+is, is not. Anything under `.git` is denied before the mode is even
+consulted. The orchestrator state a session runs against —
+`state.json` and the lock, in the primary checkout — is never writable
+by an agent either: Assist denies it as orchestrator internals,
+Delivery denies it as lying outside every registered worktree. A
+worktree's own committed `.orchestrator/config.toml` is covered by
+neither rule. Inside a registered worktree it is repository content on
+a branch under review, so an executor can edit it, and that edit
+reaches your configuration the way every other change does — through
+the pull-request diff and the human merge gate. It cannot alter
+enforcement mid-run, because the guard resolves state from the
+outermost `.orchestrator` root, which is the primary checkout and
+never the worktree's copy.
 
 What the table decides is containment. The guard is given the write's
 target paths, not the identity of the agent making the write, so it
