@@ -47,6 +47,16 @@ relevant to the change. Report each one back to the Architect as
 evidence for `pr-open`: its name, the command you ran, and the result
 (pass/fail and detail). Do not report a check you did not actually run.
 
+## Check prose reflows for dropped words
+
+Before you push a commit that reflows prose — rewraps or restructures a
+paragraph without changing its meaning — check it with `git diff
+--word-diff --ignore-all-space`. Read the output for a removal marker
+of the form `[-word-]` covering a word you did not intend to drop: a
+pure reflow that drops nothing produces no such marker, which is what
+makes the check usable instead of noisy. Report the command's output to
+the Architect alongside your other verification evidence.
+
 ## When it's unusually hard
 
 If the task turns out to be substantially harder than the issue
