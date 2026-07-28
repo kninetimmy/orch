@@ -46,3 +46,26 @@ func worktreeRel(number int) string {
 func worktreeAbs(repoRoot string, number int) string {
 	return filepath.Join(repoRoot, filepath.FromSlash(worktreeRel(number)))
 }
+
+// reviewWorktreeRel is the repo-relative, slash-separated path of issue
+// number's disposable review checkout (see ReviewWorktree). It shares
+// the git-ignored container with the executor worktrees but carries a
+// "review-" prefix, so it cannot equal worktreeRel's output for this
+// issue or any other: worktreeRel always yields "issue-<n>", which
+// never begins with "review-". Nor can either path contain the other,
+// since they are siblings — which is what keeps the review checkout
+// outside every registered worktree rather than nested inside one.
+//
+// Nothing persists this path. Both callers — the verb that creates the
+// checkout and the cleanup that removes it — derive it here, which is
+// what keeps the review checkout absent from the worktree set the
+// guard reads out of state.
+func reviewWorktreeRel(number int) string {
+	return WorktreeContainer + "/" + fmt.Sprintf("review-issue-%d", number)
+}
+
+// reviewWorktreeAbs is the canonical filesystem path for issue
+// number's review checkout under repoRoot.
+func reviewWorktreeAbs(repoRoot string, number int) string {
+	return filepath.Join(repoRoot, filepath.FromSlash(reviewWorktreeRel(number)))
+}

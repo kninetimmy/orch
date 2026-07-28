@@ -12,25 +12,26 @@ import (
 )
 
 // runUsage is the one-line usage for the adapter plumbing surface.
-const runUsage = "orch run: usage: orch run plan|activate|dispatch|pr-open|review|escalate|ci|merge-report|merge|block|abandon|cleanup|complete (JSON document on stdin) | orch run status --json"
+const runUsage = "orch run: usage: orch run plan|activate|dispatch|pr-open|review-worktree|review|escalate|ci|merge-report|merge|block|abandon|cleanup|complete (JSON document on stdin) | orch run status --json"
 
 // runVerbs maps each document-taking verb to its run-engine entry point.
 // Every one reads a JSON request on stdin and writes a JSON result on
 // stdout; status is handled separately because it must never read stdin.
 var runVerbs = map[string]func(context.Context, run.Env, []byte) (any, error){
-	"plan":         adaptRunVerb(run.Plan),
-	"activate":     adaptRunVerb(run.Activate),
-	"dispatch":     adaptRunVerb(run.Dispatch),
-	"pr-open":      adaptRunVerb(run.PROpen),
-	"review":       adaptRunVerb(run.Review),
-	"escalate":     adaptRunVerb(run.Escalate),
-	"ci":           adaptRunVerb(run.CI),
-	"merge-report": adaptRunVerb(run.MergeReport),
-	"merge":        adaptRunVerb(run.Merge),
-	"block":        adaptRunVerb(run.Block),
-	"abandon":      adaptRunVerb(run.Abandon),
-	"cleanup":      adaptRunVerb(run.Cleanup),
-	"complete":     adaptRunVerb(run.Complete),
+	"plan":            adaptRunVerb(run.Plan),
+	"activate":        adaptRunVerb(run.Activate),
+	"dispatch":        adaptRunVerb(run.Dispatch),
+	"pr-open":         adaptRunVerb(run.PROpen),
+	"review-worktree": adaptRunVerb(run.ReviewWorktree),
+	"review":          adaptRunVerb(run.Review),
+	"escalate":        adaptRunVerb(run.Escalate),
+	"ci":              adaptRunVerb(run.CI),
+	"merge-report":    adaptRunVerb(run.MergeReport),
+	"merge":           adaptRunVerb(run.Merge),
+	"block":           adaptRunVerb(run.Block),
+	"abandon":         adaptRunVerb(run.Abandon),
+	"cleanup":         adaptRunVerb(run.Cleanup),
+	"complete":        adaptRunVerb(run.Complete),
 }
 
 // adaptRunVerb erases a verb's concrete result type so every document

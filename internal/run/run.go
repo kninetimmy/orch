@@ -12,10 +12,10 @@
 //	orch run status --json   # run-state JSON on stdout
 //
 // The per-issue lifecycle verbs (see lifecycle.go) extend the surface —
-// dispatch, pr-open, review, escalate, ci, merge-report, merge, block,
-// abandon, cleanup — plus the run-level complete. Each reads a
-// schema-versioned request document on stdin and writes a
-// schema-versioned result on stdout.
+// dispatch, pr-open, review-worktree, review, escalate, ci,
+// merge-report, merge, block, abandon, cleanup — plus the run-level
+// complete. Each reads a schema-versioned request document on stdin and
+// writes a schema-versioned result on stdout.
 //
 // Concurrency invariant: plan and status are read-only. Every mutating
 // verb acquires or re-verifies the cross-host Delivery lock: activate
