@@ -17,3 +17,4 @@ coverage.html
 .orchestrator/state.json
 .orchestrator/delivery.lock
 .orchestrator/worktrees/
+.orchestrator/metrics/
