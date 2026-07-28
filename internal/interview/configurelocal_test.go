@@ -239,6 +239,90 @@ func TestNextConfigureLocalNoChangeBlocked(t *testing.T) {
 	}
 }
 
+// answerLocalWithOverrides walks NextConfigureLocal from an empty
+// answer set, answering every "questions"-kind document with overrides'
+// value where the question id has one, else its Default, and returns
+// the first non-questions document reached (answerAllLocalWithDefaults'
+// shape, but for a session that must pick a non-default path to reach a
+// summary worth inspecting — unlike walkConfigureLocal, it never
+// auto-approves, since a blocked summary makes that an error).
+func answerLocalWithOverrides(t *testing.T, root string, overrides map[string]string) (question.Document, map[string]string) {
+	t.Helper()
+	answers := map[string]string{}
+	for i := 0; i < 100; i++ {
+		doc, err := NextConfigureLocal(answers, root)
+		if err != nil {
+			t.Fatalf("NextConfigureLocal: %v", err)
+		}
+		if doc.Kind != question.DocQuestions {
+			return doc, answers
+		}
+		for _, q := range doc.Questions {
+			if v, ok := overrides[q.ID]; ok {
+				answers[q.ID] = v
+				continue
+			}
+			if q.Default == "" {
+				t.Fatalf("question %s has no default to answer with", q.ID)
+			}
+			answers[q.ID] = q.Default
+		}
+	}
+	t.Fatal("NextConfigureLocal did not reach a non-questions document within 100 steps")
+	return question.Document{}, nil
+}
+
+// TestNextConfigureLocalMetricsTrapBlocked proves configure-local
+// refuses, through the same summary-blocker mechanism the no-change
+// case uses, any change whose resulting effective configuration would
+// enable metrics while .gitignore does not already carry the metrics
+// ignore line — naming `orch configure` as the flow that adds it — and
+// that submitting approval anyway is still ErrApprovalBlocked.
+func TestNextConfigureLocalMetricsTrapBlocked(t *testing.T) {
+	root := t.TempDir()
+	writeCommittedConfigLocal(t, root) // committed metrics.enabled = false; no .gitignore at all
+
+	doc, answers := answerLocalWithOverrides(t, root, map[string]string{idPickSettings: "yes", idMetricsEnabled: "yes"})
+	if doc.Kind != question.DocSummary || len(doc.Summary.Blockers) == 0 {
+		t.Fatalf("expected a blocked summary document, got %+v", doc)
+	}
+	var found bool
+	for _, b := range doc.Summary.Blockers {
+		if strings.Contains(b, "orch configure") {
+			found = true
+			if !strings.Contains(b, ".orchestrator/metrics/") {
+				t.Errorf("blocker %q does not name the missing .gitignore line", b)
+			}
+		}
+	}
+	if !found {
+		t.Errorf("Blockers = %v, want one naming orch configure as the flow that adds the .gitignore line", doc.Summary.Blockers)
+	}
+
+	answers[idApproval] = "approve"
+	_, err := NextConfigureLocal(answers, root)
+	if !errors.Is(err, ErrApprovalBlocked) {
+		t.Fatalf("NextConfigureLocal err = %v, want ErrApprovalBlocked", err)
+	}
+}
+
+// TestNextConfigureLocalMetricsTrapClearedByGitignore proves the same
+// enabling session is unblocked once .gitignore already carries the
+// metrics ignore line — the trap is about the line's absence, not about
+// enabling metrics itself.
+func TestNextConfigureLocalMetricsTrapClearedByGitignore(t *testing.T) {
+	root := t.TempDir()
+	writeCommittedConfigLocal(t, root)
+	if err := os.WriteFile(filepath.Join(root, ".gitignore"), []byte(".orchestrator/metrics/\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	doc, _ := answerLocalWithOverrides(t, root, map[string]string{idPickSettings: "yes", idMetricsEnabled: "yes"})
+	if doc.Kind != question.DocSummary || len(doc.Summary.Blockers) != 0 {
+		t.Fatalf("expected an unblocked summary document, got %+v", doc)
+	}
+}
+
 // TestNextConfigureLocalUnknownAnswerRejected proves a role answer
 // submitted before its host is even picked is unreachable.
 func TestNextConfigureLocalUnknownAnswerRejected(t *testing.T) {

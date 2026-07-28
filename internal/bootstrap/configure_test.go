@@ -18,6 +18,7 @@ import (
 	"github.com/kninetimmy/orch/internal/instructions"
 	"github.com/kninetimmy/orch/internal/interview"
 	"github.com/kninetimmy/orch/internal/lockfile"
+	"github.com/kninetimmy/orch/internal/metrics"
 	"github.com/kninetimmy/orch/internal/paths"
 	"github.com/kninetimmy/orch/internal/question"
 	"github.com/kninetimmy/orch/internal/state"
@@ -151,6 +152,82 @@ func writeConfiguredFixtureFilesClaudeOnly(t *testing.T, root string) {
 	if err := os.WriteFile(filepath.Join(root, ".gitignore"), []byte(gitignore), 0o644); err != nil {
 		t.Fatal(err)
 	}
+}
+
+// newConfiguredRepoMetricsEnabled is newConfiguredRepo (claude-only)
+// with metrics already committed-enabled and .gitignore missing the
+// metrics ignore line — the ExecuteConfigure RequireClean-trap
+// fixture: a leftover untracked metrics document (metrics.Append's own
+// shape) reproduces what a prior enabled-metrics run would have left
+// behind in the primary checkout.
+func newConfiguredRepoMetricsEnabled(t *testing.T) string {
+	t.Helper()
+	setupGitEnv(t)
+	root, err := paths.Canonical(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	rawGit(t, root, "init", "-b", "main")
+
+	cfg := &config.Config{
+		SchemaVersion: 1,
+		Concurrency:   config.Concurrency{MaxSubagents: 3},
+		Merge:         config.Merge{Strategy: "squash"},
+		Memhub:        config.Memhub{Mode: "off"},
+		Metrics:       config.Metrics{Enabled: true},
+		Hosts: config.Hosts{
+			Claude: &config.Host{Roles: config.Roles{
+				Architect:       config.RoleProfile{Model: "claude-opus-4-8", Effort: "xhigh"},
+				Scout:           config.RoleProfile{Model: "claude-sonnet-5", Effort: "low"},
+				Implementer:     config.RoleProfile{Model: "claude-sonnet-5", Effort: "xhigh"},
+				Specialist:      config.RoleProfile{Model: "claude-opus-4-8", Effort: "high"},
+				Reviewer:        config.RoleProfile{Model: "claude-opus-4-8", Effort: "high"},
+				ReviewDowngrade: config.RoleProfile{Model: "claude-sonnet-5", Effort: "high"},
+			}},
+		},
+	}
+	rev, err := config.Revision(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	cfg.ConfigRevision = rev
+	rendered, err := config.Render(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Join(root, ".orchestrator"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(root, filepath.FromSlash(config.Path)), rendered, 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	block, err := instructions.Render(instructions.CurrentVersion)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(root, "CLAUDE.md"), []byte(block), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	gitignore := strings.Join([]string{
+		".orchestrator/worktrees/",
+		".orchestrator/config.local.toml",
+		".orchestrator/state.json",
+		".orchestrator/delivery.lock",
+	}, "\n") + "\n"
+	if err := os.WriteFile(filepath.Join(root, ".gitignore"), []byte(gitignore), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	rawGit(t, root, "add", "-A")
+	rawGit(t, root, "commit", "-m", "initial")
+
+	origin := filepath.Join(t.TempDir(), "origin.git")
+	rawGit(t, filepath.Dir(origin), "init", "--bare", origin)
+	rawGit(t, root, "remote", "add", "origin", origin)
+	rawGit(t, root, "push", "origin", "main")
+	return root
 }
 
 // newConfiguredRepo builds a real sandbox repository on branch main,
@@ -426,6 +503,35 @@ func TestExecuteConfigureDirtyTreeFailsClosed(t *testing.T) {
 	_, err := ExecuteConfigure(context.Background(), deps)
 	if !errors.Is(err, gitops.ErrNotClean) {
 		t.Fatalf("err = %v, want ErrNotClean", err)
+	}
+}
+
+// TestExecuteConfigureMetricsTrapNamesCause proves that when
+// RequireClean fails on the primary checkout in a repository where
+// metrics is enabled and .gitignore lacks the metrics ignore line,
+// ExecuteConfigure's error names metrics as the cause and the remedy —
+// not merely ErrNotClean. The dirty tree is a leftover untracked
+// metrics document, exactly what an earlier enabled-metrics run would
+// leave behind — the very self-blocking trap this flow would otherwise
+// be the only repair path for.
+func TestExecuteConfigureMetricsTrapNamesCause(t *testing.T) {
+	root := newConfiguredRepoMetricsEnabled(t)
+	answers := fullConfigureAnswers(t, bothHostsFacts(root), root, changeMergeStrategyOverrides)
+
+	if err := metrics.Append(root, "run-leftover", metrics.Event{At: "2026-07-11T12:00:00Z", Verb: "activate"}); err != nil {
+		t.Fatal(err)
+	}
+
+	deps := testDeps(root, answers, &execxtest.Script{T: t}, muxRunner{git: execx.Local{}})
+	_, err := ExecuteConfigure(context.Background(), deps)
+	if !errors.Is(err, gitops.ErrNotClean) {
+		t.Fatalf("err = %v, want ErrNotClean", err)
+	}
+	if !strings.Contains(err.Error(), "metrics") {
+		t.Errorf("err = %v, want it to name metrics as the cause", err)
+	}
+	if !strings.Contains(err.Error(), "orch configure") {
+		t.Errorf("err = %v, want it to name the orch configure remedy", err)
 	}
 }
 

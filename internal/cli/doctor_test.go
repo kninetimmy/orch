@@ -383,6 +383,60 @@ func TestDoctorNotesAppliedLocalOverride(t *testing.T) {
 	}
 }
 
+// metricsEnabledTOML is validTOML with metrics turned on.
+const metricsEnabledTOML = validTOML + "\n[metrics]\nenabled = true\n"
+
+// TestDoctorMetricsDisabledSkipsCheck proves a metrics-disabled
+// repository (validTOML's default) gets no "metrics .gitignore" check
+// line at all, and does not fail on this account, whether or not
+// .gitignore exists.
+func TestDoctorMetricsDisabledSkipsCheck(t *testing.T) {
+	env, stdout, _ := testEnv(t)
+	writeConfig(t, env.RepoRoot, validTOML)
+	if code := Run([]string{"doctor"}, env); code != ExitOK {
+		t.Fatalf("exit = %d, want %d\n%s", code, ExitOK, stdout.String())
+	}
+	if strings.Contains(stdout.String(), "metrics .gitignore") {
+		t.Errorf("stdout carries a metrics .gitignore check though metrics is disabled:\n%s", stdout.String())
+	}
+}
+
+// TestDoctorMetricsEnabledMissingGitignoreLineFails proves doctor fails
+// closed, naming metrics and the missing .gitignore line, when the
+// effective configuration has metrics enabled and .gitignore does not
+// carry the metrics ignore line.
+func TestDoctorMetricsEnabledMissingGitignoreLineFails(t *testing.T) {
+	env, stdout, _ := testEnv(t)
+	writeConfig(t, env.RepoRoot, metricsEnabledTOML)
+	if code := Run([]string{"doctor"}, env); code != ExitError {
+		t.Fatalf("exit = %d, want %d\n%s", code, ExitError, stdout.String())
+	}
+	out := stdout.String()
+	if !strings.Contains(out, "FAIL  metrics .gitignore") {
+		t.Errorf("stdout missing the metrics .gitignore failure:\n%s", out)
+	}
+	if !strings.Contains(out, "metrics") || !strings.Contains(out, ".orchestrator/metrics/") {
+		t.Errorf("stdout does not name metrics and the missing line:\n%s", out)
+	}
+}
+
+// TestDoctorMetricsEnabledGitignoreLinePresentPasses proves doctor
+// reports the metrics .gitignore check as passing once .gitignore
+// already carries the line.
+func TestDoctorMetricsEnabledGitignoreLinePresentPasses(t *testing.T) {
+	env, stdout, _ := testEnv(t)
+	writeConfig(t, env.RepoRoot, metricsEnabledTOML)
+	if err := os.WriteFile(filepath.Join(env.RepoRoot, ".gitignore"), []byte(".orchestrator/metrics/\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if code := Run([]string{"doctor"}, env); code != ExitOK {
+		t.Fatalf("exit = %d, want %d\n%s", code, ExitOK, stdout.String())
+	}
+	if !strings.Contains(stdout.String(), "ok    metrics .gitignore") {
+		t.Errorf("stdout missing the passing metrics .gitignore check:\n%s", stdout.String())
+	}
+}
+
 func TestDoctorPolicyViolatingLocalOverrideFails(t *testing.T) {
 	env, stdout, _ := testEnv(t)
 	writeConfig(t, env.RepoRoot, validTOML)

@@ -9,6 +9,7 @@ import (
 	"github.com/kninetimmy/orch/internal/config"
 	"github.com/kninetimmy/orch/internal/instructions"
 	"github.com/kninetimmy/orch/internal/lockfile"
+	"github.com/kninetimmy/orch/internal/metrics"
 	"github.com/kninetimmy/orch/internal/run"
 	"github.com/kninetimmy/orch/internal/state"
 )
@@ -33,6 +34,17 @@ func TestBaseGitignoreLinesMatchSourceConstants(t *testing.T) {
 		if baseGitignoreLines[i] != w {
 			t.Errorf("baseGitignoreLines[%d] = %q, want %q (source constant changed?)", i, baseGitignoreLines[i], w)
 		}
+	}
+}
+
+// TestMetricsGitignoreLineMatchesSourceConstant pins
+// metricsGitignoreLine to internal/metrics' exported Dir constant, the
+// same test-only way TestBaseGitignoreLinesMatchSourceConstants pins
+// the base lines against theirs.
+func TestMetricsGitignoreLineMatchesSourceConstant(t *testing.T) {
+	want := metrics.Dir + "/"
+	if metricsGitignoreLine != want {
+		t.Errorf("metricsGitignoreLine = %q, want %q (source constant changed?)", metricsGitignoreLine, want)
 	}
 }
 
@@ -80,6 +92,7 @@ func TestBuildSummaryFreshRepo(t *testing.T) {
 		".orchestrator/config.local.toml",
 		".orchestrator/state.json",
 		".orchestrator/delivery.lock",
+		metricsGitignoreLine,
 	}
 	if len(summary.GitignoreLines) != len(want) {
 		t.Fatalf("GitignoreLines = %v, want %v", summary.GitignoreLines, want)
@@ -91,12 +104,18 @@ func TestBuildSummaryFreshRepo(t *testing.T) {
 	}
 }
 
-func TestBuildSummaryMetricsEnabledAddsGitignoreLine(t *testing.T) {
-	answers := fullAnswers()
-	answers[idMetricsEnabled] = "yes"
-	cfg, err := materialize(answers)
+// TestBuildSummaryGitignoreLineUnconditional proves the metrics ignore
+// line is proposed even when metrics is disabled (fullAnswers'
+// default): no remaining code path makes it conditional on the metrics
+// setting, so a later enable — committed or machine-local — never finds
+// the line missing.
+func TestBuildSummaryGitignoreLineUnconditional(t *testing.T) {
+	cfg, err := materialize(fullAnswers())
 	if err != nil {
 		t.Fatalf("materialize: %v", err)
+	}
+	if cfg.Metrics.Enabled {
+		t.Fatal("fullAnswers' metrics answer is not disabled; fixture drifted")
 	}
 	summary, err := buildSummary(cfg, t.TempDir())
 	if err != nil {
@@ -109,7 +128,7 @@ func TestBuildSummaryMetricsEnabledAddsGitignoreLine(t *testing.T) {
 		}
 	}
 	if !found {
-		t.Errorf("GitignoreLines = %v, want %q present when metrics is enabled", summary.GitignoreLines, metricsGitignoreLine)
+		t.Errorf("GitignoreLines = %v, want %q present even though metrics is disabled", summary.GitignoreLines, metricsGitignoreLine)
 	}
 }
 
@@ -235,7 +254,7 @@ func TestBuildSummaryFiltersExistingGitignoreLines(t *testing.T) {
 	if err != nil {
 		t.Fatalf("buildSummary: %v", err)
 	}
-	want := []string{".orchestrator/config.local.toml", ".orchestrator/delivery.lock"}
+	want := []string{".orchestrator/config.local.toml", ".orchestrator/delivery.lock", metricsGitignoreLine}
 	if len(summary.GitignoreLines) != len(want) {
 		t.Fatalf("GitignoreLines = %v, want %v", summary.GitignoreLines, want)
 	}

@@ -10,6 +10,7 @@ import (
 	"github.com/kninetimmy/orch/internal/gitops"
 	"github.com/kninetimmy/orch/internal/interview"
 	"github.com/kninetimmy/orch/internal/lockfile"
+	"github.com/kninetimmy/orch/internal/metrics"
 	"github.com/kninetimmy/orch/internal/question"
 	"github.com/kninetimmy/orch/internal/state"
 )
@@ -64,7 +65,16 @@ func ExecuteConfigure(ctx context.Context, deps Deps) (Report, error) {
 	// it stood when NextConfigure last ran; a dirty tree could mean
 	// those diffs no longer describe what Stage 1 is about to write.
 	if err := git.RequireClean(ctx, ""); err != nil {
-		return Report{}, err
+		// currentCfg is the committed configuration as it stands right
+		// now (not complete's not-yet-committed proposal, parsed below):
+		// a dirty tree here reflects what the currently effective
+		// configuration has already written, so that is what the
+		// metrics-trap explanation must be about. A failed load degrades
+		// to no explanation — RequireClean's own error already says
+		// enough there.
+		currentCfg, cfgErr := config.Load(gitRoot)
+		enabled := cfgErr == nil && currentCfg.Metrics.Enabled
+		return Report{}, fmt.Errorf("%w%s", err, metrics.ExplainTrap(enabled, gitRoot))
 	}
 	gh, err := ghops.Open(ctx, deps.Runner, gitRoot)
 	if err != nil {

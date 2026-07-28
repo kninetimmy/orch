@@ -56,9 +56,20 @@ var baseGitignoreLines = []string{
 }
 
 // metricsGitignoreLine is the local, gitignored metrics storage
-// directory PRD §21 describes ("local gitignored storage"); no other
-// package names this path yet, so interview owns choosing it — a
-// judgment call flagged for reviewer attention.
+// directory PRD §21 describes ("local gitignored storage"), mirroring
+// (as a literal string, baseGitignoreLines' own precedent) internal/
+// metrics' Dir constant plus a trailing slash — pinned against it in
+// summary_test.go rather than imported directly, so this pre-init-safe
+// package still need not depend on a repository already being
+// initialized.
+//
+// Always proposed for .gitignore (gitignoreLines below), regardless of
+// whether metrics is currently enabled: a later enable — through `orch
+// configure` (committed) or `orch configure-local` (machine-only,
+// which cannot itself touch .gitignore) — must never be the first time
+// this line appears, since a metrics document written before it exists
+// would show up as an untracked file and trip gitops.RequireClean with
+// no mention of metrics anywhere in the error.
 const metricsGitignoreLine = ".orchestrator/metrics/"
 
 // buildSummary materializes cfg's rendered TOML and proposed
@@ -93,7 +104,7 @@ func buildSummary(cfg *config.Config, repoRoot string) (question.Summary, error)
 		conflictLines = append(conflictLines, fmt.Sprintf("%s: %s", filepath.ToSlash(rel), c.Report.Detail))
 	}
 
-	gitignore, err := gitignoreLines(repoRoot, cfg.Metrics.Enabled)
+	gitignore, err := gitignoreLines(repoRoot)
 	if err != nil {
 		return question.Summary{}, err
 	}
@@ -149,15 +160,13 @@ func isBlockingPlanError(err error) bool {
 		errors.Is(err, instructions.ErrMalformed)
 }
 
-// gitignoreLines returns baseGitignoreLines (plus metricsGitignoreLine
-// when metricsEnabled) filtered against whatever repoRoot's .gitignore
-// already contains, so the summary proposes only genuinely missing
-// lines.
-func gitignoreLines(repoRoot string, metricsEnabled bool) ([]string, error) {
-	want := append([]string{}, baseGitignoreLines...)
-	if metricsEnabled {
-		want = append(want, metricsGitignoreLine)
-	}
+// gitignoreLines returns baseGitignoreLines plus metricsGitignoreLine
+// — always, independent of whether metrics is currently enabled (see
+// metricsGitignoreLine's own doc comment) — filtered against whatever
+// repoRoot's .gitignore already contains, so the summary proposes only
+// genuinely missing lines.
+func gitignoreLines(repoRoot string) ([]string, error) {
+	want := append(append([]string{}, baseGitignoreLines...), metricsGitignoreLine)
 
 	existing, err := readGitignore(repoRoot)
 	if err != nil {

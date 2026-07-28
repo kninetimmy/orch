@@ -81,13 +81,15 @@ func writeInstalledBlock(t *testing.T, root, name string) {
 }
 
 // writeNoMissingGitignore writes root/.gitignore with every line
-// baseGitignoreLines wants already present, so gitignoreLines proposes
+// gitignoreLines wants already present (baseGitignoreLines plus the
+// always-proposed metricsGitignoreLine), so gitignoreLines proposes
 // nothing missing — the third precondition (alongside unchanged config
 // bytes and unchanged instruction files) for the no-change blocker to
 // ever fire.
 func writeNoMissingGitignore(t *testing.T, root string) {
 	t.Helper()
-	content := strings.Join(baseGitignoreLines, "\n") + "\n"
+	lines := append(append([]string{}, baseGitignoreLines...), metricsGitignoreLine)
+	content := strings.Join(lines, "\n") + "\n"
 	if err := os.WriteFile(filepath.Join(root, ".gitignore"), []byte(content), 0o644); err != nil {
 		t.Fatal(err)
 	}

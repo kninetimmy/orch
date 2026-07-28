@@ -77,7 +77,7 @@ func Complete(ctx context.Context, env Env, reqJSON []byte) (*CompleteResult, er
 		return nil, fmt.Errorf("primary checkout is on %s, not the default branch %s; completion requires the primary checkout on the default branch", branch, repo.DefaultBranch)
 	}
 	if err := git.RequireClean(ctx, ""); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("%w%s", err, metrics.ExplainTrap(c.cfg.Metrics.Enabled, env.RepoRoot))
 	}
 	if err := git.FastForward(ctx, "origin", repo.DefaultBranch); err != nil {
 		return nil, err

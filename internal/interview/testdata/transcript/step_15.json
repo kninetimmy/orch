@@ -40,7 +40,8 @@
       ".orchestrator/worktrees/",
       ".orchestrator/config.local.toml",
       ".orchestrator/state.json",
-      ".orchestrator/delivery.lock"
+      ".orchestrator/delivery.lock",
+      ".orchestrator/metrics/"
     ]
   }
 }

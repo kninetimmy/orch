@@ -218,6 +218,75 @@ func TestConfigureLocalApplyNotCompleteIsError(t *testing.T) {
 	}
 }
 
+// TestConfigureLocalApplyMetricsTrapWritesNoFile proves an --apply
+// whose answers would enable metrics while .gitignore lacks the
+// metrics ignore line never re-derives to an approved configuration
+// (the summary stays blocked), exits non-zero, and — the acceptance
+// criterion this test pins — writes no config.local.toml at all.
+func TestConfigureLocalApplyMetricsTrapWritesNoFile(t *testing.T) {
+	env, _, _ := testEnv(t)
+	writeConfig(t, env.RepoRoot, validTOML) // metrics.enabled = false (unset); no .gitignore
+
+	req := question.AnswerSet{SchemaVersion: question.SchemaVersion, Answers: map[string]string{}}
+	const maxSteps = 20
+	var summary question.Document
+	reachedSummary := false
+	for step := 1; step <= maxSteps && !reachedSummary; step++ {
+		doc := configureLocalStepOnce(t, env, req)
+		switch doc.Kind {
+		case question.DocQuestions:
+			for _, q := range doc.Questions {
+				switch q.ID {
+				case "pick.settings", "metrics.enabled":
+					req.Answers[q.ID] = "yes"
+				default:
+					req.Answers[q.ID] = q.Default
+				}
+			}
+		case question.DocSummary:
+			summary = doc
+			reachedSummary = true
+		default:
+			t.Fatalf("step %d: unexpected document kind %q", step, doc.Kind)
+		}
+	}
+	if !reachedSummary {
+		t.Fatalf("did not reach a summary document within %d steps", maxSteps)
+	}
+	if len(summary.Summary.Blockers) == 0 {
+		t.Fatalf("expected a blocked summary, got %+v", summary)
+	}
+	found := false
+	for _, b := range summary.Summary.Blockers {
+		if strings.Contains(b, "orch configure") {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("Blockers = %v, want one naming orch configure as the remedy", summary.Summary.Blockers)
+	}
+
+	req.Answers["approval"] = "approve"
+	data, err := json.Marshal(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var stdout, stderr bytes.Buffer
+	env.Stdin = bytes.NewReader(data)
+	env.Stdout = &stdout
+	env.Stderr = &stderr
+	if code := Run([]string{"configure-local", "--apply"}, env); code != ExitError {
+		t.Fatalf("exit = %d, want %d; stdout=%s stderr=%s", code, ExitError, stdout.String(), stderr.String())
+	}
+	if !strings.Contains(stderr.String(), "orch configure") {
+		t.Errorf("stderr = %q, want it to carry the blocker naming orch configure as the remedy", stderr.String())
+	}
+
+	if _, err := os.Stat(filepath.Join(env.RepoRoot, filepath.FromSlash(config.LocalOverridePath))); !os.IsNotExist(err) {
+		t.Errorf("config.local.toml present (or unreadable) after a blocked --apply: stat err = %v", err)
+	}
+}
+
 // TestConfigureLocalRefusesDuringActiveDelivery proves both --step and
 // --apply fail closed while a Delivery lock is held.
 func TestConfigureLocalRefusesDuringActiveDelivery(t *testing.T) {

@@ -17,6 +17,7 @@ import (
 	"github.com/kninetimmy/orch/internal/gitops"
 	"github.com/kninetimmy/orch/internal/lockfile"
 	"github.com/kninetimmy/orch/internal/manifest"
+	"github.com/kninetimmy/orch/internal/metrics"
 	"github.com/kninetimmy/orch/internal/paths"
 	"github.com/kninetimmy/orch/internal/state"
 )
@@ -52,9 +53,10 @@ func rawGit(t *testing.T, dir string, args ...string) string {
 	return res.Stdout
 }
 
-// newActivateRepoWithIgnore builds a real sandbox repo on branch main
-// with a committed config.toml and the given .gitignore content.
-func newActivateRepoWithIgnore(t *testing.T, gitignore string) string {
+// newActivateRepoWithConfigAndIgnore builds a real sandbox repo on
+// branch main with the given committed config.toml content and
+// .gitignore content.
+func newActivateRepoWithConfigAndIgnore(t *testing.T, tomlContent, gitignore string) string {
 	t.Helper()
 	setupGitEnv(t)
 	root, err := paths.Canonical(t.TempDir())
@@ -71,7 +73,7 @@ func newActivateRepoWithIgnore(t *testing.T, gitignore string) string {
 	if err := os.MkdirAll(filepath.Join(root, ".orchestrator"), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(root, ".orchestrator", "config.toml"), []byte(testConfigTOML), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(root, ".orchestrator", "config.toml"), []byte(tomlContent), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	rawGit(t, root, "add", "-A")
@@ -79,10 +81,23 @@ func newActivateRepoWithIgnore(t *testing.T, gitignore string) string {
 	return root
 }
 
+// newActivateRepoWithIgnore builds a real sandbox repo on branch main
+// with testConfigTOML and the given .gitignore content.
+func newActivateRepoWithIgnore(t *testing.T, gitignore string) string {
+	t.Helper()
+	return newActivateRepoWithConfigAndIgnore(t, testConfigTOML, gitignore)
+}
+
 // fullGitignore ignores the worktree container plus Orch's own
 // machine-local files (mirroring this repo's real .gitignore), so a
 // completed activation leaves the primary checkout clean.
 const fullGitignore = ".orchestrator/worktrees/\n.orchestrator/state.json\n.orchestrator/delivery.lock\n"
+
+// testConfigTOMLMetricsEnabled is testConfigTOML with metrics enabled —
+// the metrics-ignore-trap fixture: fullGitignore deliberately carries
+// no metrics line, so a leftover untracked metrics document reproduces
+// what an earlier enabled-metrics run would have left behind.
+const testConfigTOMLMetricsEnabled = testConfigTOML + "\n[metrics]\nenabled = true\n"
 
 func newActivateRepo(t *testing.T) string {
 	t.Helper()
@@ -489,6 +504,35 @@ func TestActivateDirtyTreeLeavesNothing(t *testing.T) {
 	_, err := Activate(context.Background(), env, activationJSON(t, twoIssuePlanJSON()))
 	if !errors.Is(err, gitops.ErrNotClean) {
 		t.Fatalf("err = %v, want ErrNotClean", err)
+	}
+	script.AssertExhausted()
+	assertNoDeliveryState(t, root)
+}
+
+// TestActivateMetricsTrapNamesCause proves that when RequireClean fails
+// on the primary checkout in a repository where metrics is enabled and
+// .gitignore lacks the metrics ignore line, Activate's error names
+// metrics as the cause and the remedy — not merely ErrNotClean, which
+// (pre-fix) names no cause at all. The dirty tree is a leftover
+// untracked metrics document, exactly what an earlier enabled-metrics
+// run would leave behind.
+func TestActivateMetricsTrapNamesCause(t *testing.T) {
+	root := newActivateRepoWithConfigAndIgnore(t, testConfigTOMLMetricsEnabled, fullGitignore)
+	if err := metrics.Append(root, "run-leftover", metrics.Event{At: "2026-07-11T12:00:00Z", Verb: "activate"}); err != nil {
+		t.Fatal(err)
+	}
+	script := &execxtest.Script{T: t}
+	env := Env{RepoRoot: root, Runner: muxRunner{git: execx.Local{}, gh: script}, Now: fixedNow}
+
+	_, err := Activate(context.Background(), env, activationJSON(t, twoIssuePlanJSON()))
+	if !errors.Is(err, gitops.ErrNotClean) {
+		t.Fatalf("err = %v, want ErrNotClean", err)
+	}
+	if !strings.Contains(err.Error(), "metrics") {
+		t.Errorf("err = %v, want it to name metrics as the cause", err)
+	}
+	if !strings.Contains(err.Error(), "orch configure") {
+		t.Errorf("err = %v, want it to name the orch configure remedy", err)
 	}
 	script.AssertExhausted()
 	assertNoDeliveryState(t, root)

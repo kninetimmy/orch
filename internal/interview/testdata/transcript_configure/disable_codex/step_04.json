@@ -23,7 +23,8 @@
         ".orchestrator/worktrees/",
         ".orchestrator/config.local.toml",
         ".orchestrator/state.json",
-        ".orchestrator/delivery.lock"
+        ".orchestrator/delivery.lock",
+        ".orchestrator/metrics/"
       ],
       "config_diff": "@@ -3,7 +3,7 @@\n # a Delivery PR.\n \n schema_version  = 1\n-config_revision = \"sha256:6240dc99e81e\"\n+config_revision = \"sha256:1a09dc2e9cd2\"\n \n [concurrency]\n max_subagents = 3\n@@ -40,27 +40,3 @@\n [hosts.claude.roles.review_downgrade]\n model  = \"claude-sonnet-5\"\n effort = \"high\"\n-\n-[hosts.codex.roles.architect]\n-model  = \"gpt-5.6-sol\"\n-effort = \"high\"\n-\n-[hosts.codex.roles.scout]\n-model  = \"gpt-5.6-terra\"\n-effort = \"low\"\n-\n-[hosts.codex.roles.implementer]\n-model  = \"gpt-5.6-terra\"\n-effort = \"high\"\n-\n-[hosts.codex.roles.specialist]\n-model  = \"gpt-5.6-sol\"\n-effort = \"medium\"\n-\n-[hosts.codex.roles.reviewer]\n-model  = \"gpt-5.6-sol\"\n-effort = \"medium\"\n-\n-[hosts.codex.roles.review_downgrade]\n-model  = \"gpt-5.6-terra\"\n-effort = \"high\"\n"
     },

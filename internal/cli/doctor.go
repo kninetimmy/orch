@@ -12,6 +12,7 @@ import (
 	"github.com/kninetimmy/orch/internal/gitops"
 	"github.com/kninetimmy/orch/internal/lockfile"
 	"github.com/kninetimmy/orch/internal/memhub"
+	"github.com/kninetimmy/orch/internal/metrics"
 	"github.com/kninetimmy/orch/internal/state"
 )
 
@@ -83,6 +84,23 @@ func runDoctor(env Env) error {
 			fmt.Fprintf(env.Stdout, "note  %s applied; overrides: %s\n", config.LocalOverridePath, strings.Join(cfg.Overrides, ", "))
 		} else {
 			fmt.Fprintf(env.Stdout, "note  %s present; no overrides set\n", config.LocalOverridePath)
+		}
+	}
+
+	// Metrics-ignore trap (only meaningful, and only checked, when the
+	// effective configuration has metrics enabled): a repository already
+	// in this state gets no chance to self-report it through a failing
+	// RequireClean gate until metrics has already written an untracked
+	// file, so doctor names it directly.
+	if cfgErr == nil && cfg.Metrics.Enabled {
+		trapped, trapErr := metrics.TrapActive(cfg.Metrics.Enabled, env.RepoRoot)
+		switch {
+		case trapErr != nil:
+			check("metrics .gitignore", trapErr)
+		case trapped:
+			check("metrics .gitignore", fmt.Errorf("metrics is enabled but %s is missing from .gitignore; run `orch configure` to add it", metrics.GitignoreLine))
+		default:
+			check("metrics .gitignore", nil)
 		}
 	}
 
