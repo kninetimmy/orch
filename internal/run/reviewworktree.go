@@ -14,16 +14,27 @@ import (
 // schema this build accepts and emits.
 const ReviewWorktreeSchemaVersion = 1
 
-// headOIDPattern is the shape head_oid must have: hexadecimal only,
-// between an abbreviation git can resolve and a full SHA-256 hash. The
-// field is an object id and nothing else, so a symbolic name — a
-// branch, HEAD, FETCH_HEAD, a revision expression — is a bad request
-// rather than something to resolve. That is not pedantry: a name is
-// resolved when git reads it, and a concurrently running verb can move
-// what it points at between the moment a reviewer chose it and that
-// read, which is exactly how a review ends up reporting findings
+// headOIDPattern is the shape head_oid must have: a full hexadecimal
+// hash, 40 characters under SHA-1 or 64 under SHA-256, in upper or
+// lower case. The field is an object id and nothing else, so a symbolic
+// name — a branch, HEAD, FETCH_HEAD, a revision expression — is a bad
+// request rather than something to resolve. That is not pedantry: a
+// name is resolved when git reads it, and a concurrently running verb
+// can move what it points at between the moment a reviewer chose it and
+// that read, which is exactly how a review ends up reporting findings
 // against a commit it never meant to read. An OID cannot move.
-var headOIDPattern = regexp.MustCompile(`^[0-9a-fA-F]{7,64}$`)
+//
+// An abbreviation is rejected for the same reason rather than accepted
+// as a convenience. Git resolves a name as a ref before it resolves it
+// as a short object, so a short all-hex string can be a branch — a
+// branch named "deadbeef" wins over any object whose id starts that
+// way — and even an unambiguous abbreviation is only resolved against
+// the object database at read time, growing ambiguous as that database
+// grows. The full hash is the one spelling with neither problem: git
+// deliberately ignores a ref spelled as a full hash, so the object
+// always wins there. Nothing is lost by requiring it, either — every
+// caller has the full hash from the PR's headRefOid.
+var headOIDPattern = regexp.MustCompile(`^[0-9a-fA-F]{40}$|^[0-9a-fA-F]{64}$`)
 
 // ReviewWorktreeRequest asks for a disposable checkout of one reviewed
 // commit.
@@ -88,7 +99,7 @@ func ReviewWorktree(ctx context.Context, env Env, reqJSON []byte) (*ReviewWorktr
 		return nil, fmt.Errorf("%w: schema_version %d is unsupported (this build supports %d)", ErrBadRequest, req.SchemaVersion, ReviewWorktreeSchemaVersion)
 	}
 	if !headOIDPattern.MatchString(req.HeadOID) {
-		return nil, fmt.Errorf("%w: head_oid %q is not an object id; pass the commit's hash, never a ref name a concurrent verb could move", ErrBadRequest, req.HeadOID)
+		return nil, fmt.Errorf("%w: head_oid %q is not a full object id; pass the commit's complete hash, never an abbreviation or a ref name a concurrent verb could move", ErrBadRequest, req.HeadOID)
 	}
 
 	// The phase gate is loadVerb's, not this verb's: a review checkout

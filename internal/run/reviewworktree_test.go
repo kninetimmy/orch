@@ -163,6 +163,10 @@ func TestReviewWorktreeBadRequestBeforeMutation(t *testing.T) {
 		"fetch head":          reviewWorktreeJSON(1, "FETCH_HEAD"),
 		"branch name":         reviewWorktreeJSON(1, "main"),
 		"revision expression": reviewWorktreeJSON(1, "HEAD~1"),
+		// An abbreviation is rejected too: git resolves a name as a ref
+		// before it resolves it as a short object, so a short all-hex
+		// string is a possible branch name, not a pinned commit.
+		"abbreviated oid": reviewWorktreeJSON(1, "0123456"),
 	}
 	for name, doc := range cases {
 		t.Run(name, func(t *testing.T) {

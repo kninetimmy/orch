@@ -17,9 +17,9 @@ const CleanupSchemaVersion = 1
 // CleanupStatement is the exact confirmation cleanup requires: one
 // statement covers the verb's three confirmed deletions — remote
 // branch, worktree, and local branch — because they are one act
-// (PRD §15). The disposable review checkout cleanup also removes needs
-// no confirmation of its own: it is detached, so it holds no branch
-// and none of the committed work a confirmation protects
+// (PRD §15). Cleanup also removes the disposable review checkout; that
+// removal needs no confirmation of its own: it is detached, so it holds
+// no branch and none of the committed work a confirmation protects
 // (gitops.RemoveDetachedWorktree).
 const CleanupStatement = "cleanup-issue"
 
