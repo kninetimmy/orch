@@ -93,25 +93,29 @@ criterion asserts about the repository — a path, a file, a symbol,
 or a count — by running the command that checks it: `git ls-files`,
 `git check-ignore`, or a grep whose output you actually read. A
 count you have not confirmed this way belongs in the criterion as
-"every site", not a specific number like "the five sites" — a form
-an off-by-one cannot falsify. Read one issue's acceptance criteria
+"every site" — a form an off-by-one cannot falsify — not a specific
+number like "the five sites". Read one issue's acceptance criteria
 together as a set, not one at a time, and confirm that a single
 implementation can satisfy all of them simultaneously. Symbol
 visibility across a package boundary is a concrete way a set
-becomes contradictory — an unexported symbol one criterion requires
-while another criterion requires a different package to reach it is
-unsatisfiable by construction — so prefer a criterion stating the
-invariant actually wanted ("normalization logic has exactly one
-source in the module") over one prescribing the mechanism you
-imagine delivering it ("a single unexported function"); the
-invariant stays satisfiable however the executor structures the
-code. When a criterion is justified by a claim that something
-currently fails silently or passes while broken, run that failing
-case once yourself and read its actual outcome before writing the
-criterion — a mechanism that looks fragile can fail loudly on
-exactly the change you feared it would miss — and treat a memhub
-note or a prior finding you are relying on as a lead to verify, not
-evidence to inherit.
+becomes contradictory: a pair of requirements — one criterion
+needing a symbol unexported, another criterion needing a different
+package to reach it — is unsatisfiable by construction, so prefer a
+criterion stating the invariant actually wanted ("normalization
+logic has exactly one source in the module") over one prescribing
+the mechanism you imagine delivering it ("a single unexported
+function"); the invariant stays satisfiable however the executor
+structures the code. When a criterion is justified by a claim that
+something currently fails silently or passes while broken, run
+that failing case once yourself — in a scratch directory or
+throwaway clone outside the repository, never in this checkout
+where tracked-file changes are mechanically denied in Assist, the
+same convention this file already states for verb request JSON —
+and read its actual outcome before writing the criterion — a
+mechanism that looks fragile can fail loudly on exactly the change
+you feared it would miss — and treat a memhub note or a prior
+finding you are relying on as a lead to verify, not evidence to
+inherit.
 
 ## Plan gate
 
@@ -194,13 +198,17 @@ in flight at once. For each issue:
    **currently in force**: the most recent `EscalateResult.executor.model`
    when an escalation has rerouted the issue since dispatch, or
    `DispatchResult.executor.model` otherwise. Compare against the
-   **installed** plugin copy under the Claude Code plugin cache
-   (`~/.claude/plugins/cache/orch/orch-claude/<version>/agents/`), not
-   this repository's `adapters/claude/agents/` copy — a plugin version
-   behind head can still carry an older pin. **If the routed model
-   matches no installed agent's frontmatter, stop and tell the human —
-   never spawn a mismatched agent, and never report the routed
-   selection as if it ran.** Every spawn prompt opens with:
+   **installed** plugin copy: `~/.claude/plugins/installed_plugins.json`
+   resolves it — its `plugins["orch-claude@orch"]` array's single
+   entry's `installPath` member names the installed plugin's root (its
+   `agents/` subdirectory holds the copy to compare against), and its
+   `version` and `gitCommitSha` members name exactly which build is
+   installed — not this repository's `adapters/claude/agents/` copy,
+   since a plugin version behind head can still carry an older pin.
+   **If the routed model matches no installed agent's frontmatter,
+   stop and tell the human — never spawn a mismatched agent, and never
+   report the routed selection as if it ran.** Every spawn prompt
+   opens with:
 
    ```
    Routed selection: <model> @ <effort>
@@ -237,10 +245,19 @@ in flight at once. For each issue:
    At least one verification is required. The verification names
    `required-ci`, `merge`, `abandoned`, and `review-cycle-<n>` are
    engine-owned and are rejected with `ErrBadRequest` before any
-   mutation when supplied by a caller. `usage` is optional (PRD
-   §21) and is the executor's own cost: supply only the fields the
-   executor's Task result actually reports — token totals, duration,
-   and `total_tokens` when that is what it reports instead of the
+   mutation when supplied by a caller. A verification whose text
+   describes the branch as a whole — commit counts, file counts, diff
+   totals, or scope claims — must be named with the `branch-scope:`
+   prefix at this first submission, not on a later cycle: the `name`
+   is the identity `orch run review`'s replace-by-name upsert matches
+   on, so a prefix added later appends a second entry instead of
+   replacing the original, and the unprefixed original persists in the
+   audit record permanently. This prefix does not collide with the
+   engine-owned names `required-ci`, `merge`, `abandoned`, and
+   `review-cycle-<n>`. `usage` is optional (PRD §21) and is the
+   executor's own cost: supply only the fields the executor's Task
+   result actually reports — token totals, duration, and
+   `total_tokens` when that is what it reports instead of the
    input/output/cache split — never an estimate. Result carries
    `pr_number`, `pr_url`.
 
@@ -263,15 +280,18 @@ in flight at once. For each issue:
    **currently in force**: the most recent `EscalateResult.reviewer.model`
    when an escalation has rerouted the issue since dispatch, or
    `DispatchResult.reviewer.model` otherwise. Compare against the
-   **installed** plugin copy under the Claude Code plugin cache
-   (`~/.claude/plugins/cache/orch/orch-claude/<version>/agents/`), not
-   this repository's `adapters/claude/agents/` copy — a plugin version
-   behind head can still carry an older pin. **If the routed model
-   matches no installed agent's frontmatter, stop and tell the human —
-   never spawn a mismatched agent, and never report the routed
-   selection as if it ran.** `reviewed_head_oid` must be the PR's
-   **live** head OID at review time (e.g. via `gh pr view`), never a
-   cached value.
+   **installed** plugin copy: `~/.claude/plugins/installed_plugins.json`
+   resolves it — its `plugins["orch-claude@orch"]` array's single
+   entry's `installPath` member names the installed plugin's root (its
+   `agents/` subdirectory holds the copy to compare against), and its
+   `version` and `gitCommitSha` members name exactly which build is
+   installed — not this repository's `adapters/claude/agents/` copy,
+   since a plugin version behind head can still carry an older pin.
+   **If the routed model matches no installed agent's frontmatter,
+   stop and tell the human — never spawn a mismatched agent, and never
+   report the routed selection as if it ran.** `reviewed_head_oid`
+   must be the PR's **live** head OID at review time (e.g. via
+   `gh pr view`), never a cached value.
 
 5. **Review** — the reviewer produces **one consolidated report**
    (acceptance criteria, scope, correctness, tests, CI, security,
@@ -318,15 +338,17 @@ in flight at once. For each issue:
    A verification whose text describes the branch as a whole —
    commit counts, file counts, diff totals, or scope claims —
    becomes false as soon as the executor pushes a fix commit, and
-   must be resubmitted on every subsequent review cycle. This
-   works because verification entries are replace-by-name
-   upserts: submitting the same `name` again on `orch run review`
-   re-stamps that entry at the live head and supersedes its stale
-   text. Prefix such an entry's `name` with `branch-scope:` to mark
-   it as branch-scoped, and therefore resubmit-on-every-cycle; this
-   prefix does not collide with the engine-owned names `required-ci`,
-   `merge`, `abandoned`, and `review-cycle-<n>`.
-   `approve` continues.
+   must be resubmitted on every subsequent review cycle under the
+   same `branch-scope:`-prefixed `name` chosen at pr-open. This
+   works because caller-supplied verification entries are
+   replace-by-name upserts: submitting the same `name` again on
+   `orch run review` re-stamps that entry at the live head and
+   supersedes its stale text; the engine's own `review-cycle-<n>`
+   entries are appended, not replaced, each cycle. A reviewer's
+   non-blocking findings default to the backlog rather than into
+   the current fix cycle, and are folded into the current cycle
+   only when they sit inside text the blocking fix already
+   touches. `approve` continues.
 
 6. **CI** — `orch run ci` with
    `{"schema_version": 1, "issue_number": N}` records the honest

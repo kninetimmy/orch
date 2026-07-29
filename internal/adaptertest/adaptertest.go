@@ -312,16 +312,20 @@ func CheckRoutedSelectionCue(t *testing.T, skillPath string) {
 	}
 }
 
-// branchScopeGuidancePhrases are the exact phrases the review step of a
-// delivery skill must state about branch-scoped verifications (memhub
-// task 87): a verification whose text describes the branch as a
+// branchScopeGuidancePhrases are the exact phrases a delivery skill must
+// state about branch-scoped verifications (memhub task 87, extended by
+// task 105): a verification whose text describes the branch as a
 // whole — commit counts, file counts, diff totals, or scope claims —
 // goes false on the next push and must be resubmitted every review
-// cycle; the replace-by-name upsert is the mechanism that makes
-// resubmission supersede the stale entry instead of appending beside
-// it; and `branch-scope:` is the literal name-prefix convention for
-// marking such an entry, which does not collide with the four
-// engine-owned names.
+// cycle; `branch-scope:` is the literal name-prefix convention for
+// marking such an entry, and it must be chosen at pr-open — the
+// verification's first submission — because the `name` is the
+// identity a caller-supplied entry's replace-by-name upsert matches
+// on, so a prefix added only on a later cycle appends a second entry
+// instead of replacing the unprefixed original; the engine's own
+// `review-cycle-<n>` entries are the exception, appended rather than
+// replaced every cycle; and the `branch-scope:` prefix does not
+// collide with the engine-owned names.
 //
 // These phrases pin the presence of this instruction, not its
 // meaning: NormalizeWhitespace makes the comparison tolerant of a
@@ -330,18 +334,28 @@ func CheckRoutedSelectionCue(t *testing.T, skillPath string) {
 // these phrases, or drift the paragraph's overall sense while every
 // pinned phrase survives verbatim, without this check noticing. It
 // catches deletion of the guidance, not corruption of its meaning.
+// CheckBranchScopeVerificationGuidance also reads the entire skill
+// file, not any one section of it, so these phrases would still pass
+// if a skill relocated them out of the review step entirely — which is
+// exactly what task 105 did, moving the naming instruction to the
+// pr-open step where the name is first chosen; the check pins that the
+// words appear somewhere in the file, never that they appear at a
+// particular step.
 var branchScopeGuidancePhrases = []string{
+	"must be named with the `branch-scope:` prefix at this first submission, not on a later cycle",
+	"the `name` is the identity `orch run review`'s replace-by-name upsert matches on, so a prefix added later appends a second entry instead of replacing the original, and the unprefixed original persists in the audit record permanently",
+	"This prefix does not collide with the engine-owned names `required-ci`, `merge`, `abandoned`, and `review-cycle-<n>`",
 	"describes the branch as a whole — commit counts, file counts, diff totals, or scope claims — becomes false as soon as the executor pushes a fix commit, and must be resubmitted on every subsequent review cycle",
-	"verification entries are replace-by-name upserts: submitting the same `name` again on `orch run review` re-stamps that entry at the live head and supersedes its stale text",
-	"Prefix such an entry's `name` with `branch-scope:` to mark it as branch-scoped",
-	"this prefix does not collide with the engine-owned names `required-ci`, `merge`, `abandoned`, and `review-cycle-<n>`",
+	"caller-supplied verification entries are replace-by-name upserts: submitting the same `name` again on `orch run review` re-stamps that entry at the live head and supersedes its stale text",
+	"the engine's own `review-cycle-<n>` entries are appended, not replaced, each cycle",
 }
 
-// CheckBranchScopeVerificationGuidance pins deliverySkillPath's review
-// step against the exact branch-scope resubmission guidance above. The
-// comparison runs on whitespace-normalized text on both sides, so a
-// phrase a markdown reflow happens to hard-wrap across a line break
-// still counts as present.
+// CheckBranchScopeVerificationGuidance pins deliverySkillPath's entire
+// text against the exact branch-scope naming and resubmission guidance
+// above, wherever in the file each phrase appears. The comparison runs
+// on whitespace-normalized text on both sides, so a phrase a markdown
+// reflow happens to hard-wrap across a line break still counts as
+// present.
 func CheckBranchScopeVerificationGuidance(t *testing.T, deliverySkillPath string) {
 	t.Helper()
 	content := normalizeWhitespace(readFile(t, deliverySkillPath))
