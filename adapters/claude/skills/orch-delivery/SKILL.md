@@ -199,8 +199,8 @@ in flight at once. For each issue:
    when an escalation has rerouted the issue since dispatch, or
    `DispatchResult.executor.model` otherwise. Compare against the
    **installed** plugin copy: `~/.claude/plugins/installed_plugins.json`
-   resolves it — its `plugins["orch-claude@orch"]` object's
-   `installPath` member names the installed plugin's root (its
+   resolves it — its `plugins["orch-claude@orch"]` array's single
+   entry's `installPath` member names the installed plugin's root (its
    `agents/` subdirectory holds the copy to compare against), and its
    `version` and `gitCommitSha` members name exactly which build is
    installed — not this repository's `adapters/claude/agents/` copy,
@@ -281,8 +281,8 @@ in flight at once. For each issue:
    when an escalation has rerouted the issue since dispatch, or
    `DispatchResult.reviewer.model` otherwise. Compare against the
    **installed** plugin copy: `~/.claude/plugins/installed_plugins.json`
-   resolves it — its `plugins["orch-claude@orch"]` object's
-   `installPath` member names the installed plugin's root (its
+   resolves it — its `plugins["orch-claude@orch"]` array's single
+   entry's `installPath` member names the installed plugin's root (its
    `agents/` subdirectory holds the copy to compare against), and its
    `version` and `gitCommitSha` members name exactly which build is
    installed — not this repository's `adapters/claude/agents/` copy,
