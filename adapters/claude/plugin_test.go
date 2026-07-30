@@ -309,6 +309,44 @@ func TestAgentFrontmatter(t *testing.T) {
 	}
 }
 
+// reviewerCoverageInstruction and reviewerBlockingVerdictInstruction
+// are the two prose anchors the reviewer agents' "## Report" section
+// must carry: the finding stage is about coverage, not a severity
+// filter, and the approve/request-changes verdict is a separate
+// judgment that turns only on findings blocking an acceptance
+// criterion. Neither anchor includes the backtick-quoted
+// `request-changes` token itself, so a formatting change around that
+// token doesn't make this check brittle.
+const reviewerCoverageInstruction = "this stage is about coverage, not filtering"
+const reviewerBlockingVerdictInstruction = "applies only when a finding blocks an acceptance criterion"
+
+// TestReviewerReportsCoverageAndBlockingVerdict checks the two reviewer
+// agent files directly by stem, not via agentRoster: agentRoster is a
+// name-keyed map iterated by TestAgentFrontmatter, so a file it doesn't
+// list would go unchecked there, and a body-content assertion has
+// nothing to do with the tools/model fields that map exists for. This
+// mechanically guards the coverage-not-filtering and blocking-only-verdict
+// instructions instead of leaving them as prose a future reader must
+// re-verify by hand.
+func TestReviewerReportsCoverageAndBlockingVerdict(t *testing.T) {
+	for _, stem := range []string{"orch-reviewer", "orch-reviewer-safe"} {
+		t.Run(stem, func(t *testing.T) {
+			path := filepath.Join("agents", stem+".md")
+			data, err := os.ReadFile(path)
+			if err != nil {
+				t.Fatalf("read %s: %v", path, err)
+			}
+			content := adaptertest.NormalizeWhitespace(string(data))
+			if !strings.Contains(content, reviewerCoverageInstruction) {
+				t.Errorf("%s: missing coverage instruction %q", path, reviewerCoverageInstruction)
+			}
+			if !strings.Contains(content, reviewerBlockingVerdictInstruction) {
+				t.Errorf("%s: missing blocking-only verdict instruction %q", path, reviewerBlockingVerdictInstruction)
+			}
+		})
+	}
+}
+
 // skillGlob is the pattern every shared skill-drift check in this
 // package scans.
 const skillGlob = "skills/*/SKILL.md"

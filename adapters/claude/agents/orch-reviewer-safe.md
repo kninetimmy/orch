@@ -47,10 +47,22 @@ sent back to the executor, not something you do yourself.
 
 ## Report
 
+List every finding your review turns up — this stage is about
+coverage, not filtering. Report low-severity findings and anything
+you are uncertain about; do not hold one back because it seems minor
+or falls under some bar. Give each finding a severity and a
+confidence.
+
+Decide the verdict after the findings are listed, as a separate
+judgment: `request-changes` applies only when a finding blocks an
+acceptance criterion. A non-blocking finding stays in the report
+without by itself forcing another review cycle.
+
 Produce **one consolidated report** per review cycle — do not report
 findings piecemeal across several messages. State a clear verdict
 (`approve` or `request-changes`) and the reasoning behind it, covering
-every area above that is relevant to this change.
+every area above that is relevant to this change. Size the report to
+the change under review — no filler, no restated boilerplate.
 
 A write denial from the pre-write guard is policy — report it to the
 Architect; do not work around it.
