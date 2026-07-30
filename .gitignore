@@ -18,3 +18,6 @@ coverage.html
 .orchestrator/delivery.lock
 .orchestrator/worktrees/
 .orchestrator/metrics/
+
+# Generated orch render-agents output (root-anchored: avoid matching testdata fixtures)
+/.codex/
