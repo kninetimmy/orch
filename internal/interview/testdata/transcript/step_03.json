@@ -50,6 +50,7 @@
           "label": "Extra high"
         }
       ],
+      "free_text": true,
       "default": "low"
     }
   ]

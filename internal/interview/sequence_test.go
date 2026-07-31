@@ -109,6 +109,51 @@ func TestSequenceQuestionsSpecCheck(t *testing.T) {
 	}
 }
 
+// TestHostEffortsAcceptedByConfig proves hostEfforts' full per-host
+// domain — the domain validEffort (configurelocal.go) checks a typed
+// free-text effort against — never names a value internal/config
+// itself would reject for that host (issue #124 criterion 5): every
+// value materializes into a config.toml that round-trips through
+// config.Render/config.Parse cleanly.
+func TestHostEffortsAcceptedByConfig(t *testing.T) {
+	for host, efforts := range hostEfforts {
+		for _, effort := range efforts {
+			t.Run(host+"/"+effort, func(t *testing.T) {
+				answers := fullAnswers()
+				for _, rs := range roleSpecs {
+					answers[roleEffortID(host, rs.key)] = effort
+				}
+				if _, err := materialize(answers); err != nil {
+					t.Fatalf("materialize(%s effort=%s): %v", host, effort, err)
+				}
+			})
+		}
+	}
+}
+
+// TestEffortsOfferedIsSubsetOfHostEfforts proves effortsOffered stays
+// within question.SpecCheck's 2-4-option cap and never offers a value
+// hostEfforts does not itself list for that host — combined with
+// TestHostEffortsAcceptedByConfig, this closes issue #124 criterion 5
+// for every interview-offered effort option too.
+func TestEffortsOfferedIsSubsetOfHostEfforts(t *testing.T) {
+	for host := range hostEfforts {
+		offered := effortsOffered(host)
+		if len(offered) < 2 || len(offered) > 4 {
+			t.Fatalf("effortsOffered(%s) = %v, want 2-4 options", host, offered)
+		}
+		full := map[string]bool{}
+		for _, e := range hostEfforts[host] {
+			full[e] = true
+		}
+		for _, e := range offered {
+			if !full[e] {
+				t.Errorf("effortsOffered(%s) offers %q, not in hostEfforts[%s]", host, e, host)
+			}
+		}
+	}
+}
+
 func TestRoleModelOptionsExcludeFableFive(t *testing.T) {
 	for _, host := range []string{"claude", "codex"} {
 		for _, m := range hostModels[host] {

@@ -52,7 +52,7 @@ func TestRenderLocalRejectsInvalidValues(t *testing.T) {
 		"concurrency.max_subagents":          "0",
 		"metrics.enabled":                    "maybe",
 		"hosts.claude.roles.architect.model": "has space",
-		"hosts.codex.roles.reviewer.effort":  "ultra",
+		"hosts.codex.roles.reviewer.effort":  "minimal",
 	}
 	for key, value := range tests {
 		t.Run(key, func(t *testing.T) {

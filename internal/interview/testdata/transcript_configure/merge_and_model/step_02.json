@@ -49,6 +49,7 @@
           "recommended": true
         }
       ],
+      "free_text": true,
       "default": "xhigh"
     }
   ]

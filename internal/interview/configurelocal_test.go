@@ -272,6 +272,51 @@ func answerLocalWithOverrides(t *testing.T, root string, overrides map[string]st
 	return question.Document{}, nil
 }
 
+// TestNextConfigureLocalRejectsOutOfDomainFreeTextEffort proves issue
+// #124 criterion 4 for configure-local: an effort value the effort
+// question's FreeText escape hatch admits past question.ValidateAnswer,
+// but internal/config would reject for that host, never reaches a
+// written config.local.toml — config.RenderLocal's own domain check
+// (inside materializeLocal) rejects it first, naming the host's full
+// accepted domain (effortList) in the returned error, mirroring
+// answerLocalWithOverrides' walk shape but stopping to inspect the
+// error instead of treating it as fatal.
+func TestNextConfigureLocalRejectsOutOfDomainFreeTextEffort(t *testing.T) {
+	root := t.TempDir()
+	writeCommittedConfigLocal(t, root)
+
+	effortKey := localRoleEffortID("codex", "architect")
+	overrides := map[string]string{idPickCodex: "yes", effortKey: "minimal"}
+	answers := map[string]string{}
+	var lastErr error
+	for i := 0; i < 100; i++ {
+		doc, err := NextConfigureLocal(answers, root)
+		if err != nil {
+			lastErr = err
+			break
+		}
+		if doc.Kind != question.DocQuestions {
+			t.Fatalf("expected an error before reaching a clean %q document", doc.Kind)
+		}
+		for _, q := range doc.Questions {
+			if v, ok := overrides[q.ID]; ok {
+				answers[q.ID] = v
+				continue
+			}
+			if q.Default == "" {
+				t.Fatalf("question %s has no default to answer with", q.ID)
+			}
+			answers[q.ID] = q.Default
+		}
+	}
+	if lastErr == nil {
+		t.Fatal("NextConfigureLocal succeeded, want an error for codex effort=minimal")
+	}
+	if !strings.Contains(lastErr.Error(), "low, medium, high, xhigh, max, ultra") {
+		t.Errorf("error %q does not name codex's full accepted effort domain", lastErr)
+	}
+}
+
 // TestNextConfigureLocalMetricsTrapBlocked proves configure-local
 // refuses, through the same summary-blocker mechanism the no-change
 // case uses, any change whose resulting effective configuration would
