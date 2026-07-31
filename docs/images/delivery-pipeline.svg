@@ -1,0 +1,90 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1440 300" width="1440" height="300" style="max-width:100%;display:block;">
+  <title>Orch Delivery pipeline, issue to merge</title>
+  <defs>
+    <marker id="dp-right" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+      <polygon points="0 0, 10 3.5, 0 7" fill="#5a6480"/>
+    </marker>
+  </defs>
+
+  <!-- Background -->
+  <rect width="1440" height="300" rx="16" fill="#0c0e18"/>
+  <rect width="1440" height="300" rx="16" fill="none" stroke="#1e2435" stroke-width="1"/>
+
+  <text x="720" y="30" text-anchor="middle"
+        font-family="ui-sans-serif,system-ui,sans-serif" font-size="11"
+        fill="#5a6480" letter-spacing="1.4">DELIVERY PIPELINE &#8212; ISSUE TO MERGE</text>
+
+  <!-- ═══════════════════════════════════════════════════════ -->
+  <!-- Stage boxes, left to right                              -->
+  <!-- x: 25, 183, 341, 499, 657, 815, 973, 1131, 1289 (w=126) -->
+  <!-- ═══════════════════════════════════════════════════════ -->
+
+  <!-- 0: plan gate (human) -->
+  <rect x="25" y="54" width="126" height="110" rx="10" fill="#201208" stroke="#e0a458" stroke-width="1.4"/>
+  <text x="88" y="104" text-anchor="middle" font-family="ui-monospace,monospace" font-size="13" font-weight="700" fill="#e0a458">plan gate</text>
+  <text x="88" y="128" text-anchor="middle" font-family="ui-sans-serif,system-ui,sans-serif" font-size="9" fill="#c8a878">you approve</text>
+
+  <!-- 1: activation -->
+  <rect x="183" y="54" width="126" height="110" rx="10" fill="#111521" stroke="#19e3ff" stroke-width="1" opacity="0.85"/>
+  <text x="246" y="104" text-anchor="middle" font-family="ui-monospace,monospace" font-size="13" fill="#c8d0e4">activate</text>
+  <text x="246" y="128" text-anchor="middle" font-family="ui-sans-serif,system-ui,sans-serif" font-size="9" fill="#4a5470">issue + worktree</text>
+
+  <!-- 2: dispatch -->
+  <rect x="341" y="54" width="126" height="110" rx="10" fill="#111521" stroke="#19e3ff" stroke-width="1" opacity="0.85"/>
+  <text x="404" y="104" text-anchor="middle" font-family="ui-monospace,monospace" font-size="13" fill="#c8d0e4">dispatch</text>
+  <text x="404" y="128" text-anchor="middle" font-family="ui-sans-serif,system-ui,sans-serif" font-size="9" fill="#4a5470">ff onto default</text>
+
+  <!-- 3: implement -->
+  <rect x="499" y="54" width="126" height="110" rx="10" fill="#111521" stroke="#19e3ff" stroke-width="1" opacity="0.85"/>
+  <text x="562" y="104" text-anchor="middle" font-family="ui-monospace,monospace" font-size="13" fill="#c8d0e4">implement</text>
+  <text x="562" y="128" text-anchor="middle" font-family="ui-sans-serif,system-ui,sans-serif" font-size="9" fill="#4a5470">isolated worktree</text>
+
+  <!-- 4: PR -->
+  <rect x="657" y="54" width="126" height="110" rx="10" fill="#111521" stroke="#19e3ff" stroke-width="1" opacity="0.85"/>
+  <text x="720" y="104" text-anchor="middle" font-family="ui-monospace,monospace" font-size="13" fill="#c8d0e4">open PR</text>
+  <text x="720" y="128" text-anchor="middle" font-family="ui-sans-serif,system-ui,sans-serif" font-size="9" fill="#4a5470">clean, ahead</text>
+
+  <!-- 5: independent review -->
+  <rect x="815" y="54" width="126" height="110" rx="10" fill="#111521" stroke="#19e3ff" stroke-width="1" opacity="0.85"/>
+  <text x="878" y="104" text-anchor="middle" font-family="ui-monospace,monospace" font-size="13" fill="#c8d0e4">review</text>
+  <text x="878" y="128" text-anchor="middle" font-family="ui-sans-serif,system-ui,sans-serif" font-size="9" fill="#4a5470">separate dispatch</text>
+
+  <!-- 6: CI -->
+  <rect x="973" y="54" width="126" height="110" rx="10" fill="#111521" stroke="#19e3ff" stroke-width="1" opacity="0.85"/>
+  <text x="1036" y="104" text-anchor="middle" font-family="ui-monospace,monospace" font-size="13" fill="#c8d0e4">CI</text>
+  <text x="1036" y="128" text-anchor="middle" font-family="ui-sans-serif,system-ui,sans-serif" font-size="9" fill="#4a5470">required checks</text>
+
+  <!-- 7: merge gate (human) -->
+  <rect x="1131" y="54" width="126" height="110" rx="10" fill="#201208" stroke="#e0a458" stroke-width="1.4"/>
+  <text x="1194" y="104" text-anchor="middle" font-family="ui-monospace,monospace" font-size="13" font-weight="700" fill="#e0a458">merge gate</text>
+  <text x="1194" y="128" text-anchor="middle" font-family="ui-sans-serif,system-ui,sans-serif" font-size="9" fill="#c8a878">you approve</text>
+
+  <!-- 8: cleanup / complete -->
+  <rect x="1289" y="54" width="126" height="110" rx="10" fill="#111521" stroke="#19e3ff" stroke-width="1" opacity="0.85"/>
+  <text x="1352" y="104" text-anchor="middle" font-family="ui-monospace,monospace" font-size="13" fill="#c8d0e4">cleanup</text>
+  <text x="1352" y="128" text-anchor="middle" font-family="ui-sans-serif,system-ui,sans-serif" font-size="9" fill="#4a5470">back to Assist</text>
+
+  <!-- ═══════════════════════════════════════════════════════ -->
+  <!-- Arrows between stages                                   -->
+  <!-- ═══════════════════════════════════════════════════════ -->
+  <line x1="151" y1="109" x2="183" y2="109" stroke="#5a6480" stroke-width="1.5" marker-end="url(#dp-right)"/>
+  <line x1="309" y1="109" x2="341" y2="109" stroke="#5a6480" stroke-width="1.5" marker-end="url(#dp-right)"/>
+  <line x1="467" y1="109" x2="499" y2="109" stroke="#5a6480" stroke-width="1.5" marker-end="url(#dp-right)"/>
+  <line x1="625" y1="109" x2="657" y2="109" stroke="#5a6480" stroke-width="1.5" marker-end="url(#dp-right)"/>
+  <line x1="783" y1="109" x2="815" y2="109" stroke="#5a6480" stroke-width="1.5" marker-end="url(#dp-right)"/>
+  <line x1="941" y1="109" x2="973" y2="109" stroke="#5a6480" stroke-width="1.5" marker-end="url(#dp-right)"/>
+  <line x1="1099" y1="109" x2="1131" y2="109" stroke="#5a6480" stroke-width="1.5" marker-end="url(#dp-right)"/>
+  <line x1="1257" y1="109" x2="1289" y2="109" stroke="#5a6480" stroke-width="1.5" marker-end="url(#dp-right)"/>
+
+  <!-- ═══════════════════════════════════════════════════════ -->
+  <!-- Legend                                                  -->
+  <!-- ═══════════════════════════════════════════════════════ -->
+  <rect x="500" y="222" width="16" height="16" rx="3" fill="#111521" stroke="#19e3ff" stroke-width="1.2"/>
+  <text x="524" y="234" text-anchor="start" font-family="ui-sans-serif,system-ui,sans-serif" font-size="10" fill="#8892ac">automated step</text>
+
+  <rect x="700" y="222" width="16" height="16" rx="3" fill="#201208" stroke="#e0a458" stroke-width="1.4"/>
+  <text x="724" y="234" text-anchor="start" font-family="ui-sans-serif,system-ui,sans-serif" font-size="10" fill="#e0a458">human approval gate</text>
+
+  <text x="720" y="270" text-anchor="middle"
+        font-family="ui-sans-serif,system-ui,sans-serif" font-size="9" fill="#3a4560">on failure, an issue can escalate, block, or abandon instead of continuing (not shown)</text>
+</svg>

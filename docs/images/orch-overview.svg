@@ -1,0 +1,120 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 320" width="1000" height="320" style="max-width:100%;display:block;">
+  <title>Orch system overview</title>
+  <defs>
+    <marker id="oa-right-cyan" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+      <polygon points="0 0, 10 3.5, 0 7" fill="#19e3ff"/>
+    </marker>
+    <marker id="oa-right-cyan-dim" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+      <polygon points="0 0, 10 3.5, 0 7" fill="#19e3ff" opacity="0.45"/>
+    </marker>
+    <marker id="oa-right-green" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+      <polygon points="0 0, 10 3.5, 0 7" fill="#1fe88a"/>
+    </marker>
+    <marker id="oa-right-green-dim" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+      <polygon points="0 0, 10 3.5, 0 7" fill="#1fe88a" opacity="0.4"/>
+    </marker>
+  </defs>
+
+  <!-- Main background -->
+  <rect width="1000" height="320" rx="14" fill="#0c0e18"/>
+  <rect width="1000" height="320" rx="14" fill="none" stroke="#1e2435" stroke-width="1"/>
+
+  <!-- ═══════════════════════════════════════════════════════ -->
+  <!-- LEFT BOX: You & your host CLI                           -->
+  <!-- ═══════════════════════════════════════════════════════ -->
+  <rect x="18" y="18" width="230" height="284" rx="10" fill="#111521" stroke="#242c3e" stroke-width="1"/>
+
+  <text x="133" y="44" text-anchor="middle"
+        font-family="ui-sans-serif,system-ui,sans-serif" font-size="10.5"
+        fill="#5a6480" letter-spacing="1.1">YOU &amp; YOUR HOST CLI</text>
+
+  <rect x="34" y="58" width="198" height="34" rx="7" fill="#161c2c" stroke="#2a3248" stroke-width="1"/>
+  <text x="54" y="80" font-family="ui-monospace,monospace" font-size="13" fill="#c8d0e4">&#9000;  you (terminal)</text>
+
+  <rect x="34" y="100" width="198" height="34" rx="7" fill="#161c2c" stroke="#19e3ff" stroke-width="1" opacity="0.85"/>
+  <text x="54" y="122" font-family="ui-monospace,monospace" font-size="13" fill="#19e3ff">&#9678;  Claude Code</text>
+
+  <rect x="34" y="142" width="198" height="34" rx="7" fill="#161c2c" stroke="#a45cff" stroke-width="1" opacity="0.85"/>
+  <text x="54" y="164" font-family="ui-monospace,monospace" font-size="13" fill="#a45cff">&#9673;  Codex CLI</text>
+
+  <text x="133" y="286" text-anchor="middle"
+        font-family="ui-sans-serif,system-ui,sans-serif" font-size="10" fill="#4a5470">you plan &#183; approve &#183; merge</text>
+
+  <!-- ═══════════════════════════════════════════════════════ -->
+  <!-- ARROWS: left ↔ middle                                   -->
+  <!-- ═══════════════════════════════════════════════════════ -->
+  <line x1="248" y1="100" x2="280" y2="100" stroke="#19e3ff" stroke-width="1.6" marker-end="url(#oa-right-cyan)"/>
+  <text x="264" y="95" text-anchor="middle"
+        font-family="ui-sans-serif,system-ui,sans-serif" font-size="9.5" fill="#19e3ff">write</text>
+
+  <line x1="280" y1="124" x2="248" y2="124" stroke="#19e3ff" stroke-width="1.4"
+        stroke-dasharray="4,3" opacity="0.5" marker-end="url(#oa-right-cyan-dim)"/>
+  <text x="264" y="139" text-anchor="middle"
+        font-family="ui-sans-serif,system-ui,sans-serif" font-size="9.5" fill="#19e3ff" opacity="0.5">context</text>
+
+  <!-- ═══════════════════════════════════════════════════════ -->
+  <!-- MIDDLE BOX: orch                                        -->
+  <!-- ═══════════════════════════════════════════════════════ -->
+  <rect x="280" y="8" width="340" height="304" rx="10" fill="#111521" stroke="#19e3ff" stroke-width="1" opacity="0.7"/>
+
+  <text x="450" y="44" text-anchor="middle"
+        font-family="ui-sans-serif,system-ui,sans-serif" font-size="20" font-weight="700"
+        fill="#19e3ff" letter-spacing="2">orch</text>
+
+  <rect x="298" y="64" width="304" height="46" rx="8" fill="#0d1420" stroke="#19e3ff" stroke-width="1" opacity="0.8"/>
+  <text x="450" y="84" text-anchor="middle" font-family="ui-monospace,monospace" font-size="13" fill="#c8d0e4">guard</text>
+  <text x="450" y="100" text-anchor="middle" font-family="ui-sans-serif,system-ui,sans-serif" font-size="9.5" fill="#4a5470">pre-write enforcement, fail closed</text>
+
+  <rect x="298" y="122" width="304" height="46" rx="8" fill="#0d1420" stroke="#a45cff" stroke-width="1" opacity="0.8"/>
+  <text x="450" y="142" text-anchor="middle" font-family="ui-monospace,monospace" font-size="13" fill="#c8d0e4">routing</text>
+  <text x="450" y="158" text-anchor="middle" font-family="ui-sans-serif,system-ui,sans-serif" font-size="9.5" fill="#4a5470">role &#8594; model, a deterministic table</text>
+
+  <rect x="298" y="180" width="304" height="54" rx="8" fill="#0a1220" stroke="#1fe88a" stroke-width="1" opacity="0.8"/>
+  <text x="450" y="202" text-anchor="middle" font-family="ui-monospace,monospace" font-size="13" fill="#c8d0e4">run engine</text>
+  <text x="450" y="220" text-anchor="middle" font-family="ui-sans-serif,system-ui,sans-serif" font-size="9.5" fill="#4a5470">plan gate &#8594; dispatch &#8594; merge gate</text>
+
+  <text x="450" y="282" text-anchor="middle"
+        font-family="ui-sans-serif,system-ui,sans-serif" font-size="10" fill="#4a5470">one binary: contain, route, deliver</text>
+
+  <!-- ═══════════════════════════════════════════════════════ -->
+  <!-- ARROWS: middle ↔ right                                  -->
+  <!-- ═══════════════════════════════════════════════════════ -->
+  <line x1="620" y1="100" x2="652" y2="100" stroke="#1fe88a" stroke-width="1.6" marker-end="url(#oa-right-green)"/>
+  <text x="636" y="95" text-anchor="middle"
+        font-family="ui-sans-serif,system-ui,sans-serif" font-size="9.5" fill="#1fe88a">push</text>
+
+  <line x1="652" y1="124" x2="620" y2="124" stroke="#1fe88a" stroke-width="1.4"
+        stroke-dasharray="4,3" opacity="0.45" marker-end="url(#oa-right-green-dim)"/>
+  <text x="636" y="139" text-anchor="middle"
+        font-family="ui-sans-serif,system-ui,sans-serif" font-size="9.5" fill="#1fe88a" opacity="0.45">status</text>
+
+  <!-- ═══════════════════════════════════════════════════════ -->
+  <!-- RIGHT BOX: GitHub                                       -->
+  <!-- ═══════════════════════════════════════════════════════ -->
+  <rect x="652" y="18" width="330" height="284" rx="10" fill="#111521" stroke="#242c3e" stroke-width="1"/>
+
+  <text x="817" y="44" text-anchor="middle"
+        font-family="ui-sans-serif,system-ui,sans-serif" font-size="10.5"
+        fill="#5a6480" letter-spacing="1.1">GITHUB</text>
+
+  <rect x="668" y="60" width="298" height="28" rx="6" fill="#0b1118" stroke="#242c3e" stroke-width="1"/>
+  <text x="817" y="79" text-anchor="middle" font-family="ui-monospace,monospace" font-size="11.5" fill="#c8d0e4">issue</text>
+
+  <rect x="668" y="96" width="298" height="28" rx="6" fill="#0b1118" stroke="#19e3ff" stroke-width="1" opacity="0.9"/>
+  <text x="817" y="115" text-anchor="middle" font-family="ui-monospace,monospace" font-size="11.5" fill="#19e3ff">branch + worktree</text>
+
+  <rect x="668" y="132" width="298" height="28" rx="6" fill="#0b1118" stroke="#1fe88a" stroke-width="1" opacity="0.9"/>
+  <text x="817" y="151" text-anchor="middle" font-family="ui-monospace,monospace" font-size="11.5" fill="#1fe88a">PR</text>
+
+  <rect x="668" y="168" width="298" height="28" rx="6" fill="#0b1118" stroke="#a45cff" stroke-width="1" opacity="0.9"/>
+  <text x="817" y="187" text-anchor="middle" font-family="ui-monospace,monospace" font-size="11.5" fill="#a45cff">review</text>
+
+  <rect x="668" y="204" width="298" height="28" rx="6" fill="#0b1118" stroke="#1fe88a" stroke-width="1" opacity="0.6"/>
+  <text x="817" y="223" text-anchor="middle" font-family="ui-monospace,monospace" font-size="11.5" fill="#1fe88a" opacity="0.85">CI</text>
+
+  <rect x="668" y="240" width="298" height="28" rx="6" fill="#201208" stroke="#e0a458" stroke-width="1.2"/>
+  <text x="817" y="259" text-anchor="middle" font-family="ui-monospace,monospace" font-size="11.5" fill="#e0a458">merge</text>
+
+  <text x="817" y="286" text-anchor="middle"
+        font-family="ui-sans-serif,system-ui,sans-serif" font-size="10" fill="#4a5470">one audit record, issue &#8594; PR</text>
+</svg>

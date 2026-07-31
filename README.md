@@ -1,23 +1,49 @@
 # Orch
 
-Orch is a development orchestrator for the Claude Code CLI and the
-Codex CLI. You keep working in the agent you already use. Orch sits
-underneath it and takes over two decisions you would otherwise be
-trusting the agent to make on its own: which model does a given piece
-of work, and what that agent is allowed to write.
+*Your coding agent doesn't choose its own model, and it doesn't write outside the box you gave it.*
 
-**Two modes.** A repository running Orch is in exactly one of two
-states. **Assist** is the default and is read-only: the agent can read
-anything, search, explain and plan, but a write to a file git does not
-ignore is refused. **Delivery** is entered only for a plan you have
-read and approved. Each task in that plan becomes a GitHub issue, a
-branch, and its own git worktree; the work happens there, lands as a
-pull request, is reviewed by a separate agent, runs CI, and waits for
-you to approve the merge. When every task is merged or abandoned, the
-run's last step puts the repository back in Assist.
+<p align="center">
+  <img src="https://img.shields.io/badge/License-MIT-2E7D32?style=flat&logo=opensourceinitiative&logoColor=white" alt="License: MIT"/>
+  <img src="https://img.shields.io/badge/Go-1.26%2B-00ADD8?style=flat&logo=go&logoColor=white" alt="Go 1.26+"/>
+  <img src="https://img.shields.io/badge/Release-v0.5.7-24292F?style=flat&logo=github&logoColor=white" alt="Release: v0.5.7"/>
+  <br/>
+  <img src="https://img.shields.io/badge/Platform-Linux%20%C2%B7%20macOS%20%C2%B7%20Windows-607D8B?style=flat" alt="Platform: Linux, macOS, Windows"/>
+  <img src="https://img.shields.io/badge/Hosts-Claude%20Code%20%C2%B7%20Codex%20CLI-6E56CF?style=flat" alt="Hosts: Claude Code and Codex CLI"/>
+</p>
 
-**Six roles.** Delivery work is split across roles, and you pin each
-one to an exact model version and reasoning-effort level:
+---
+
+Left to itself, a coding agent picks its own model for every task, and it can write to any file it can reach. That's fine until the model is wrong for the job — too expensive for something trivial, or too weak for something that actually matters — or until a change lands somewhere you didn't intend it to.
+
+Orch sits underneath the CLI you already use (Claude Code or Codex CLI) and takes over those two decisions. By default it puts the repository in **Assist**: a mechanical, read-only mode where the agent can look around, search, explain and plan, but a write to a file git does not ignore is refused before it happens. When you approve a plan, Orch enters **Delivery**: each task becomes a GitHub issue with its own isolated git worktree, gets implemented there, is reviewed by a separate agent dispatch, runs CI, and is merged only after you approve it. Which model handles which job is not the agent's call either — you route it, per role, to an exact model version and effort level.
+
+The payoff: cheap, fast models handle read-only exploration and mechanical work, a frontier model gets spent only where the plan calls for it, and every change that lands is auditable and gated by a human at the one step that matters — the merge.
+
+<br>
+
+<p align="center">
+  <img src="docs/images/orch-overview.svg" alt="Orch system overview: you and your host CLI, the orch binary naming the guard, routing, and run engine, and GitHub" width="920"/>
+</p>
+
+---
+
+## What you actually get
+
+- **Nothing writes by default.** Assist mode mechanically denies every write to a file git does not ignore — not a convention the agent is asked to honor, but a decision `orch guard` makes before the write happens.
+- **You route the model, not the agent.** Six roles — architect, scout, implementer, specialist, reviewer, and a cheaper review downgrade — each pin an exact model version and effort level you choose, so a cheap model handles read-only work and a frontier model is spent only where the plan calls for it.
+- **Every issue gets its own worktree.** Delivery work happens on its own branch, in its own isolated git worktree, never in your primary checkout.
+- **A separate dispatch reviews the work.** The pull request is reviewed in a dispatch separate from the one that wrote it — never the same run marking its own homework.
+- **You hold the merge gate.** Nothing lands on your default branch until you approve it, and the merge fails closed if the pull request moved after your approval.
+- **Every issue and PR carries an audit record.** The exact model, the effort, how the host actually delivered that effort, and the routing rationale are recorded on the issue and mirrored onto its pull request.
+- **Works with the CLI you already use.** Claude Code and Codex CLI are both first-class hosts, so you keep working in the agent you already have.
+
+---
+
+## How it works
+
+**Two modes.** A repository running Orch is in exactly one of two states. **Assist** is the default and is read-only: the agent can read anything, search, explain and plan, but a write to a file git does not ignore is refused. **Delivery** is entered only for a plan you have read and approved. Each task in that plan becomes a GitHub issue, a branch, and its own git worktree; the work happens there, lands as a pull request, is reviewed by a separate agent, runs CI, and waits for you to approve the merge. When every task is merged or abandoned, the run's last step puts the repository back in Assist.
+
+**Six roles.** Delivery work is split across roles, and you pin each one to an exact model version and reasoning-effort level:
 
 | Role | What it does |
 |---|---|
@@ -28,60 +54,23 @@ one to an exact model version and reasoning-effort level:
 | Reviewer | Reviews the pull request in a separate dispatch from the one that wrote it |
 | Review downgrade | A cheaper reviewer, allowed only when the plan affirms all four of mechanical, low-risk, fully specified, unsurprising |
 
-Which role gets an issue is derived from the issue's own facts by a
-deterministic table, not chosen by the model that will run it. The
-reviewer is always a separate dispatch and never the session that wrote
-the code, but it is often not a different model: the shipped defaults
-put the specialist and the reviewer on one model, and the implementer
-and the downgraded reviewer on another. Any specialist run and any
-downgraded review therefore has the same model on both sides. For a
-specialist run the effort matches too, on either host; only a Claude
-downgrade drops it.
+Which role gets an issue is derived from the issue's own facts by a deterministic table, not chosen by the model that will run it. The reviewer is always a separate dispatch and never the session that wrote the code, but it is often not a different model: the shipped defaults put the specialist and the reviewer on one model, and the implementer and the downgraded reviewer on another. Any specialist run and any downgraded review therefore has the same model on both sides. For a specialist run the effort matches too, on either host; only a Claude downgrade drops it.
 
-**The guard.** None of the above is an instruction the agent is asked
-to honor. Both host adapters wire the CLI's pre-write hook to `orch
-guard`, a subcommand of the same binary, which is consulted before the
-agent writes a file and answers allow or deny. In Assist it denies
-every write to a file git does not ignore. In Delivery it allows a
-write only inside a worktree registered to the running plan, on that
-worktree's registered branch, in a phase where writing is allowed.
-Git internals are never writable, and neither is the orchestrator
-state your session is running against. It fails closed: anything it
-cannot establish is a denial. What it enforces is containment — it
-cannot tell which role is writing, and a file written by a shell
-command never reaches it at all (see
-[Known issues](#known-issues-and-limitations)).
+**The guard.** None of the above is an instruction the agent is asked to honor. Both host adapters wire the CLI's pre-write hook to `orch guard`, a subcommand of the same binary, which is consulted before the agent writes a file and answers allow or deny. In Assist it denies every write to a file git does not ignore. In Delivery it allows a write only inside a worktree registered to the running plan, on that worktree's registered branch, in a phase where writing is allowed. Git internals are never writable, and neither is the orchestrator state your session is running against. It fails closed: anything it cannot establish is a denial. What it enforces is containment — it cannot tell which role is writing, and a file written by a shell command never reaches it at all (see [Known issues](#known-issues-and-limitations)).
 
 Concretely, asking for a change goes like this:
 
-1. You describe what you want. The Architect plans it in Assist and
-   shows you the plan: one issue per task, each carrying the model,
-   effort and reviewer it will get and why.
+1. You describe what you want. The Architect plans it in Assist and shows you the plan: one issue per task, each carrying the model, effort and reviewer it will get and why.
 2. You approve it or send it back. Approving is what enters Delivery.
-3. Each issue gets a branch and a worktree. An implementer or a
-   specialist does the work there and pushes.
+3. Each issue gets a branch and a worktree. An implementer or a specialist does the work there and pushes.
 4. A reviewer reviews the pull request. CI runs.
-5. You approve the merge, and it runs against GitHub pinned to the
-   commit that approval names — it fails closed if the pull request
-   moved after that.
+5. You approve the merge, and it runs against GitHub pinned to the commit that approval names — it fails closed if the pull request moved after that.
 
 The full product definition lives in [ORCH-PRD.md](ORCH-PRD.md).
 
 ## Status
 
-Early software. What can be stated as fact: 9 tagged releases (v0.1.0
-through v0.5.4) and 65 merged pull requests, 28 of which carry an Orch
-audit record in their body — every merge from PR #40 through PR #97
-except #50, which `orch configure` delivered in its own format. Since
-PR #40, this repository has been built through the pipeline described
-above: a plan gate, an isolated worktree per issue, a review dispatched
-separately from the work, CI, and a merge that fails closed unless it
-carries an approval pinned to the commit `merge-report` recorded.
-
-In 12 of those 28 the reviewer ran the same model as the executor — 6
-specialist runs and 6 downgraded reviews, both of which the shipped
-defaults put on one model. The reviewer's independence is a separate
-dispatch against the pull request, not a different model.
+Early software. What can be stated as fact: 12 tagged releases (v0.1.0 through v0.5.7) and 75 merged pull requests, 37 of which carry an Orch audit record in their body — every merge from PR #40 through PR #117 except #50 and #103, both of which `orch configure` delivered in its own body format. Since PR #40, this repository has been built through the pipeline described above: a plan gate, an isolated worktree per issue, a review dispatched separately from the work, CI, and a merge that fails closed unless it carries an approval pinned to the commit `merge-report` recorded.
 
 All of that evidence comes from one repository: this one.
 
@@ -112,7 +101,7 @@ on this machine. Work in a scratch directory, not in one of my projects.
 
 2. Confirm that `orch` resolves on PATH and that `orch status` prints a
    release version on its first line — a line beginning `orch:` and giving
-   a release tag such as v0.5.4. Run it from anywhere: outside an
+   a release tag such as v0.5.7. Run it from anywhere: outside an
    initialized repository it prints that version line first and then exits
    non-zero saying the repository is not initialized, which is expected
    here. On Windows the installer adds its install directory to my user
@@ -201,7 +190,7 @@ your OS and architecture, verify its SHA-256 against the release's
 `SHA256SUMS` **before** installing, and fail closed on any mismatch.
 
 Linux / macOS — installs to `~/.local/bin` (override with
-`ORCH_INSTALL_DIR`); pin a version with `ORCH_VERSION=v0.5.4`:
+`ORCH_INSTALL_DIR`); pin a version with `ORCH_VERSION=v0.5.7`:
 
 ```sh
 curl -fsSLO https://raw.githubusercontent.com/kninetimmy/orch/main/install.sh
@@ -211,7 +200,7 @@ sh install.sh
 
 Windows (PowerShell) — installs to `%LOCALAPPDATA%\Programs\orch` and
 appends that directory to your user `PATH`; skip the `PATH` change with
-`-NoPathUpdate`, pin a version with `-Version v0.5.4`:
+`-NoPathUpdate`, pin a version with `-Version v0.5.7`:
 
 ```powershell
 iwr https://raw.githubusercontent.com/kninetimmy/orch/main/install.ps1 -OutFile install.ps1
@@ -281,23 +270,28 @@ go install github.com/kninetimmy/orch/cmd/orch@latest
 
 ## Day to day
 
-These are the commands `orch help` lists for you:
+`orch help` lists every command, human and plumbing, in one place:
 
 ```text
-orch init             Interview and bootstrap this repository
-orch status           Show mode and configuration summary
-orch doctor           Check environment and configuration health
-orch configure        Interview and deliver committed configuration changes
-orch configure-local  Interview and apply machine-local overrides
-orch resume           Reconcile an interrupted Delivery run against GitHub and continue
-orch abort            Stop dispatch and return to Assist
-orch metrics          Show local metrics
-orch render-agents    Render the five Codex agent TOMLs from configuration into .codex/agents/
+usage: orch <command>
+
+commands:
+  init             Interview and bootstrap this repository
+  status           Show mode and configuration summary
+  doctor           Check environment and configuration health
+  configure        Interview and deliver committed configuration changes
+  configure-local  Interview and apply machine-local overrides
+  resume           Reconcile an interrupted Delivery run against GitHub and continue
+  abort            Stop dispatch and return to Assist
+  metrics          Show local metrics
+  render-agents    Render the five Codex agent TOMLs from configuration into .codex/agents/
+  run              Adapter plumbing: Delivery run verbs (JSON stdin/stdout; not a human command)
+  guard            Adapter plumbing: pre-write enforcement for host hooks (not a human command)
+  hook             Adapter plumbing: host lifecycle-event verbs (not a human command)
 ```
 
-`orch run`, `orch guard` and `orch hook` also exist, but they are
-adapter plumbing: they read and write JSON, the host adapters drive
-them, and you never call them by hand.
+The last three rows — `run`, `guard`, `hook` — are what the host
+adapters call for you; you never invoke them by hand.
 
 On Claude Code the three interviews also have slash commands:
 `/orch:init`, `/orch:configure`, `/orch:configure-local`.
@@ -496,10 +490,23 @@ continue, or `orch abort` to end it.
 <details>
 <summary>Defects already corrected, newest first</summary>
 
-Everything here is merged on `main`. The top entry landed after v0.5.4
-was tagged, so it ships in the next release rather than the current
-one.
+Everything here is merged on `main`. v0.5.7 is the latest tagged
+release; PRs #113, #115, and #117 landed after it, so they ship in the
+next release rather than the current one.
 
+- Worktree containment no longer fails open on a `.gitignore` whose
+  blank line survives as an empty pattern — a CRLF blank line, or a
+  whitespace-only line under LF — because `RequireIgnored` now queries
+  a concrete sentinel path instead of a bare trailing-slash directory
+  query, and an empty pattern can never match a non-empty basename —
+  [#106](https://github.com/kninetimmy/orch/pull/106)
+- The metrics ignore line in `.gitignore` is now proposed
+  unconditionally instead of only when metrics is enabled, closing a
+  trap where turning metrics on before that line existed could leave
+  metrics output un-ignored; `orch configure-local` and `orch doctor`
+  now fail closed, naming the missing line, when metrics is enabled
+  without it —
+  [#107](https://github.com/kninetimmy/orch/pull/107)
 - Both adapters stopped claiming that per-agent tool whitelists make
   every read-only role unable to write; the shipped prose now matches
   what the guard actually enforces —
@@ -591,6 +598,12 @@ fail-closed loads), persisted after every sub-step, so a crash at any
 point is recoverable.
 
 ### The Delivery pipeline
+
+<br>
+
+<p align="center">
+  <img src="docs/images/delivery-pipeline.svg" alt="Delivery pipeline left to right: plan gate, activation, dispatch, implement, PR, review, CI, merge gate, cleanup" width="920"/>
+</p>
 
 A run starts at the **plan gate**: a schema-versioned plan document
 (issues, dependency waves, risk facts) is validated fail-closed, and a
