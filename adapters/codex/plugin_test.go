@@ -283,6 +283,33 @@ func TestDeliverySkillHasBranchScopeVerificationGuidance(t *testing.T) {
 	adaptertest.CheckBranchScopeVerificationGuidance(t, deliverySkillPath)
 }
 
+// TestDeliverySkillPinsCodexChildUsageMapping keeps the adapter's optional
+// exact-usage capture scoped to the completed task that produced it: the
+// initial executor and fresh reviewer use full totals, while a resumed fix
+// executor goes to the following review cycle as a delta.
+func TestDeliverySkillPinsCodexChildUsageMapping(t *testing.T) {
+	data, err := os.ReadFile(deliverySkillPath)
+	if err != nil {
+		t.Fatalf("read %s: %v", deliverySkillPath, err)
+	}
+	content := adaptertest.NormalizeWhitespace(string(data))
+	for _, phrase := range []string{
+		"`CODEX_THREAD_ID`",
+		"canonical task identity returned by `spawn_agent`",
+		"`orch hook codex subagent-usage`",
+		"`previous_total_tokens`",
+		"previous captured cumulative total",
+		"initial executor full total to `pr-open`'s `usage`",
+		"fresh reviewer full total to that cycle's `review` `usage`",
+		"resumed fix executor delta to the following `review`'s `executor_usage`",
+		"When capture returns no total, omit the corresponding optional field",
+	} {
+		if !strings.Contains(content, adaptertest.NormalizeWhitespace(phrase)) {
+			t.Errorf("%s does not contain child-usage mapping phrase %q", deliverySkillPath, phrase)
+		}
+	}
+}
+
 // tomlMatchRuleSentence is the exact phrase orch-delivery/SKILL.md must
 // state: on Codex there is no per-spawn model override, so a routed
 // selection that matches no installed orch-* TOML must stop and tell

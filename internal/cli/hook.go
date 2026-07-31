@@ -10,23 +10,30 @@ import (
 )
 
 // hookUsage is the one-line usage for the adapter plumbing surface,
-// mirroring guardUsage. `orch hook <claude|codex> session-start` is the
-// only valid form.
-const hookUsage = "orch hook: usage: orch hook <claude|codex> session-start"
+// mirroring guardUsage.
+const hookUsage = "orch hook: usage: orch hook <claude|codex> session-start | orch hook codex subagent-usage (JSON document on stdin)"
 
-// runHook dispatches the host lifecycle-event verbs (PRD §23 adapter
-// plumbing). Host adapters call it from their own lifecycle hooks; it is
-// never invoked by a human directly.
+// runHook dispatches host adapter-plumbing verbs (PRD §23). Host adapters call
+// it instead of reimplementing their host-specific behavior; it is never
+// invoked by a human directly.
 func runHook(env Env, args []string) error {
-	if len(args) != 2 || args[1] != "session-start" {
+	if len(args) != 2 {
 		return usageError(hookUsage)
 	}
 	switch args[0] {
-	case "claude", "codex":
-		return hookSessionStart(env, args[0])
-	default:
-		return usageError(hookUsage)
+	case "claude":
+		if args[1] == "session-start" {
+			return hookSessionStart(env, args[0])
+		}
+	case "codex":
+		switch args[1] {
+		case "session-start":
+			return hookSessionStart(env, args[0])
+		case "subagent-usage":
+			return runCodexSubagentUsage(env)
+		}
 	}
+	return usageError(hookUsage)
 }
 
 // hookSessionStart answers a host's SessionStart event. Its stdout

@@ -1,0 +1,3 @@
+{"type":"session_meta","payload":{"id":"child-executor","session_id":"parent-139","parent_thread_id":"parent-139","thread_source":"subagent","agent_path":"/root/issue_139_executor","source":{"subagent":{"thread_spawn":{"parent_thread_id":"parent-139"}}}}}
+{"type":"event_msg","payload":{"type":"token_count","info":{"total_token_usage":{"total_tokens":"not-a-number"}}}}
+{"type":"event_msg","payload":{"type":"task_complete"}}
