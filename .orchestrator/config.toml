@@ -3,7 +3,7 @@
 # a Delivery PR.
 
 schema_version  = 1
-config_revision = "sha256:c44cf6cd007e"
+config_revision = "sha256:9ab11562eb39"
 
 [concurrency]
 max_subagents = 3
@@ -18,7 +18,7 @@ mode = "best-effort"
 enabled = true
 
 [hosts.claude.roles.architect]
-model  = "claude-fable-5"
+model  = "claude-opus-5"
 effort = "high"
 
 [hosts.claude.roles.scout]
