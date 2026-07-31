@@ -225,7 +225,7 @@ func TestHookCodexSubagentUsageReportsExactChildTotalOrDelta(t *testing.T) {
 		t.Fatal(err)
 	}
 	rollout := strings.Join([]string{
-		`{"type":"session_meta","payload":{"id":"child","session_id":"parent","parent_thread_id":"parent","thread_source":"subagent","agent_path":"/root/task","source":{"subagent":{"thread_spawn":{"parent_thread_id":"parent"}}}}}`,
+		`{"type":"session_meta","payload":{"id":"child","session_id":"parent","parent_thread_id":"parent","thread_source":"subagent","agent_path":"/root/task","source":{"subagent":{"thread_spawn":{"parent_thread_id":"parent","depth":1}}}}}`,
 		`{"type":"event_msg","payload":{"type":"token_count","info":{"total_token_usage":{"total_tokens":782763}}}}`,
 		`{"type":"event_msg","payload":{"type":"task_complete"}}`,
 	}, "\n")

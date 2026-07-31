@@ -85,6 +85,71 @@ func TestTotalTokensIsolatesOnlyIdentifiedNonMatchingCorruption(t *testing.T) {
 	}
 }
 
+func TestTotalTokensValidatesThreadSpawnSource(t *testing.T) {
+	for _, tc := range []struct {
+		name      string
+		source    string
+		available bool
+	}{
+		{
+			name:      "complete",
+			source:    `{"subagent":{"thread_spawn":{"parent_thread_id":"parent-139","depth":1,"agent_path":"/root/task","agent_nickname":"worker","agent_role":"default"}}}`,
+			available: true,
+		},
+		{
+			name:      "agent type alias",
+			source:    `{"subagent":{"thread_spawn":{"parent_thread_id":"parent-139","depth":1,"agent_type":"default"}}}`,
+			available: true,
+		},
+		{
+			name:   "missing depth",
+			source: `{"subagent":{"thread_spawn":{"parent_thread_id":"parent-139"}}}`,
+		},
+		{
+			name:   "wrong typed depth",
+			source: `{"subagent":{"thread_spawn":{"parent_thread_id":"parent-139","depth":"1"}}}`,
+		},
+		{
+			name:   "wrong typed agent path",
+			source: `{"subagent":{"thread_spawn":{"parent_thread_id":"parent-139","depth":1,"agent_path":1}}}`,
+		},
+		{
+			name:   "invalid agent path",
+			source: `{"subagent":{"thread_spawn":{"parent_thread_id":"parent-139","depth":1,"agent_path":"/root/Bad"}}}`,
+		},
+		{
+			name:   "wrong typed agent nickname",
+			source: `{"subagent":{"thread_spawn":{"parent_thread_id":"parent-139","depth":1,"agent_nickname":true}}}`,
+		},
+		{
+			name:   "wrong typed agent role",
+			source: `{"subagent":{"thread_spawn":{"parent_thread_id":"parent-139","depth":1,"agent_role":[]}}}`,
+		},
+		{
+			name:   "duplicate agent role alias",
+			source: `{"subagent":{"thread_spawn":{"parent_thread_id":"parent-139","depth":1,"agent_role":"default","agent_type":"default"}}}`,
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			dir := t.TempDir()
+			rollout := `{"type":"session_meta","payload":{"id":"child-executor","session_id":"parent-139","parent_thread_id":"parent-139","thread_source":"subagent","agent_path":"/root/issue_139_executor","source":` + tc.source + "}}\n" +
+				"{\"type\":\"event_msg\",\"payload\":{\"type\":\"token_count\",\"info\":{\"total_token_usage\":{\"total_tokens\":782763}}}}\n" +
+				"{\"type\":\"event_msg\",\"payload\":{\"type\":\"task_complete\"}}\n"
+			if err := os.WriteFile(filepath.Join(dir, "rollout.jsonl"), []byte(rollout), 0o644); err != nil {
+				t.Fatal(err)
+			}
+
+			got, ok := TotalTokens(dir, parentThread, executorTask, nil)
+			if ok != tc.available {
+				t.Fatalf("TotalTokens availability = %t, want %t", ok, tc.available)
+			}
+			if ok && got != 782763 {
+				t.Errorf("total_tokens = %d, want 782763", got)
+			}
+		})
+	}
+}
+
 func TestTotalTokensReturnsExactResumeDelta(t *testing.T) {
 	for _, tc := range []struct {
 		name     string

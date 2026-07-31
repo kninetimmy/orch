@@ -86,7 +86,12 @@ type sessionMeta struct {
 type subagentSource struct {
 	Subagent struct {
 		ThreadSpawn struct {
-			ParentThreadID string `json:"parent_thread_id"`
+			ParentThreadID string  `json:"parent_thread_id"`
+			Depth          *int32  `json:"depth"`
+			AgentPath      *string `json:"agent_path"`
+			AgentNickname  *string `json:"agent_nickname"`
+			AgentRole      *string `json:"agent_role"`
+			AgentType      *string `json:"agent_type"`
 		} `json:"thread_spawn"`
 	} `json:"subagent"`
 }
@@ -226,13 +231,51 @@ func parseSessionSource(raw json.RawMessage) (string, bool, bool) {
 					if !ok {
 						return "", false, false
 					}
-					parent, valid := spawn["parent_thread_id"].(string)
-					return parent, true, valid && parent != ""
+					_, hasAgentRole := spawn["agent_role"]
+					_, hasAgentType := spawn["agent_type"]
+					if hasAgentRole && hasAgentType {
+						return "", false, false
+					}
+
+					var typed subagentSource
+					if err := json.Unmarshal(raw, &typed); err != nil {
+						return "", false, false
+					}
+					threadSpawn := typed.Subagent.ThreadSpawn
+					if threadSpawn.ParentThreadID == "" || threadSpawn.Depth == nil {
+						return "", false, false
+					}
+					if threadSpawn.AgentPath != nil && !validAgentPath(*threadSpawn.AgentPath) {
+						return "", false, false
+					}
+					return threadSpawn.ParentThreadID, true, true
 				}
 			}
 		}
 	}
 	return "", false, false
+}
+
+func validAgentPath(path string) bool {
+	if path == "/morpheus" || path == "/root" {
+		return true
+	}
+	if !strings.HasPrefix(path, "/root/") || strings.HasSuffix(path, "/") {
+		return false
+	}
+	for _, segment := range strings.Split(strings.TrimPrefix(path, "/root/"), "/") {
+		if segment == "" || segment == "root" || segment == "." || segment == ".." {
+			return false
+		}
+		for _, char := range segment {
+			if (char < 'a' || char > 'z') &&
+				(char < '0' || char > '9') &&
+				char != '_' {
+				return false
+			}
+		}
+	}
+	return true
 }
 
 func matches(meta sessionMeta, parentThreadID, taskIdentity string) bool {
