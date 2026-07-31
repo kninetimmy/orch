@@ -18,10 +18,14 @@ var errInvalidRollout = errors.New("invalid Codex rollout")
 
 // TotalTokens returns a completed child rollout's exact total only when
 // sessionsRoot contains exactly one valid rollout for parentThreadID and
-// taskIdentity. Every persistence or format problem is unavailable rather than
-// a best-effort attribution.
-func TotalTokens(sessionsRoot, parentThreadID, taskIdentity string) (int64, bool) {
+// taskIdentity. When previousTotal is set, it returns the exact non-negative
+// difference from that earlier cumulative total. Every persistence or format
+// problem is unavailable rather than a best-effort attribution.
+func TotalTokens(sessionsRoot, parentThreadID, taskIdentity string, previousTotal *int64) (int64, bool) {
 	if strings.TrimSpace(parentThreadID) == "" || strings.TrimSpace(taskIdentity) == "" {
+		return 0, false
+	}
+	if previousTotal != nil && *previousTotal < 0 {
 		return 0, false
 	}
 
@@ -55,6 +59,12 @@ func TotalTokens(sessionsRoot, parentThreadID, taskIdentity string) (int64, bool
 	})
 	if err != nil || matches != 1 {
 		return 0, false
+	}
+	if previousTotal != nil {
+		if total < *previousTotal {
+			return 0, false
+		}
+		return total - *previousTotal, true
 	}
 	return total, true
 }
@@ -97,7 +107,7 @@ func rolloutTotal(path, parentThreadID, taskIdentity string) (int64, bool, bool,
 	if err != nil {
 		return 0, false, false, err
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 
 	scanner := bufio.NewScanner(f)
 	scanner.Buffer(make([]byte, 64*1024), maxJSONLRecord)
@@ -144,11 +154,11 @@ func rolloutTotal(path, parentThreadID, taskIdentity string) (int64, bool, bool,
 }
 
 func matches(meta sessionMeta, parentThreadID, taskIdentity string) bool {
-	if !(meta.ID != "" && meta.ID != parentThreadID &&
-		meta.SessionID == parentThreadID &&
-		meta.ParentThreadID == parentThreadID &&
-		meta.ThreadSource == "subagent" &&
-		meta.AgentPath == taskIdentity) {
+	if meta.ID == "" || meta.ID == parentThreadID ||
+		meta.SessionID != parentThreadID ||
+		meta.ParentThreadID != parentThreadID ||
+		meta.ThreadSource != "subagent" ||
+		meta.AgentPath != taskIdentity {
 		return false
 	}
 	var source subagentSource

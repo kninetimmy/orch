@@ -15,8 +15,9 @@ import (
 // Both values come from the host: CODEX_THREAD_ID in the parent session and
 // the canonical task identity returned by spawn_agent.
 type codexSubagentUsageRequest struct {
-	ParentThreadID string `json:"parent_thread_id"`
-	TaskIdentity   string `json:"task_identity"`
+	ParentThreadID      string `json:"parent_thread_id"`
+	TaskIdentity        string `json:"task_identity"`
+	PreviousTotalTokens *int64 `json:"previous_total_tokens,omitempty"`
 }
 
 // codexSubagentUsageResponse omits TotalTokens when the persisted rollout
@@ -48,7 +49,7 @@ func runCodexSubagentUsage(env Env) error {
 
 	out := codexSubagentUsageResponse{}
 	if sessionsRoot, ok := codexSessionsRoot(); ok {
-		if total, ok := codexusage.TotalTokens(sessionsRoot, req.ParentThreadID, req.TaskIdentity); ok {
+		if total, ok := codexusage.TotalTokens(sessionsRoot, req.ParentThreadID, req.TaskIdentity, req.PreviousTotalTokens); ok {
 			out.TotalTokens = &total
 		}
 	}

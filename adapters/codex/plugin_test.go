@@ -285,8 +285,8 @@ func TestDeliverySkillHasBranchScopeVerificationGuidance(t *testing.T) {
 
 // TestDeliverySkillPinsCodexChildUsageMapping keeps the adapter's optional
 // exact-usage capture scoped to the completed task that produced it: the
-// initial executor goes to pr-open, each reviewer goes to that review, and a
-// fix executor goes to the following review cycle.
+// initial executor and fresh reviewer use full totals, while a resumed fix
+// executor goes to the following review cycle as a delta.
 func TestDeliverySkillPinsCodexChildUsageMapping(t *testing.T) {
 	data, err := os.ReadFile(deliverySkillPath)
 	if err != nil {
@@ -297,9 +297,11 @@ func TestDeliverySkillPinsCodexChildUsageMapping(t *testing.T) {
 		"`CODEX_THREAD_ID`",
 		"canonical task identity returned by `spawn_agent`",
 		"`orch hook codex subagent-usage`",
-		"initial executor total to `pr-open`'s `usage`",
-		"reviewer total to that cycle's `review` `usage`",
-		"fix executor total to the following `review`'s `executor_usage`",
+		"`previous_total_tokens`",
+		"previous captured cumulative total",
+		"initial executor full total to `pr-open`'s `usage`",
+		"fresh reviewer full total to that cycle's `review` `usage`",
+		"resumed fix executor delta to the following `review`'s `executor_usage`",
 		"When capture returns no total, omit the corresponding optional field",
 	} {
 		if !strings.Contains(content, adaptertest.NormalizeWhitespace(phrase)) {

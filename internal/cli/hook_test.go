@@ -218,7 +218,7 @@ func TestHookCodexSessionStartNoRootSilent(t *testing.T) {
 	}
 }
 
-func TestHookCodexSubagentUsageReportsExactChildTotal(t *testing.T) {
+func TestHookCodexSubagentUsageReportsExactChildTotalOrDelta(t *testing.T) {
 	codexHome := t.TempDir()
 	sessions := filepath.Join(codexHome, "sessions")
 	if err := os.MkdirAll(sessions, 0o755); err != nil {
@@ -234,17 +234,28 @@ func TestHookCodexSubagentUsageReportsExactChildTotal(t *testing.T) {
 	}
 	t.Setenv("CODEX_HOME", codexHome)
 
-	env, stdout, stderr := testEnv(t)
-	env.Stdin = strings.NewReader(`{"parent_thread_id":"parent","task_identity":"/root/task"}`)
-	if code := Run([]string{"hook", "codex", "subagent-usage"}, env); code != ExitOK {
-		t.Fatalf("exit = %d, want %d (stderr %q)", code, ExitOK, stderr.String())
-	}
-	var got codexSubagentUsageResponse
-	if err := json.Unmarshal(stdout.Bytes(), &got); err != nil {
-		t.Fatalf("decode stdout %q: %v", stdout.String(), err)
-	}
-	if got.TotalTokens == nil || *got.TotalTokens != 782763 {
-		t.Errorf("total_tokens = %v, want 782763", got.TotalTokens)
+	for _, tc := range []struct {
+		name    string
+		request string
+		want    int64
+	}{
+		{name: "initial total", request: `{"parent_thread_id":"parent","task_identity":"/root/task"}`, want: 782763},
+		{name: "resume delta", request: `{"parent_thread_id":"parent","task_identity":"/root/task","previous_total_tokens":782000}`, want: 763},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			env, stdout, stderr := testEnv(t)
+			env.Stdin = strings.NewReader(tc.request)
+			if code := Run([]string{"hook", "codex", "subagent-usage"}, env); code != ExitOK {
+				t.Fatalf("exit = %d, want %d (stderr %q)", code, ExitOK, stderr.String())
+			}
+			var got codexSubagentUsageResponse
+			if err := json.Unmarshal(stdout.Bytes(), &got); err != nil {
+				t.Fatalf("decode stdout %q: %v", stdout.String(), err)
+			}
+			if got.TotalTokens == nil || *got.TotalTokens != tc.want {
+				t.Errorf("total_tokens = %v, want %d", got.TotalTokens, tc.want)
+			}
+		})
 	}
 }
 
