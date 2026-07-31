@@ -43,8 +43,13 @@
         {
           "value": "high",
           "label": "High"
+        },
+        {
+          "value": "xhigh",
+          "label": "Extra high"
         }
       ],
+      "free_text": true,
       "default": "medium"
     }
   ]

@@ -86,6 +86,24 @@ func TestMaterializeFreeTextModelRejectsWhitespace(t *testing.T) {
 	}
 }
 
+// TestMaterializeRejectsOutOfDomainFreeTextEffort proves issue #124
+// criterion 4: an effort value the effort question's FreeText escape
+// hatch admits past question.ValidateAnswer, but internal/config would
+// reject for that host, never materializes into a config.Config —
+// materialize's own Render/Parse round-trip catches it, naming the
+// host's full accepted domain (effortList) in the returned error.
+func TestMaterializeRejectsOutOfDomainFreeTextEffort(t *testing.T) {
+	answers := fullAnswers()
+	answers[roleEffortID("codex", "architect")] = "minimal"
+	_, err := materialize(answers)
+	if err == nil {
+		t.Fatal("materialize succeeded, want an error for codex effort=minimal")
+	}
+	if !strings.Contains(err.Error(), "low, medium, high, xhigh, max, ultra") {
+		t.Errorf("error %q does not name codex's full accepted effort domain", err)
+	}
+}
+
 func TestMaterializeConcurrency(t *testing.T) {
 	tests := []struct {
 		value   string

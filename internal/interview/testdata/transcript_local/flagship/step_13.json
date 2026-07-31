@@ -43,8 +43,13 @@
           "value": "high",
           "label": "High (committed)",
           "recommended": true
+        },
+        {
+          "value": "xhigh",
+          "label": "Extra high"
         }
       ],
+      "free_text": true,
       "default": "high"
     }
   ]

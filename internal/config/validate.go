@@ -11,10 +11,13 @@ var mergeStrategies = map[string]bool{"squash": true, "rebase": true, "merge-com
 var memhubModes = map[string]bool{"required": true, "best-effort": true, "off": true}
 
 // effortsByHost lists the reasoning-effort levels each host accepts
-// (PRD §10 model tables).
+// (PRD §10 model tables; Codex CLI ReasoningEffort wire tokens,
+// lowercase, no separators). "none" and "minimal" exist in the Codex
+// enum but are deliberately excluded: no orch role should route below
+// low.
 var effortsByHost = map[string]map[string]bool{
-	"codex":  {"low": true, "medium": true, "high": true},
-	"claude": {"low": true, "medium": true, "high": true, "xhigh": true},
+	"codex":  {"low": true, "medium": true, "high": true, "xhigh": true, "max": true, "ultra": true},
+	"claude": {"low": true, "medium": true, "high": true, "xhigh": true, "max": true},
 }
 
 // validate collects every violation and reports them together in one
@@ -82,7 +85,7 @@ func validateHost(name string, h *Host, fail func(string, ...any)) {
 
 func effortList(host string) string {
 	if host == "claude" {
-		return "low, medium, high, xhigh"
+		return "low, medium, high, xhigh, max"
 	}
-	return "low, medium, high"
+	return "low, medium, high, xhigh, max, ultra"
 }

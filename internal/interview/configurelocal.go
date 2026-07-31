@@ -498,12 +498,13 @@ func localRoleDocSpecs(host string, committed *config.Config, seeded map[string]
 			Default:  effectiveModel,
 		}
 		effortQ := question.Question{
-			ID:      effortKey,
-			Header:  rs.header,
-			Prompt:  fmt.Sprintf("%s reasoning effort (%s)", rs.label, hostLabel),
-			Kind:    question.KindSelect,
-			Options: effortOptionsLocal(host, cp.Effort, effectiveEffort),
-			Default: effectiveEffort,
+			ID:       effortKey,
+			Header:   rs.header,
+			Prompt:   fmt.Sprintf("%s reasoning effort (%s)", rs.label, hostLabel),
+			Kind:     question.KindSelect,
+			Options:  effortOptionsLocal(host, cp.Effort, effectiveEffort),
+			FreeText: true,
+			Default:  effectiveEffort,
 		}
 		docs = append(docs, docSpec{questions: []question.Question{modelQ, effortQ}})
 	}
@@ -526,11 +527,14 @@ func modelOptionsLocal(host, committedVal, effectiveVal string) []question.Optio
 	return opts
 }
 
-// effortOptionsLocal lists host's closed effort enum, marking
-// committedVal's option "(committed)" in its Label and effectiveVal
-// Recommended.
+// effortOptionsLocal lists host's offered effort subset
+// (effortsOffered), marking committedVal's option "(committed)" in its
+// Label and effectiveVal Recommended. Neither value need be among
+// these options — the question's FreeText escape hatch admits any
+// other value in host's full effort enum (hostEfforts), validated by
+// validEffort wherever a typed value is ingested.
 func effortOptionsLocal(host, committedVal, effectiveVal string) []question.Option {
-	efforts := hostEfforts[host]
+	efforts := effortsOffered(host)
 	opts := make([]question.Option, len(efforts))
 	for i, e := range efforts {
 		label := effortLabel(e)

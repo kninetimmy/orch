@@ -107,11 +107,36 @@ var hostModels = map[string][]string{
 	"claude": {"claude-opus-5", "claude-sonnet-5"},
 }
 
-// hostEfforts lists each host's closed effort enum, in the same order
-// validate.go's effortList documents.
+// hostEfforts lists each host's full closed effort enum — every value
+// internal/config's effortsByHost accepts for that host, in the same
+// order validate.go's effortList documents — not just the subset
+// offered as literal select options (effortsOffered). validEffort
+// (configurelocal.go) checks a typed value against this full list, so
+// it stays the single full-domain source of truth the interview owns.
 var hostEfforts = map[string][]string{
-	"codex":  {"low", "medium", "high"},
-	"claude": {"low", "medium", "high", "xhigh"},
+	"codex":  {"low", "medium", "high", "xhigh", "max", "ultra"},
+	"claude": {"low", "medium", "high", "xhigh", "max"},
+}
+
+// maxOfferedEfforts is the largest number of effort levels offered as
+// literal select options — question.SpecCheck's 2-4-option cap (a hard
+// ceiling mirroring the hosts' native dialog limits) leaves headroom
+// for the FreeText escape hatch to cover the rest.
+const maxOfferedEfforts = 4
+
+// effortsOffered returns the leading maxOfferedEfforts values of
+// host's full effort enum (hostEfforts) — the subset an effort
+// question offers as literal Options. Every level hostEfforts lists
+// beyond this subset remains expressible only through that question's
+// FreeText escape hatch, validated against hostEfforts' full domain
+// wherever a typed value is ingested (validEffort, and internal/config's
+// own Parse/RenderLocal round-trip checks).
+func effortsOffered(host string) []string {
+	efforts := hostEfforts[host]
+	if len(efforts) > maxOfferedEfforts {
+		return efforts[:maxOfferedEfforts]
+	}
+	return efforts
 }
 
 // hostLabels is each host key's human-readable display name.
@@ -242,12 +267,13 @@ func roleDocSpecs(host string, showExplain bool, defaults func(string) profile) 
 		}
 
 		effortQ := question.Question{
-			ID:      roleEffortID(host, rs.key),
-			Header:  rs.header,
-			Prompt:  fmt.Sprintf("%s reasoning effort (%s)", rs.label, hostLabel),
-			Kind:    question.KindSelect,
-			Options: effortOptions(host, def.effort),
-			Default: def.effort,
+			ID:       roleEffortID(host, rs.key),
+			Header:   rs.header,
+			Prompt:   fmt.Sprintf("%s reasoning effort (%s)", rs.label, hostLabel),
+			Kind:     question.KindSelect,
+			Options:  effortOptions(host, def.effort),
+			FreeText: true,
+			Default:  def.effort,
 		}
 
 		docs = append(docs, docSpec{questions: []question.Question{modelQ, effortQ}})
@@ -266,10 +292,13 @@ func modelOptions(host, def string) []question.Option {
 	return opts
 }
 
-// effortOptions lists host's closed effort enum, marking def as
-// Recommended.
+// effortOptions lists host's offered effort subset (effortsOffered),
+// marking def as Recommended. def need not be among these options —
+// the question's FreeText escape hatch admits any other value in
+// host's full effort enum (hostEfforts); SpecCheck permits a Default
+// outside Options exactly when FreeText is set.
 func effortOptions(host, def string) []question.Option {
-	efforts := hostEfforts[host]
+	efforts := effortsOffered(host)
 	opts := make([]question.Option, len(efforts))
 	for i, e := range efforts {
 		opts[i] = question.Option{Value: e, Label: effortLabel(e), Recommended: e == def}
