@@ -54,7 +54,7 @@ The payoff: cheap, fast models handle read-only exploration and mechanical work,
 | Reviewer | Reviews the pull request in a separate dispatch from the one that wrote it |
 | Review downgrade | A cheaper reviewer, allowed only when the plan affirms all four of mechanical, low-risk, fully specified, unsurprising |
 
-Which role gets an issue is derived from the issue's own facts by a deterministic table, not chosen by the model that will run it. The reviewer is always a separate dispatch and never the session that wrote the code, but it is often not a different model: the shipped defaults put the specialist and the reviewer on one model, and the implementer and the downgraded reviewer on another. Any specialist run and any downgraded review therefore has the same model on both sides. For a specialist run the effort matches too, on either host; only a Claude downgrade drops it.
+Which role gets an issue is derived from the issue's own facts by a deterministic table, not chosen by the model that will run it. The reviewer is always a separate dispatch and never the session that wrote the code, but under the shipped defaults it is often not a different model: on Claude every role runs `claude-opus-5`, so both sides always match; on Codex the specialist and the reviewer share `gpt-5.6-sol` while the implementer runs `gpt-5.6-terra` and the downgraded reviewer `gpt-5.6-sol`, so a specialist run has the same model on both sides but a downgraded review pairs different ones. Effort is where the hosts diverge: a specialist run's reviewer matches the specialist's effort on Claude (high on both) but not on Codex (max executor, xhigh reviewer), and a downgraded review drops effort below the implementer's on Codex (max to high) but not on Claude (medium on both).
 
 **The guard.** None of the above is an instruction the agent is asked to honor. Both host adapters wire the CLI's pre-write hook to `orch guard`, a subcommand of the same binary, which is consulted before the agent writes a file and answers allow or deny. In Assist it denies every write to a file git does not ignore. In Delivery it allows a write only inside a worktree registered to the running plan, on that worktree's registered branch, in a phase where writing is allowed. Git internals are never writable, and neither is the orchestrator state your session is running against. It fails closed: anything it cannot establish is a denial. What it enforces is containment — it cannot tell which role is writing, and a file written by a shell command never reaches it at all (see [Known issues](#known-issues-and-limitations)).
 
@@ -314,7 +314,7 @@ local override can never weaken a shared workflow rule.
 |---|---|---|
 | `hosts.claude` / `hosts.codex` | enable a host by giving it a role table | no (committed) |
 | `hosts.<host>.roles.<role>.model` | exact model version string | yes |
-| `hosts.<host>.roles.<role>.effort` | `low` `medium` `high` (+ `xhigh` on claude) | yes |
+| `hosts.<host>.roles.<role>.effort` | `low` `medium` `high` `xhigh` `max` (+ `ultra` on codex) | yes |
 | `concurrency.max_subagents` | integer ≥ 1 (`3`) | yes |
 | `metrics.enabled` | `true` / `false` (`false` when omitted) | yes |
 | `merge.strategy` | `squash` `rebase` `merge-commit` (`squash`) | no (committed) |
