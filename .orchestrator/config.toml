@@ -3,7 +3,7 @@
 # a Delivery PR.
 
 schema_version  = 1
-config_revision = "sha256:dd23c00b6bd5"
+config_revision = "sha256:ed9116916df7"
 
 [concurrency]
 max_subagents = 3
@@ -22,24 +22,24 @@ model  = "claude-fable-5"
 effort = "high"
 
 [hosts.claude.roles.scout]
-model  = "claude-sonnet-5"
-effort = "medium"
+model  = "claude-opus-5"
+effort = "low"
 
 [hosts.claude.roles.implementer]
-model  = "claude-sonnet-5"
-effort = "xhigh"
+model  = "claude-opus-5"
+effort = "medium"
 
 [hosts.claude.roles.specialist]
 model  = "claude-opus-5"
-effort = "xhigh"
+effort = "high"
 
 [hosts.claude.roles.reviewer]
 model  = "claude-opus-5"
-effort = "xhigh"
+effort = "high"
 
 [hosts.claude.roles.review_downgrade]
-model  = "claude-sonnet-5"
-effort = "high"
+model  = "claude-opus-5"
+effort = "medium"
 
 [hosts.codex.roles.architect]
 model  = "gpt-5.6-sol"
@@ -47,7 +47,7 @@ effort = "high"
 
 [hosts.codex.roles.scout]
 model  = "gpt-5.6-terra"
-effort = "low"
+effort = "high"
 
 [hosts.codex.roles.implementer]
 model  = "gpt-5.6-terra"
@@ -55,12 +55,12 @@ effort = "high"
 
 [hosts.codex.roles.specialist]
 model  = "gpt-5.6-sol"
-effort = "medium"
+effort = "high"
 
 [hosts.codex.roles.reviewer]
 model  = "gpt-5.6-sol"
-effort = "medium"
+effort = "high"
 
 [hosts.codex.roles.review_downgrade]
-model  = "gpt-5.6-terra"
-effort = "high"
+model  = "gpt-5.6-sol"
+effort = "medium"
