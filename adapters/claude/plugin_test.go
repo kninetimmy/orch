@@ -215,10 +215,11 @@ type agentSpec struct {
 // agentRoster is the full five-agent Claude profile this plugin ships.
 // Profile("claude") also carries a "reviewer-safe" entry, matched here by
 // orch-reviewer-safe: Claude Code's Task tool model parameter only takes
-// coarse tier aliases (sonnet/opus/haiku/fable), not an exact version
-// string, so a per-spawn override cannot pin claude-sonnet-5 for the
-// §10 safe-downgrade review — only an installed agent's frontmatter
-// can, which is why this fifth agent exists.
+// coarse tier aliases (sonnet/opus/haiku/fable), not a distinct effort or
+// prompt for the same model, so a per-spawn override cannot hold
+// claude-opus-5 at the §10 safe-downgrade's own effort and instructions
+// alongside the full reviewer's pin — only an installed agent's
+// frontmatter and prompt can, which is why this fifth agent exists.
 var agentRoster = map[string]agentSpec{
 	"orch-scout":         {tools: []string{"Read", "Grep", "Glob", "WebFetch", "WebSearch"}},
 	"orch-implementer":   {tools: []string{"Read", "Grep", "Glob", "Edit", "Write", "NotebookEdit", "Bash"}},

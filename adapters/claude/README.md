@@ -63,11 +63,12 @@ never re-derives a decision the engine already made.
   carries `Task` or any `mcp__` tool). `orch-reviewer-safe` is the §10
   safe-review downgrade encoding: Claude Code's Task tool `model` parameter
   only takes coarse tier aliases (`sonnet`/`opus`/`haiku`/`fable`),
-  not an exact version string, so the downgrade the engine computes
-  for a mechanical/low-risk/fully-specified/unsurprising issue has to
-  be an installed agent definition of its own — only its frontmatter
-  can pin `claude-sonnet-5` exactly — spawned by name exactly like
-  `orch-reviewer`.
+  not a distinct effort or prompt for the same model, so the downgrade
+  the engine computes for a mechanical/low-risk/fully-specified/
+  unsurprising issue has to be an installed agent definition of its
+  own — only its frontmatter and prompt can hold `claude-opus-5` at
+  `medium` effort alongside the full reviewer's own pin — spawned by
+  name exactly like `orch-reviewer`.
 
 ## Install order
 
