@@ -254,8 +254,8 @@ func printRunSummary(w io.Writer, s runSummary) {
 	}
 
 	if s.usageEvents > 0 {
-		fmt.Fprintf(w, "usage:       input %d, output %d, cache read %d, cache creation %d, duration %dms\n",
-			s.usage.InputTokens, s.usage.OutputTokens, s.usage.CacheReadTokens, s.usage.CacheCreationTokens, s.usage.DurationMS)
+		fmt.Fprintf(w, "usage:       input %d, output %d, cache read %d, cache creation %d, total %d, duration %dms\n",
+			s.usage.InputTokens, s.usage.OutputTokens, s.usage.CacheReadTokens, s.usage.CacheCreationTokens, s.usage.TotalTokens, s.usage.DurationMS)
 		fmt.Fprintf(w, "             usage reported on %d of %d events\n", s.usageEvents, s.eventCount)
 		printUsageDetail(w, s.usageDetail)
 	}

@@ -67,7 +67,7 @@ func TestMetricsSummarizesFixtureRun(t *testing.T) {
 	env, stdout, _ := testEnv(t)
 	writeConfig(t, env.RepoRoot, validTOML)
 
-	usage := &metrics.Usage{InputTokens: 100, OutputTokens: 40, CacheReadTokens: 5, CacheCreationTokens: 2, DurationMS: 300}
+	usage := &metrics.Usage{InputTokens: 100, OutputTokens: 40, CacheReadTokens: 5, CacheCreationTokens: 2, TotalTokens: 147, DurationMS: 300}
 	doc := metrics.Document{
 		SchemaVersion: metrics.SchemaVersion,
 		RunID:         "run-20260713T000000Z-aaaaaaaa",
@@ -96,7 +96,7 @@ func TestMetricsSummarizesFixtureRun(t *testing.T) {
 		"escalations: 0",
 		"reviews:     1 cycles; first-pass approve: 1 of 1 reviewed issues",
 		"ci:          passing: 1",
-		"usage:       input 100, output 40, cache read 5, cache creation 2, duration 300ms",
+		"usage:       input 100, output 40, cache read 5, cache creation 2, total 147, duration 300ms",
 		"usage reported on 1 of 7 events",
 	} {
 		if !strings.Contains(out, want) {
