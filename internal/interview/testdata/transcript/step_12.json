@@ -20,6 +20,10 @@
         {
           "value": "gpt-5.6-terra",
           "label": "gpt-5.6-terra"
+        },
+        {
+          "value": "gpt-5.6-luna",
+          "label": "gpt-5.6-luna"
         }
       ],
       "free_text": true,
@@ -37,8 +41,7 @@
         },
         {
           "value": "medium",
-          "label": "Medium",
-          "recommended": true
+          "label": "Medium"
         },
         {
           "value": "high",
@@ -46,11 +49,12 @@
         },
         {
           "value": "xhigh",
-          "label": "Extra high"
+          "label": "Extra high",
+          "recommended": true
         }
       ],
       "free_text": true,
-      "default": "medium"
+      "default": "xhigh"
     }
   ]
 }

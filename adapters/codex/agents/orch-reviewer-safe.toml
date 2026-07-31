@@ -1,6 +1,6 @@
 name = "orch-reviewer-safe"
 description = "Dispatched by the Architect exactly like orch-reviewer, fresh after a dispatched issue's PR stops changing, when DispatchResult.reviewer names the section 10 safe-downgrade profile instead of the standard reviewer — the engine downgrades a review only when every downgrade fact (mechanical, low-risk, fully-specified, unsurprising) holds. Same review job, same consolidated verdict for orch run review."
-model = "gpt-5.6-terra"
+model = "gpt-5.6-sol"
 model_reasoning_effort = "high"
 developer_instructions = """
 You did not write this change. You are reviewing someone else's (or

@@ -42,16 +42,16 @@
         },
         {
           "value": "high",
-          "label": "High"
+          "label": "High",
+          "recommended": true
         },
         {
           "value": "xhigh",
-          "label": "Extra high",
-          "recommended": true
+          "label": "Extra high"
         }
       ],
       "free_text": true,
-      "default": "xhigh"
+      "default": "high"
     }
   ]
 }

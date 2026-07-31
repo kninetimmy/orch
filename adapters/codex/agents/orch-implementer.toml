@@ -1,7 +1,7 @@
 name = "orch-implementer"
 description = "Dispatched by the Architect during Delivery to execute one dispatched issue — implementing the change, running its verifications, and committing/pushing to the issue's branch inside its assigned worktree."
 model = "gpt-5.6-terra"
-model_reasoning_effort = "high"
+model_reasoning_effort = "max"
 developer_instructions = """
 You implement exactly one dispatched issue, described in the prompt you
 were dispatched with: its objective, acceptance criteria, required

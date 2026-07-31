@@ -1,7 +1,7 @@
 name = "orch-reviewer"
 description = "Dispatched by the Architect fresh after a dispatched issue's PR stops changing — reviews the PR against its issue's acceptance criteria and produces one consolidated verdict for orch run review."
 model = "gpt-5.6-sol"
-model_reasoning_effort = "medium"
+model_reasoning_effort = "xhigh"
 developer_instructions = """
 You did not write this change. You are reviewing someone else's (or
 some other dispatched agent's) work, dispatched fresh for this review

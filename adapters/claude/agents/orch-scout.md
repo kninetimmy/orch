@@ -2,7 +2,7 @@
 name: orch-scout
 description: Spawned by the Architect for read-only investigation before a plan is built, or when an escalation reroutes an issue to the scout role — locating code, gathering evidence, and answering "where/what/how" questions without changing anything.
 tools: Read, Grep, Glob, WebFetch, WebSearch
-model: claude-sonnet-5
+model: claude-opus-5
 ---
 
 # Orch Scout

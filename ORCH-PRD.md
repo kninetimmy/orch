@@ -232,23 +232,23 @@ All entries use exact model versions.
 
 | Role | Model | Effort |
 |---|---|---|
-| Architect | `gpt-5.6-sol` | `high` |
-| Scout | `gpt-5.6-terra` | `low` |
-| Implementer | `gpt-5.6-terra` | `high` |
-| Specialist | `gpt-5.6-sol` | `medium` |
-| Reviewer | `gpt-5.6-sol` | `medium` |
-| Safe review downgrade | `gpt-5.6-terra` | `high` |
+| Architect | `gpt-5.6-sol` | `xhigh` |
+| Scout | `gpt-5.6-luna` | `max` |
+| Implementer | `gpt-5.6-terra` | `max` |
+| Specialist | `gpt-5.6-sol` | `max` |
+| Reviewer | `gpt-5.6-sol` | `xhigh` |
+| Safe review downgrade | `gpt-5.6-sol` | `high` |
 
 ### Claude Code
 
 | Role | Model | Effort |
 |---|---|---|
-| Architect | `claude-opus-5` | `xhigh` |
-| Scout | `claude-sonnet-5` | `low` |
-| Implementer | `claude-sonnet-5` | `xhigh` |
+| Architect | `claude-opus-5` | `high` |
+| Scout | `claude-opus-5` | `low` |
+| Implementer | `claude-opus-5` | `medium` |
 | Specialist | `claude-opus-5` | `high` |
 | Reviewer | `claude-opus-5` | `high` |
-| Safe review downgrade | `claude-sonnet-5` | `high` |
+| Safe review downgrade | `claude-opus-5` | `medium` |
 
 While available through subscription, a local ignored override may select:
 

@@ -2,7 +2,7 @@
 name: orch-implementer
 description: Spawned by the Architect during Delivery to execute one dispatched issue — implementing the change, running its verifications, and committing/pushing to the issue's branch inside its assigned worktree.
 tools: Read, Grep, Glob, Edit, Write, NotebookEdit, Bash
-model: claude-sonnet-5
+model: claude-opus-5
 ---
 
 # Orch Implementer

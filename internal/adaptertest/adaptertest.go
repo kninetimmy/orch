@@ -61,19 +61,19 @@ func Profile(host string) map[string]RoleSpec {
 	switch host {
 	case "claude":
 		return map[string]RoleSpec{
-			"scout":         {Model: "claude-sonnet-5", Effort: "low"},
-			"implementer":   {Model: "claude-sonnet-5", Effort: "xhigh"},
+			"scout":         {Model: "claude-opus-5", Effort: "low"},
+			"implementer":   {Model: "claude-opus-5", Effort: "medium"},
 			"specialist":    {Model: "claude-opus-5", Effort: "high"},
 			"reviewer":      {Model: "claude-opus-5", Effort: "high"},
-			"reviewer-safe": {Model: "claude-sonnet-5", Effort: "high"},
+			"reviewer-safe": {Model: "claude-opus-5", Effort: "medium"},
 		}
 	case "codex":
 		return map[string]RoleSpec{
-			"scout":         {Model: "gpt-5.6-terra", Effort: "low"},
-			"implementer":   {Model: "gpt-5.6-terra", Effort: "high"},
-			"specialist":    {Model: "gpt-5.6-sol", Effort: "medium"},
-			"reviewer":      {Model: "gpt-5.6-sol", Effort: "medium"},
-			"reviewer-safe": {Model: "gpt-5.6-terra", Effort: "high"},
+			"scout":         {Model: "gpt-5.6-luna", Effort: "max"},
+			"implementer":   {Model: "gpt-5.6-terra", Effort: "max"},
+			"specialist":    {Model: "gpt-5.6-sol", Effort: "max"},
+			"reviewer":      {Model: "gpt-5.6-sol", Effort: "xhigh"},
+			"reviewer-safe": {Model: "gpt-5.6-sol", Effort: "high"},
 		}
 	default:
 		panic("adaptertest: unknown host " + host)
