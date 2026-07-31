@@ -86,7 +86,12 @@ type sessionMeta struct {
 type subagentSource struct {
 	Subagent struct {
 		ThreadSpawn struct {
-			ParentThreadID string `json:"parent_thread_id"`
+			ParentThreadID string  `json:"parent_thread_id"`
+			Depth          *int32  `json:"depth"`
+			AgentPath      *string `json:"agent_path"`
+			AgentNickname  *string `json:"agent_nickname"`
+			AgentRole      *string `json:"agent_role"`
+			AgentType      *string `json:"agent_type"`
 		} `json:"thread_spawn"`
 	} `json:"subagent"`
 }
@@ -134,7 +139,13 @@ func rolloutTotal(path, parentThreadID, taskIdentity string) (int64, bool, bool,
 			if err := json.Unmarshal(current.Payload, &meta); err != nil {
 				return 0, false, false, err
 			}
+			if !validSessionMeta(meta) {
+				return 0, false, false, errInvalidRollout
+			}
 			matched = matches(meta, parentThreadID, taskIdentity)
+			if !matched {
+				return 0, false, false, nil
+			}
 			continue
 		}
 		if matched {
@@ -145,12 +156,126 @@ func rolloutTotal(path, parentThreadID, taskIdentity string) (int64, bool, bool,
 	if err := scanner.Err(); err != nil {
 		return 0, false, false, err
 	}
+	if !seenMeta {
+		return 0, false, false, errInvalidRollout
+	}
 	if !matched {
 		return 0, false, false, nil
 	}
 
 	total, valid := finalTotal(previous, last)
 	return total, true, valid, nil
+}
+
+func validSessionMeta(meta sessionMeta) bool {
+	sourceParent, threadSpawn, valid := parseSessionSource(meta.Source)
+	if meta.ID == "" || !valid {
+		return false
+	}
+	if !threadSpawn {
+		return true
+	}
+	return meta.ThreadSource == "subagent" &&
+		meta.SessionID != "" &&
+		meta.ParentThreadID != "" &&
+		meta.AgentPath != "" &&
+		meta.ID != meta.SessionID &&
+		meta.SessionID == meta.ParentThreadID &&
+		meta.ParentThreadID == sourceParent
+}
+
+func parseSessionSource(raw json.RawMessage) (string, bool, bool) {
+	if len(raw) == 0 {
+		return "", false, true
+	}
+
+	var source any
+	if err := json.Unmarshal(raw, &source); err != nil {
+		return "", false, false
+	}
+	switch source := source.(type) {
+	case string:
+		switch source {
+		case "custom", "internal", "subagent":
+			return "", false, false
+		default:
+			return "", false, true
+		}
+	case map[string]any:
+		if len(source) != 1 {
+			return "", false, false
+		}
+		for kind, payload := range source {
+			switch kind {
+			case "custom":
+				_, valid := payload.(string)
+				return "", false, valid
+			case "internal":
+				internal, valid := payload.(string)
+				return "", false, valid && internal == "memory_consolidation"
+			case "subagent":
+				switch payload := payload.(type) {
+				case string:
+					return "", false, payload == "review" ||
+						payload == "compact" ||
+						payload == "memory_consolidation"
+				case map[string]any:
+					if len(payload) != 1 {
+						return "", false, false
+					}
+					if other, ok := payload["other"]; ok {
+						_, valid := other.(string)
+						return "", false, valid
+					}
+					spawn, ok := payload["thread_spawn"].(map[string]any)
+					if !ok {
+						return "", false, false
+					}
+					_, hasAgentRole := spawn["agent_role"]
+					_, hasAgentType := spawn["agent_type"]
+					if hasAgentRole && hasAgentType {
+						return "", false, false
+					}
+
+					var typed subagentSource
+					if err := json.Unmarshal(raw, &typed); err != nil {
+						return "", false, false
+					}
+					threadSpawn := typed.Subagent.ThreadSpawn
+					if threadSpawn.ParentThreadID == "" || threadSpawn.Depth == nil {
+						return "", false, false
+					}
+					if threadSpawn.AgentPath != nil && !validAgentPath(*threadSpawn.AgentPath) {
+						return "", false, false
+					}
+					return threadSpawn.ParentThreadID, true, true
+				}
+			}
+		}
+	}
+	return "", false, false
+}
+
+func validAgentPath(path string) bool {
+	if path == "/morpheus" || path == "/root" {
+		return true
+	}
+	if !strings.HasPrefix(path, "/root/") || strings.HasSuffix(path, "/") {
+		return false
+	}
+	for _, segment := range strings.Split(strings.TrimPrefix(path, "/root/"), "/") {
+		if segment == "" || segment == "root" || segment == "." || segment == ".." {
+			return false
+		}
+		for _, char := range segment {
+			if (char < 'a' || char > 'z') &&
+				(char < '0' || char > '9') &&
+				char != '_' {
+				return false
+			}
+		}
+	}
+	return true
 }
 
 func matches(meta sessionMeta, parentThreadID, taskIdentity string) bool {

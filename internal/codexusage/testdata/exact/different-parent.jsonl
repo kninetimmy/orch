@@ -1,3 +1,3 @@
-{"type":"session_meta","payload":{"id":"other-executor","session_id":"other-parent","parent_thread_id":"other-parent","thread_source":"subagent","agent_path":"/root/issue_139_executor","source":{"subagent":{"thread_spawn":{"parent_thread_id":"other-parent"}}}}}
+{"type":"session_meta","payload":{"id":"other-executor","session_id":"other-parent","parent_thread_id":"other-parent","thread_source":"subagent","agent_path":"/root/issue_139_executor","source":{"subagent":{"thread_spawn":{"parent_thread_id":"other-parent","depth":1}}}}}
 {"type":"event_msg","payload":{"type":"token_count","info":{"total_token_usage":{"total_tokens":444444}}}}
 {"type":"event_msg","payload":{"type":"task_complete"}}
