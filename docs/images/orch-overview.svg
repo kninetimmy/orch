@@ -50,7 +50,7 @@
   <line x1="280" y1="124" x2="248" y2="124" stroke="#19e3ff" stroke-width="1.4"
         stroke-dasharray="4,3" opacity="0.5" marker-end="url(#oa-right-cyan-dim)"/>
   <text x="264" y="139" text-anchor="middle"
-        font-family="ui-sans-serif,system-ui,sans-serif" font-size="9.5" fill="#19e3ff" opacity="0.5">context</text>
+        font-family="ui-sans-serif,system-ui,sans-serif" font-size="9.5" fill="#19e3ff" opacity="0.5">ctx</text>
 
   <!-- ═══════════════════════════════════════════════════════ -->
   <!-- MIDDLE BOX: orch                                        -->

@@ -1,6 +1,6 @@
 # Orch
 
-*Your coding agent doesn't choose its own model, and it doesn't write outside the box you gave it.*
+*Your coding agent doesn't choose its own model, and it puts mechanical bounds on what it may write.*
 
 <p align="center">
   <img src="https://img.shields.io/badge/License-MIT-2E7D32?style=flat&logo=opensourceinitiative&logoColor=white" alt="License: MIT"/>
@@ -29,13 +29,13 @@ The payoff: cheap, fast models handle read-only exploration and mechanical work,
 
 ## What you actually get
 
-- **Nothing writes by default.** Assist mode mechanically denies every write to a file git does not ignore — not a convention the agent is asked to honor, but a decision `orch guard` makes before the write happens.
+- **Read-only by default.** Assist mode mechanically denies every write to a file git does not ignore — not a convention the agent is asked to honor, but a decision `orch guard` makes before the write happens.
 - **You route the model, not the agent.** Six roles — architect, scout, implementer, specialist, reviewer, and a cheaper review downgrade — each pin an exact model version and effort level you choose, so a cheap model handles read-only work and a frontier model is spent only where the plan calls for it.
 - **Every issue gets its own worktree.** Delivery work happens on its own branch, in its own isolated git worktree, never in your primary checkout.
 - **A separate dispatch reviews the work.** The pull request is reviewed in a dispatch separate from the one that wrote it — never the same run marking its own homework.
 - **You hold the merge gate.** Nothing lands on your default branch until you approve it, and the merge fails closed if the pull request moved after your approval.
 - **Every issue and PR carries an audit record.** The exact model, the effort, how the host actually delivered that effort, and the routing rationale are recorded on the issue and mirrored onto its pull request.
-- **Works with the CLI you already use.** Claude Code and Codex CLI are both first-class hosts, so you keep working in the agent you already have.
+- **Works with the CLI you already use.** Orch works with both [Claude Code](adapters/claude/README.md) and [Codex CLI](adapters/codex/README.md), so you keep working in the agent you already have.
 
 ---
 
@@ -497,8 +497,9 @@ next release rather than the current one.
 - Worktree containment no longer fails open on a `.gitignore` whose
   blank line survives as an empty pattern — a CRLF blank line, or a
   whitespace-only line under LF — because `RequireIgnored` now queries
-  a concrete sentinel path instead of a bare trailing-slash directory
-  query, and an empty pattern can never match a non-empty basename —
+  two structurally dissimilar child probe paths and requires both to
+  come back ignored, instead of a bare trailing-slash directory query,
+  and an empty pattern can never match a non-empty basename —
   [#106](https://github.com/kninetimmy/orch/pull/106)
 - The metrics ignore line in `.gitignore` is now proposed
   unconditionally instead of only when metrics is enabled, closing a
