@@ -26,6 +26,51 @@ func TestTotalTokensSelectsOnlyExactCompletedChild(t *testing.T) {
 	}
 }
 
+func TestTotalTokensIsolatesOnlyIdentifiedNonMatchingCorruption(t *testing.T) {
+	exact, err := os.ReadFile(filepath.Join(fixture(t, "exact"), "executor.jsonl"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	unrelated, err := os.ReadFile(filepath.Join(fixture(t, "exact"), "sibling.jsonl"))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	for _, tc := range []struct {
+		name  string
+		other []byte
+		ok    bool
+	}{
+		{
+			name:  "identified unrelated rollout",
+			other: append(unrelated, []byte("this is not json\n")...),
+			ok:    true,
+		},
+		{
+			name:  "unidentified rollout",
+			other: []byte("{\"type\":\"session_meta\",\"payload\":{}}\nthis is not json\n"),
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			dir := t.TempDir()
+			if err := os.WriteFile(filepath.Join(dir, "exact.jsonl"), exact, 0o644); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.WriteFile(filepath.Join(dir, "other.jsonl"), tc.other, 0o644); err != nil {
+				t.Fatal(err)
+			}
+
+			got, ok := TotalTokens(dir, parentThread, executorTask, nil)
+			if ok != tc.ok {
+				t.Fatalf("TotalTokens availability = %t, want %t", ok, tc.ok)
+			}
+			if ok && got != 782763 {
+				t.Errorf("total_tokens = %d, want 782763", got)
+			}
+		})
+	}
+}
+
 func TestTotalTokensReturnsExactResumeDelta(t *testing.T) {
 	for _, tc := range []struct {
 		name     string

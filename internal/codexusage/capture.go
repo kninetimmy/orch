@@ -134,7 +134,13 @@ func rolloutTotal(path, parentThreadID, taskIdentity string) (int64, bool, bool,
 			if err := json.Unmarshal(current.Payload, &meta); err != nil {
 				return 0, false, false, err
 			}
+			if !validSessionMeta(meta) {
+				return 0, false, false, errInvalidRollout
+			}
 			matched = matches(meta, parentThreadID, taskIdentity)
+			if !matched {
+				return 0, false, false, nil
+			}
 			continue
 		}
 		if matched {
@@ -145,12 +151,42 @@ func rolloutTotal(path, parentThreadID, taskIdentity string) (int64, bool, bool,
 	if err := scanner.Err(); err != nil {
 		return 0, false, false, err
 	}
+	if !seenMeta {
+		return 0, false, false, errInvalidRollout
+	}
 	if !matched {
 		return 0, false, false, nil
 	}
 
 	total, valid := finalTotal(previous, last)
 	return total, true, valid, nil
+}
+
+func validSessionMeta(meta sessionMeta) bool {
+	if meta.ID == "" {
+		return false
+	}
+	if meta.ThreadSource != "subagent" {
+		var source string
+		return meta.ParentThreadID == "" &&
+			(meta.AgentPath == "" || meta.AgentPath == "/root") &&
+			(meta.SessionID == "" || meta.SessionID == meta.ID) &&
+			json.Unmarshal(meta.Source, &source) == nil &&
+			source != ""
+	}
+
+	if meta.SessionID == "" ||
+		meta.ParentThreadID == "" ||
+		meta.AgentPath == "" ||
+		meta.ID == meta.SessionID {
+		return false
+	}
+	var source subagentSource
+	if err := json.Unmarshal(meta.Source, &source); err != nil {
+		return false
+	}
+	return meta.SessionID == meta.ParentThreadID &&
+		meta.ParentThreadID == source.Subagent.ThreadSpawn.ParentThreadID
 }
 
 func matches(meta sessionMeta, parentThreadID, taskIdentity string) bool {
