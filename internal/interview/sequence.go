@@ -69,20 +69,20 @@ type profile struct{ model, effort string }
 // PRD table verbatim.
 var defaultProfiles = map[string]map[string]profile{
 	"codex": {
-		"architect":        {"gpt-5.6-sol", "high"},
-		"scout":            {"gpt-5.6-terra", "low"},
-		"implementer":      {"gpt-5.6-terra", "high"},
-		"specialist":       {"gpt-5.6-sol", "medium"},
-		"reviewer":         {"gpt-5.6-sol", "medium"},
-		"review_downgrade": {"gpt-5.6-terra", "high"},
+		"architect":        {"gpt-5.6-sol", "xhigh"},
+		"scout":            {"gpt-5.6-luna", "max"},
+		"implementer":      {"gpt-5.6-terra", "max"},
+		"specialist":       {"gpt-5.6-sol", "max"},
+		"reviewer":         {"gpt-5.6-sol", "xhigh"},
+		"review_downgrade": {"gpt-5.6-sol", "high"},
 	},
 	"claude": {
-		"architect":        {"claude-opus-5", "xhigh"},
-		"scout":            {"claude-sonnet-5", "low"},
-		"implementer":      {"claude-sonnet-5", "xhigh"},
+		"architect":        {"claude-opus-5", "high"},
+		"scout":            {"claude-opus-5", "low"},
+		"implementer":      {"claude-opus-5", "medium"},
 		"specialist":       {"claude-opus-5", "high"},
 		"reviewer":         {"claude-opus-5", "high"},
-		"review_downgrade": {"claude-sonnet-5", "high"},
+		"review_downgrade": {"claude-opus-5", "medium"},
 	},
 }
 
@@ -103,7 +103,7 @@ func defaultProfileFor(host string) func(string) profile {
 // third Claude model (claude-fable-5, PRD §10): the committed
 // configuration this interview writes never defaults to it.
 var hostModels = map[string][]string{
-	"codex":  {"gpt-5.6-sol", "gpt-5.6-terra"},
+	"codex":  {"gpt-5.6-sol", "gpt-5.6-terra", "gpt-5.6-luna"},
 	"claude": {"claude-opus-5", "claude-sonnet-5"},
 }
 

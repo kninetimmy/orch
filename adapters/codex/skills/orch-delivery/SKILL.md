@@ -198,10 +198,10 @@ in flight at once. For each issue:
    never the dispatch-time value once superseded — **must match an
    installed `orch-*` agent TOML exactly**. The installed TOMLs are the
    authority for what that match requires, not this list: by default
-   they pin `orch-scout` gpt-5.6-terra/low, `orch-implementer`
-   gpt-5.6-terra/high, `orch-specialist` gpt-5.6-sol/medium,
-   `orch-reviewer` gpt-5.6-sol/medium, `orch-reviewer-safe`
-   gpt-5.6-terra/high, but a repository that overrides
+   they pin `orch-scout` gpt-5.6-luna/max, `orch-implementer`
+   gpt-5.6-terra/max, `orch-specialist` gpt-5.6-sol/max,
+   `orch-reviewer` gpt-5.6-sol/xhigh, `orch-reviewer-safe`
+   gpt-5.6-sol/high, but a repository that overrides
    `hosts.codex.roles` and re-renders with `orch render-agents` gets
    different pins. **If no installed TOML matches the routed selection,
    stop and tell the human — never dispatch a mismatched agent, and

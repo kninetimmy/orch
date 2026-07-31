@@ -62,12 +62,14 @@ never re-derives a decision the engine already made.
   (scout, reviewer, and reviewer-safe carry no write tool; no agent
   carries `Task` or any `mcp__` tool). `orch-reviewer-safe` is the §10
   safe-review downgrade encoding: Claude Code's Task tool `model` parameter
-  only takes coarse tier aliases (`sonnet`/`opus`/`haiku`/`fable`),
-  not an exact version string, so the downgrade the engine computes
-  for a mechanical/low-risk/fully-specified/unsurprising issue has to
-  be an installed agent definition of its own — only its frontmatter
-  can pin `claude-sonnet-5` exactly — spawned by name exactly like
-  `orch-reviewer`.
+  only takes coarse tier aliases (`sonnet`/`opus`/`haiku`/`fable`), so a
+  per-spawn override cannot express a routed selection. A separate
+  installed agent is shipped instead because only an installed definition
+  carries its own system prompt — the safe-downgrade framing and
+  instructions — and a distinct name the frontmatter-match rule can
+  verify; the effort difference from the full reviewer rides the
+  spawn-time prompt cue, per the Known limitations bullet below, not a
+  frontmatter field.
 
 ## Install order
 

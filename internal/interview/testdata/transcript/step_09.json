@@ -18,12 +18,16 @@
         },
         {
           "value": "gpt-5.6-terra",
-          "label": "gpt-5.6-terra",
+          "label": "gpt-5.6-terra"
+        },
+        {
+          "value": "gpt-5.6-luna",
+          "label": "gpt-5.6-luna",
           "recommended": true
         }
       ],
       "free_text": true,
-      "default": "gpt-5.6-terra"
+      "default": "gpt-5.6-luna"
     },
     {
       "id": "host.codex.role.scout.effort",
@@ -33,8 +37,7 @@
       "options": [
         {
           "value": "low",
-          "label": "Low",
-          "recommended": true
+          "label": "Low"
         },
         {
           "value": "medium",
@@ -50,7 +53,7 @@
         }
       ],
       "free_text": true,
-      "default": "low"
+      "default": "max"
     }
   ]
 }

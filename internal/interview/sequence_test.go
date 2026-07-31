@@ -8,26 +8,26 @@ import (
 
 // TestDefaultProfilesMatchPRD pins defaultProfiles against the PRD §10
 // table verbatim (plan verification string: codex
-// sol-high/terra-low/terra-high/sol-medium/sol-medium/terra-high;
-// claude opus-5-xhigh/sonnet-5-low/sonnet-5-xhigh/opus-5-high/
-// opus-5-high/sonnet-5-high).
+// sol-xhigh/luna-max/terra-max/sol-max/sol-xhigh/sol-high;
+// claude opus-5-high/opus-5-low/opus-5-medium/opus-5-high/
+// opus-5-high/opus-5-medium).
 func TestDefaultProfilesMatchPRD(t *testing.T) {
 	want := map[string]map[string]profile{
 		"codex": {
-			"architect":        {"gpt-5.6-sol", "high"},
-			"scout":            {"gpt-5.6-terra", "low"},
-			"implementer":      {"gpt-5.6-terra", "high"},
-			"specialist":       {"gpt-5.6-sol", "medium"},
-			"reviewer":         {"gpt-5.6-sol", "medium"},
-			"review_downgrade": {"gpt-5.6-terra", "high"},
+			"architect":        {"gpt-5.6-sol", "xhigh"},
+			"scout":            {"gpt-5.6-luna", "max"},
+			"implementer":      {"gpt-5.6-terra", "max"},
+			"specialist":       {"gpt-5.6-sol", "max"},
+			"reviewer":         {"gpt-5.6-sol", "xhigh"},
+			"review_downgrade": {"gpt-5.6-sol", "high"},
 		},
 		"claude": {
-			"architect":        {"claude-opus-5", "xhigh"},
-			"scout":            {"claude-sonnet-5", "low"},
-			"implementer":      {"claude-sonnet-5", "xhigh"},
+			"architect":        {"claude-opus-5", "high"},
+			"scout":            {"claude-opus-5", "low"},
+			"implementer":      {"claude-opus-5", "medium"},
 			"specialist":       {"claude-opus-5", "high"},
 			"reviewer":         {"claude-opus-5", "high"},
-			"review_downgrade": {"claude-sonnet-5", "high"},
+			"review_downgrade": {"claude-opus-5", "medium"},
 		},
 	}
 	for host, roles := range want {

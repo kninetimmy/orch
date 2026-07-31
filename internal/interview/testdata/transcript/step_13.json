@@ -14,16 +14,20 @@
       "options": [
         {
           "value": "gpt-5.6-sol",
-          "label": "gpt-5.6-sol"
+          "label": "gpt-5.6-sol",
+          "recommended": true
         },
         {
           "value": "gpt-5.6-terra",
-          "label": "gpt-5.6-terra",
-          "recommended": true
+          "label": "gpt-5.6-terra"
+        },
+        {
+          "value": "gpt-5.6-luna",
+          "label": "gpt-5.6-luna"
         }
       ],
       "free_text": true,
-      "default": "gpt-5.6-terra"
+      "default": "gpt-5.6-sol"
     },
     {
       "id": "host.codex.role.review_downgrade.effort",

@@ -15,16 +15,16 @@
       "options": [
         {
           "value": "claude-opus-5",
-          "label": "claude-opus-5"
+          "label": "claude-opus-5",
+          "recommended": true
         },
         {
           "value": "claude-sonnet-5",
-          "label": "claude-sonnet-5",
-          "recommended": true
+          "label": "claude-sonnet-5"
         }
       ],
       "free_text": true,
-      "default": "claude-sonnet-5"
+      "default": "claude-opus-5"
     },
     {
       "id": "host.claude.role.implementer.effort",
@@ -38,7 +38,8 @@
         },
         {
           "value": "medium",
-          "label": "Medium"
+          "label": "Medium",
+          "recommended": true
         },
         {
           "value": "high",
@@ -46,12 +47,11 @@
         },
         {
           "value": "xhigh",
-          "label": "Extra high",
-          "recommended": true
+          "label": "Extra high"
         }
       ],
       "free_text": true,
-      "default": "xhigh"
+      "default": "medium"
     }
   ]
 }

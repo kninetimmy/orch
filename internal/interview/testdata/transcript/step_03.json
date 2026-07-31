@@ -15,16 +15,16 @@
       "options": [
         {
           "value": "claude-opus-5",
-          "label": "claude-opus-5"
+          "label": "claude-opus-5",
+          "recommended": true
         },
         {
           "value": "claude-sonnet-5",
-          "label": "claude-sonnet-5",
-          "recommended": true
+          "label": "claude-sonnet-5"
         }
       ],
       "free_text": true,
-      "default": "claude-sonnet-5"
+      "default": "claude-opus-5"
     },
     {
       "id": "host.claude.role.scout.effort",

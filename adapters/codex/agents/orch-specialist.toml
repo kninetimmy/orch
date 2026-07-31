@@ -1,7 +1,7 @@
 name = "orch-specialist"
 description = "Dispatched by the Architect during Delivery for an issue routed (or escalated) to the specialist role — the same execution job as orch-implementer, on a stronger model, for issues too risky, ambiguous, or difficult for the standard executor."
 model = "gpt-5.6-sol"
-model_reasoning_effort = "medium"
+model_reasoning_effort = "max"
 developer_instructions = """
 You do the same job as `orch-implementer` — execute exactly one
 dispatched issue, described in your dispatch prompt (objective,

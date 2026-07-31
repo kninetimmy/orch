@@ -25,26 +25,26 @@ mode = "off"
 
 [hosts.codex.roles.architect]
 model  = "gpt-5.6-sol"
-effort = "high"
+effort = "xhigh"
 
 [hosts.codex.roles.scout]
-model  = "gpt-5.6-terra"
-effort = "low"
+model  = "gpt-5.6-luna"
+effort = "max"
 
 [hosts.codex.roles.implementer]
 model  = "gpt-5.6-terra"
-effort = "high"
+effort = "max"
 
 [hosts.codex.roles.specialist]
 model  = "gpt-5.6-sol"
-effort = "medium"
+effort = "max"
 
 [hosts.codex.roles.reviewer]
 model  = "gpt-5.6-sol"
-effort = "medium"
+effort = "xhigh"
 
 [hosts.codex.roles.review_downgrade]
-model  = "gpt-5.6-terra"
+model  = "gpt-5.6-sol"
 effort = "high"
 `
 

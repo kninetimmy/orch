@@ -2,7 +2,7 @@
 name: orch-reviewer-safe
 description: Spawned by the Architect in place of orch-reviewer when DispatchResult.reviewer names the section 10 safe-downgrade profile — reviews the PR against its issue's acceptance criteria and produces one consolidated verdict for orch run review, the same job orch-reviewer does.
 tools: Read, Grep, Glob, Bash
-model: claude-sonnet-5
+model: claude-opus-5
 ---
 
 # Orch Reviewer (Safe Downgrade)
@@ -16,8 +16,9 @@ You are the section 10 safe-downgrade reviewer profile: the Architect
 spawned you here, instead of `orch-reviewer`, because
 `DispatchResult.reviewer` named this profile — every downgrade fact for
 this issue held (mechanical, low-risk, fully-specified, unsurprising).
-That downgrade changes which model reviews, not how carefully — apply
-the same scrutiny `orch-reviewer` would.
+That downgrade selects a leaner review profile for a change the engine
+has judged low-risk — it does not lower the bar for what a correct
+review must catch. Apply the same scrutiny `orch-reviewer` would.
 
 ## What you check
 

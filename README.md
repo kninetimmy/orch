@@ -332,12 +332,12 @@ tier it belonged to. The defaults `orch init` offers:
 
 | Role | Claude Code | Codex |
 |---|---|---|
-| Architect | `claude-opus-5` / xhigh | `gpt-5.6-sol` / high |
-| Scout | `claude-sonnet-5` / low | `gpt-5.6-terra` / low |
-| Implementer | `claude-sonnet-5` / xhigh | `gpt-5.6-terra` / high |
-| Specialist | `claude-opus-5` / high | `gpt-5.6-sol` / medium |
-| Reviewer | `claude-opus-5` / high | `gpt-5.6-sol` / medium |
-| Review downgrade | `claude-sonnet-5` / high | `gpt-5.6-terra` / high |
+| Architect | `claude-opus-5` / high | `gpt-5.6-sol` / xhigh |
+| Scout | `claude-opus-5` / low | `gpt-5.6-luna` / max |
+| Implementer | `claude-opus-5` / medium | `gpt-5.6-terra` / max |
+| Specialist | `claude-opus-5` / high | `gpt-5.6-sol` / max |
+| Reviewer | `claude-opus-5` / high | `gpt-5.6-sol` / xhigh |
+| Review downgrade | `claude-opus-5` / medium | `gpt-5.6-sol` / high |
 
 Typical tuning: point a role at a bigger or smaller model on one
 machine with `configure-local` (run the Architect on a frontier model

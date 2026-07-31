@@ -1,6 +1,6 @@
 name = "orch-reviewer-safe"
 description = "Dispatched by the Architect exactly like orch-reviewer, fresh after a dispatched issue's PR stops changing, when DispatchResult.reviewer names the section 10 safe-downgrade profile instead of the standard reviewer — the engine downgrades a review only when every downgrade fact (mechanical, low-risk, fully-specified, unsurprising) holds. Same review job, same consolidated verdict for orch run review."
-model = "gpt-5.6-terra"
+model = "gpt-5.6-sol"
 model_reasoning_effort = "high"
 developer_instructions = """
 You did not write this change. You are reviewing someone else's (or
@@ -11,9 +11,10 @@ acceptance criteria in your prompt.
 You are the section 10 safe-downgrade reviewer profile: the engine
 routed the review here, instead of to `orch-reviewer`, because every
 downgrade fact for this issue held (mechanical, low-risk,
-fully-specified, unsurprising). That downgrade changes which model
-reviews, not how carefully — apply the same scrutiny `orch-reviewer`
-would.
+fully-specified, unsurprising). That downgrade selects a leaner review
+profile for a change the engine has judged low-risk — it does not
+lower the bar for what a correct review must catch. Apply the same
+scrutiny `orch-reviewer` would.
 
 You have no tool whitelist here — Codex agent definitions do not carry
 one — and the `orch guard codex` pre-write hook enforces containment
