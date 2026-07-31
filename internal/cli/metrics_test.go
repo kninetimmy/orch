@@ -67,7 +67,14 @@ func TestMetricsSummarizesFixtureRun(t *testing.T) {
 	env, stdout, _ := testEnv(t)
 	writeConfig(t, env.RepoRoot, validTOML)
 
-	usage := &metrics.Usage{InputTokens: 100, OutputTokens: 40, CacheReadTokens: 5, CacheCreationTokens: 2, TotalTokens: 147, DurationMS: 300}
+	// TotalTokens is deliberately not the sum of the four split fields
+	// (metrics.Usage documents it as independent: it is what a host
+	// reporting one aggregate with no split records). Keeping it apart
+	// is what makes the run-level "total 900" assertion below a real
+	// guard — a printRunSummary that summed the split fields instead of
+	// printing the accumulated TotalTokens would print 147 and fail,
+	// which is exactly the bug #135 fixed. Do not "correct" 900 to 147.
+	usage := &metrics.Usage{InputTokens: 100, OutputTokens: 40, CacheReadTokens: 5, CacheCreationTokens: 2, TotalTokens: 900, DurationMS: 300}
 	doc := metrics.Document{
 		SchemaVersion: metrics.SchemaVersion,
 		RunID:         "run-20260713T000000Z-aaaaaaaa",
@@ -96,7 +103,7 @@ func TestMetricsSummarizesFixtureRun(t *testing.T) {
 		"escalations: 0",
 		"reviews:     1 cycles; first-pass approve: 1 of 1 reviewed issues",
 		"ci:          passing: 1",
-		"usage:       input 100, output 40, cache read 5, cache creation 2, total 147, duration 300ms",
+		"usage:       input 100, output 40, cache read 5, cache creation 2, total 900, duration 300ms",
 		"usage reported on 1 of 7 events",
 	} {
 		if !strings.Contains(out, want) {
