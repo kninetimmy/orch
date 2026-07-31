@@ -163,30 +163,76 @@ func rolloutTotal(path, parentThreadID, taskIdentity string) (int64, bool, bool,
 }
 
 func validSessionMeta(meta sessionMeta) bool {
-	if meta.ID == "" {
+	sourceParent, threadSpawn, valid := parseSessionSource(meta.Source)
+	if meta.ID == "" || !valid {
 		return false
 	}
-	if meta.ThreadSource != "subagent" {
-		var source string
-		return meta.ParentThreadID == "" &&
-			(meta.AgentPath == "" || meta.AgentPath == "/root") &&
-			(meta.SessionID == "" || meta.SessionID == meta.ID) &&
-			json.Unmarshal(meta.Source, &source) == nil &&
-			source != ""
+	if !threadSpawn {
+		return true
+	}
+	return meta.ThreadSource == "subagent" &&
+		meta.SessionID != "" &&
+		meta.ParentThreadID != "" &&
+		meta.AgentPath != "" &&
+		meta.ID != meta.SessionID &&
+		meta.SessionID == meta.ParentThreadID &&
+		meta.ParentThreadID == sourceParent
+}
+
+func parseSessionSource(raw json.RawMessage) (string, bool, bool) {
+	if len(raw) == 0 {
+		return "", false, true
 	}
 
-	if meta.SessionID == "" ||
-		meta.ParentThreadID == "" ||
-		meta.AgentPath == "" ||
-		meta.ID == meta.SessionID {
-		return false
+	var source any
+	if err := json.Unmarshal(raw, &source); err != nil {
+		return "", false, false
 	}
-	var source subagentSource
-	if err := json.Unmarshal(meta.Source, &source); err != nil {
-		return false
+	switch source := source.(type) {
+	case string:
+		switch source {
+		case "custom", "internal", "subagent":
+			return "", false, false
+		default:
+			return "", false, true
+		}
+	case map[string]any:
+		if len(source) != 1 {
+			return "", false, false
+		}
+		for kind, payload := range source {
+			switch kind {
+			case "custom":
+				_, valid := payload.(string)
+				return "", false, valid
+			case "internal":
+				internal, valid := payload.(string)
+				return "", false, valid && internal == "memory_consolidation"
+			case "subagent":
+				switch payload := payload.(type) {
+				case string:
+					return "", false, payload == "review" ||
+						payload == "compact" ||
+						payload == "memory_consolidation"
+				case map[string]any:
+					if len(payload) != 1 {
+						return "", false, false
+					}
+					if other, ok := payload["other"]; ok {
+						_, valid := other.(string)
+						return "", false, valid
+					}
+					spawn, ok := payload["thread_spawn"].(map[string]any)
+					if !ok {
+						return "", false, false
+					}
+					parent, valid := spawn["parent_thread_id"].(string)
+					return parent, true, valid && parent != ""
+				}
+			}
+		}
 	}
-	return meta.SessionID == meta.ParentThreadID &&
-		meta.ParentThreadID == source.Subagent.ThreadSpawn.ParentThreadID
+	return "", false, false
 }
 
 func matches(meta sessionMeta, parentThreadID, taskIdentity string) bool {

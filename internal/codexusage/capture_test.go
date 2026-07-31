@@ -47,8 +47,22 @@ func TestTotalTokensIsolatesOnlyIdentifiedNonMatchingCorruption(t *testing.T) {
 			ok:    true,
 		},
 		{
+			name:  "object-valued unrelated source",
+			other: []byte("{\"type\":\"session_meta\",\"payload\":{\"id\":\"review\",\"session_id\":\"review\",\"thread_source\":\"subagent\",\"source\":{\"subagent\":\"review\"}}}\nthis is not json\n"),
+			ok:    true,
+		},
+		{
+			name:  "defaulted unrelated source",
+			other: []byte("{\"type\":\"session_meta\",\"payload\":{\"id\":\"root\",\"session_id\":\"root\",\"thread_source\":\"user\"}}\nthis is not json\n"),
+			ok:    true,
+		},
+		{
 			name:  "unidentified rollout",
 			other: []byte("{\"type\":\"session_meta\",\"payload\":{}}\nthis is not json\n"),
+		},
+		{
+			name:  "malformed source",
+			other: []byte("{\"type\":\"session_meta\",\"payload\":{\"id\":\"unknown\",\"session_id\":\"parent-139\",\"parent_thread_id\":\"parent-139\",\"thread_source\":\"subagent\",\"agent_path\":\"/root/issue_139_executor\",\"source\":{\"subagent\":\"not-a-variant\"}}}\nthis is not json\n"),
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
