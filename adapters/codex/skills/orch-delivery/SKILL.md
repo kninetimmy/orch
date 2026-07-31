@@ -182,6 +182,32 @@ The result (`ActivationResult`) carries `run_id` and, per issue,
 Work issues in wave order, never more than `concurrency.max_subagents`
 in flight at once. For each issue:
 
+### Exact Codex child usage
+
+Before dispatching a child, retain this Architect session's
+`CODEX_THREAD_ID`. For every completed child, retain the canonical task
+identity returned by `spawn_agent`; never substitute a task-name
+shorthand or reuse an identity from another agent. After `wait_agent`
+reports that exact child complete, use the scratch-file JSON pattern
+above to call `orch hook codex subagent-usage` with:
+
+```json
+{"parent_thread_id": "<CODEX_THREAD_ID>", "task_identity": "<canonical task identity>"}
+```
+
+`{"total_tokens": N}` is one exact completed child total. `{}` means
+capture is unavailable: do not retry with a different task, inspect a
+parent total, or estimate. The helper accepts only one persisted child
+rollout whose parent thread and canonical task identity both match, so a
+parent session, sibling child, or different parent's child is never a
+candidate. Capture every completed agent separately:
+
+- Send the initial executor total to `pr-open`'s `usage`.
+- Send the reviewer total to that cycle's `review` `usage`.
+- Send the fix executor total to the following `review`'s `executor_usage`.
+
+When capture returns no total, omit the corresponding optional field.
+
 1. **Dispatch** — `orch run dispatch` with
    `{"schema_version": 2, "issue_number": N}`. Result
    (`DispatchResult`): `branch`, `worktree`, `executor`, `reviewer`,
@@ -235,9 +261,7 @@ in flight at once. For each issue:
 
    ```json
    {"schema_version": 1, "issue_number": N,
-    "verifications": [{"name": "...", "command": "...", "result": "...", "detail": "..."}],
-    "usage": {"input_tokens": 0, "output_tokens": 0, "cache_read_tokens": 0,
-               "cache_creation_tokens": 0, "total_tokens": 0, "duration_ms": 0}}
+    "verifications": [{"name": "...", "command": "...", "result": "...", "detail": "..."}]}
    ```
 
    At least one verification is required. The verification names
@@ -252,12 +276,10 @@ in flight at once. For each issue:
    replacing the original, and the unprefixed original persists in the
    audit record permanently. This prefix does not collide with the
    engine-owned names `required-ci`, `merge`, `abandoned`, and
-   `review-cycle-<n>`. `usage` is optional (PRD §21) and is the
-   executor's own cost: supply only the fields the executor's own
-   reporting actually gives you — token totals, duration, and
-   `total_tokens` when that is what it reports instead of the
-   input/output/cache split — never an estimate. Result carries
-   `pr_number`, `pr_url`.
+    `review-cycle-<n>`. `usage` is optional (PRD §21) and is the
+    initial executor's own cost: add only its captured
+    `{"total_tokens": N}` when available, never an estimate. Result
+    carries `pr_number`, `pr_url`.
 
 4. **Dispatch the reviewer** — once the PR stops changing, dispatch
    `orch-reviewer` **fresh** (a new instance, not the executor
@@ -290,25 +312,20 @@ in flight at once. For each issue:
    {"schema_version": 1, "issue_number": N, "reviewed_head_oid": "...",
     "verdict": "approve|request-changes", "summary": "...",
     "reviewer": {"model": "...", "effort": "..."},
-    "verifications": [{"name": "...", "command": "...", "result": "...", "detail": "..."}],
-    "usage": {"input_tokens": 0, "output_tokens": 0, "cache_read_tokens": 0,
-               "cache_creation_tokens": 0, "total_tokens": 0, "duration_ms": 0},
-    "executor_usage": {"input_tokens": 0, "output_tokens": 0, "cache_read_tokens": 0,
-               "cache_creation_tokens": 0, "total_tokens": 0, "duration_ms": 0}}
+    "verifications": [{"name": "...", "command": "...", "result": "...", "detail": "..."}]}
    ```
 
-   `usage` is optional (PRD §21), same rule as PR-open: it is the
-   reviewer's own cost — only report what the reviewer agent's own
-   reporting actually gives you, including `total_tokens` when that
-   is what it reports instead of the input/output/cache split.
+    `usage` is optional (PRD §21), same rule as PR-open: it is the
+    reviewer's own captured cost, so add only its exact
+    `{"total_tokens": N}` when available.
    `request-changes` loops the same executor in the **same worktree**
    on the same branch: it fixes and pushes, then a **fresh** reviewer
    is dispatched (step 4) and `orch run review` is called again.
    Because this is the only verb call on that cycle, `executor_usage`
    (same optional shape as `usage`) carries the executor's
-   fix-and-push cost for the cycle just finished — report only what
-   its own reporting actually gives you, never an estimate, and omit
-   it when there was no fix cycle (the first review after pr-open).
+    fix-and-push captured total for the cycle just finished — report
+    only its exact `{"total_tokens": N}`, never an estimate, and omit
+    it when there was no fix cycle (the first review after pr-open).
    `orch run pr-open` is not reachable a second time, so
    `verifications` is optional and takes pr-open's input shape — use
    it to carry evidence re-run on the fix commit (e.g. tests re-run

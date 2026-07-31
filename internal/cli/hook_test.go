@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"strings"
@@ -214,6 +215,52 @@ func TestHookCodexSessionStartNoRootSilent(t *testing.T) {
 	}
 	if stdout.String() != "" {
 		t.Errorf("stdout = %q, want empty", stdout.String())
+	}
+}
+
+func TestHookCodexSubagentUsageReportsExactChildTotal(t *testing.T) {
+	codexHome := t.TempDir()
+	sessions := filepath.Join(codexHome, "sessions")
+	if err := os.MkdirAll(sessions, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	rollout := strings.Join([]string{
+		`{"type":"session_meta","payload":{"id":"child","session_id":"parent","parent_thread_id":"parent","thread_source":"subagent","agent_path":"/root/task","source":{"subagent":{"thread_spawn":{"parent_thread_id":"parent"}}}}}`,
+		`{"type":"event_msg","payload":{"type":"token_count","info":{"total_token_usage":{"total_tokens":782763}}}}`,
+		`{"type":"event_msg","payload":{"type":"task_complete"}}`,
+	}, "\n")
+	if err := os.WriteFile(filepath.Join(sessions, "child.jsonl"), []byte(rollout), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("CODEX_HOME", codexHome)
+
+	env, stdout, stderr := testEnv(t)
+	env.Stdin = strings.NewReader(`{"parent_thread_id":"parent","task_identity":"/root/task"}`)
+	if code := Run([]string{"hook", "codex", "subagent-usage"}, env); code != ExitOK {
+		t.Fatalf("exit = %d, want %d (stderr %q)", code, ExitOK, stderr.String())
+	}
+	var got codexSubagentUsageResponse
+	if err := json.Unmarshal(stdout.Bytes(), &got); err != nil {
+		t.Fatalf("decode stdout %q: %v", stdout.String(), err)
+	}
+	if got.TotalTokens == nil || *got.TotalTokens != 782763 {
+		t.Errorf("total_tokens = %v, want 782763", got.TotalTokens)
+	}
+}
+
+func TestHookCodexSubagentUsageOmitsUnavailableTotal(t *testing.T) {
+	t.Setenv("CODEX_HOME", t.TempDir())
+	env, stdout, stderr := testEnv(t)
+	env.Stdin = strings.NewReader(`{"parent_thread_id":"parent","task_identity":"/root/task"}`)
+	if code := Run([]string{"hook", "codex", "subagent-usage"}, env); code != ExitOK {
+		t.Fatalf("exit = %d, want %d (stderr %q)", code, ExitOK, stderr.String())
+	}
+	var got codexSubagentUsageResponse
+	if err := json.Unmarshal(stdout.Bytes(), &got); err != nil {
+		t.Fatalf("decode stdout %q: %v", stdout.String(), err)
+	}
+	if got.TotalTokens != nil {
+		t.Errorf("total_tokens = %d, want omitted", *got.TotalTokens)
 	}
 }
 
