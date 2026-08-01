@@ -119,7 +119,9 @@ func evaluate(req Request, f facts) Verdict {
 			return deny(f.path, "run stopped: "+f.stopped)
 		}
 		// Row 10: an asserted role outside {implementer, specialist} is
-		// mechanically read-only (§15). No assertion falls through.
+		// mechanically read-only. This narrows only when an adapter passes
+		// --role; neither shipped adapter does, so read-only roles are held
+		// read-only outside the guard (PRD §15). No assertion falls through.
 		if req.Role != "" && req.Role != manifest.RoleImplementer && req.Role != manifest.RoleSpecialist {
 			return deny(f.path, fmt.Sprintf("role %s is mechanically read-only", req.Role))
 		}

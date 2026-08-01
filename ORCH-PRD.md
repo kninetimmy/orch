@@ -351,7 +351,9 @@ Orch fails closed.
 - The active branch must not be `main`.
 - Completion requires a commit, pushed branch, PR, targeted-test evidence, and explicit CI state.
 - Read-only roles are held read-only by per-agent tool whitelists on Claude Code and by agent
-  instructions on Codex, not by the guard.
+  instructions on Codex, not by the guard. The Claude whitelist accounts fully only for the Scout,
+  which is granted no shell tool; the Reviewer and its safe review downgrade are granted one, so
+  their read-only discipline rests on instructions there too.
 - Neither closes the shell-write gap: the pre-write hook covers only the file-write tools, so a
   shell-mediated write falls to the host's own approval prompts.
 - No agent may merge.
