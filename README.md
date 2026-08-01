@@ -5,7 +5,7 @@
 <p align="center">
   <img src="https://img.shields.io/badge/License-MIT-2E7D32?style=flat&logo=opensourceinitiative&logoColor=white" alt="License: MIT"/>
   <img src="https://img.shields.io/badge/Go-1.26%2B-00ADD8?style=flat&logo=go&logoColor=white" alt="Go 1.26+"/>
-  <img src="https://img.shields.io/badge/Release-v0.5.7-24292F?style=flat&logo=github&logoColor=white" alt="Release: v0.5.7"/>
+  <img src="https://img.shields.io/badge/Release-v0.6.0-24292F?style=flat&logo=github&logoColor=white" alt="Release: v0.6.0"/>
   <br/>
   <img src="https://img.shields.io/badge/Platform-Linux%20%C2%B7%20macOS%20%C2%B7%20Windows-607D8B?style=flat" alt="Platform: Linux, macOS, Windows"/>
   <img src="https://img.shields.io/badge/Hosts-Claude%20Code%20%C2%B7%20Codex%20CLI-6E56CF?style=flat" alt="Hosts: Claude Code and Codex CLI"/>
@@ -70,7 +70,7 @@ The full product definition lives in [ORCH-PRD.md](ORCH-PRD.md).
 
 ## Status
 
-Early software. What can be stated as fact: 12 tagged releases (v0.1.0 through v0.5.7) and 75 merged pull requests, 37 of which carry an Orch audit record in their body — every merge from PR #40 through PR #117 except #50 and #103, both of which `orch configure` delivered in its own body format. Since PR #40, this repository has been built through the pipeline described above: a plan gate, an isolated worktree per issue, a review dispatched separately from the work, CI, and a merge that fails closed unless it carries an approval pinned to the commit `merge-report` recorded.
+Early software. What can be stated as fact: 15 tagged releases (v0.1.0 through v0.6.0) and 96 merged pull requests, 55 of which carry an Orch audit record in their body — every merge from PR #40 through PR #167 except #50, #103, #121, #129 and #133, all of which `orch configure` delivered in its own body format. Since PR #40, this repository has been built through the pipeline described above: a plan gate, an isolated worktree per issue, a review dispatched separately from the work, CI, and a merge that fails closed unless it carries an approval pinned to the commit `merge-report` recorded.
 
 All of that evidence comes from one repository: this one.
 
@@ -101,7 +101,7 @@ on this machine. Work in a scratch directory, not in one of my projects.
 
 2. Confirm that `orch` resolves on PATH and that `orch status` prints a
    release version on its first line — a line beginning `orch:` and giving
-   a release tag such as v0.5.7. Run it from anywhere: outside an
+   a release tag such as v0.6.0. Run it from anywhere: outside an
    initialized repository it prints that version line first and then exits
    non-zero saying the repository is not initialized, which is expected
    here. On Windows the installer adds its install directory to my user
@@ -189,7 +189,7 @@ your OS and architecture, verify its SHA-256 against the release's
 `SHA256SUMS` **before** installing, and fail closed on any mismatch.
 
 Linux / macOS — installs to `~/.local/bin` (override with
-`ORCH_INSTALL_DIR`); pin a version with `ORCH_VERSION=v0.5.7`:
+`ORCH_INSTALL_DIR`); pin a version with `ORCH_VERSION=v0.6.0`:
 
 ```sh
 curl -fsSLO https://raw.githubusercontent.com/kninetimmy/orch/main/install.sh
@@ -199,7 +199,7 @@ sh install.sh
 
 Windows (PowerShell) — installs to `%LOCALAPPDATA%\Programs\orch` and
 appends that directory to your user `PATH`; skip the `PATH` change with
-`-NoPathUpdate`, pin a version with `-Version v0.5.7`:
+`-NoPathUpdate`, pin a version with `-Version v0.6.0`:
 
 ```powershell
 iwr https://raw.githubusercontent.com/kninetimmy/orch/main/install.ps1 -OutFile install.ps1
@@ -504,10 +504,50 @@ continue, or `orch abort` to end it.
 <details>
 <summary>Defects already corrected, newest first</summary>
 
-Everything here is merged on `main`. v0.5.7 is the latest tagged
-release; PRs #113, #115, and #117 landed after it, so they ship in the
-next release rather than the current one.
+Everything here is merged on `main` and shipped in v0.6.0, the latest
+tagged release.
 
+- `orch doctor` now checks each configured host's installed Orch
+  adapter and fails when it is absent, disabled, ambiguous or a
+  different version from the one this build ships, naming the installed
+  and the expected version; before, an adapter left behind by a
+  binary-only upgrade kept running while doctor reported the host
+  healthy —
+  [#167](https://github.com/kninetimmy/orch/pull/167)
+- `orch doctor` and Codex plan activation now compare the rendered
+  agent definitions in `.codex/agents/` against the current build and
+  the effective role configuration, and fail closed naming `orch
+  render-agents`; before, definitions rendered from an older
+  configuration went on being dispatched with nothing reporting them
+  stale —
+  [#166](https://github.com/kninetimmy/orch/pull/166)
+- `orch run review` now refuses, before any mutation, a review that
+  does not carry exactly one judgment per acceptance criterion the
+  issue holds, and a criterion judged wrong blocks the issue for you as
+  part of recording that review; before, a review could approve without
+  saying anything about an individual criterion, and a criterion that
+  was itself wrong reached you only if the Architect read the paragraph
+  and made a second call by hand —
+  [#158](https://github.com/kninetimmy/orch/pull/158)
+- Codex usage capture now depends only on the rollout that actually
+  identifies as the dispatched child, so an unrelated neighbour in the
+  sessions tree — a zero-byte file caught mid-creation, one with no
+  session metadata, an unparseable first line, or a shape written by
+  another Codex version — no longer reports usage unavailable for every
+  child in the run; a rollout that does match is still fully validated
+  and two matching rollouts still fail closed —
+  [#148](https://github.com/kninetimmy/orch/pull/148)
+- A verification entry whose text describes the branch as a whole is
+  given its `branch-scope:` name prefix at `pr-open`, where the name is
+  first chosen; before, a prefix added on a later review cycle appended
+  a second entry instead of replacing the original, leaving the stale
+  unprefixed one in the audit record permanently —
+  [#113](https://github.com/kninetimmy/orch/pull/113)
+- `.gitattributes` gained the rule that checks `.gitignore` out with LF
+  on every platform; before, a Windows checkout could get CRLF line
+  endings in that file, which is what feeds the empty-pattern hazard
+  the next entry describes —
+  [#110](https://github.com/kninetimmy/orch/pull/110)
 - Worktree containment no longer fails open on a `.gitignore` whose
   blank line survives as an empty pattern — a CRLF blank line, or a
   whitespace-only line under LF — because `RequireIgnored` now queries
