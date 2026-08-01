@@ -123,6 +123,25 @@ func TestRenderAgentsCodexDisabledRefusal(t *testing.T) {
 	}
 }
 
+func TestRenderAgentsUnignoredDestinationRefusal(t *testing.T) {
+	env, _, stderr := testEnv(t)
+	writeConfig(t, env.RepoRoot, validCodexTOML)
+	env.Runner = fakeRunner{toplevel: env.RepoRoot, checkIgnoreExit: 1}
+
+	if code := Run([]string{"render-agents"}, env); code != ExitError {
+		t.Errorf("exit = %d, want %d", code, ExitError)
+	}
+	if !strings.Contains(stderr.String(), "orch configure") {
+		t.Errorf("stderr = %q, want orch configure remediation", stderr.String())
+	}
+	if !strings.Contains(stderr.String(), agents.Dir+"/") {
+		t.Errorf("stderr = %q, want %s/ ignore entry", stderr.String(), agents.Dir)
+	}
+	if _, err := os.Stat(filepath.Join(env.RepoRoot, filepath.FromSlash(agents.Dir))); !os.IsNotExist(err) {
+		t.Errorf("%s exists after refusal (stat err = %v), want absent", agents.Dir, err)
+	}
+}
+
 func TestRenderAgentsUnexpectedArgument(t *testing.T) {
 	env, _, stderr := testEnv(t)
 	writeConfig(t, env.RepoRoot, validCodexTOML)
