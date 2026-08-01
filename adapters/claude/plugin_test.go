@@ -78,8 +78,8 @@ func TestPluginManifestStrict(t *testing.T) {
 	if m.Description == "" {
 		t.Error("description is empty")
 	}
-	if m.Version != "0.5.10" {
-		t.Errorf("version = %q, want 0.5.10", m.Version)
+	if m.Version != "0.6.0" {
+		t.Errorf("version = %q, want 0.6.0", m.Version)
 	}
 	if m.Author.Name == "" {
 		t.Error("author.name is empty")
