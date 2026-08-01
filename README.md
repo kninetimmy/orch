@@ -1,6 +1,6 @@
 # Orch
 
-*Your coding agent doesn't choose its own model, and it puts mechanical bounds on what it may write.*
+*Your coding agent doesn't choose its own model, and Orch puts mechanical bounds on what it may write.*
 
 <p align="center">
   <img src="https://img.shields.io/badge/License-MIT-2E7D32?style=flat&logo=opensourceinitiative&logoColor=white" alt="License: MIT"/>
@@ -442,6 +442,36 @@ expected one, and no Orch block at session start. Workaround: install
 the binary before the plugin, approve the trust prompt, and run `orch
 doctor`; a missing session-start block is the visible tell.
 
+**`claude plugin install` on a host that already has the adapter
+changes nothing and leaves the old version running.** Claude Code
+treats an install of a plugin it already carries as satisfied: `claude
+plugin install orch-claude@orch` exits 0 reporting `Plugin
+"orch-claude@orch" is already installed`, even when `claude plugin
+marketplace update orch` has just fetched a newer adapter into the
+plugin cache. Installing and upgrading are two different commands, and
+only `claude plugin update orch-claude@orch` replaces the active
+version (it says `Restart to apply changes` when it does). Symptom:
+following the agent install prompt's step 3 on a machine that already
+has Orch reports success while the previous adapter goes on running.
+Workaround: on an existing install use the upgrade commands above, not
+the first-install ones; `orch doctor` names the installed and the
+expected adapter version when they diverge.
+
+**`orch doctor` fails on a machine that lacks a configured host's
+command-line tool.** Doctor checks every host the committed
+configuration names, and fails when that host's CLI is missing from
+`PATH`, when its plugin listing cannot be read, or when its adapter is
+absent, ambiguous, disabled or a different version from the one this
+build ships. Host enablement is a committed-only key — the Settings
+table above marks `hosts.claude` / `hosts.codex` as `no (committed)` —
+so machine-local configuration cannot switch a host off for one
+machine. Symptom: a repository configured for both hosts reports a
+failing doctor on every machine that has only one of them installed.
+Workaround: enable only the hosts every machine working on the
+repository will have, or install the missing CLI on that machine.
+There is no override for this, by design: the check exists so an
+adapter that is absent or out of date is reported rather than trusted.
+
 **Codex `workspace-write` sandbox mode on Windows fails every agent
 write where the sandbox helper infrastructure is absent.** Observed
 live: every `apply_patch` fails with `orchestrator_helper_launch_failed`
@@ -677,7 +707,9 @@ pull request), and one branch and isolated worktree per issue under
 Each issue then walks a closed lifecycle driven by plumbing verbs:
 `dispatch` (dependencies must be merged; the branch is fast-forwarded
 onto the default branch) → `pr-open` (clean, strictly-ahead,
-orphan-PR guarded) → `review` (the routed reviewer, verified against
+orphan-PR guarded) → `review-worktree` (a disposable detached
+worktree of the pull request head, so the review does not run in the
+primary checkout) → `review` (the routed reviewer, verified against
 the live PR head) → `ci` (reads required checks as one of four honest
 states — `passing`, `failing`, `pending`, or the explicit `no-checks`,
 which is never conflated with passing) → `merge-report` (pins the
@@ -735,6 +767,7 @@ its own.
 | `internal/manifest/` | The issue/PR audit record — lossless render/parse over a managed body region |
 | `internal/memhub/` | Read-only client for the external memhub CLI: health probe and fixed-canary recall check |
 | `internal/metrics/` | Local, opt-in per-run JSON metrics recorder (schema-versioned, never transmitted) |
+| `internal/codexusage/` | Reader that recovers exact Codex subagent token totals from persisted child rollout files |
 | `internal/routing/` | Pure role routing and the escalation ladder |
 | `internal/guard/` | Mechanical pre-write enforcement behind host PreToolUse hooks |
 | `internal/run/` | The Delivery run engine: plan gate, activation, per-issue lifecycle, resume |
