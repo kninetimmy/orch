@@ -337,8 +337,15 @@ When capture returns no total, omit the corresponding optional field.
      `usage` is optional (PRD §21), same rule as PR-open: every reviewer
      is fresh, so add only its full exact `{"total_tokens": N}` when
      available.
-    `request-changes` resumes the same executor with `followup_task` in
-    the **same worktree** on the same branch: it fixes and pushes, then a
+    A `request-changes` report with a `wrong acceptance criterion` is not
+    an executor fix cycle. Record the review with `orch run review`, then,
+    before asking the executor to change anything, call `orch run escalate`
+    with `trigger` `architectural-ambiguity` and a `detail` that names the
+    rejected criterion and its reason. A `return-to-architect` result is
+    the needs-human outcome: surface the rejected criterion and reason to
+    the human and do not resume the executor. A `request-changes` based on
+    a code finding resumes the same executor with `followup_task` in the
+    **same worktree** on the same branch: it fixes and pushes, then a
     **fresh** reviewer is dispatched (step 4) and `orch run review` is
     called again.
    Because this is the only verb call on that cycle, `executor_usage`
