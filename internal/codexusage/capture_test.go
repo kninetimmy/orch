@@ -106,7 +106,10 @@ func TestTotalTokensIsolatesUnrelatedRolloutCorruption(t *testing.T) {
 }
 
 // A rollout that does identify itself as the requested child is still checked
-// in full and still fails closed.
+// in full and still fails closed. Each broken rollout sits beside the exact
+// matching rollout, so unavailable can only mean the broken one poisoned a
+// capture that would otherwise have resolved: were it merely skipped as a
+// non-candidate, the exact total would still be reported.
 func TestTotalTokensFailsClosedForIdentifiedChild(t *testing.T) {
 	exact := exactRollout(t)
 
@@ -133,12 +136,15 @@ func TestTotalTokensFailsClosedForIdentifiedChild(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			dir := t.TempDir()
+			if err := os.WriteFile(filepath.Join(dir, "exact.jsonl"), exact, 0o644); err != nil {
+				t.Fatal(err)
+			}
 			if err := os.WriteFile(filepath.Join(dir, "rollout.jsonl"), tc.rollout, 0o644); err != nil {
 				t.Fatal(err)
 			}
 
 			if _, ok := TotalTokens(dir, parentThread, executorTask, nil); ok {
-				t.Error("TotalTokens reported usage for an invalid identified child")
+				t.Error("TotalTokens reported usage despite an invalid identified child")
 			}
 		})
 	}
