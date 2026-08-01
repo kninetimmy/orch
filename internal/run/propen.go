@@ -19,10 +19,10 @@ const PROpenSchemaVersion = 1
 // VerificationInput is one required-test evidence entry the executor
 // supplies (PRD §15: completion requires targeted-test evidence). A
 // missing At is stamped by the engine. Name must not collide with an
-// engine-owned verification (required-ci, merge, abandoned, or
-// review-cycle-<n>) — those are reserved so the engine's own record can
-// never be quietly overwritten or duplicated by a caller-supplied entry
-// (rejectEngineOwnedNames).
+// engine-owned verification (required-ci, merge, abandoned,
+// review-cycle-<n>, or acceptance-criterion-<n>) — those are reserved
+// so the engine's own record can never be quietly overwritten or
+// duplicated by a caller-supplied entry (rejectEngineOwnedNames).
 //
 // There is deliberately no commit-OID field: the commit an entry was
 // gathered at is stamped by the engine from a head it read itself

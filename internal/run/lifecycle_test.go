@@ -33,6 +33,12 @@ func fixtureAcceptance() []string { return []string{"No data race under -race."}
 
 func fixtureTests() []string { return []string{"go test ./..."} }
 
+// fixtureJudgments is the judgments fragment every valid review request
+// in this package carries: one satisfied judgment for the single
+// acceptance criterion fixtureAcceptance holds, which is the coverage
+// checkJudgments requires of a fixture issue.
+const fixtureJudgments = `"judgments":[{"criterion":1,"judgment":"satisfied","reason":"-race is clean on the fix commit"}]`
+
 // baseManifestBody renders a minimal valid audit record on some prose, so
 // a scripted issue view returns a body manifest.Parse accepts.
 func baseManifestBody(t *testing.T) string {
@@ -281,14 +287,14 @@ func TestLifecycleWalk(t *testing.T) {
 	}
 
 	// review: request-changes.
-	runVerb(t, root, Review, `{"schema_version":1,"issue_number":1,"reviewed_head_oid":"head-oid-1","verdict":"request-changes","summary":"fix things","reviewer":{"model":"claude-opus-4-8","effort":"high"}}`,
+	runVerb(t, root, Review, `{"schema_version":2,"issue_number":1,"reviewed_head_oid":"head-oid-1","verdict":"request-changes","summary":"fix things","reviewer":{"model":"claude-opus-4-8","effort":"high"},`+fixtureJudgments+`}`,
 		ghAuth(), ghPRViewCall(10, "OPEN", "head-oid-1"),
 		ghIssueViewCall(t, 1, "OPEN", body), ghSetIssueBodyCall(1), ghSetPRBodyCall(10),
 		ghSetStatusCall(1, ghops.StatusInProgress))
 	wantPhase(t, root, 1, state.PhaseInReview)
 
 	// review: approve (PR moved to a new head).
-	runVerb(t, root, Review, `{"schema_version":1,"issue_number":1,"reviewed_head_oid":"head-oid-2","verdict":"approve","summary":"looks good","reviewer":{"model":"claude-opus-4-8","effort":"high"}}`,
+	runVerb(t, root, Review, `{"schema_version":2,"issue_number":1,"reviewed_head_oid":"head-oid-2","verdict":"approve","summary":"looks good","reviewer":{"model":"claude-opus-4-8","effort":"high"},`+fixtureJudgments+`}`,
 		ghAuth(), ghPRViewCall(10, "OPEN", "head-oid-2"),
 		ghIssueViewCall(t, 1, "OPEN", body), ghSetIssueBodyCall(1), ghSetPRBodyCall(10))
 	wantPhase(t, root, 1, state.PhaseInReview)

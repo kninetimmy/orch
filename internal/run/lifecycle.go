@@ -4,7 +4,7 @@
 //	dispatch         worktree-ready → dispatched
 //	pr-open          dispatched     → pr-open
 //	review-worktree  pr-open/in-review → same (git only, no state write)
-//	review           pr-open/in-review → in-review
+//	review           pr-open/in-review → in-review (blocked on a criterion judged wrong)
 //	escalate         dispatched/pr-open/in-review → reroute (same) or blocked
 //	ci               pr-open/in-review/awaiting-merge → same (manifest only)
 //	merge-report     in-review      → awaiting-merge
