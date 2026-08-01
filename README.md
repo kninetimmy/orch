@@ -232,6 +232,21 @@ hook trust approval, the five agent TOMLs copied into `.codex/agents/`
 (or rendered there with `orch render-agents`), and the two
 `request_user_input` stanzas in `~/.codex/config.toml`.
 
+**Plugin upgrade (existing installs).** Do not repeat the first-install
+commands above. Upgrade the configured host's marketplace and adapter:
+
+```sh
+# Claude Code
+claude plugin marketplace update orch
+claude plugin update orch-claude@orch
+
+# Codex CLI
+codex plugin marketplace upgrade orch
+```
+
+Restart Claude Code or Codex CLI after upgrading its adapter so the new
+hooks and skills are loaded.
+
 **Manual download.** Take the static binary for your OS and
 architecture from
 [GitHub Releases](https://github.com/kninetimmy/orch/releases)

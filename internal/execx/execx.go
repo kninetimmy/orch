@@ -1,5 +1,5 @@
 // Package execx defines the injectable external-command runner the
-// orchestration core uses for git and gh (PRD §5, §12). Commands are
+// orchestration core uses for git, gh, and host CLIs. Commands are
 // always argument vectors — never shell strings — so external input
 // can never be shell-interpreted. A non-zero exit is data in Result,
 // not an error: callers that need exit codes as information (PRD §16

@@ -75,16 +75,24 @@ func testEnv(t *testing.T) (Env, *bytes.Buffer, *bytes.Buffer) {
 	return env, &stdout, &stderr
 }
 
-// fakeRunner answers the doctor probes: `git rev-parse
-// --show-toplevel` with a fixed top level, `gh auth status` and
-// `gh repo view` with scripted exits (zero values report healthy).
+// fakeRunner answers the doctor probes: git and gh with scripted exits,
+// plus each host's plugin listing (zero values report healthy).
 type fakeRunner struct {
-	toplevel  string
-	gitExit   int
-	gitStderr string
-	authExit  int
-	repoExit  int
-	repoJSON  string
+	toplevel           string
+	gitExit            int
+	gitStderr          string
+	authExit           int
+	repoExit           int
+	repoJSON           string
+	beforeRun          func(execx.Cmd)
+	claudePluginJSON   string
+	claudePluginExit   int
+	claudePluginStderr string
+	claudePluginErr    error
+	codexPluginJSON    string
+	codexPluginExit    int
+	codexPluginStderr  string
+	codexPluginErr     error
 	// checkIgnoreExit scripts `git check-ignore`: 0 ignored, 1 not
 	// ignored, anything else an error (the guard ignore probe).
 	checkIgnoreExit int
@@ -105,6 +113,9 @@ type fakeRunner struct {
 }
 
 func (f fakeRunner) Run(_ context.Context, c execx.Cmd) (execx.Result, error) {
+	if f.beforeRun != nil {
+		f.beforeRun(c)
+	}
 	switch c.Name {
 	case "git":
 		if len(c.Args) > 0 && c.Args[0] == "check-ignore" {
@@ -137,6 +148,36 @@ func (f fakeRunner) Run(_ context.Context, c execx.Cmd) (execx.Result, error) {
 			}
 			return execx.Result{Stdout: tag + "\n"}, nil
 		}
+	case "claude", "codex":
+		if len(c.Args) != 3 || c.Args[0] != "plugin" || c.Args[1] != "list" || c.Args[2] != "--json" {
+			return execx.Result{}, fmt.Errorf("fakeRunner: unexpected command %s %v", c.Name, c.Args)
+		}
+		var stdout, stderr string
+		var exit int
+		var err error
+		var spec adapterSpec
+		if c.Name == "claude" {
+			stdout, stderr, exit, err = f.claudePluginJSON, f.claudePluginStderr, f.claudePluginExit, f.claudePluginErr
+			spec = claudeAdapter
+		} else {
+			stdout, stderr, exit, err = f.codexPluginJSON, f.codexPluginStderr, f.codexPluginExit, f.codexPluginErr
+			spec = codexAdapter
+		}
+		if err != nil {
+			return execx.Result{}, err
+		}
+		if stdout == "" {
+			version, versionErr := adapterVersion(spec.manifestJSON)
+			if versionErr != nil {
+				return execx.Result{}, versionErr
+			}
+			if c.Name == "claude" {
+				stdout = fmt.Sprintf(`[{"id":"orch-claude@orch","version":%q,"enabled":true}]`, version)
+			} else {
+				stdout = fmt.Sprintf(`{"installed":[{"pluginId":"orch@orch","version":%q,"installed":true,"enabled":true}]}`, version)
+			}
+		}
+		return execx.Result{Stdout: stdout, Stderr: stderr, ExitCode: exit}, nil
 	case "memhub":
 		switch c.Args[0] {
 		case "status":
