@@ -313,31 +313,31 @@ func TestAgentFrontmatter(t *testing.T) {
 	}
 }
 
-// reviewerCoverageInstruction and reviewerBlockingVerdictInstruction
-// are the two prose anchors the reviewer agents' "## Report" section
-// must carry: the finding stage is about coverage, not a severity
-// filter, and the approve/request-changes verdict is a separate
-// judgment turning on a closed pair of grounds. The verdict anchor
-// enumerates both grounds rather than only the blocking one (its
-// original issue #117 form): a wrong-criterion finding does not block
-// an acceptance criterion — it rejects one — so an exclusive blocking
-// rule would foreclose the very verdict the "When a criterion is
-// itself wrong" section grants, and a reviewer reading the file in
-// order would take the later rule and approve. Neither anchor includes
-// the backtick-quoted `request-changes` token itself, so a formatting
-// change around that token doesn't make this check brittle.
+// reviewerCoverageInstruction and reviewerVerdictGroundsInstruction are
+// the two prose anchors the reviewer agents' "## Report" section must
+// carry: the finding stage is about coverage, not a severity filter,
+// and the approve/request-changes verdict is a separate judgment whose
+// grounds are not closed over the acceptance criteria. The verdict
+// anchor names a failing required test and a weakened security boundary
+// explicitly, because both earlier forms — "applies only when a finding
+// blocks an acceptance criterion" (issue #117) and "applies on exactly
+// two grounds" (PR #147) — left a severe defect touching no criterion
+// reportable but non-blocking, so a reviewer that found one filed it and
+// approved. Neither anchor includes the backtick-quoted
+// `request-changes` token itself, so a formatting change around that
+// token doesn't make this check brittle.
 const reviewerCoverageInstruction = "this stage is about coverage, not filtering"
-const reviewerBlockingVerdictInstruction = "applies on exactly two grounds — a finding blocks an acceptance criterion, or an acceptance criterion is itself wrong"
+const reviewerVerdictGroundsInstruction = "is not confined to findings that block an acceptance criterion: a required test that fails, a security boundary the change weakens, and any defect of comparable severity are each grounds on their own, even when no acceptance criterion names the area they sit in"
 
-// TestReviewerReportsCoverageAndBlockingVerdict checks the two reviewer
+// TestReviewerReportsCoverageAndVerdictGrounds checks the two reviewer
 // agent files directly by stem, not via agentRoster: agentRoster is a
 // name-keyed map iterated by TestAgentFrontmatter, so a file it doesn't
 // list would go unchecked there, and a body-content assertion has
 // nothing to do with the tools/model fields that map exists for. This
-// mechanically guards the coverage-not-filtering and blocking-only-verdict
+// mechanically guards the coverage-not-filtering and verdict-grounds
 // instructions instead of leaving them as prose a future reader must
 // re-verify by hand.
-func TestReviewerReportsCoverageAndBlockingVerdict(t *testing.T) {
+func TestReviewerReportsCoverageAndVerdictGrounds(t *testing.T) {
 	for _, stem := range []string{"orch-reviewer", "orch-reviewer-safe"} {
 		t.Run(stem, func(t *testing.T) {
 			path := filepath.Join("agents", stem+".md")
@@ -349,8 +349,8 @@ func TestReviewerReportsCoverageAndBlockingVerdict(t *testing.T) {
 			if !strings.Contains(content, reviewerCoverageInstruction) {
 				t.Errorf("%s: missing coverage instruction %q", path, reviewerCoverageInstruction)
 			}
-			if !strings.Contains(content, reviewerBlockingVerdictInstruction) {
-				t.Errorf("%s: missing blocking-only verdict instruction %q", path, reviewerBlockingVerdictInstruction)
+			if !strings.Contains(content, adaptertest.NormalizeWhitespace(reviewerVerdictGroundsInstruction)) {
+				t.Errorf("%s: missing verdict-grounds instruction %q", path, reviewerVerdictGroundsInstruction)
 			}
 		})
 	}
@@ -391,24 +391,46 @@ func TestDeliverySkillHasBranchScopeVerificationGuidance(t *testing.T) {
 	adaptertest.CheckBranchScopeVerificationGuidance(t, deliverySkillPath)
 }
 
-// These statements keep a wrong acceptance criterion reachable and route
-// it to the human rather than through the ordinary executor fix cycle.
-// Each phrase is pinned without its surrounding punctuation or em dashes,
-// so a prose reflow stays possible while deleting the statement fails.
+// These statements keep a wrong acceptance criterion reachable, keep the
+// plan gate from writing one no evidence can settle, and route a rejected
+// criterion to the human inside the review call rather than through a
+// second verb or the ordinary executor fix cycle. Each phrase is pinned
+// without its surrounding punctuation or em dashes, so a prose reflow
+// stays possible while deleting the statement fails.
+//
+// A pin catches deletion or rewording of the words, and nothing more: no
+// check here can observe whether a reviewer or Architect actually obeys
+// the statement it pins.
 const observableOutcomeCriterionGuidance = "An acceptance criterion describes an observable outcome, and never names a function, a control-flow step, or a validity notion the change is expected to introduce"
+const unproducibleEvidenceCriterionGuidance = "A criterion requiring evidence the repository cannot produce is not a valid criterion"
 const reviewerWrongCriterionGuidance = "You may return `request-changes` on the ground that an acceptance criterion is itself wrong"
 const reviewerAddedCodeNecessityGuidance = "Before you request a change that adds code, establish that the added code needs to exist at all"
 const reviewerWrongCriterionHumanGuidance = "Mark it `wrong acceptance criterion` and state the rejected criterion and reason in the consolidated report so the Architect can surface the rejected criterion and reason to the human"
-const wrongCriterionEscalationGuidance = "A `request-changes` report with a `wrong acceptance criterion` is not an executor fix cycle"
-const wrongCriterionEscalationTrigger = "call `orch run escalate` with `trigger` `architectural-ambiguity`"
+const reviewerProxyEvidenceGuidance = "A criterion is also wrong when the only evidence available for it is a proxy for what it asked. A criterion requiring a check on how an agent routes, what it decides, or how it behaves is the standing instance"
+const reviewerPerCriterionObservationGuidance = "Judge each acceptance criterion by number, one at a time. For each, state the specific observation that satisfies it"
+const reviewJudgmentsGuidance = "`judgments` is required and carries exactly one entry per acceptance criterion the issue holds"
+const reviewApproveRequiresAllSatisfied = "A `verdict` of `approve` is accepted only when every criterion is judged `satisfied`"
+const wrongCriterionInReviewCallGuidance = "A criterion judged `wrong` is the needs-human outcome, and this one `orch run review` call makes it"
+const wrongCriterionNoSecondVerbGuidance = "do not call `orch run escalate` for it and do not resume the executor"
 const wrongCriterionHumanGuidance = "surface the rejected criterion and reason to the human"
 const codeFindingFixCycleGuidance = "A `request-changes` based on a code finding resumes the same executor in the **same worktree** on the same branch: it fixes and pushes, then a **fresh** reviewer is spawned"
 
+// removedWrongCriterionEscalationGuidance is the instruction the v2
+// review verb made false: it told the Architect to record the review and
+// then call `orch run escalate` by hand, when `orch run review` now
+// blocks the issue and flags it needs-human inside the same call. It is
+// asserted absent, not present, so restoring the by-hand escalation step
+// fails this test.
+const removedWrongCriterionEscalationGuidance = "A `request-changes` report with a `wrong acceptance criterion` is not an executor fix cycle"
+
 // TestDeliverySkillAndReviewersHaveWrongCriterionGuidance checks the
-// Delivery escalation/fix-cycle split and both reviewer definitions. Like
-// TestReviewerReportsCoverageAndBlockingVerdict above, the reviewer files
+// Delivery per-criterion judgment contract, the wrong-criterion/fix-cycle
+// split, and both reviewer definitions. Like
+// TestReviewerReportsCoverageAndVerdictGrounds above, the reviewer files
 // are addressed by stem rather than through agentRoster, whose job is the
-// tools/model frontmatter. Comparison ignores hard wraps.
+// tools/model frontmatter. Comparison ignores hard wraps. It fails when a
+// pinned statement is deleted or reworded; it cannot tell whether any
+// agent that reads the statement follows it.
 func TestDeliverySkillAndReviewersHaveWrongCriterionGuidance(t *testing.T) {
 	data, err := os.ReadFile(deliverySkillPath)
 	if err != nil {
@@ -417,14 +439,20 @@ func TestDeliverySkillAndReviewersHaveWrongCriterionGuidance(t *testing.T) {
 	skill := adaptertest.NormalizeWhitespace(string(data))
 	for _, phrase := range []string{
 		observableOutcomeCriterionGuidance,
-		wrongCriterionEscalationGuidance,
-		wrongCriterionEscalationTrigger,
+		unproducibleEvidenceCriterionGuidance,
+		reviewJudgmentsGuidance,
+		reviewApproveRequiresAllSatisfied,
+		wrongCriterionInReviewCallGuidance,
+		wrongCriterionNoSecondVerbGuidance,
 		wrongCriterionHumanGuidance,
 		codeFindingFixCycleGuidance,
 	} {
 		if !strings.Contains(skill, adaptertest.NormalizeWhitespace(phrase)) {
 			t.Errorf("%s does not contain wrong-criterion guidance %q", deliverySkillPath, phrase)
 		}
+	}
+	if strings.Contains(skill, adaptertest.NormalizeWhitespace(removedWrongCriterionEscalationGuidance)) {
+		t.Errorf("%s still instructs a by-hand escalation after a wrong-criterion review: %q", deliverySkillPath, removedWrongCriterionEscalationGuidance)
 	}
 	for _, stem := range []string{"orch-reviewer", "orch-reviewer-safe"} {
 		t.Run(stem, func(t *testing.T) {
@@ -434,7 +462,13 @@ func TestDeliverySkillAndReviewersHaveWrongCriterionGuidance(t *testing.T) {
 				t.Fatalf("read %s: %v", path, err)
 			}
 			content := adaptertest.NormalizeWhitespace(string(data))
-			for _, phrase := range []string{reviewerWrongCriterionGuidance, reviewerAddedCodeNecessityGuidance, reviewerWrongCriterionHumanGuidance} {
+			for _, phrase := range []string{
+				reviewerWrongCriterionGuidance,
+				reviewerAddedCodeNecessityGuidance,
+				reviewerWrongCriterionHumanGuidance,
+				reviewerProxyEvidenceGuidance,
+				reviewerPerCriterionObservationGuidance,
+			} {
 				if !strings.Contains(content, adaptertest.NormalizeWhitespace(phrase)) {
 					t.Errorf("%s: missing reviewer guidance %q", path, phrase)
 				}
