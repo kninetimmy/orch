@@ -127,6 +127,17 @@ decision, not an oversight).
 6. Run `orch doctor` to confirm the environment (Git, GitHub, memhub,
    configuration) is healthy.
 
+## Upgrade
+
+The marketplace-add and plugin-add commands above are for a first
+installation. Upgrade an existing adapter with:
+
+```sh
+codex plugin marketplace upgrade orch
+```
+
+Restart Codex CLI after the upgrade so it loads the updated adapter.
+
 ## Known limitations
 
 These are accepted for this PR and the adapter as a whole, not open

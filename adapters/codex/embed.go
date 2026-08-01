@@ -2,6 +2,12 @@ package codex
 
 import "embed"
 
+// PluginManifestJSON is the shipped plugin manifest and therefore the
+// canonical adapter version for this build.
+//
+//go:embed .codex-plugin/plugin.json
+var PluginManifestJSON string
+
 // AgentTOMLs embeds the five shipped Codex agent definitions under
 // agents/ verbatim (LF-only, byte-identical to what this plugin ships,
 // since go:embed reads the file at build time). internal/agents reads

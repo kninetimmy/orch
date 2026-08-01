@@ -30,8 +30,8 @@ type Env struct {
 	Stdin io.Reader
 	// LookPath resolves an executable name; defaults to exec.LookPath.
 	LookPath func(string) (string, error)
-	// Runner executes external commands (git, gh); defaults to
-	// execx.Local resolving through LookPath.
+	// Runner executes external commands; defaults to execx.Local
+	// resolving through LookPath.
 	Runner execx.Runner
 }
 

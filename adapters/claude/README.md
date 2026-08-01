@@ -104,6 +104,18 @@ gap before it can matter. `orch doctor` is the health check for the
 locally installed environment (Git, GitHub, memhub, and configuration);
 run it after installing the binary and again after `orch init`.
 
+## Upgrade
+
+The marketplace-add and plugin-install commands above are for a first
+installation. Upgrade an existing adapter with both of these commands:
+
+```sh
+claude plugin marketplace update orch
+claude plugin update orch-claude@orch
+```
+
+Restart Claude Code after the upgrade so it loads the updated adapter.
+
 ## Known limitations
 
 These are accepted for this PR and the adapter as a whole, not open

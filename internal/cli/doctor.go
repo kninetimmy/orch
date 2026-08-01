@@ -2,19 +2,48 @@ package cli
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
 	"strings"
 
+	"github.com/kninetimmy/orch/adapters/claude"
+	"github.com/kninetimmy/orch/adapters/codex"
 	"github.com/kninetimmy/orch/internal/agents"
 	"github.com/kninetimmy/orch/internal/config"
+	"github.com/kninetimmy/orch/internal/execx"
 	"github.com/kninetimmy/orch/internal/ghops"
 	"github.com/kninetimmy/orch/internal/gitops"
 	"github.com/kninetimmy/orch/internal/lockfile"
 	"github.com/kninetimmy/orch/internal/memhub"
 	"github.com/kninetimmy/orch/internal/metrics"
 	"github.com/kninetimmy/orch/internal/state"
+)
+
+type adapterSpec struct {
+	host         string
+	executable   string
+	pluginID     string
+	manifestJSON string
+	repair       string
+}
+
+var (
+	claudeAdapter = adapterSpec{
+		host:         "claude",
+		executable:   "claude",
+		pluginID:     "orch-claude@orch",
+		manifestJSON: claude.PluginManifestJSON,
+		repair:       "run `claude plugin marketplace update orch`, then `claude plugin update orch-claude@orch`, then restart Claude Code",
+	}
+	codexAdapter = adapterSpec{
+		host:         "codex",
+		executable:   "codex",
+		pluginID:     "orch@orch",
+		manifestJSON: codex.PluginManifestJSON,
+		repair:       "run `codex plugin marketplace upgrade orch`, then restart Codex CLI",
+	}
 )
 
 func runDoctor(env Env) error {
@@ -85,6 +114,15 @@ func runDoctor(env Env) error {
 			fmt.Fprintf(env.Stdout, "note  %s applied; overrides: %s\n", config.LocalOverridePath, strings.Join(cfg.Overrides, ", "))
 		} else {
 			fmt.Fprintf(env.Stdout, "note  %s present; no overrides set\n", config.LocalOverridePath)
+		}
+	}
+
+	if cfgErr == nil {
+		if cfg.Hosts.Claude != nil {
+			check("claude adapter", checkAdapter(env, claudeAdapter))
+		}
+		if cfg.Hosts.Codex != nil {
+			check("codex adapter", checkAdapter(env, codexAdapter))
 		}
 	}
 
@@ -165,4 +203,133 @@ func runDoctor(env Env) error {
 		return errors.New("one or more checks failed")
 	}
 	return nil
+}
+
+type adapterPlugin struct {
+	ID        string `json:"id"`
+	PluginID  string `json:"pluginId"`
+	Version   string `json:"version"`
+	Installed bool   `json:"installed"`
+	Enabled   bool   `json:"enabled"`
+}
+
+func checkAdapter(env Env, spec adapterSpec) error {
+	fail := func(detail string) error {
+		return fmt.Errorf("%s; %s", detail, spec.repair)
+	}
+
+	expected, err := adapterVersion(spec.manifestJSON)
+	if err != nil {
+		return fail(fmt.Sprintf("read shipped %s adapter version: %v", spec.host, err))
+	}
+	if _, err := env.LookPath(spec.executable); err != nil {
+		return fail(fmt.Sprintf("%s not found on PATH (expected adapter version %q); install it or adjust PATH: %v", spec.executable, expected, err))
+	}
+
+	res, err := env.Runner.Run(context.Background(), execx.Cmd{
+		Name: spec.executable,
+		Args: []string{"plugin", "list", "--json"},
+		Dir:  env.RepoRoot,
+	})
+	command := spec.executable + " plugin list --json"
+	if err != nil {
+		return fail(fmt.Sprintf("run `%s`: %v", command, err))
+	}
+	if res.ExitCode != 0 {
+		detail := strings.TrimSpace(res.Stderr)
+		if detail == "" {
+			detail = "no error output"
+		}
+		return fail(fmt.Sprintf("`%s` exited %d: %s", command, res.ExitCode, detail))
+	}
+
+	plugins, err := decodeAdapterPlugins(spec.host, []byte(res.Stdout))
+	if err != nil {
+		return fail(fmt.Sprintf("malformed `%s` output: %v", command, err))
+	}
+
+	var matches []adapterPlugin
+	for _, plugin := range plugins {
+		id := plugin.ID
+		if spec.host == "codex" {
+			id = plugin.PluginID
+		}
+		if id == spec.pluginID {
+			matches = append(matches, plugin)
+		}
+	}
+
+	switch len(matches) {
+	case 0:
+		return fail(fmt.Sprintf("%s is absent (expected version %q)", spec.pluginID, expected))
+	case 1:
+		// Continue below.
+	default:
+		var versions []string
+		for _, plugin := range matches {
+			if plugin.Version != "" {
+				versions = append(versions, plugin.Version)
+			}
+		}
+		if len(versions) > 0 {
+			return fail(fmt.Sprintf("%s appears %d times (installed versions %q, expected %q); exactly one is required", spec.pluginID, len(matches), versions, expected))
+		}
+		return fail(fmt.Sprintf("%s appears %d times; exactly one at version %q is required", spec.pluginID, len(matches), expected))
+	}
+
+	plugin := matches[0]
+	versionDetail := fmt.Sprintf("expected %q", expected)
+	if plugin.Version != "" {
+		versionDetail = fmt.Sprintf("installed %q, expected %q", plugin.Version, expected)
+	}
+	if spec.host == "codex" && !plugin.Installed {
+		return fail(fmt.Sprintf("%s is marked not installed (%s)", spec.pluginID, versionDetail))
+	}
+	if !plugin.Enabled {
+		return fail(fmt.Sprintf("%s is disabled (%s)", spec.pluginID, versionDetail))
+	}
+	if plugin.Version == "" {
+		return fail(fmt.Sprintf("%s has no version (expected %q)", spec.pluginID, expected))
+	}
+	if plugin.Version != expected {
+		return fail(fmt.Sprintf("%s version mismatch: installed %q, expected %q", spec.pluginID, plugin.Version, expected))
+	}
+	return nil
+}
+
+func adapterVersion(manifestJSON string) (string, error) {
+	var manifest struct {
+		Version string `json:"version"`
+	}
+	if err := json.Unmarshal([]byte(manifestJSON), &manifest); err != nil {
+		return "", err
+	}
+	if manifest.Version == "" {
+		return "", errors.New("manifest has no version")
+	}
+	return manifest.Version, nil
+}
+
+func decodeAdapterPlugins(host string, data []byte) ([]adapterPlugin, error) {
+	if host == "claude" {
+		var plugins []adapterPlugin
+		if err := json.Unmarshal(data, &plugins); err != nil {
+			return nil, err
+		}
+		if plugins == nil {
+			return nil, errors.New("expected a top-level array")
+		}
+		return plugins, nil
+	}
+
+	var listing struct {
+		Installed []adapterPlugin `json:"installed"`
+	}
+	if err := json.Unmarshal(data, &listing); err != nil {
+		return nil, err
+	}
+	if listing.Installed == nil {
+		return nil, errors.New(`expected an object with an "installed" array`)
+	}
+	return listing.Installed, nil
 }

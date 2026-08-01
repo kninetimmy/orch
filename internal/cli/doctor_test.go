@@ -1,6 +1,8 @@
 package cli
 
 import (
+	"errors"
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -9,6 +11,7 @@ import (
 	"time"
 
 	"github.com/kninetimmy/orch/internal/agents"
+	"github.com/kninetimmy/orch/internal/execx"
 	"github.com/kninetimmy/orch/internal/lockfile"
 	"github.com/kninetimmy/orch/internal/state"
 )
@@ -122,6 +125,294 @@ func TestDoctorMissingConfig(t *testing.T) {
 	if !strings.Contains(stdout.String(), "FAIL  configuration") {
 		t.Errorf("stdout missing configuration failure:\n%s", stdout.String())
 	}
+}
+
+func TestDoctorConfiguredAdaptersPassCurrentListings(t *testing.T) {
+	tests := []struct {
+		name       string
+		config     string
+		executable string
+	}{
+		{"claude", validTOML, "claude"},
+		{"codex", validCodexTOML, "codex"},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			env, stdout, _ := testEnv(t)
+			writeConfig(t, env.RepoRoot, tc.config)
+			if tc.executable == "codex" {
+				if code := Run([]string{"render-agents"}, env); code != ExitOK {
+					t.Fatalf("render-agents exit = %d, want %d\n%s", code, ExitOK, stdout.String())
+				}
+				stdout.Reset()
+			}
+
+			probed := false
+			env.Runner = fakeRunner{
+				toplevel: env.RepoRoot,
+				beforeRun: func(cmd execx.Cmd) {
+					if cmd.Name != tc.executable {
+						return
+					}
+					probed = true
+					if cmd.Dir != env.RepoRoot {
+						t.Errorf("%s plugin list dir = %q, want %q", tc.executable, cmd.Dir, env.RepoRoot)
+					}
+				},
+			}
+			if code := Run([]string{"doctor"}, env); code != ExitOK {
+				t.Fatalf("exit = %d, want %d\n%s", code, ExitOK, stdout.String())
+			}
+			if !probed {
+				t.Fatalf("%s plugin listing was not probed", tc.executable)
+			}
+			if !strings.Contains(stdout.String(), "ok    "+tc.name+" adapter") {
+				t.Errorf("stdout missing passing adapter check:\n%s", stdout.String())
+			}
+		})
+	}
+}
+
+func TestDoctorAdapterFailures(t *testing.T) {
+	claudeVersion := mustAdapterVersion(t, claudeAdapter)
+	codexVersion := mustAdapterVersion(t, codexAdapter)
+	tests := []struct {
+		name        string
+		config      string
+		spec        adapterSpec
+		missingCLI  bool
+		configure   func(*fakeRunner)
+		wantDetails []string
+	}{
+		{
+			name:       "missing host CLI",
+			config:     validTOML,
+			spec:       claudeAdapter,
+			missingCLI: true,
+			wantDetails: []string{
+				"claude not found on PATH",
+				fmt.Sprintf(`expected adapter version %q`, claudeVersion),
+			},
+		},
+		{
+			name:   "listing command fails",
+			config: validCodexTOML,
+			spec:   codexAdapter,
+			configure: func(r *fakeRunner) {
+				r.codexPluginExit = 1
+				r.codexPluginStderr = "registry unavailable"
+			},
+			wantDetails: []string{"`codex plugin list --json` exited 1", "registry unavailable"},
+		},
+		{
+			name:   "listing cannot start",
+			config: validTOML,
+			spec:   claudeAdapter,
+			configure: func(r *fakeRunner) {
+				r.claudePluginErr = errors.New("spawn failed")
+			},
+			wantDetails: []string{"run `claude plugin list --json`", "spawn failed"},
+		},
+		{
+			name:   "claude malformed JSON",
+			config: validTOML,
+			spec:   claudeAdapter,
+			configure: func(r *fakeRunner) {
+				r.claudePluginJSON = "{"
+			},
+			wantDetails: []string{"malformed `claude plugin list --json` output"},
+		},
+		{
+			name:   "codex malformed shape",
+			config: validCodexTOML,
+			spec:   codexAdapter,
+			configure: func(r *fakeRunner) {
+				r.codexPluginJSON = "[]"
+			},
+			wantDetails: []string{"malformed `codex plugin list --json` output"},
+		},
+		{
+			name:   "adapter absent",
+			config: validTOML,
+			spec:   claudeAdapter,
+			configure: func(r *fakeRunner) {
+				r.claudePluginJSON = fmt.Sprintf(`[{"id":"orch@orch","version":%q,"enabled":true}]`, claudeVersion)
+			},
+			wantDetails: []string{"orch-claude@orch is absent", fmt.Sprintf(`expected version %q`, claudeVersion)},
+		},
+		{
+			name:   "adapter ambiguous",
+			config: validCodexTOML,
+			spec:   codexAdapter,
+			configure: func(r *fakeRunner) {
+				r.codexPluginJSON = fmt.Sprintf(
+					`{"installed":[{"pluginId":"orch@orch","version":"0.5.0","installed":true,"enabled":true},{"pluginId":"orch@orch","version":%q,"installed":true,"enabled":true}]}`,
+					codexVersion,
+				)
+			},
+			wantDetails: []string{"orch@orch appears 2 times", "installed versions", "0.5.0", codexVersion, "exactly one is required"},
+		},
+		{
+			name:   "adapter marked not installed",
+			config: validCodexTOML,
+			spec:   codexAdapter,
+			configure: func(r *fakeRunner) {
+				r.codexPluginJSON = fmt.Sprintf(
+					`{"installed":[{"pluginId":"orch@orch","version":%q,"installed":false,"enabled":true}]}`,
+					codexVersion,
+				)
+			},
+			wantDetails: []string{"orch@orch is marked not installed", fmt.Sprintf(`installed %q, expected %q`, codexVersion, codexVersion)},
+		},
+		{
+			name:   "adapter disabled",
+			config: validTOML,
+			spec:   claudeAdapter,
+			configure: func(r *fakeRunner) {
+				r.claudePluginJSON = fmt.Sprintf(
+					`[{"id":"orch-claude@orch","version":%q,"enabled":false}]`,
+					claudeVersion,
+				)
+			},
+			wantDetails: []string{"orch-claude@orch is disabled", fmt.Sprintf(`installed %q, expected %q`, claudeVersion, claudeVersion)},
+		},
+		{
+			name:   "adapter version missing",
+			config: validTOML,
+			spec:   claudeAdapter,
+			configure: func(r *fakeRunner) {
+				r.claudePluginJSON = `[{"id":"orch-claude@orch","enabled":true}]`
+			},
+			wantDetails: []string{"orch-claude@orch has no version", fmt.Sprintf(`expected %q`, claudeVersion)},
+		},
+		{
+			name:   "adapter version mismatch",
+			config: validCodexTOML,
+			spec:   codexAdapter,
+			configure: func(r *fakeRunner) {
+				r.codexPluginJSON = `{"installed":[{"pluginId":"orch@orch","version":"0.5.0","installed":true,"enabled":true}]}`
+			},
+			wantDetails: []string{"orch@orch version mismatch", fmt.Sprintf(`installed "0.5.0", expected %q`, codexVersion)},
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			env, stdout, _ := testEnv(t)
+			writeConfig(t, env.RepoRoot, tc.config)
+			if tc.spec.host == "codex" {
+				if code := Run([]string{"render-agents"}, env); code != ExitOK {
+					t.Fatalf("render-agents exit = %d, want %d\n%s", code, ExitOK, stdout.String())
+				}
+				stdout.Reset()
+			}
+
+			runner := fakeRunner{toplevel: env.RepoRoot}
+			if tc.configure != nil {
+				tc.configure(&runner)
+			}
+			if tc.missingCLI {
+				runner.beforeRun = func(cmd execx.Cmd) {
+					if cmd.Name == tc.spec.executable {
+						t.Fatalf("%s listing ran though the CLI was absent", tc.spec.executable)
+					}
+				}
+				lookPath := env.LookPath
+				env.LookPath = func(name string) (string, error) {
+					if name == tc.spec.executable {
+						return "", errNotFound
+					}
+					return lookPath(name)
+				}
+			}
+			env.Runner = runner
+
+			if code := Run([]string{"doctor"}, env); code != ExitError {
+				t.Fatalf("exit = %d, want %d\n%s", code, ExitError, stdout.String())
+			}
+			out := stdout.String()
+			if !strings.Contains(out, "FAIL  "+tc.spec.host+" adapter") {
+				t.Errorf("stdout missing host adapter failure:\n%s", out)
+			}
+			for _, want := range tc.wantDetails {
+				if !strings.Contains(out, want) {
+					t.Errorf("stdout missing %q:\n%s", want, out)
+				}
+			}
+			if !strings.Contains(out, tc.spec.repair) {
+				t.Errorf("stdout missing executable update and restart remediation %q:\n%s", tc.spec.repair, out)
+			}
+		})
+	}
+}
+
+func TestDoctorUnconfiguredHostIsNotProbed(t *testing.T) {
+	tests := []struct {
+		name         string
+		config       string
+		unconfigured string
+	}{
+		{"claude only", validTOML, "codex"},
+		{"codex only", validCodexTOML, "claude"},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			env, stdout, _ := testEnv(t)
+			writeConfig(t, env.RepoRoot, tc.config)
+			if tc.unconfigured == "claude" {
+				if code := Run([]string{"render-agents"}, env); code != ExitOK {
+					t.Fatalf("render-agents exit = %d, want %d\n%s", code, ExitOK, stdout.String())
+				}
+				stdout.Reset()
+			}
+
+			lookPath := env.LookPath
+			env.LookPath = func(name string) (string, error) {
+				if name == tc.unconfigured {
+					t.Fatalf("LookPath probed unconfigured host %s", name)
+				}
+				return lookPath(name)
+			}
+			env.Runner = fakeRunner{
+				toplevel: env.RepoRoot,
+				beforeRun: func(cmd execx.Cmd) {
+					if cmd.Name == tc.unconfigured {
+						t.Fatalf("plugin listing probed unconfigured host %s", cmd.Name)
+					}
+				},
+			}
+			if code := Run([]string{"doctor"}, env); code != ExitOK {
+				t.Fatalf("exit = %d, want %d\n%s", code, ExitOK, stdout.String())
+			}
+		})
+	}
+}
+
+func TestDoctorAdapterVersionIsIndependentOfBinaryRelease(t *testing.T) {
+	old := Version
+	Version = "v9.9.9"
+	t.Cleanup(func() { Version = old })
+
+	env, stdout, _ := testEnv(t)
+	writeConfig(t, env.RepoRoot, validTOML)
+	env.Runner = fakeRunner{toplevel: env.RepoRoot, releaseTag: Version}
+	if code := Run([]string{"doctor"}, env); code != ExitOK {
+		t.Fatalf("exit = %d, want %d (binary-only release must not stale the unchanged adapter)\n%s", code, ExitOK, stdout.String())
+	}
+	if !strings.Contains(stdout.String(), "ok    claude adapter") {
+		t.Errorf("stdout missing passing adapter check:\n%s", stdout.String())
+	}
+}
+
+func mustAdapterVersion(t *testing.T, spec adapterSpec) string {
+	t.Helper()
+	version, err := adapterVersion(spec.manifestJSON)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return version
 }
 
 func TestDoctorMemhubModeOffNeverProbes(t *testing.T) {
