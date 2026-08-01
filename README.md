@@ -562,17 +562,17 @@ tagged release.
   configuration went on being dispatched with nothing reporting them
   stale —
   [#166](https://github.com/kninetimmy/orch/pull/166)
-- Every reviewer agent definition — the standard and the read-only
-  reviewer, on Claude Code and on Codex alike — now states that a
+- Every reviewer agent definition on both hosts — the standard
+  reviewer and the safe review downgrade alike — now states that a
   `request-changes` verdict is not confined to findings that block an
   acceptance criterion: a required test that fails, a security boundary
   the change weakens, and any defect of comparable severity are each
   grounds on their own, even when no acceptance criterion names the
   area they sit in; before, Claude Code's two reviewers were given
   exactly two grounds — a finding blocking a criterion, or a criterion
-  itself wrong — and Codex's two were given no grounds at all, so a
-  required test failing outside every criterion's wording could be
-  written up as a report finding and approved in the same review —
+  itself wrong — and Codex's two were given no grounds at all, so on
+  neither host did a required test failing outside every criterion's
+  wording have to block the review —
   [#159](https://github.com/kninetimmy/orch/pull/159)
 - `orch run review` now refuses, before any mutation, a review that
   does not carry exactly one judgment per acceptance criterion the
