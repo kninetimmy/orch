@@ -48,6 +48,8 @@ model  = "gpt-5.6-sol"
 effort = "high"
 `
 
+var validBothHostsTOML = validTOML + validCodexTOML[strings.Index(validCodexTOML, "[hosts.codex"):]
+
 // validCodexOverrideTOML enables only the codex host with model/effort
 // values that diverge from the PRD §10 defaults.
 const validCodexOverrideTOML = `

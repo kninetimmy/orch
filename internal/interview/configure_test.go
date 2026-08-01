@@ -81,11 +81,11 @@ func writeInstalledBlock(t *testing.T, root, name string) {
 }
 
 // writeNoMissingGitignore writes root/.gitignore with every line
-// gitignoreLines wants already present (baseGitignoreLines plus the
-// always-proposed metricsGitignoreLine), so gitignoreLines proposes
-// nothing missing — the third precondition (alongside unchanged config
-// bytes and unchanged instruction files) for the no-change blocker to
-// ever fire.
+// gitignoreLines wants already present (baseGitignoreLines includes the
+// rendered-agent destination, plus the always-proposed metrics line),
+// so gitignoreLines proposes nothing missing — the third precondition
+// (alongside unchanged config bytes and unchanged instruction files)
+// for the no-change blocker to ever fire.
 func writeNoMissingGitignore(t *testing.T, root string) {
 	t.Helper()
 	lines := append(append([]string{}, baseGitignoreLines...), metricsGitignoreLine)
@@ -285,6 +285,9 @@ func TestGoldenTranscriptConfigureEnableCodexFromClaudeOnly(t *testing.T) {
 	}
 	if change.Diff == "" {
 		t.Error("AGENTS.md Diff is empty, want an install diff")
+	}
+	if !strings.Contains(strings.Join(doc.Complete.Summary.GitignoreLines, "\n"), ".codex/agents/") {
+		t.Errorf("GitignoreLines = %v, want rendered-agent destination", doc.Complete.Summary.GitignoreLines)
 	}
 }
 

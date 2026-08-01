@@ -46,13 +46,14 @@ func InstructionFile(host string) string {
 // initialized repository needs, mirroring (as literal strings —
 // Detect's execProber-duplication precedent, so this pre-init-safe
 // package need not import internal/run/state/lockfile) the values of
-// run.WorktreeContainer+"/", config.LocalOverridePath, state.Path, and
-// lockfile.Path.
+// run.WorktreeContainer+"/", config.LocalOverridePath, state.Path,
+// lockfile.Path, and agents.Dir+"/".
 var baseGitignoreLines = []string{
 	".orchestrator/worktrees/",
 	".orchestrator/config.local.toml",
 	".orchestrator/state.json",
 	".orchestrator/delivery.lock",
+	".codex/agents/",
 }
 
 // metricsGitignoreLine is the local, gitignored metrics storage

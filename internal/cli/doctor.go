@@ -7,6 +7,7 @@ import (
 	"os"
 	"strings"
 
+	"github.com/kninetimmy/orch/internal/agents"
 	"github.com/kninetimmy/orch/internal/config"
 	"github.com/kninetimmy/orch/internal/ghops"
 	"github.com/kninetimmy/orch/internal/gitops"
@@ -84,6 +85,22 @@ func runDoctor(env Env) error {
 			fmt.Fprintf(env.Stdout, "note  %s applied; overrides: %s\n", config.LocalOverridePath, strings.Join(cfg.Overrides, ", "))
 		} else {
 			fmt.Fprintf(env.Stdout, "note  %s present; no overrides set\n", config.LocalOverridePath)
+		}
+	}
+
+	if cfgErr == nil && cfg.Hosts.Codex != nil {
+		stale, staleErr := agents.Stale(env.RepoRoot, cfg.Hosts.Codex)
+		switch {
+		case len(stale) > 0:
+			detail := strings.Join(stale, ", ")
+			if staleErr != nil {
+				detail += fmt.Sprintf(" (%v)", staleErr)
+			}
+			check("codex agent files", fmt.Errorf("absent, unreadable, or out of date: %s; run `orch render-agents` to regenerate them", detail))
+		case staleErr != nil:
+			check("codex agent files", staleErr)
+		default:
+			check("codex agent files", nil)
 		}
 	}
 
