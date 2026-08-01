@@ -328,14 +328,21 @@ in flight at once. For each issue:
    reviewer's own cost — only report what the reviewer subagent's
    Task result actually carries, including `total_tokens` when that
    is what it reports instead of the input/output/cache split.
-   `request-changes` loops the same executor in the **same worktree**
-   on the same branch: it fixes and pushes, then a **fresh** reviewer
-   is spawned (step 4) and `orch run review` is called again. Because
-   this is the only verb call on that cycle, `executor_usage` (same
-   optional shape as `usage`) carries the executor's fix-and-push
-   cost for the cycle just finished — report only what its Task
-   result actually gives you, never an estimate, and omit it when
-   there was no fix cycle (the first review after pr-open).
+    A `request-changes` report with a `wrong acceptance criterion` is not
+    an executor fix cycle. Record the review with `orch run review`, then,
+    before asking the executor to change anything, call `orch run escalate`
+    with `trigger` `architectural-ambiguity` and a `detail` that names the
+    rejected criterion and its reason. A `return-to-architect` result is
+    the needs-human outcome: surface the rejected criterion and reason to
+    the human and do not resume the executor. A `request-changes` based on
+    a code finding resumes the same executor in the **same worktree** on
+    the same branch: it fixes and pushes, then a **fresh** reviewer is
+    spawned (step 4) and `orch run review` is called again. Because this is
+    the only verb call on that cycle, `executor_usage` (same optional shape
+    as `usage`) carries the executor's fix-and-push cost for the cycle just
+    finished — report only what its Task result actually gives you, never an
+    estimate, and omit it when there was no fix cycle (the first review
+    after pr-open).
    `orch run pr-open` is not reachable a second time, so `verifications`
    is optional and takes pr-open's input shape — use it to carry
    evidence re-run on the fix commit (e.g. tests re-run before

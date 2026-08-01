@@ -47,7 +47,10 @@ control-flow step, or a validity notion the change had to invent in
 order to satisfy the wording is the usual case. Do not redesign the
 criterion yourself, and do not approve a change you believe is wrong
 because it matches what the issue asked for — the Architect takes a
-wrong criterion back to the human.
+wrong criterion back to the human. Mark it `wrong acceptance criterion`
+and state the rejected criterion and reason in the consolidated report
+so the Architect can surface the rejected criterion and reason to the
+human.
 
 Before you request a change that adds code, establish that the added
 code needs to exist at all. "This case is unhandled" is a finding only
