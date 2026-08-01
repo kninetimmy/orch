@@ -1,4 +1,6 @@
-package agents
+// Package agents_test is external because adaptertest imports
+// internal/run, which imports internal/agents for activation preflight.
+package agents_test
 
 import (
 	"os"
@@ -10,6 +12,7 @@ import (
 
 	"github.com/kninetimmy/orch/adapters/codex"
 	"github.com/kninetimmy/orch/internal/adaptertest"
+	"github.com/kninetimmy/orch/internal/agents"
 	"github.com/kninetimmy/orch/internal/config"
 )
 
@@ -39,7 +42,7 @@ func defaultCodexHost() *config.Host {
 // Render itself uses, since that embed is the single canonical
 // source — see adapters/codex/embed.go).
 func TestRenderDefaultProfileByteIdenticalToShipped(t *testing.T) {
-	files, err := Render(defaultCodexHost())
+	files, err := agents.Render(defaultCodexHost())
 	if err != nil {
 		t.Fatalf("Render: %v", err)
 	}
@@ -60,7 +63,7 @@ func TestRenderDefaultProfileByteIdenticalToShipped(t *testing.T) {
 // TestRenderOrderAndNames pins the exact five file stems Render
 // produces, in order.
 func TestRenderOrderAndNames(t *testing.T) {
-	files, err := Render(defaultCodexHost())
+	files, err := agents.Render(defaultCodexHost())
 	if err != nil {
 		t.Fatalf("Render: %v", err)
 	}
@@ -99,7 +102,7 @@ func TestRenderOverrideSubstitution(t *testing.T) {
 		Reviewer:        config.RoleProfile{Model: "gpt-9000-ultra", Effort: "medium"},
 		ReviewDowngrade: config.RoleProfile{Model: "gpt-9000", Effort: "high"},
 	}}
-	files, err := Render(h)
+	files, err := agents.Render(h)
 	if err != nil {
 		t.Fatalf("Render: %v", err)
 	}
@@ -155,8 +158,8 @@ func TestRenderOverrideSubstitution(t *testing.T) {
 }
 
 func TestRenderNilHostFailsClosed(t *testing.T) {
-	if _, err := Render(nil); err == nil {
-		t.Error("Render(nil) succeeded, want an error")
+	if _, err := agents.Render(nil); err == nil {
+		t.Error("agents.Render(nil) succeeded, want an error")
 	}
 }
 
@@ -164,7 +167,7 @@ func TestRenderNilHostFailsClosed(t *testing.T) {
 // package documents: a rendered file must never introduce a carriage
 // return the shipped source did not already contain.
 func TestRenderNoTrailingCR(t *testing.T) {
-	files, err := Render(defaultCodexHost())
+	files, err := agents.Render(defaultCodexHost())
 	if err != nil {
 		t.Fatalf("Render: %v", err)
 	}
@@ -177,15 +180,15 @@ func TestRenderNoTrailingCR(t *testing.T) {
 
 func TestWriteCreatesDirectoryAndFiles(t *testing.T) {
 	root := t.TempDir()
-	files, err := Render(defaultCodexHost())
+	files, err := agents.Render(defaultCodexHost())
 	if err != nil {
 		t.Fatalf("Render: %v", err)
 	}
-	if err := Write(root, files); err != nil {
+	if err := agents.Write(root, files); err != nil {
 		t.Fatalf("Write: %v", err)
 	}
 
-	dir := filepath.Join(root, filepath.FromSlash(Dir))
+	dir := filepath.Join(root, filepath.FromSlash(agents.Dir))
 	entries, err := os.ReadDir(dir)
 	if err != nil {
 		t.Fatalf("ReadDir: %v", err)
@@ -215,7 +218,7 @@ func TestWriteCreatesDirectoryAndFiles(t *testing.T) {
 // content rather than leaving it or appending to it.
 func TestWriteOverwritesExisting(t *testing.T) {
 	root := t.TempDir()
-	dir := filepath.Join(root, filepath.FromSlash(Dir))
+	dir := filepath.Join(root, filepath.FromSlash(agents.Dir))
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		t.Fatal(err)
 	}
@@ -224,11 +227,11 @@ func TestWriteOverwritesExisting(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	files, err := Render(defaultCodexHost())
+	files, err := agents.Render(defaultCodexHost())
 	if err != nil {
 		t.Fatalf("Render: %v", err)
 	}
-	if err := Write(root, files); err != nil {
+	if err := agents.Write(root, files); err != nil {
 		t.Fatalf("Write: %v", err)
 	}
 
@@ -238,5 +241,67 @@ func TestWriteOverwritesExisting(t *testing.T) {
 	}
 	if strings.Contains(string(got), "stale content") {
 		t.Error("stale content survived Write")
+	}
+}
+
+func TestStaleReportsEveryBadFile(t *testing.T) {
+	root := t.TempDir()
+	h := defaultCodexHost()
+	files, err := agents.Render(h)
+	if err != nil {
+		t.Fatalf("Render: %v", err)
+	}
+	if err := agents.Write(root, files); err != nil {
+		t.Fatalf("Write: %v", err)
+	}
+
+	dir := filepath.Join(root, filepath.FromSlash(agents.Dir))
+	if err := os.Remove(filepath.Join(dir, "orch-scout.toml")); err != nil {
+		t.Fatal(err)
+	}
+	unreadable := filepath.Join(dir, "orch-implementer.toml")
+	if err := os.Remove(unreadable); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Mkdir(unreadable, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "orch-reviewer.toml"), []byte("stale\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	stale, err := agents.Stale(root, h)
+	want := []string{
+		agents.Dir + "/orch-scout.toml",
+		agents.Dir + "/orch-implementer.toml",
+		agents.Dir + "/orch-reviewer.toml",
+	}
+	if strings.Join(stale, ",") != strings.Join(want, ",") {
+		t.Errorf("Stale = %v, want %v", stale, want)
+	}
+	if err == nil || !strings.Contains(err.Error(), agents.Dir+"/orch-implementer.toml") {
+		t.Errorf("err = %v, want unreadable file named", err)
+	}
+}
+
+func TestStaleTracksEffectiveConfiguration(t *testing.T) {
+	root := t.TempDir()
+	files, err := agents.Render(defaultCodexHost())
+	if err != nil {
+		t.Fatalf("Render: %v", err)
+	}
+	if err := agents.Write(root, files); err != nil {
+		t.Fatalf("Write: %v", err)
+	}
+
+	h := defaultCodexHost()
+	h.Roles.Reviewer = config.RoleProfile{Model: "gpt-9000-ultra", Effort: "low"}
+	stale, err := agents.Stale(root, h)
+	if err != nil {
+		t.Fatalf("Stale: %v", err)
+	}
+	want := agents.Dir + "/orch-reviewer.toml"
+	if len(stale) != 1 || stale[0] != want {
+		t.Errorf("Stale = %v, want [%s]", stale, want)
 	}
 }
