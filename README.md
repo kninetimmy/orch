@@ -461,18 +461,18 @@ expected adapter version when they diverge.
 command-line tool.** Doctor checks every host the committed
 configuration names, and fails when that host's CLI is missing from
 `PATH`, when its plugin listing cannot be read, or when its adapter is
-anything other than one enabled entry at the version this build ships
-— absent, listed more than once, disabled, reporting no version at
-all, reporting a different version, or, on Codex, marked not
-installed. Host enablement is a committed-only key — the Settings
-table above marks `hosts.claude` / `hosts.codex` as `no (committed)` —
-so machine-local configuration cannot switch a host off for one
-machine. Symptom: a repository configured for both hosts reports a
-failing doctor on every machine that has only one of them installed.
-Workaround: enable only the hosts every machine working on the
-repository will have, or install the missing CLI on that machine.
-There is no override for this, by design: the check exists so an
-adapter that is absent or out of date is reported rather than trusted.
+in any of six states — absent, listed more than once, disabled,
+reporting no version at all, reporting a different version, or, on
+Codex, marked not installed. Host enablement is a committed-only key
+— the Settings table above marks `hosts.claude` / `hosts.codex` as
+`no (committed)` — so machine-local configuration cannot switch a
+host off for one machine. Symptom: a repository configured for both
+hosts reports a failing doctor on every machine that has only one of
+them installed. Workaround: enable only the hosts every machine
+working on the repository will have, or install the missing CLI on
+that machine. There is no override for this, by design: the check
+exists so an adapter that is absent or out of date is reported rather
+than trusted.
 
 **Codex `workspace-write` sandbox mode on Windows fails every agent
 write where the sandbox helper infrastructure is absent.** Observed
@@ -504,9 +504,9 @@ to compare the routed model against the installed agent's frontmatter
 and, on a mismatch, to stop and tell you rather than spawn a different
 model — so that stop rests on the Architect following an instruction,
 not on a check the engine performs. Either way, changing a role's
-model — which the Settings section above
-recommends as ordinary tuning — is not finished until the installed
-agent definitions carry it too.
+model — which the Settings section above recommends as ordinary
+tuning — is not finished until the installed agent definitions carry
+it too.
 
 **A Codex CLI upgrade that adds a new `apply_patch` directive causes
 denials until `orch` catches up.** The guard's envelope parser treats
@@ -546,13 +546,14 @@ Everything here is merged on `main` and shipped in v0.6.0, the latest
 tagged release.
 
 - `orch doctor` now checks each configured host's installed Orch
-  adapter and fails when it is absent, disabled, ambiguous or a
-  different version from the one this build ships, naming the expected
+  adapter and fails when it is absent, listed more than once, disabled,
+  reporting no version at all, at a different version from the one this
+  build ships, or, on Codex, marked not installed, naming the expected
   version and, whenever there is an installed one to name, the
-  installed version too — an absent adapter has no installed version,
-  so that failure reports the expected version alone; before, an
-  adapter left behind by a binary-only upgrade kept running while
-  doctor reported the host healthy —
+  installed version too — an adapter that is absent or reports no
+  version has none to name, so those failures report the expected
+  version alone; before, an adapter left behind by a binary-only
+  upgrade kept running while doctor reported the host healthy —
   [#167](https://github.com/kninetimmy/orch/pull/167)
 - `orch doctor` and Codex plan activation now compare the rendered
   agent definitions in `.codex/agents/` against the current build and
@@ -561,6 +562,19 @@ tagged release.
   configuration went on being dispatched with nothing reporting them
   stale —
   [#166](https://github.com/kninetimmy/orch/pull/166)
+- Every reviewer agent definition on both hosts — the standard
+  reviewer and the safe review downgrade alike — now states that a
+  `request-changes` verdict is not confined to findings that block an
+  acceptance criterion: a required test that fails, a security boundary
+  the change weakens, and any defect of comparable severity are each
+  grounds on their own, even when no acceptance criterion names the
+  area they sit in; before, Claude Code's two reviewers closed the set
+  at exactly two grounds — a finding blocking a criterion, or a
+  criterion itself wrong — while Codex's two named the wrong-criterion
+  ground without ever saying what else could drive request-changes, so
+  on neither host did a required test failing outside every criterion's
+  wording have to block the review —
+  [#159](https://github.com/kninetimmy/orch/pull/159)
 - `orch run review` now refuses, before any mutation, a review that
   does not carry exactly one judgment per acceptance criterion the
   issue holds, and a criterion judged wrong blocks the issue for you as
