@@ -26,11 +26,19 @@ func TestTotalTokensSelectsOnlyExactCompletedChild(t *testing.T) {
 	}
 }
 
-func TestTotalTokensIsolatesOnlyIdentifiedNonMatchingCorruption(t *testing.T) {
-	exact, err := os.ReadFile(filepath.Join(fixture(t, "exact"), "executor.jsonl"))
+func exactRollout(t *testing.T) []byte {
+	t.Helper()
+	data, err := os.ReadFile(filepath.Join(fixture(t, "exact"), "executor.jsonl"))
 	if err != nil {
 		t.Fatal(err)
 	}
+	return data
+}
+
+// A rollout that does not identify itself as the requested child is another
+// session's business: nothing wrong with it may suppress the exact total.
+func TestTotalTokensIsolatesUnrelatedRolloutCorruption(t *testing.T) {
+	exact := exactRollout(t)
 	unrelated, err := os.ReadFile(filepath.Join(fixture(t, "exact"), "sibling.jsonl"))
 	if err != nil {
 		t.Fatal(err)
@@ -39,30 +47,42 @@ func TestTotalTokensIsolatesOnlyIdentifiedNonMatchingCorruption(t *testing.T) {
 	for _, tc := range []struct {
 		name  string
 		other []byte
-		ok    bool
 	}{
 		{
-			name:  "identified unrelated rollout",
-			other: append(unrelated, []byte("this is not json\n")...),
-			ok:    true,
+			name:  "zero-byte rollout",
+			other: nil,
 		},
 		{
-			name:  "object-valued unrelated source",
-			other: []byte("{\"type\":\"session_meta\",\"payload\":{\"id\":\"review\",\"session_id\":\"review\",\"thread_source\":\"subagent\",\"source\":{\"subagent\":\"review\"}}}\nthis is not json\n"),
-			ok:    true,
+			name:  "no session metadata",
+			other: []byte("{\"type\":\"event_msg\",\"payload\":{\"type\":\"token_count\"}}\n"),
 		},
 		{
-			name:  "defaulted unrelated source",
-			other: []byte("{\"type\":\"session_meta\",\"payload\":{\"id\":\"root\",\"session_id\":\"root\",\"thread_source\":\"user\"}}\nthis is not json\n"),
-			ok:    true,
+			name:  "unparseable first line",
+			other: []byte("{\"type\":\"session_me"),
+		},
+		{
+			name:  "unrecognized session metadata shape",
+			other: []byte("{\"type\":\"session_meta\",\"payload\":{\"id\":\"other\",\"source\":{\"mcp\":\"gateway\"}}}\n"),
+		},
+		{
+			name:  "non-object session metadata payload",
+			other: []byte("{\"type\":\"session_meta\",\"payload\":\"other\"}\n"),
 		},
 		{
 			name:  "unidentified rollout",
 			other: []byte("{\"type\":\"session_meta\",\"payload\":{}}\nthis is not json\n"),
 		},
 		{
-			name:  "malformed source",
-			other: []byte("{\"type\":\"session_meta\",\"payload\":{\"id\":\"unknown\",\"session_id\":\"parent-139\",\"parent_thread_id\":\"parent-139\",\"thread_source\":\"subagent\",\"agent_path\":\"/root/issue_139_executor\",\"source\":{\"subagent\":\"not-a-variant\"}}}\nthis is not json\n"),
+			name:  "identified unrelated rollout",
+			other: append(unrelated, []byte("this is not json\n")...),
+		},
+		{
+			name:  "object-valued unrelated source",
+			other: []byte("{\"type\":\"session_meta\",\"payload\":{\"id\":\"review\",\"session_id\":\"review\",\"thread_source\":\"subagent\",\"source\":{\"subagent\":\"review\"}}}\nthis is not json\n"),
+		},
+		{
+			name:  "defaulted unrelated source",
+			other: []byte("{\"type\":\"session_meta\",\"payload\":{\"id\":\"root\",\"session_id\":\"root\",\"thread_source\":\"user\"}}\nthis is not json\n"),
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -75,11 +95,56 @@ func TestTotalTokensIsolatesOnlyIdentifiedNonMatchingCorruption(t *testing.T) {
 			}
 
 			got, ok := TotalTokens(dir, parentThread, executorTask, nil)
-			if ok != tc.ok {
-				t.Fatalf("TotalTokens availability = %t, want %t", ok, tc.ok)
+			if !ok {
+				t.Fatal("TotalTokens reported unavailable")
 			}
-			if ok && got != 782763 {
+			if got != 782763 {
 				t.Errorf("total_tokens = %d, want 782763", got)
+			}
+		})
+	}
+}
+
+// A rollout that does identify itself as the requested child is still checked
+// in full and still fails closed. Each broken rollout sits beside the exact
+// matching rollout, so unavailable can only mean the broken one poisoned a
+// capture that would otherwise have resolved: were it merely skipped as a
+// non-candidate, the exact total would still be reported.
+func TestTotalTokensFailsClosedForIdentifiedChild(t *testing.T) {
+	exact := exactRollout(t)
+
+	for _, tc := range []struct {
+		name    string
+		rollout []byte
+	}{
+		{
+			name:    "malformed record",
+			rollout: append(exactRollout(t), []byte("this is not json\n")...),
+		},
+		{
+			name:    "duplicate session metadata",
+			rollout: append(exactRollout(t), exact...),
+		},
+		{
+			name:    "malformed source",
+			rollout: []byte("{\"type\":\"session_meta\",\"payload\":{\"id\":\"unknown\",\"session_id\":\"parent-139\",\"parent_thread_id\":\"parent-139\",\"thread_source\":\"subagent\",\"agent_path\":\"/root/issue_139_executor\",\"source\":{\"subagent\":\"not-a-variant\"}}}\nthis is not json\n"),
+		},
+		{
+			name:    "missing source",
+			rollout: []byte("{\"type\":\"session_meta\",\"payload\":{\"id\":\"child-executor\",\"session_id\":\"parent-139\",\"parent_thread_id\":\"parent-139\",\"thread_source\":\"subagent\",\"agent_path\":\"/root/issue_139_executor\"}}\n"),
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			dir := t.TempDir()
+			if err := os.WriteFile(filepath.Join(dir, "exact.jsonl"), exact, 0o644); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.WriteFile(filepath.Join(dir, "rollout.jsonl"), tc.rollout, 0o644); err != nil {
+				t.Fatal(err)
+			}
+
+			if _, ok := TotalTokens(dir, parentThread, executorTask, nil); ok {
+				t.Error("TotalTokens reported usage despite an invalid identified child")
 			}
 		})
 	}
