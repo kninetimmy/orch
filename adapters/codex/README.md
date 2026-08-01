@@ -169,7 +169,7 @@ bugs:
   `orch-scout`'s read-only-ness fully — `orch-scout` carries no `Bash`
   — but `orch-reviewer` and `orch-reviewer-safe` both carry `Bash`, so
   their whitelist leaves that same Bash-mediated write path open there
-  too, for all that it excludes every guarded write tool; their
+  too, even though it excludes every guarded write tool; their
   read-only discipline for anything Bash-mediated rests on
   instructions, same as this host's.
 - **A missing `orch` binary fails open, not closed.** As described
