@@ -317,12 +317,17 @@ func TestAgentFrontmatter(t *testing.T) {
 // are the two prose anchors the reviewer agents' "## Report" section
 // must carry: the finding stage is about coverage, not a severity
 // filter, and the approve/request-changes verdict is a separate
-// judgment that turns only on findings blocking an acceptance
-// criterion. Neither anchor includes the backtick-quoted
-// `request-changes` token itself, so a formatting change around that
-// token doesn't make this check brittle.
+// judgment turning on a closed pair of grounds. The verdict anchor
+// enumerates both grounds rather than only the blocking one (its
+// original issue #117 form): a wrong-criterion finding does not block
+// an acceptance criterion — it rejects one — so an exclusive blocking
+// rule would foreclose the very verdict the "When a criterion is
+// itself wrong" section grants, and a reviewer reading the file in
+// order would take the later rule and approve. Neither anchor includes
+// the backtick-quoted `request-changes` token itself, so a formatting
+// change around that token doesn't make this check brittle.
 const reviewerCoverageInstruction = "this stage is about coverage, not filtering"
-const reviewerBlockingVerdictInstruction = "applies only when a finding blocks an acceptance criterion"
+const reviewerBlockingVerdictInstruction = "applies on exactly two grounds — a finding blocks an acceptance criterion, or an acceptance criterion is itself wrong"
 
 // TestReviewerReportsCoverageAndBlockingVerdict checks the two reviewer
 // agent files directly by stem, not via agentRoster: agentRoster is a

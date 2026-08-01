@@ -69,8 +69,9 @@ or falls under some bar. Give each finding a severity and a
 confidence.
 
 Decide the verdict after the findings are listed, as a separate
-judgment: `request-changes` applies only when a finding blocks an
-acceptance criterion. A non-blocking finding stays in the report
+judgment: `request-changes` applies on exactly two grounds — a finding
+blocks an acceptance criterion, or an acceptance criterion is itself
+wrong in the sense above. A finding that is neither stays in the report
 without by itself forcing another review cycle.
 
 Produce **one consolidated report** per review cycle — do not report
