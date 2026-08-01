@@ -19,11 +19,12 @@ never re-derives a decision the engine already made.
   `skills/`, `hooks/`) are auto-discovered by Claude Code; there is
   nothing else to declare here yet.
 - `hooks/hooks.json` — two hooks:
-  - `PreToolUse` on `Write|Edit|MultiEdit|NotebookEdit` runs
-    `orch guard claude`, which reads the tool-call event on stdin and
-    denies the write when Orch's policy (Assist read-only, Delivery
-    worktree containment) says so. An allow is silence: guard
-    never bypasses Claude Code's own permission prompts.
+  - `PreToolUse` on `Write|Edit|MultiEdit|NotebookEdit` — the four
+    guarded write tools — runs `orch guard claude`, which reads the
+    tool-call event on stdin and denies the write when Orch's policy
+    (Assist read-only, Delivery worktree containment) says so. An allow
+    is silence: guard never bypasses Claude Code's own permission
+    prompts.
   - `SessionStart` on `startup|resume|clear|compact` runs
     `orch hook claude session-start`, which injects a short context block
     at session start when the current directory is inside an Orch
@@ -124,7 +125,7 @@ These are accepted for this PR and the adapter as a whole, not open
 bugs:
 
 - **Bash-mediated writes are not guarded.** The `PreToolUse` hook only
-  covers the four file-editing tools (`Write`, `Edit`, `MultiEdit`,
+  covers the four guarded write tools (`Write`, `Edit`, `MultiEdit`,
   `NotebookEdit`). A file write made through `Bash` (for example `echo >
   file` or a script) does not go through `orch guard claude`. Claude
   Code's own permission prompts on `Bash` are the backstop here. This
