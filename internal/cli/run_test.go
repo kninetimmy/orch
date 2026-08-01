@@ -125,7 +125,7 @@ func TestRunLifecycleVerbsAreRouted(t *testing.T) {
 		"dispatch":        `{"schema_version":2,"issue_number":1}`,
 		"pr-open":         `{"schema_version":1,"issue_number":1,"verifications":[{"name":"t","result":"pass"}]}`,
 		"review-worktree": `{"schema_version":1,"issue_number":1,"head_oid":"0123456789abcdef0123456789abcdef01234567"}`,
-		"review":          `{"schema_version":1,"issue_number":1,"reviewed_head_oid":"h","verdict":"approve","summary":"s","reviewer":{"model":"m","effort":"e"}}`,
+		"review":          `{"schema_version":2,"issue_number":1,"reviewed_head_oid":"h","verdict":"approve","summary":"s","reviewer":{"model":"m","effort":"e"},"judgments":[{"criterion":1,"judgment":"satisfied","reason":"r"}]}`,
 		"escalate":        `{"schema_version":1,"issue_number":1,"trigger":"architectural-ambiguity","detail":"x"}`,
 		"ci":              `{"schema_version":1,"issue_number":1}`,
 		"merge-report":    `{"schema_version":1,"issue_number":1}`,

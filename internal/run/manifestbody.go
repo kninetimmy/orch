@@ -153,14 +153,24 @@ var engineVerificationNames = map[string]bool{
 // superseded.
 var reviewCycleNamePattern = regexp.MustCompile(`^review-cycle-[0-9]+$`)
 
+// acceptanceCriterionNamePattern matches the per-criterion names Review
+// writes for the reviewer's judgments (acceptance-criterion-<n>). Those
+// are replace-by-name entries like the singletons above, so a
+// caller-supplied entry of the same name would not sit as a visible
+// duplicate — it would silently stand in for a judgment about an
+// approved criterion until the next review cycle overwrote it, which is
+// the one entry in the record that must never be a caller's assertion.
+var acceptanceCriterionNamePattern = regexp.MustCompile(`^acceptance-criterion-[0-9]+$`)
+
 // rejectEngineOwnedNames fails closed with ErrBadRequest naming the
 // first verification in vs whose name collides with an engine-owned
-// singleton or a review-cycle-N entry, so the audit record's
-// engine-written entries can never be quietly overwritten — or quietly
-// duplicated — by a caller-supplied verification of the same name.
+// singleton, a review-cycle-N entry, or an acceptance-criterion-N
+// judgment, so the audit record's engine-written entries can never be
+// quietly overwritten — or quietly duplicated — by a caller-supplied
+// verification of the same name.
 func rejectEngineOwnedNames(vs []manifest.Verification) error {
 	for _, v := range vs {
-		if engineVerificationNames[v.Name] || reviewCycleNamePattern.MatchString(v.Name) {
+		if engineVerificationNames[v.Name] || reviewCycleNamePattern.MatchString(v.Name) || acceptanceCriterionNamePattern.MatchString(v.Name) {
 			return fmt.Errorf("%w: verification name %q is engine-owned and cannot be supplied by a caller", ErrBadRequest, v.Name)
 		}
 	}

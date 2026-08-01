@@ -367,7 +367,7 @@ func TestReviewStaleHeadIsPure(t *testing.T) {
 	root := setupDeliveryRepo(t, "r1", []state.Issue{fixtureIssue("a", 1, state.PhasePROpen)})
 	before := stateBytes(t, root)
 	script := &execxtest.Script{T: t, Calls: []execxtest.Call{ghAuth(), ghPRViewCall(10, "OPEN", "real-head")}}
-	_, err := Review(context.Background(), ghEnv(root, script), []byte(`{"schema_version":1,"issue_number":1,"reviewed_head_oid":"stale-head","verdict":"approve","summary":"s","reviewer":{"model":"claude-opus-4-8","effort":"high"}}`))
+	_, err := Review(context.Background(), ghEnv(root, script), []byte(`{"schema_version":2,"issue_number":1,"reviewed_head_oid":"stale-head","verdict":"approve","summary":"s","reviewer":{"model":"claude-opus-4-8","effort":"high"},`+fixtureJudgments+`}`))
 	if !errors.Is(err, ErrReviewStale) {
 		t.Fatalf("err = %v, want ErrReviewStale", err)
 	}
@@ -381,7 +381,7 @@ func TestReviewWrongReviewerIsPure(t *testing.T) {
 	root := setupDeliveryRepo(t, "r1", []state.Issue{fixtureIssue("a", 1, state.PhasePROpen)})
 	before := stateBytes(t, root)
 	script := &execxtest.Script{T: t} // fails before any gh call
-	_, err := Review(context.Background(), ghEnv(root, script), []byte(`{"schema_version":1,"issue_number":1,"reviewed_head_oid":"head","verdict":"approve","summary":"s","reviewer":{"model":"claude-haiku-4-5","effort":"low"}}`))
+	_, err := Review(context.Background(), ghEnv(root, script), []byte(`{"schema_version":2,"issue_number":1,"reviewed_head_oid":"head","verdict":"approve","summary":"s","reviewer":{"model":"claude-haiku-4-5","effort":"low"},`+fixtureJudgments+`}`))
 	if !errors.Is(err, ErrReviewerMismatch) {
 		t.Fatalf("err = %v, want ErrReviewerMismatch", err)
 	}
@@ -399,7 +399,7 @@ func TestReviewBadVerificationIsBadRequestBeforeMutation(t *testing.T) {
 	root := setupDeliveryRepo(t, "r1", []state.Issue{fixtureIssue("a", 1, state.PhasePROpen)})
 	before := stateBytes(t, root)
 	script := &execxtest.Script{T: t}
-	req := `{"schema_version":1,"issue_number":1,"reviewed_head_oid":"head","verdict":"approve","summary":"s","reviewer":{"model":"claude-opus-4-8","effort":"high"},"verifications":[{"name":"","result":"pass"}]}`
+	req := `{"schema_version":2,"issue_number":1,"reviewed_head_oid":"head","verdict":"approve","summary":"s","reviewer":{"model":"claude-opus-4-8","effort":"high"},` + fixtureJudgments + `,"verifications":[{"name":"","result":"pass"}]}`
 	_, err := Review(context.Background(), ghEnv(root, script), []byte(req))
 	if !errors.Is(err, ErrBadRequest) {
 		t.Fatalf("err = %v, want ErrBadRequest", err)
@@ -561,7 +561,7 @@ func TestReviewWritesSuppliedVerifications(t *testing.T) {
 		ghAuth(), ghPRViewCall(10, "OPEN", "head-oid-1"),
 		ghIssueViewCall(t, 1, "OPEN", body), ghSetIssueBodyCall(1), ghSetPRBodyCall(10),
 	}}
-	req := `{"schema_version":1,"issue_number":1,"reviewed_head_oid":"head-oid-1","verdict":"approve","summary":"looks good","reviewer":{"model":"claude-opus-4-8","effort":"high"},"verifications":[{"name":"go test ./...","result":"pass","detail":"22 packages ok"}]}`
+	req := `{"schema_version":2,"issue_number":1,"reviewed_head_oid":"head-oid-1","verdict":"approve","summary":"looks good","reviewer":{"model":"claude-opus-4-8","effort":"high"},` + fixtureJudgments + `,"verifications":[{"name":"go test ./...","result":"pass","detail":"22 packages ok"}]}`
 	res, err := Review(context.Background(), ghEnv(root, script), []byte(req))
 	if err != nil {
 		t.Fatalf("Review: %v", err)
@@ -608,7 +608,7 @@ func TestReviewVerificationReplacesByName(t *testing.T) {
 		ghAuth(), ghPRViewCall(10, "OPEN", "head-oid-1"),
 		ghIssueViewCall(t, 1, "OPEN", body), ghSetIssueBodyCall(1), ghSetPRBodyCall(10),
 	}}
-	req := `{"schema_version":1,"issue_number":1,"reviewed_head_oid":"head-oid-1","verdict":"approve","summary":"looks good","reviewer":{"model":"claude-opus-4-8","effort":"high"},"verifications":[{"name":"go test ./...","result":"pass","detail":"all green"}]}`
+	req := `{"schema_version":2,"issue_number":1,"reviewed_head_oid":"head-oid-1","verdict":"approve","summary":"looks good","reviewer":{"model":"claude-opus-4-8","effort":"high"},` + fixtureJudgments + `,"verifications":[{"name":"go test ./...","result":"pass","detail":"all green"}]}`
 	if _, err := Review(context.Background(), ghEnv(root, script), []byte(req)); err != nil {
 		t.Fatalf("Review: %v", err)
 	}
@@ -647,7 +647,7 @@ func TestReviewSummaryRoundTripsUnderReviewDetailCap(t *testing.T) {
 	if len(summary) >= reviewDetailCap {
 		t.Fatalf("fixture summary length %d must stay under reviewDetailCap %d", len(summary), reviewDetailCap)
 	}
-	req := fmt.Sprintf(`{"schema_version":1,"issue_number":1,"reviewed_head_oid":"head-oid-1","verdict":"approve","summary":%q,"reviewer":{"model":"claude-opus-4-8","effort":"high"}}`, summary)
+	req := fmt.Sprintf(`{"schema_version":2,"issue_number":1,"reviewed_head_oid":"head-oid-1","verdict":"approve","summary":%q,"reviewer":{"model":"claude-opus-4-8","effort":"high"},`+fixtureJudgments+`}`, summary)
 	if _, err := Review(context.Background(), ghEnv(root, script), []byte(req)); err != nil {
 		t.Fatalf("Review: %v", err)
 	}
@@ -687,7 +687,7 @@ func TestReviewSuppliedVerificationStillCappedAtVerificationDetailCap(t *testing
 		ghIssueViewCall(t, 1, "OPEN", body), ghSetIssueBodyCall(1), ghSetPRBodyCall(10),
 	}}
 	long := strings.Repeat("x", verificationDetailCap+500)
-	req := fmt.Sprintf(`{"schema_version":1,"issue_number":1,"reviewed_head_oid":"head-oid-1","verdict":"approve","summary":"looks good","reviewer":{"model":"claude-opus-4-8","effort":"high"},"verifications":[{"name":"go test","result":"pass","detail":%q}]}`, long)
+	req := fmt.Sprintf(`{"schema_version":2,"issue_number":1,"reviewed_head_oid":"head-oid-1","verdict":"approve","summary":"looks good","reviewer":{"model":"claude-opus-4-8","effort":"high"},`+fixtureJudgments+`,"verifications":[{"name":"go test","result":"pass","detail":%q}]}`, long)
 	if _, err := Review(context.Background(), ghEnv(root, script), []byte(req)); err != nil {
 		t.Fatalf("Review: %v", err)
 	}
@@ -716,9 +716,11 @@ func TestReviewSuppliedVerificationStillCappedAtVerificationDetailCap(t *testing
 }
 
 // engineOwnedVerificationNames are the names Change 2 reserves: the
-// three singletons the engine's own verbs write by replace-by-name, and
-// one name matching the review-cycle-<n> pattern Review generates.
-var engineOwnedVerificationNames = []string{"required-ci", "merge", "abandoned", "review-cycle-1"}
+// three singletons the engine's own verbs write by replace-by-name, one
+// name matching the review-cycle-<n> pattern Review generates, and one
+// matching the acceptance-criterion-<n> pattern Review writes for the
+// reviewer's per-criterion judgments.
+var engineOwnedVerificationNames = []string{"required-ci", "merge", "abandoned", "review-cycle-1", "acceptance-criterion-1"}
 
 // TestReviewRejectsEngineOwnedVerificationNames proves a caller-supplied
 // verification whose name collides with an engine-owned entry is
@@ -730,7 +732,7 @@ func TestReviewRejectsEngineOwnedVerificationNames(t *testing.T) {
 			root := setupDeliveryRepo(t, "r1", []state.Issue{fixtureIssue("a", 1, state.PhasePROpen)})
 			before := stateBytes(t, root)
 			script := &execxtest.Script{T: t}
-			req := fmt.Sprintf(`{"schema_version":1,"issue_number":1,"reviewed_head_oid":"head","verdict":"approve","summary":"s","reviewer":{"model":"claude-opus-4-8","effort":"high"},"verifications":[{"name":%q,"result":"pass"}]}`, name)
+			req := fmt.Sprintf(`{"schema_version":2,"issue_number":1,"reviewed_head_oid":"head","verdict":"approve","summary":"s","reviewer":{"model":"claude-opus-4-8","effort":"high"},`+fixtureJudgments+`,"verifications":[{"name":%q,"result":"pass"}]}`, name)
 			_, err := Review(context.Background(), ghEnv(root, script), []byte(req))
 			if !errors.Is(err, ErrBadRequest) {
 				t.Fatalf("err = %v, want ErrBadRequest", err)
@@ -792,7 +794,7 @@ func TestReviewStampsTheReviewedHead(t *testing.T) {
 		ghAuth(), ghPRViewCall(10, "OPEN", "head-oid-2"),
 		ghIssueViewCall(t, 1, "OPEN", body), ghSetIssueBodyCall(1), ghSetPRBodyCall(10),
 	}}
-	req := `{"schema_version":1,"issue_number":1,"reviewed_head_oid":"head-oid-2","verdict":"approve","summary":"looks good","reviewer":{"model":"claude-opus-4-8","effort":"high"},"verifications":[{"name":"go test ./...","result":"pass"}]}`
+	req := `{"schema_version":2,"issue_number":1,"reviewed_head_oid":"head-oid-2","verdict":"approve","summary":"looks good","reviewer":{"model":"claude-opus-4-8","effort":"high"},` + fixtureJudgments + `,"verifications":[{"name":"go test ./...","result":"pass"}]}`
 	if _, err := Review(context.Background(), ghEnv(root, script), []byte(req)); err != nil {
 		t.Fatalf("Review: %v", err)
 	}
@@ -912,7 +914,7 @@ func TestVerificationInputRejectsACallerSuppliedCommitOID(t *testing.T) {
 		"review": {
 			fn:    func(ctx context.Context, e Env, b []byte) error { _, err := Review(ctx, e, b); return err },
 			phase: state.PhaseInReview,
-			req:   `{"schema_version":1,"issue_number":1,"reviewed_head_oid":"h","verdict":"approve","summary":"s","reviewer":{"model":"claude-opus-4-8","effort":"high"},"verifications":[{"name":"go test","result":"pass","commit_oid":"claimed-head"}]}`,
+			req:   `{"schema_version":2,"issue_number":1,"reviewed_head_oid":"h","verdict":"approve","summary":"s","reviewer":{"model":"claude-opus-4-8","effort":"high"},` + fixtureJudgments + `,"verifications":[{"name":"go test","result":"pass","commit_oid":"claimed-head"}]}`,
 		},
 		"pr-open": {
 			fn:    func(ctx context.Context, e Env, b []byte) error { _, err := PROpen(ctx, e, b); return err },
@@ -937,6 +939,260 @@ func TestVerificationInputRejectsACallerSuppliedCommitOID(t *testing.T) {
 				t.Error("state changed on a request claiming its own commit OID")
 			}
 		})
+	}
+}
+
+// --- Per-criterion judgments (issue #154) ---
+
+// twoCriteriaAcceptance is fixtureAcceptance plus a second criterion, so
+// the coverage cases a single-criterion fixture cannot express — a
+// review that answers one criterion and says nothing about the other —
+// are reachable.
+func twoCriteriaAcceptance() []string {
+	return append(fixtureAcceptance(), "The status line names the lock owner.")
+}
+
+// twoCriteriaIssue is fixtureIssue carrying twoCriteriaAcceptance.
+func twoCriteriaIssue(phase state.Phase) state.Issue {
+	iss := fixtureIssue("a", 1, phase)
+	iss.AcceptanceCriteria = twoCriteriaAcceptance()
+	return iss
+}
+
+// twoCriteriaBody is the scripted issue body whose audit record matches
+// twoCriteriaIssue's approved work.
+func twoCriteriaBody(t *testing.T) string {
+	t.Helper()
+	m := baseManifest()
+	m.AcceptanceCriteria = twoCriteriaAcceptance()
+	body, err := manifest.Upsert("**Objective**\n\ndo it\n", m)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return body
+}
+
+// reviewReq builds a review request at this build's schema version for
+// issue 1, carrying verdict and the judgments array fragment.
+func reviewReq(verdict, judgments string) string {
+	return fmt.Sprintf(`{"schema_version":%d,"issue_number":1,"reviewed_head_oid":"head-oid-1","verdict":%q,"summary":"s","reviewer":{"model":"claude-opus-4-8","effort":"high"},"judgments":%s}`,
+		ReviewSchemaVersion, verdict, judgments)
+}
+
+// TestReviewRequiresOneJudgmentPerAcceptanceCriterion proves review
+// refuses, before any mutation, a request that does not carry exactly
+// one well-formed judgment for each acceptance criterion the issue
+// holds. The criteria are counted from the engine's own state, so a
+// request can neither invent a criterion nor answer fewer than the
+// issue carries. Every case fails with no gh call at all and leaves
+// state byte-identical.
+func TestReviewRequiresOneJudgmentPerAcceptanceCriterion(t *testing.T) {
+	const met = `{"criterion":1,"judgment":"satisfied","reason":"r1"}`
+	cases := map[string]struct{ verdict, judgments, want string }{
+		"no judgments at all": {
+			"approve", `[]`, "acceptance criterion 1 carries no judgment",
+		},
+		"one of two criteria judged": {
+			"approve", `[` + met + `]`, "acceptance criterion 2 carries no judgment",
+		},
+		"one criterion judged twice": {
+			"approve", `[` + met + `,{"criterion":1,"judgment":"satisfied","reason":"r2"}]`, "judged more than once",
+		},
+		"a criterion the issue does not hold": {
+			"approve", `[` + met + `,{"criterion":3,"judgment":"satisfied","reason":"r2"}]`, "the issue holds 2 acceptance criteria",
+		},
+		"a judgment outside the closed set": {
+			"request-changes", `[` + met + `,{"criterion":2,"judgment":"partly","reason":"r2"}]`, "is not one of satisfied",
+		},
+		"a judgment with no stated reason": {
+			"approve", `[` + met + `,{"criterion":2,"judgment":"satisfied","reason":""}]`, "states no reason",
+		},
+		"approve over a criterion judged unsatisfied": {
+			"approve", `[` + met + `,{"criterion":2,"judgment":"unsatisfied","reason":"r2"}]`, "cannot be approve",
+		},
+		"approve over a criterion judged wrong": {
+			"approve", `[` + met + `,{"criterion":2,"judgment":"wrong","reason":"r2"}]`, "cannot be approve",
+		},
+	}
+	for name, tc := range cases {
+		t.Run(name, func(t *testing.T) {
+			root := setupDeliveryRepo(t, "r1", []state.Issue{twoCriteriaIssue(state.PhaseInReview)})
+			before := stateBytes(t, root)
+			script := &execxtest.Script{T: t}
+			_, err := Review(context.Background(), ghEnv(root, script), []byte(reviewReq(tc.verdict, tc.judgments)))
+			if !errors.Is(err, ErrBadRequest) {
+				t.Fatalf("err = %v, want ErrBadRequest", err)
+			}
+			if !strings.Contains(err.Error(), tc.want) {
+				t.Errorf("err = %v, want it to name %q", err, tc.want)
+			}
+			script.AssertExhausted() // refused before any gh call
+			if got := stateBytes(t, root); string(got) != string(before) {
+				t.Error("state changed on a review that did not judge every acceptance criterion")
+			}
+		})
+	}
+}
+
+// TestReviewWrongCriterionBlocksForTheHuman proves a review that judges
+// any acceptance criterion wrong leaves the issue blocked and flagged
+// needs-human inside the same call that records it — the transition
+// escalate's return-to-architect makes, reached with no second verb
+// call. The cycle is still recorded (the reviewer's report is not lost
+// to the block), and the result names the wrong criteria and the reason
+// the human is being handed, since nothing later in the run will.
+func TestReviewWrongCriterionBlocksForTheHuman(t *testing.T) {
+	root := setupDeliveryRepo(t, "r1", []state.Issue{twoCriteriaIssue(state.PhaseInReview)})
+	body := twoCriteriaBody(t)
+	script := &execxtest.Script{T: t, Calls: []execxtest.Call{
+		ghAuth(), ghPRViewCall(10, "OPEN", "head-oid-1"),
+		ghIssueViewCall(t, 1, "OPEN", body), ghSetIssueBodyCall(1), ghSetPRBodyCall(10),
+		ghSetStatusCall(1, ghops.StatusNeedsHuman),
+	}}
+	judgments := `[{"criterion":1,"judgment":"satisfied","reason":"-race is clean"},` +
+		`{"criterion":2,"judgment":"wrong","reason":"there is no lock owner to name; the lock is per-process"}]`
+	res, err := Review(context.Background(), ghEnv(root, script), []byte(reviewReq("request-changes", judgments)))
+	if err != nil {
+		t.Fatalf("Review: %v", err)
+	}
+	script.AssertExhausted()
+
+	if res.Phase != state.PhaseBlocked {
+		t.Errorf("result phase = %s, want %s", res.Phase, state.PhaseBlocked)
+	}
+	if len(res.WrongCriteria) != 1 || res.WrongCriteria[0] != 2 {
+		t.Errorf("result wrong criteria = %v, want [2]", res.WrongCriteria)
+	}
+	if !strings.Contains(res.BlockedReason, "plan gate") {
+		t.Errorf("result blocked reason = %q, want it to name where a wrong criterion is corrected", res.BlockedReason)
+	}
+	wantPhase(t, root, 1, state.PhaseBlocked)
+	iss := loadRun(t, root).Run.Issues[0]
+	if iss.BlockedReason != res.BlockedReason {
+		t.Errorf("persisted blocked reason = %q, want the reported %q", iss.BlockedReason, res.BlockedReason)
+	}
+	if iss.ReviewCycles != 1 || iss.LastReviewVerdict != VerdictRequestChanges {
+		t.Errorf("issue = %+v, want the cycle recorded despite the block", iss)
+	}
+}
+
+// TestReviewUnsatisfiedCriterionReturnsToTheExecutor proves the other
+// half of the split: a criterion judged unsatisfied, with none judged
+// wrong, is ordinary fix-and-push work — the issue stays in-review and
+// the status goes back to in-progress, exactly as a request-changes
+// review has always behaved.
+func TestReviewUnsatisfiedCriterionReturnsToTheExecutor(t *testing.T) {
+	root := setupDeliveryRepo(t, "r1", []state.Issue{twoCriteriaIssue(state.PhaseInReview)})
+	body := twoCriteriaBody(t)
+	script := &execxtest.Script{T: t, Calls: []execxtest.Call{
+		ghAuth(), ghPRViewCall(10, "OPEN", "head-oid-1"),
+		ghIssueViewCall(t, 1, "OPEN", body), ghSetIssueBodyCall(1), ghSetPRBodyCall(10),
+		ghSetStatusCall(1, ghops.StatusInProgress),
+	}}
+	judgments := `[{"criterion":1,"judgment":"satisfied","reason":"-race is clean"},` +
+		`{"criterion":2,"judgment":"unsatisfied","reason":"the status line still omits the owner"}]`
+	res, err := Review(context.Background(), ghEnv(root, script), []byte(reviewReq("request-changes", judgments)))
+	if err != nil {
+		t.Fatalf("Review: %v", err)
+	}
+	script.AssertExhausted()
+	if res.Phase != state.PhaseInReview || len(res.WrongCriteria) != 0 {
+		t.Errorf("result = %+v, want in-review with no wrong criteria", res)
+	}
+	wantPhase(t, root, 1, state.PhaseInReview)
+	if got := loadRun(t, root).Run.Issues[0].BlockedReason; got != "" {
+		t.Errorf("blocked reason = %q, want none: no criterion was judged wrong", got)
+	}
+}
+
+// TestReviewRecordsEachJudgmentAndItsReason proves every criterion's
+// judgment and the reviewer's stated reason for it reach the issue's
+// audit record, named for the criterion's position in the record's own
+// acceptance-criteria list and stamped with the head the engine read.
+// The second cycle proves the entries are replace-by-name: the record
+// holds one entry per criterion carrying the current judgment, not one
+// per criterion per cycle.
+func TestReviewRecordsEachJudgmentAndItsReason(t *testing.T) {
+	root := setupDeliveryRepo(t, "r1", []state.Issue{twoCriteriaIssue(state.PhaseInReview)})
+	script := &execxtest.Script{T: t, Calls: []execxtest.Call{
+		ghAuth(), ghPRViewCall(10, "OPEN", "head-oid-1"),
+		ghIssueViewCall(t, 1, "OPEN", twoCriteriaBody(t)), ghSetIssueBodyCall(1), ghSetPRBodyCall(10),
+		ghSetStatusCall(1, ghops.StatusInProgress),
+	}}
+	judgments := `[{"criterion":2,"judgment":"unsatisfied","reason":"the status line still omits the owner"},` +
+		`{"criterion":1,"judgment":"satisfied","reason":"-race is clean"}]`
+	if _, err := Review(context.Background(), ghEnv(root, script), []byte(reviewReq("request-changes", judgments))); err != nil {
+		t.Fatalf("Review: %v", err)
+	}
+	script.AssertExhausted()
+
+	posted := script.StdinAt(3)
+	for name, want := range map[string][2]string{
+		"acceptance-criterion-1": {"satisfied", "-race is clean"},
+		"acceptance-criterion-2": {"unsatisfied", "the status line still omits the owner"},
+	} {
+		v := findVerification(t, posted, name)
+		if v.Result != want[0] || v.Detail != want[1] {
+			t.Errorf("%s = %+v, want judgment %q with reason %q", name, v, want[0], want[1])
+		}
+		if v.CommitOID != "head-oid-1" {
+			t.Errorf("%s commit = %q, want the PR's live head", name, v.CommitOID)
+		}
+	}
+
+	// Cycle 2 re-judges criterion 2 against the record cycle 1 posted.
+	script2 := &execxtest.Script{T: t, Calls: []execxtest.Call{
+		ghAuth(), ghPRViewCall(10, "OPEN", "head-oid-2"),
+		ghIssueViewCall(t, 1, "OPEN", posted), ghSetIssueBodyCall(1), ghSetPRBodyCall(10),
+	}}
+	req2 := strings.Replace(reviewReq("approve",
+		`[{"criterion":1,"judgment":"satisfied","reason":"-race is clean"},`+
+			`{"criterion":2,"judgment":"satisfied","reason":"the owner is named now"}]`),
+		`"head-oid-1"`, `"head-oid-2"`, 1)
+	if _, err := Review(context.Background(), ghEnv(root, script2), []byte(req2)); err != nil {
+		t.Fatalf("Review cycle 2: %v", err)
+	}
+	script2.AssertExhausted()
+
+	m, err := manifest.Parse(script2.StdinAt(3))
+	if err != nil {
+		t.Fatalf("Parse the posted issue body: %v", err)
+	}
+	count := 0
+	for _, v := range m.Verifications {
+		if v.Name != "acceptance-criterion-2" {
+			continue
+		}
+		count++
+		if v.Result != "satisfied" || v.Detail != "the owner is named now" {
+			t.Errorf("acceptance-criterion-2 = %+v, want cycle 2's judgment and reason", v)
+		}
+	}
+	if count != 1 {
+		t.Errorf("acceptance-criterion-2 appears %d times, want 1 (replace-by-name, not one per cycle)", count)
+	}
+}
+
+// TestReviewRefusesThePreviousSchemaVersion proves an adapter still
+// sending the v1 request — well-formed under v1, and silent about every
+// individual acceptance criterion — is refused naming the version this
+// build supports, rather than being told a field it has never heard of
+// is missing.
+func TestReviewRefusesThePreviousSchemaVersion(t *testing.T) {
+	root := setupDeliveryRepo(t, "r1", []state.Issue{fixtureIssue("a", 1, state.PhaseInReview)})
+	before := stateBytes(t, root)
+	script := &execxtest.Script{T: t}
+	req := `{"schema_version":1,"issue_number":1,"reviewed_head_oid":"head-oid-1","verdict":"approve","summary":"looks good","reviewer":{"model":"claude-opus-4-8","effort":"high"}}`
+	_, err := Review(context.Background(), ghEnv(root, script), []byte(req))
+	if !errors.Is(err, ErrBadRequest) {
+		t.Fatalf("err = %v, want ErrBadRequest", err)
+	}
+	if !strings.Contains(err.Error(), fmt.Sprintf("this build supports %d", ReviewSchemaVersion)) {
+		t.Errorf("err = %v, want it to name the supported version %d", err, ReviewSchemaVersion)
+	}
+	script.AssertExhausted()
+	if got := stateBytes(t, root); string(got) != string(before) {
+		t.Error("state changed on a review request at the previous schema version")
 	}
 }
 
