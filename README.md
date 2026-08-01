@@ -568,10 +568,11 @@ tagged release.
   acceptance criterion: a required test that fails, a security boundary
   the change weakens, and any defect of comparable severity are each
   grounds on their own, even when no acceptance criterion names the
-  area they sit in; before, Claude Code's two reviewers were given
-  exactly two grounds — a finding blocking a criterion, or a criterion
-  itself wrong — and Codex's two were given no grounds at all, so on
-  neither host did a required test failing outside every criterion's
+  area they sit in; before, Claude Code's two reviewers closed the set
+  at exactly two grounds — a finding blocking a criterion, or a
+  criterion itself wrong — while Codex's two named the wrong-criterion
+  ground without ever saying what else could drive request-changes, so
+  on neither host did a required test failing outside every criterion's
   wording have to block the review —
   [#159](https://github.com/kninetimmy/orch/pull/159)
 - `orch run review` now refuses, before any mutation, a review that
