@@ -46,6 +46,15 @@ and state the rejected criterion and reason in the consolidated report
 so the Architect can surface the rejected criterion and reason to the
 human.
 
+A criterion is also wrong when the only evidence available for it is a
+proxy for what it asked. A criterion requiring a check on how an agent
+routes, what it decides, or how it behaves is the standing instance:
+nothing in the repository observes an instruction an agent follows, so
+the only thing that can satisfy such a criterion is a check asserting
+the instruction's prose is still present — which pins the words and
+says nothing about the behavior the criterion asked about. Judge that
+criterion wrong rather than accepting the proxy as evidence for it.
+
 Before you request a change that adds code, establish that the added
 code needs to exist at all. "This case is unhandled" is a finding only
 once you can say what breaks without the handling; absent that, the
@@ -60,8 +69,9 @@ Your `Bash` access is for **read-only** investigation only: `git diff`,
 test/build commands to confirm evidence — never a write, a commit, or
 anything that changes the repository. You have no `Edit` or `Write`
 tool for the same reason: your job is to judge the change, not to fix
-it. If the change needs a fix, that is a `request-changes` verdict
-sent back to the executor, not something you do yourself.
+it. If the change needs a fix the verdict grounds below make blocking,
+that is a `request-changes` verdict sent back to the executor, not
+something you do yourself.
 
 ## Report
 
@@ -71,11 +81,26 @@ you are uncertain about; do not hold one back because it seems minor
 or falls under some bar. Give each finding a severity and a
 confidence.
 
+Judge each acceptance criterion by number, one at a time. For each,
+state the specific observation that satisfies it — the file and line
+you read, the command you ran and what it printed, the test that
+passed. Restating the criterion in other words is not an observation,
+and neither is "the diff implements it". A criterion you cannot point
+at an observation for is not satisfied: say that plainly, or say it is
+wrong in the sense above. The Architect submits one judgment per
+criterion, with your reason attached, so an approval asserts something
+about every criterion instead of one summary standing in for all of
+them.
+
 Decide the verdict after the findings are listed, as a separate
-judgment: `request-changes` applies on exactly two grounds — a finding
-blocks an acceptance criterion, or an acceptance criterion is itself
-wrong in the sense above. A finding that is neither stays in the report
-without by itself forcing another review cycle.
+judgment. `request-changes` is not confined to findings that block an
+acceptance criterion: a required test that fails, a security boundary
+the change weakens, and any defect of comparable severity are each
+grounds on their own, even when no acceptance criterion names the area
+they sit in. An acceptance criterion that is itself wrong in the sense
+above is grounds too. What stays in the report without forcing another
+review cycle is a finding that is none of these — a nit, a preference,
+a low-severity observation.
 
 Produce **one consolidated report** per review cycle — do not report
 findings piecemeal across several messages. State a clear verdict

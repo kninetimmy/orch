@@ -91,6 +91,17 @@ later review then grades how completely that invention was built rather
 than whether it needed to exist at all — state what must be true once
 the issue is done, and leave the mechanism to the executor.
 
+A criterion requiring evidence the repository cannot produce is not a
+valid criterion. When nothing in the repository can observe what the
+criterion asks about — how an agent routes, what it decides, whether it
+follows an instruction it was given — the only thing that could satisfy
+it is a check on a proxy, such as a test asserting the instruction's
+prose is still present, which pins the words and says nothing about the
+behavior. Ask what evidence would settle the criterion before you write
+it: if the honest answer is a proxy, write the criterion against
+something the repository can actually produce evidence for, or leave it
+out of the plan.
+
 Plan text must never reference machine-local or gitignored paths such
 as `.memhub/`, `.orchestrator/state.json`, or
 `.orchestrator/config.local.toml` — an executor sees only the committed
@@ -328,22 +339,38 @@ When capture returns no total, omit the corresponding optional field.
    already left, so you must track whichever value is current yourself:
 
    ```json
-   {"schema_version": 1, "issue_number": N, "reviewed_head_oid": "...",
+   {"schema_version": 2, "issue_number": N, "reviewed_head_oid": "...",
     "verdict": "approve|request-changes", "summary": "...",
     "reviewer": {"model": "...", "effort": "..."},
+    "judgments": [{"criterion": 1, "judgment": "satisfied|unsatisfied|wrong", "reason": "..."}],
     "verifications": [{"name": "...", "command": "...", "result": "...", "detail": "..."}]}
    ```
+
+   `judgments` is required and carries exactly one entry per acceptance
+   criterion the issue holds: `criterion` is the criterion's 1-based
+   position in the issue's approved acceptance criteria, `judgment` is
+   one of `satisfied`, `unsatisfied`, `wrong`, and `reason` is the
+   reviewer's own reason for that call, which the audit record keeps as
+   an engine-owned `acceptance-criterion-<n>` verification you never
+   supply yourself. The engine counts the criteria from its own state,
+   so the request cannot decide how many it is answering — a missing,
+   duplicated, or out-of-range criterion is refused before any mutation.
+   A `verdict` of `approve` is accepted only when every criterion is
+   judged `satisfied`; record `request-changes` otherwise. Transcribe
+   the reviewer's per-criterion calls, never your own reading of its
+   summary.
 
      `usage` is optional (PRD §21), same rule as PR-open: every reviewer
      is fresh, so add only its full exact `{"total_tokens": N}` when
      available.
-    A `request-changes` report with a `wrong acceptance criterion` is not
-    an executor fix cycle. Record the review with `orch run review`, then,
-    before asking the executor to change anything, call `orch run escalate`
-    with `trigger` `architectural-ambiguity` and a `detail` that names the
-    rejected criterion and its reason. A `return-to-architect` result is
-    the needs-human outcome: surface the rejected criterion and reason to
-    the human and do not resume the executor. A `request-changes` based on
+   A criterion judged `wrong` is the needs-human outcome, and this one
+   `orch run review` call makes it: the engine blocks the issue and
+   flags it needs-human itself, and the result says so in `phase`,
+   `wrong_criteria`, and `blocked_reason`. There is no second verb call
+   to make — do not call `orch run escalate` for it and do not resume
+   the executor. Instead surface the rejected criterion and reason to
+   the human, together with the returned `blocked_reason`, and stop
+   working the issue. A `request-changes` based on
     a code finding resumes the same executor with `followup_task` in the
     **same worktree** on the same branch: it fixes and pushes, then a
     **fresh** reviewer is dispatched (step 4) and `orch run review` is
