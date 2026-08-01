@@ -20,7 +20,10 @@ var errInvalidRollout = errors.New("invalid Codex rollout")
 // sessionsRoot contains exactly one valid rollout for parentThreadID and
 // taskIdentity. When previousTotal is set, it returns the exact non-negative
 // difference from that earlier cumulative total. Every persistence or format
-// problem is unavailable rather than a best-effort attribution.
+// problem in a rollout that identifies itself as that child is unavailable
+// rather than a best-effort attribution; a rollout that does not identify
+// itself as that child is another session's business and cannot affect the
+// result, however malformed it is.
 func TotalTokens(sessionsRoot, parentThreadID, taskIdentity string, previousTotal *int64) (int64, bool) {
 	if strings.TrimSpace(parentThreadID) == "" || strings.TrimSpace(taskIdentity) == "" {
 		return 0, false
@@ -39,11 +42,8 @@ func TotalTokens(sessionsRoot, parentThreadID, taskIdentity string, previousTota
 			return nil
 		}
 
-		candidateTotal, matched, valid, err := rolloutTotal(path, parentThreadID, taskIdentity)
-		if err != nil {
-			return err
-		}
-		if !matched {
+		candidateTotal, candidate, valid := rolloutTotal(path, parentThreadID, taskIdentity)
+		if !candidate {
 			return nil
 		}
 		if !valid {
@@ -105,19 +105,23 @@ type event struct {
 	} `json:"info"`
 }
 
-// rolloutTotal parses one JSONL rollout. A candidate must be a child session
-// whose three persisted parent references and agent path exactly match.
-func rolloutTotal(path, parentThreadID, taskIdentity string) (int64, bool, bool, error) {
+// rolloutTotal parses one JSONL rollout and reports whether it is a candidate
+// for the requested child and, if so, whether it is wholly valid. A rollout
+// only becomes a candidate once its session metadata identifies it as that
+// child; until then any read or format failure means the file is unidentified,
+// so it is not this capture's rollout and is left out of the result entirely.
+// Once identified, every remaining check is fail-closed.
+func rolloutTotal(path, parentThreadID, taskIdentity string) (int64, bool, bool) {
 	f, err := os.Open(path)
 	if err != nil {
-		return 0, false, false, err
+		return 0, false, false
 	}
 	defer func() { _ = f.Close() }()
 
 	scanner := bufio.NewScanner(f)
 	scanner.Buffer(make([]byte, 64*1024), maxJSONLRecord)
 
-	var seenMeta, matched bool
+	var identified bool
 	var previous, last record
 	for scanner.Scan() {
 		line := bytes.TrimSpace(scanner.Bytes())
@@ -127,44 +131,40 @@ func rolloutTotal(path, parentThreadID, taskIdentity string) (int64, bool, bool,
 
 		var current record
 		if err := json.Unmarshal(line, &current); err != nil {
-			return 0, false, false, err
+			return 0, identified, false
 		}
 		if current.Type == "session_meta" {
-			if seenMeta {
-				return 0, false, false, errInvalidRollout
+			if identified {
+				return 0, true, false
 			}
-			seenMeta = true
 
 			var meta sessionMeta
 			if err := json.Unmarshal(current.Payload, &meta); err != nil {
-				return 0, false, false, err
+				return 0, false, false
 			}
-			if !validSessionMeta(meta) {
-				return 0, false, false, errInvalidRollout
+			if !identifies(meta, parentThreadID, taskIdentity) {
+				return 0, false, false
 			}
-			matched = matches(meta, parentThreadID, taskIdentity)
-			if !matched {
-				return 0, false, false, nil
+			if !validSessionMeta(meta) || !sourceNamesParent(meta, parentThreadID) {
+				return 0, true, false
 			}
+			identified = true
 			continue
 		}
-		if matched {
+		if identified {
 			previous = last
 			last = current
 		}
 	}
 	if err := scanner.Err(); err != nil {
-		return 0, false, false, err
+		return 0, identified, false
 	}
-	if !seenMeta {
-		return 0, false, false, errInvalidRollout
-	}
-	if !matched {
-		return 0, false, false, nil
+	if !identified {
+		return 0, false, false
 	}
 
 	total, valid := finalTotal(previous, last)
-	return total, true, valid, nil
+	return total, true, valid
 }
 
 func validSessionMeta(meta sessionMeta) bool {
@@ -278,14 +278,22 @@ func validAgentPath(path string) bool {
 	return true
 }
 
-func matches(meta sessionMeta, parentThreadID, taskIdentity string) bool {
-	if meta.ID == "" || meta.ID == parentThreadID ||
-		meta.SessionID != parentThreadID ||
-		meta.ParentThreadID != parentThreadID ||
-		meta.ThreadSource != "subagent" ||
-		meta.AgentPath != taskIdentity {
-		return false
-	}
+// identifies reports whether a rollout's own id, its two persisted parent
+// references and its agent path name it as the requested child. This is the
+// only question a rollout has to answer before it can affect the result; the
+// remaining parent reference in its spawn source is validated afterwards.
+func identifies(meta sessionMeta, parentThreadID, taskIdentity string) bool {
+	return meta.ID != "" &&
+		meta.ID != parentThreadID &&
+		meta.SessionID == parentThreadID &&
+		meta.ParentThreadID == parentThreadID &&
+		meta.ThreadSource == "subagent" &&
+		meta.AgentPath == taskIdentity
+}
+
+// sourceNamesParent reports whether an identified rollout's spawn source agrees
+// with the parent references it identified itself by.
+func sourceNamesParent(meta sessionMeta, parentThreadID string) bool {
 	var source subagentSource
 	if err := json.Unmarshal(meta.Source, &source); err != nil {
 		return false
