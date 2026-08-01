@@ -70,7 +70,7 @@ The full product definition lives in [ORCH-PRD.md](ORCH-PRD.md).
 
 ## Status
 
-Early software. What can be stated as fact: 15 tagged releases (v0.1.0 through v0.6.0) and 96 merged pull requests, 55 of which carry an Orch audit record in their body — every merge from PR #40 through PR #167 except #50, #103, #121, #129 and #133, all of which `orch configure` delivered in its own body format. Since PR #40, this repository has been built through the pipeline described above: a plan gate, an isolated worktree per issue, a review dispatched separately from the work, CI, and a merge that fails closed unless it carries an approval pinned to the commit `merge-report` recorded.
+Early software. What can be stated as fact: 15 tagged releases, v0.1.0 through v0.6.0, and every pull request merged since PR #40 carries an Orch audit record in its body — apart from the configuration deliveries, which `orch configure` writes in its own body format. Since PR #40, this repository has been built through the pipeline described above: a plan gate, an isolated worktree per issue, a review dispatched separately from the work, CI, and a merge that fails closed unless it carries an approval pinned to the commit `merge-report` recorded.
 
 All of that evidence comes from one repository: this one.
 
@@ -461,8 +461,10 @@ expected adapter version when they diverge.
 command-line tool.** Doctor checks every host the committed
 configuration names, and fails when that host's CLI is missing from
 `PATH`, when its plugin listing cannot be read, or when its adapter is
-absent, ambiguous, disabled or a different version from the one this
-build ships. Host enablement is a committed-only key — the Settings
+anything other than one enabled entry at the version this build ships
+— absent, listed more than once, disabled, reporting no version at
+all, reporting a different version, or, on Codex, marked not
+installed. Host enablement is a committed-only key — the Settings
 table above marks `hosts.claude` / `hosts.codex` as `no (committed)` —
 so machine-local configuration cannot switch a host off for one
 machine. Symptom: a repository configured for both hosts reports a
@@ -491,12 +493,18 @@ either host.** Neither host can override a model per spawn, so the
 routed selection has to match an installed agent definition. On Codex
 that means the five agent TOMLs are a separate install step the
 marketplace install does not perform — you copy them or run `orch
-render-agents` — and after you change `hosts.codex.roles`, dispatched
-agents keep running the model pinned in the installed TOMLs until you
-re-render. On Claude Code the failure is louder: if the routed model
-matches no installed agent's frontmatter, the spawn stops and the
-Architect tells you, rather than silently running a different model.
-Either way, changing a role's model — which the Settings section above
+render-agents` — and after you change `hosts.codex.roles`, the
+installed TOMLs still pin the old model until you re-render. That much
+the binary now catches: `orch doctor` and Codex plan activation both
+compare the rendered definitions against the effective configuration
+and fail closed naming `orch render-agents`, so activation refuses
+rather than dispatching agents pinned to a stale model. On Claude Code
+nothing in the binary checks this. The Architect's skill instructs it
+to compare the routed model against the installed agent's frontmatter
+and, on a mismatch, to stop and tell you rather than spawn a different
+model — so that stop rests on the Architect following an instruction,
+not on a check the engine performs. Either way, changing a role's
+model — which the Settings section above
 recommends as ordinary tuning — is not finished until the installed
 agent definitions carry it too.
 
@@ -539,10 +547,12 @@ tagged release.
 
 - `orch doctor` now checks each configured host's installed Orch
   adapter and fails when it is absent, disabled, ambiguous or a
-  different version from the one this build ships, naming the installed
-  and the expected version; before, an adapter left behind by a
-  binary-only upgrade kept running while doctor reported the host
-  healthy —
+  different version from the one this build ships, naming the expected
+  version and, whenever there is an installed one to name, the
+  installed version too — an absent adapter has no installed version,
+  so that failure reports the expected version alone; before, an
+  adapter left behind by a binary-only upgrade kept running while
+  doctor reported the host healthy —
   [#167](https://github.com/kninetimmy/orch/pull/167)
 - `orch doctor` and Codex plan activation now compare the rendered
   agent definitions in `.codex/agents/` against the current build and
@@ -567,6 +577,14 @@ tagged release.
   child in the run; a rollout that does match is still fully validated
   and two matching rollouts still fail closed —
   [#148](https://github.com/kninetimmy/orch/pull/148)
+- Claude Code's two reviewer agents now report every finding they make,
+  low-severity and uncertain ones included, each carrying a severity
+  and a confidence, and decide the verdict afterwards as a separate
+  judgment, so a nit stays in the report without by itself costing
+  another review cycle; before, neither agent said whether a minor or
+  uncertain finding belonged in the report at all, nor that the verdict
+  was a judgment made after the findings were listed —
+  [#117](https://github.com/kninetimmy/orch/pull/117)
 - A verification entry whose text describes the branch as a whole is
   given its `branch-scope:` name prefix at `pr-open`, where the name is
   first chosen; before, a prefix added on a later review cycle appended
