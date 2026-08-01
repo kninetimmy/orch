@@ -59,17 +59,19 @@ never re-derives a decision the engine already made.
   `agents/orch-specialist.md`, `agents/orch-reviewer.md`,
   `agents/orch-reviewer-safe.md` — the five role subagents the Architect
   spawns during Delivery, each with its own model and tool whitelist
-  (scout, reviewer, and reviewer-safe carry no write tool; no agent
-  carries `Task` or any `mcp__` tool). `orch-reviewer-safe` is the §10
-  safe-review downgrade encoding: Claude Code's Task tool `model` parameter
-  only takes coarse tier aliases (`sonnet`/`opus`/`haiku`/`fable`), so a
-  per-spawn override cannot express a routed selection. A separate
-  installed agent is shipped instead because only an installed definition
-  carries its own system prompt — the safe-downgrade framing and
-  instructions — and a distinct name the frontmatter-match rule can
-  verify; the effort difference from the full reviewer rides the
-  spawn-time prompt cue, per the Known limitations bullet below, not a
-  frontmatter field.
+  (scout, reviewer, and reviewer-safe carry none of the four guarded
+  write tools, but only scout is read-only by whitelist alone: both
+  reviewers carry `Bash`, which can write unguarded — see Known
+  limitations below; no agent carries `Task` or any `mcp__` tool).
+  `orch-reviewer-safe` is the §10 safe-review downgrade encoding:
+  Claude Code's Task tool `model` parameter only takes coarse tier
+  aliases (`sonnet`/`opus`/`haiku`/`fable`), so a per-spawn override
+  cannot express a routed selection. A separate installed agent is
+  shipped instead because only an installed definition carries its own
+  system prompt — the safe-downgrade framing and instructions — and a
+  distinct name the frontmatter-match rule can verify; the effort
+  difference from the full reviewer rides the spawn-time prompt cue,
+  per the Known limitations bullet below, not a frontmatter field.
 
 ## Install order
 
@@ -150,9 +152,11 @@ bugs:
   enforcement instead comes from each subagent's own tool whitelist in its
   agent definition (PR 2), not from guard's role-narrowing flag — but
   the whitelist accounts fully only for `orch-scout`, which carries no
-  `Bash`. `orch-reviewer` and `orch-reviewer-safe` both carry `Bash`,
-  so their whitelist excludes only the four guarded write tools; their
-  read-only discipline for anything Bash-mediated rests on their own
+  `Bash`. `orch-reviewer` and `orch-reviewer-safe` are whitelisted for
+  `Read`, `Grep`, `Glob` and `Bash` — every guarded write tool is
+  excluded, along with `Task`, every `mcp__` tool, `WebFetch` and
+  `WebSearch`, but `Bash` is left and `Bash` can write. Their read-only
+  discipline for anything Bash-mediated rests on their own
   instructions, same as the Bash-mediated write gap above.
 
 ## Host version
