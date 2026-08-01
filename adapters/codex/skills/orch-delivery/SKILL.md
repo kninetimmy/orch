@@ -83,6 +83,14 @@ the exact command that gates the change (`go test ./...`, `gofmt -l .`);
 it is not an invitation for comprehensive coverage, just the check this
 change must pass.
 
+An acceptance criterion describes an observable outcome, and never
+names a function, a control-flow step, or a validity notion the change
+is expected to introduce. Naming one that does not exist yet hands the
+executor a design to invent in order to satisfy the wording, and every
+later review then grades how completely that invention was built rather
+than whether it needed to exist at all — state what must be true once
+the issue is done, and leave the mechanism to the executor.
+
 Plan text must never reference machine-local or gitignored paths such
 as `.memhub/`, `.orchestrator/state.json`, or
 `.orchestrator/config.local.toml` — an executor sees only the committed

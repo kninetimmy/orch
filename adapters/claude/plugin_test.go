@@ -386,6 +386,55 @@ func TestDeliverySkillHasBranchScopeVerificationGuidance(t *testing.T) {
 	adaptertest.CheckBranchScopeVerificationGuidance(t, deliverySkillPath)
 }
 
+// The three statements that keep a wrong acceptance criterion
+// reachable: the plan-construction rule that a criterion states an
+// observable outcome rather than the mechanism its author imagines,
+// the reviewer's standing to reject a criterion instead of grading
+// conformance to it, and the necessity test a reviewer must apply
+// before asking for more code. Each phrase is pinned without its
+// surrounding punctuation or em dashes, so rewording around a
+// statement stays possible while deleting the statement fails the
+// test.
+const observableOutcomeCriterionGuidance = "An acceptance criterion describes an observable outcome, and never names a function, a control-flow step, or a validity notion the change is expected to introduce"
+const reviewerWrongCriterionGuidance = "You may return `request-changes` on the ground that an acceptance criterion is itself wrong"
+const reviewerAddedCodeNecessityGuidance = "Before you request a change that adds code, establish that the added code needs to exist at all"
+
+// TestDeliverySkillAndReviewersHaveWrongCriterionGuidance checks each
+// of the three statements in the file that owns it: the first in the
+// delivery skill's PlanDoc construction guidance, the other two in both
+// reviewer agent definitions. Like
+// TestReviewerReportsCoverageAndBlockingVerdict above, the reviewer
+// files are addressed by stem rather than through agentRoster, whose
+// job is the tools/model frontmatter. Comparison runs on
+// whitespace-normalized text on both sides, so a statement the markdown
+// hard-wraps still matches.
+func TestDeliverySkillAndReviewersHaveWrongCriterionGuidance(t *testing.T) {
+	data, err := os.ReadFile(deliverySkillPath)
+	if err != nil {
+		t.Fatalf("read %s: %v", deliverySkillPath, err)
+	}
+	skill := adaptertest.NormalizeWhitespace(string(data))
+	if !strings.Contains(skill, adaptertest.NormalizeWhitespace(observableOutcomeCriterionGuidance)) {
+		t.Errorf("%s does not contain the observable-outcome criterion guidance %q",
+			deliverySkillPath, observableOutcomeCriterionGuidance)
+	}
+	for _, stem := range []string{"orch-reviewer", "orch-reviewer-safe"} {
+		t.Run(stem, func(t *testing.T) {
+			path := filepath.Join("agents", stem+".md")
+			data, err := os.ReadFile(path)
+			if err != nil {
+				t.Fatalf("read %s: %v", path, err)
+			}
+			content := adaptertest.NormalizeWhitespace(string(data))
+			for _, phrase := range []string{reviewerWrongCriterionGuidance, reviewerAddedCodeNecessityGuidance} {
+				if !strings.Contains(content, adaptertest.NormalizeWhitespace(phrase)) {
+					t.Errorf("%s: missing reviewer guidance %q", path, phrase)
+				}
+			}
+		})
+	}
+}
+
 // frontmatterMatchRuleSentence is the exact phrase
 // orch-delivery/SKILL.md must state: Claude Code's Task tool model
 // parameter is a coarse tier-alias enum (sonnet/opus/haiku/fable), so
