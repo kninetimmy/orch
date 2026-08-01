@@ -11,8 +11,10 @@
 package agents
 
 import (
+	"bytes"
 	"errors"
 	"fmt"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -165,6 +167,38 @@ func Write(repoRoot string, files []File) error {
 		}
 	}
 	return nil
+}
+
+// Stale reports which of the files Write would put in repoRoot's Dir
+// for h are absent or differ from what Render produces now, as
+// repo-relative slash-form paths in roleFiles order, or nil when every
+// file matches. The rendered output is a machine-local artifact git
+// never carries, so nothing else notices when it falls behind the
+// build's canonical text or the effective configuration; this is the
+// module's single implementation of that comparison, shared by `orch
+// doctor`'s check and the codex-host activation preflight. A file that
+// exists but cannot be read is an error, not a stale file: the caller
+// fails closed either way, and the read error says more.
+func Stale(repoRoot string, h *config.Host) ([]string, error) {
+	files, err := Render(h)
+	if err != nil {
+		return nil, err
+	}
+	dir := filepath.Join(repoRoot, filepath.FromSlash(Dir))
+	var stale []string
+	for _, f := range files {
+		rel := Dir + "/" + f.Name + ".toml"
+		got, err := os.ReadFile(filepath.Join(dir, f.Name+".toml"))
+		switch {
+		case errors.Is(err, fs.ErrNotExist):
+			stale = append(stale, rel)
+		case err != nil:
+			return nil, fmt.Errorf("read %s: %w", rel, err)
+		case !bytes.Equal(got, f.Content):
+			stale = append(stale, rel)
+		}
+	}
+	return stale, nil
 }
 
 func writeAtomic(path, dir string, data []byte) error {

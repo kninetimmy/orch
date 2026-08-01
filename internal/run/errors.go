@@ -24,6 +24,12 @@ var (
 	// repository-defined (PRD §13), so activation never creates them —
 	// it fails closed before any mutation instead.
 	ErrAreaLabelMissing = errors.New("plan-declared area labels do not exist in the repository")
+	// ErrAgentsStale reports that a codex-host activation found the
+	// rendered agent definitions a Codex session loads absent or no
+	// longer equal to what the build and the effective configuration
+	// produce: those files are machine-local, so dispatching from them
+	// would run reviewers and implementers on older instructions.
+	ErrAgentsStale = errors.New("rendered codex agent files are absent or out of date")
 	// ErrMemhubRequired reports that config.Memhub.Mode is "required"
 	// and the memhub probe failed or could not run (PRD §20: fail
 	// closed rather than proceed without memory).

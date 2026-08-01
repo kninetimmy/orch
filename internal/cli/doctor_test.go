@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/kninetimmy/orch/internal/agents"
 	"github.com/kninetimmy/orch/internal/lockfile"
 	"github.com/kninetimmy/orch/internal/state"
 )
@@ -453,5 +454,77 @@ func TestDoctorPolicyViolatingLocalOverrideFails(t *testing.T) {
 	}
 	if !strings.Contains(out, "schema_version") {
 		t.Errorf("stdout missing policy-violation detail:\n%s", out)
+	}
+}
+
+// TestDoctorNoCodexHostSkipsCheck proves a repository without
+// hosts.codex in its effective configuration gets no codex agent files
+// check line at all — validTOML is claude-only, so every other doctor
+// test in this file covers the same ground.
+func TestDoctorNoCodexHostSkipsCheck(t *testing.T) {
+	env, stdout, _ := testEnv(t)
+	writeConfig(t, env.RepoRoot, validTOML)
+	if code := Run([]string{"doctor"}, env); code != ExitOK {
+		t.Fatalf("exit = %d, want %d\n%s", code, ExitOK, stdout.String())
+	}
+	if strings.Contains(stdout.String(), "codex agent files") {
+		t.Errorf("stdout carries a codex agent files check though hosts.codex is absent:\n%s", stdout.String())
+	}
+}
+
+// TestDoctorCodexAgentsAbsentFails proves doctor fails closed, naming
+// every missing file and the command that repairs them, when
+// hosts.codex is configured but `orch render-agents` never ran.
+func TestDoctorCodexAgentsAbsentFails(t *testing.T) {
+	env, stdout, _ := testEnv(t)
+	writeConfig(t, env.RepoRoot, validCodexTOML)
+	if code := Run([]string{"doctor"}, env); code != ExitError {
+		t.Fatalf("exit = %d, want %d\n%s", code, ExitError, stdout.String())
+	}
+	out := stdout.String()
+	if !strings.Contains(out, "FAIL  codex agent files") {
+		t.Errorf("stdout missing the codex agent files failure:\n%s", out)
+	}
+	for _, name := range renderedAgentFiles {
+		if !strings.Contains(out, agents.Dir+"/"+name+".toml") {
+			t.Errorf("stdout does not name %s:\n%s", name, out)
+		}
+	}
+	if !strings.Contains(out, "orch render-agents") {
+		t.Errorf("stdout does not name the repairing command:\n%s", out)
+	}
+}
+
+// TestDoctorCodexAgentsCurrentPasses proves the check passes right
+// after a render, and fails again naming only the file that drifts when
+// one is edited under it.
+func TestDoctorCodexAgentsCurrentPasses(t *testing.T) {
+	env, stdout, _ := testEnv(t)
+	writeConfig(t, env.RepoRoot, validCodexTOML)
+	if code := Run([]string{"render-agents"}, env); code != ExitOK {
+		t.Fatalf("render-agents exit = %d, want %d\n%s", code, ExitOK, stdout.String())
+	}
+	stdout.Reset()
+	if code := Run([]string{"doctor"}, env); code != ExitOK {
+		t.Fatalf("exit = %d, want %d\n%s", code, ExitOK, stdout.String())
+	}
+	if !strings.Contains(stdout.String(), "ok    codex agent files") {
+		t.Errorf("stdout missing the passing codex agent files check:\n%s", stdout.String())
+	}
+
+	edited := filepath.Join(env.RepoRoot, filepath.FromSlash(agents.Dir), "orch-reviewer.toml")
+	if err := os.WriteFile(edited, []byte("hand-edited\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	stdout.Reset()
+	if code := Run([]string{"doctor"}, env); code != ExitError {
+		t.Fatalf("exit = %d, want %d after an edit\n%s", code, ExitError, stdout.String())
+	}
+	out := stdout.String()
+	if !strings.Contains(out, agents.Dir+"/orch-reviewer.toml") {
+		t.Errorf("stdout does not name the edited file:\n%s", out)
+	}
+	if strings.Contains(out, agents.Dir+"/orch-scout.toml") {
+		t.Errorf("stdout names an untouched file:\n%s", out)
 	}
 }

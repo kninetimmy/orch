@@ -1,4 +1,8 @@
-package agents
+// Package agents_test is an external test package on purpose: its
+// adaptertest fixture imports internal/run, which imports this package
+// for the activation preflight, so an in-package test would be an
+// import cycle.
+package agents_test
 
 import (
 	"os"
@@ -10,6 +14,7 @@ import (
 
 	"github.com/kninetimmy/orch/adapters/codex"
 	"github.com/kninetimmy/orch/internal/adaptertest"
+	"github.com/kninetimmy/orch/internal/agents"
 	"github.com/kninetimmy/orch/internal/config"
 )
 
@@ -39,7 +44,7 @@ func defaultCodexHost() *config.Host {
 // Render itself uses, since that embed is the single canonical
 // source — see adapters/codex/embed.go).
 func TestRenderDefaultProfileByteIdenticalToShipped(t *testing.T) {
-	files, err := Render(defaultCodexHost())
+	files, err := agents.Render(defaultCodexHost())
 	if err != nil {
 		t.Fatalf("Render: %v", err)
 	}
@@ -60,7 +65,7 @@ func TestRenderDefaultProfileByteIdenticalToShipped(t *testing.T) {
 // TestRenderOrderAndNames pins the exact five file stems Render
 // produces, in order.
 func TestRenderOrderAndNames(t *testing.T) {
-	files, err := Render(defaultCodexHost())
+	files, err := agents.Render(defaultCodexHost())
 	if err != nil {
 		t.Fatalf("Render: %v", err)
 	}
@@ -99,7 +104,7 @@ func TestRenderOverrideSubstitution(t *testing.T) {
 		Reviewer:        config.RoleProfile{Model: "gpt-9000-ultra", Effort: "medium"},
 		ReviewDowngrade: config.RoleProfile{Model: "gpt-9000", Effort: "high"},
 	}}
-	files, err := Render(h)
+	files, err := agents.Render(h)
 	if err != nil {
 		t.Fatalf("Render: %v", err)
 	}
@@ -155,8 +160,8 @@ func TestRenderOverrideSubstitution(t *testing.T) {
 }
 
 func TestRenderNilHostFailsClosed(t *testing.T) {
-	if _, err := Render(nil); err == nil {
-		t.Error("Render(nil) succeeded, want an error")
+	if _, err := agents.Render(nil); err == nil {
+		t.Error("agents.Render(nil) succeeded, want an error")
 	}
 }
 
@@ -164,7 +169,7 @@ func TestRenderNilHostFailsClosed(t *testing.T) {
 // package documents: a rendered file must never introduce a carriage
 // return the shipped source did not already contain.
 func TestRenderNoTrailingCR(t *testing.T) {
-	files, err := Render(defaultCodexHost())
+	files, err := agents.Render(defaultCodexHost())
 	if err != nil {
 		t.Fatalf("Render: %v", err)
 	}
@@ -177,15 +182,15 @@ func TestRenderNoTrailingCR(t *testing.T) {
 
 func TestWriteCreatesDirectoryAndFiles(t *testing.T) {
 	root := t.TempDir()
-	files, err := Render(defaultCodexHost())
+	files, err := agents.Render(defaultCodexHost())
 	if err != nil {
 		t.Fatalf("Render: %v", err)
 	}
-	if err := Write(root, files); err != nil {
+	if err := agents.Write(root, files); err != nil {
 		t.Fatalf("Write: %v", err)
 	}
 
-	dir := filepath.Join(root, filepath.FromSlash(Dir))
+	dir := filepath.Join(root, filepath.FromSlash(agents.Dir))
 	entries, err := os.ReadDir(dir)
 	if err != nil {
 		t.Fatalf("ReadDir: %v", err)
@@ -215,7 +220,7 @@ func TestWriteCreatesDirectoryAndFiles(t *testing.T) {
 // content rather than leaving it or appending to it.
 func TestWriteOverwritesExisting(t *testing.T) {
 	root := t.TempDir()
-	dir := filepath.Join(root, filepath.FromSlash(Dir))
+	dir := filepath.Join(root, filepath.FromSlash(agents.Dir))
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		t.Fatal(err)
 	}
@@ -224,11 +229,11 @@ func TestWriteOverwritesExisting(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	files, err := Render(defaultCodexHost())
+	files, err := agents.Render(defaultCodexHost())
 	if err != nil {
 		t.Fatalf("Render: %v", err)
 	}
-	if err := Write(root, files); err != nil {
+	if err := agents.Write(root, files); err != nil {
 		t.Fatalf("Write: %v", err)
 	}
 
@@ -238,5 +243,78 @@ func TestWriteOverwritesExisting(t *testing.T) {
 	}
 	if strings.Contains(string(got), "stale content") {
 		t.Error("stale content survived Write")
+	}
+}
+
+// TestStale covers the three states doctor and the codex activation
+// preflight both distinguish: every file absent, every file matching,
+// and one file edited under them.
+func TestStale(t *testing.T) {
+	root := t.TempDir()
+	h := defaultCodexHost()
+
+	stale, err := agents.Stale(root, h)
+	if err != nil {
+		t.Fatalf("Stale: %v", err)
+	}
+	want := []string{
+		agents.Dir + "/orch-scout.toml",
+		agents.Dir + "/orch-implementer.toml",
+		agents.Dir + "/orch-specialist.toml",
+		agents.Dir + "/orch-reviewer.toml",
+		agents.Dir + "/orch-reviewer-safe.toml",
+	}
+	if strings.Join(stale, ",") != strings.Join(want, ",") {
+		t.Errorf("Stale on an empty repo = %v, want all five files %v", stale, want)
+	}
+
+	files, err := agents.Render(h)
+	if err != nil {
+		t.Fatalf("Render: %v", err)
+	}
+	if err := agents.Write(root, files); err != nil {
+		t.Fatalf("Write: %v", err)
+	}
+	stale, err = agents.Stale(root, h)
+	if err != nil {
+		t.Fatalf("Stale: %v", err)
+	}
+	if len(stale) != 0 {
+		t.Errorf("Stale right after Write = %v, want none", stale)
+	}
+
+	edited := filepath.Join(root, filepath.FromSlash(agents.Dir), "orch-reviewer.toml")
+	if err := os.WriteFile(edited, append(files[3].Content, '\n'), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	stale, err = agents.Stale(root, h)
+	if err != nil {
+		t.Fatalf("Stale: %v", err)
+	}
+	if len(stale) != 1 || stale[0] != agents.Dir+"/orch-reviewer.toml" {
+		t.Errorf("Stale after an edit = %v, want only orch-reviewer.toml", stale)
+	}
+}
+
+// TestStaleConfigurationChange proves a roles change alone — the same
+// build, the same files on disk — makes them stale.
+func TestStaleConfigurationChange(t *testing.T) {
+	root := t.TempDir()
+	files, err := agents.Render(defaultCodexHost())
+	if err != nil {
+		t.Fatalf("Render: %v", err)
+	}
+	if err := agents.Write(root, files); err != nil {
+		t.Fatalf("Write: %v", err)
+	}
+
+	h := defaultCodexHost()
+	h.Roles.Reviewer = config.RoleProfile{Model: "gpt-9000-ultra", Effort: "low"}
+	stale, err := agents.Stale(root, h)
+	if err != nil {
+		t.Fatalf("Stale: %v", err)
+	}
+	if len(stale) != 1 || stale[0] != agents.Dir+"/orch-reviewer.toml" {
+		t.Errorf("Stale after a reviewer roles change = %v, want only orch-reviewer.toml", stale)
 	}
 }

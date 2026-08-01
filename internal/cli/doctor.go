@@ -7,6 +7,7 @@ import (
 	"os"
 	"strings"
 
+	"github.com/kninetimmy/orch/internal/agents"
 	"github.com/kninetimmy/orch/internal/config"
 	"github.com/kninetimmy/orch/internal/ghops"
 	"github.com/kninetimmy/orch/internal/gitops"
@@ -101,6 +102,22 @@ func runDoctor(env Env) error {
 			check("metrics .gitignore", fmt.Errorf("metrics is enabled but %s is missing from .gitignore; run `orch configure` to add it", metrics.GitignoreLine))
 		default:
 			check("metrics .gitignore", nil)
+		}
+	}
+
+	// Rendered codex agent files (only meaningful, and only checked,
+	// when hosts.codex is in the effective configuration): the files a
+	// Codex session actually loads are machine-local, so a build upgrade
+	// or a roles change leaves them silently behind until doctor says so.
+	if cfgErr == nil && cfg.Hosts.Codex != nil {
+		stale, staleErr := agents.Stale(env.RepoRoot, cfg.Hosts.Codex)
+		switch {
+		case staleErr != nil:
+			check("codex agent files", staleErr)
+		case len(stale) > 0:
+			check("codex agent files", fmt.Errorf("absent or out of date: %s; run `orch render-agents` to regenerate them", strings.Join(stale, ", ")))
+		default:
+			check("codex agent files", nil)
 		}
 	}
 

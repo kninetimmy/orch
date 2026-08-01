@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/kninetimmy/orch/internal/agents"
 	"github.com/kninetimmy/orch/internal/config"
 	"github.com/kninetimmy/orch/internal/ghops"
 	"github.com/kninetimmy/orch/internal/gitops"
@@ -114,7 +115,8 @@ func wrapAfterEnter(err error) error {
 //
 //   - Phase 1 (pure validation): decode/validate the plan and its
 //     approval, derive routing and labels for every issue.
-//   - Phase 2 (read-only preflights): Assist+no-lock, clean primary
+//   - Phase 2 (read-only preflights): Assist+no-lock, the rendered
+//     codex agent files current on a codex-host plan, clean primary
 //     checkout, authenticated GitHub remote, primary on the default
 //     branch (F4), every plan-declared area label existing in the
 //     repository (area labels are repository-defined per PRD §13, so
@@ -180,6 +182,20 @@ func Activate(ctx context.Context, env Env, reqJSON []byte) (*ActivationResult, 
 	// Phase 2: read-only preflights.
 	if err := requireAssistNoLock(env.RepoRoot); err != nil {
 		return nil, err
+	}
+	if plan.Host == "codex" {
+		// The agent definitions a Codex session loads are machine-local
+		// (`orch render-agents` output, never carried by git), so a build
+		// upgrade or a roles change leaves them behind with nothing to
+		// notice. Dispatching from stale definitions runs the whole wave
+		// on older instructions, so refuse before anything is created.
+		stale, err := agents.Stale(env.RepoRoot, cfg.Hosts.Codex)
+		if err != nil {
+			return nil, err
+		}
+		if len(stale) > 0 {
+			return nil, fmt.Errorf("%w: %s; run `orch render-agents` in the primary checkout, then resubmit", ErrAgentsStale, strings.Join(stale, ", "))
+		}
 	}
 	git, err := gitops.Open(ctx, env.Runner, env.RepoRoot)
 	if err != nil {

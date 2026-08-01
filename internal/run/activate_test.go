@@ -11,6 +11,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/kninetimmy/orch/internal/agents"
+	"github.com/kninetimmy/orch/internal/config"
 	"github.com/kninetimmy/orch/internal/execx"
 	"github.com/kninetimmy/orch/internal/execx/execxtest"
 	"github.com/kninetimmy/orch/internal/ghops"
@@ -654,5 +656,182 @@ func TestActivateBranchExistsMidRun(t *testing.T) {
 	}
 	if st.Run.Issues[1].Phase != state.PhaseIssueCreated {
 		t.Errorf("issue b phase = %s, want issue-created (worktree add failed)", st.Run.Issues[1].Phase)
+	}
+}
+
+// testConfigTOMLCodex is testConfigTOML with the codex host enabled at
+// the PRD §10 codex defaults, for the rendered-agent preflight.
+const testConfigTOMLCodex = testConfigTOML + `
+[hosts.codex.roles.architect]
+model  = "gpt-5.6-sol"
+effort = "xhigh"
+
+[hosts.codex.roles.scout]
+model  = "gpt-5.6-luna"
+effort = "max"
+
+[hosts.codex.roles.implementer]
+model  = "gpt-5.6-terra"
+effort = "max"
+
+[hosts.codex.roles.specialist]
+model  = "gpt-5.6-sol"
+effort = "max"
+
+[hosts.codex.roles.reviewer]
+model  = "gpt-5.6-sol"
+effort = "xhigh"
+
+[hosts.codex.roles.review_downgrade]
+model  = "gpt-5.6-sol"
+effort = "high"
+`
+
+// codexPlanJSON is a minimal single-issue plan on the codex host,
+// passing Validate against testConfigTOMLCodex.
+func codexPlanJSON() string {
+	return `{
+  "schema_version": 1,
+  "host": "codex",
+  "title": "Codex plan",
+  "issues": [
+    {
+      "id": "a",
+      "title": "Issue A",
+      "objective": "Do A",
+      "acceptance_criteria": ["A works"],
+      "type": "feature",
+      "facts": {"read_only": false},
+      "wave": 1,
+      "required_tests": ["go test ./..."],
+      "usage_class": "light"
+    }
+  ]
+}`
+}
+
+// newCodexActivateRepo builds a sandbox repo with the codex host
+// enabled and .codex/ git-ignored (the rendered agent files are
+// machine-local, so a real codex repository ignores them).
+func newCodexActivateRepo(t *testing.T) string {
+	t.Helper()
+	return newActivateRepoWithConfigAndIgnore(t, testConfigTOMLCodex, fullGitignore+"/.codex/\n")
+}
+
+// renderAgentFiles writes the current rendered agent files into root,
+// the state `orch render-agents` leaves behind.
+func renderAgentFiles(t *testing.T, root string) {
+	t.Helper()
+	cfg, err := config.Load(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	files, err := agents.Render(cfg.Hosts.Codex)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := agents.Write(root, files); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// TestActivateCodexStaleAgentsLeavesNothing proves a codex-host plan is
+// refused before anything is created when the rendered agent files are
+// absent: the empty script asserts activation never even reached gh.
+func TestActivateCodexStaleAgentsLeavesNothing(t *testing.T) {
+	root := newCodexActivateRepo(t)
+	script := &execxtest.Script{T: t}
+	env := Env{RepoRoot: root, Runner: muxRunner{git: execx.Local{}, gh: script}, Now: fixedNow}
+
+	_, err := Activate(context.Background(), env, activationJSON(t, codexPlanJSON()))
+	if !errors.Is(err, ErrAgentsStale) {
+		t.Fatalf("err = %v, want ErrAgentsStale", err)
+	}
+	if !strings.Contains(err.Error(), agents.Dir+"/orch-reviewer.toml") {
+		t.Errorf("err = %v, want each absent file named", err)
+	}
+	if !strings.Contains(err.Error(), "orch render-agents") {
+		t.Errorf("err = %v, want the repairing command named", err)
+	}
+	script.AssertExhausted()
+	assertNoDeliveryState(t, root)
+}
+
+// TestActivateCodexEditedAgentFileRefused proves a rendered file edited
+// under the run is refused just like an absent one, naming only it.
+func TestActivateCodexEditedAgentFileRefused(t *testing.T) {
+	root := newCodexActivateRepo(t)
+	renderAgentFiles(t, root)
+	edited := filepath.Join(root, filepath.FromSlash(agents.Dir), "orch-scout.toml")
+	if err := os.WriteFile(edited, []byte("hand-edited\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	script := &execxtest.Script{T: t}
+	env := Env{RepoRoot: root, Runner: muxRunner{git: execx.Local{}, gh: script}, Now: fixedNow}
+
+	_, err := Activate(context.Background(), env, activationJSON(t, codexPlanJSON()))
+	if !errors.Is(err, ErrAgentsStale) {
+		t.Fatalf("err = %v, want ErrAgentsStale", err)
+	}
+	if !strings.Contains(err.Error(), agents.Dir+"/orch-scout.toml") {
+		t.Errorf("err = %v, want the edited file named", err)
+	}
+	if strings.Contains(err.Error(), agents.Dir+"/orch-reviewer.toml") {
+		t.Errorf("err = %v, want the untouched files unnamed", err)
+	}
+	script.AssertExhausted()
+	assertNoDeliveryState(t, root)
+}
+
+// TestActivateCodexCurrentAgentsProceeds proves the preflight passes on
+// files that match the effective configuration — the check compares
+// against the plan's own host, not some other one.
+func TestActivateCodexCurrentAgentsProceeds(t *testing.T) {
+	root := newCodexActivateRepo(t)
+	renderAgentFiles(t, root)
+	calls := append(fullTaxonomyScript(),
+		ghIssueCreateCall("Issue A", []string{"ready", "feature", "implementer", "standard"}, 1),
+	)
+	script := &execxtest.Script{T: t, Calls: calls}
+	env := Env{RepoRoot: root, Runner: muxRunner{git: execx.Local{}, gh: script}, Now: fixedNow}
+
+	result, err := Activate(context.Background(), env, activationJSON(t, codexPlanJSON()))
+	if err != nil {
+		t.Fatalf("Activate: %v", err)
+	}
+	script.AssertExhausted()
+	if len(result.Issues) != 1 || result.Issues[0].Number != 1 {
+		t.Errorf("Issues = %+v, want one issue #1", result.Issues)
+	}
+}
+
+// TestActivateNonCodexIgnoresStaleAgents proves a plan on another host
+// is unaffected by rendered agent files that differ (the absent case is
+// what every other claude activation test in this file already runs
+// against): the preflight is keyed on the plan's host, not on the
+// files.
+func TestActivateNonCodexIgnoresStaleAgents(t *testing.T) {
+	root := newActivateRepoWithIgnore(t, fullGitignore+"/.codex/\n")
+	dir := filepath.Join(root, filepath.FromSlash(agents.Dir))
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "orch-scout.toml"), []byte("hand-edited\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	calls := append(fullTaxonomyScript(),
+		ghIssueCreateCall("Issue A", []string{"ready", "feature", "implementer", "standard"}, 1),
+	)
+	script := &execxtest.Script{T: t, Calls: calls}
+	env := Env{RepoRoot: root, Runner: muxRunner{git: execx.Local{}, gh: script}, Now: fixedNow}
+
+	claudePlan := strings.Replace(codexPlanJSON(), `"host": "codex"`, `"host": "claude"`, 1)
+	result, err := Activate(context.Background(), env, activationJSON(t, claudePlan))
+	if err != nil {
+		t.Fatalf("Activate: %v", err)
+	}
+	script.AssertExhausted()
+	if len(result.Issues) != 1 || result.Issues[0].Number != 1 {
+		t.Errorf("Issues = %+v, want one issue #1", result.Issues)
 	}
 }
