@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/kninetimmy/orch/internal/agents"
 	"github.com/kninetimmy/orch/internal/lockfile"
 	"github.com/kninetimmy/orch/internal/state"
 )
@@ -453,5 +454,83 @@ func TestDoctorPolicyViolatingLocalOverrideFails(t *testing.T) {
 	}
 	if !strings.Contains(out, "schema_version") {
 		t.Errorf("stdout missing policy-violation detail:\n%s", out)
+	}
+}
+
+func TestDoctorNoCodexHostSkipsAgentCheck(t *testing.T) {
+	env, stdout, _ := testEnv(t)
+	writeConfig(t, env.RepoRoot, validTOML)
+	if code := Run([]string{"doctor"}, env); code != ExitOK {
+		t.Fatalf("exit = %d, want %d\n%s", code, ExitOK, stdout.String())
+	}
+	if strings.Contains(stdout.String(), "codex agent files") {
+		t.Errorf("stdout carries a Codex-only check:\n%s", stdout.String())
+	}
+}
+
+func TestDoctorBothHostsCodexAgentsAbsentFails(t *testing.T) {
+	env, stdout, _ := testEnv(t)
+	writeConfig(t, env.RepoRoot, validBothHostsTOML)
+	if code := Run([]string{"doctor"}, env); code != ExitError {
+		t.Fatalf("exit = %d, want %d\n%s", code, ExitError, stdout.String())
+	}
+	out := stdout.String()
+	if !strings.Contains(out, "FAIL  codex agent files") {
+		t.Errorf("stdout missing the agent-file failure:\n%s", out)
+	}
+	for _, name := range renderedAgentFiles {
+		if !strings.Contains(out, agents.Dir+"/"+name+".toml") {
+			t.Errorf("stdout does not name %s:\n%s", name, out)
+		}
+	}
+	if !strings.Contains(out, "orch render-agents") {
+		t.Errorf("stdout does not name the repair:\n%s", out)
+	}
+}
+
+func TestDoctorCodexAgentsCurrentThenAllBadStates(t *testing.T) {
+	env, stdout, _ := testEnv(t)
+	writeConfig(t, env.RepoRoot, validCodexTOML)
+	if code := Run([]string{"render-agents"}, env); code != ExitOK {
+		t.Fatalf("render-agents exit = %d, want %d\n%s", code, ExitOK, stdout.String())
+	}
+	stdout.Reset()
+	if code := Run([]string{"doctor"}, env); code != ExitOK {
+		t.Fatalf("doctor exit = %d, want %d\n%s", code, ExitOK, stdout.String())
+	}
+	if !strings.Contains(stdout.String(), "ok    codex agent files") {
+		t.Errorf("stdout missing the passing agent-file check:\n%s", stdout.String())
+	}
+
+	dir := filepath.Join(env.RepoRoot, filepath.FromSlash(agents.Dir))
+	if err := os.Remove(filepath.Join(dir, "orch-scout.toml")); err != nil {
+		t.Fatal(err)
+	}
+	unreadable := filepath.Join(dir, "orch-implementer.toml")
+	if err := os.Remove(unreadable); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Mkdir(unreadable, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "orch-reviewer.toml"), []byte("stale\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	stdout.Reset()
+	if code := Run([]string{"doctor"}, env); code != ExitError {
+		t.Fatalf("doctor exit = %d, want %d\n%s", code, ExitError, stdout.String())
+	}
+	out := stdout.String()
+	for _, name := range []string{"orch-scout.toml", "orch-implementer.toml", "orch-reviewer.toml"} {
+		if !strings.Contains(out, agents.Dir+"/"+name) {
+			t.Errorf("stdout does not name %s:\n%s", name, out)
+		}
+	}
+	if strings.Contains(out, agents.Dir+"/orch-specialist.toml") {
+		t.Errorf("stdout names a current file:\n%s", out)
+	}
+	if !strings.Contains(out, "orch render-agents") {
+		t.Errorf("stdout does not name the repair:\n%s", out)
 	}
 }

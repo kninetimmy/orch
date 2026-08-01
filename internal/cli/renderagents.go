@@ -1,10 +1,13 @@
 package cli
 
 import (
+	"context"
 	"fmt"
+	"path/filepath"
 
 	"github.com/kninetimmy/orch/internal/agents"
 	"github.com/kninetimmy/orch/internal/config"
+	"github.com/kninetimmy/orch/internal/gitops"
 )
 
 // runRenderAgents implements `orch render-agents` (PRD §22): it loads
@@ -24,6 +27,16 @@ func runRenderAgents(env Env) error {
 	}
 	if cfg.Hosts.Codex == nil {
 		return fmt.Errorf("hosts.codex is not enabled in configuration; enable it with `orch configure` before running `orch render-agents`")
+	}
+
+	ctx := context.Background()
+	git, err := gitops.Open(ctx, env.Runner, env.RepoRoot)
+	if err != nil {
+		return err
+	}
+	dir := filepath.Join(env.RepoRoot, filepath.FromSlash(agents.Dir))
+	if err := git.RequireIgnored(ctx, dir); err != nil {
+		return fmt.Errorf("%w; run `orch configure` to add the rendered-agent destination to .gitignore", err)
 	}
 
 	files, err := agents.Render(cfg.Hosts.Codex)

@@ -11,6 +11,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/kninetimmy/orch/internal/agents"
+	"github.com/kninetimmy/orch/internal/config"
 	"github.com/kninetimmy/orch/internal/execx"
 	"github.com/kninetimmy/orch/internal/execx/execxtest"
 	"github.com/kninetimmy/orch/internal/ghops"
@@ -654,5 +656,169 @@ func TestActivateBranchExistsMidRun(t *testing.T) {
 	}
 	if st.Run.Issues[1].Phase != state.PhaseIssueCreated {
 		t.Errorf("issue b phase = %s, want issue-created (worktree add failed)", st.Run.Issues[1].Phase)
+	}
+}
+
+const testConfigTOMLBothHosts = testConfigTOML + `
+[hosts.codex.roles.architect]
+model  = "gpt-5.6-sol"
+effort = "xhigh"
+
+[hosts.codex.roles.scout]
+model  = "gpt-5.6-luna"
+effort = "max"
+
+[hosts.codex.roles.implementer]
+model  = "gpt-5.6-terra"
+effort = "max"
+
+[hosts.codex.roles.specialist]
+model  = "gpt-5.6-sol"
+effort = "max"
+
+[hosts.codex.roles.reviewer]
+model  = "gpt-5.6-sol"
+effort = "xhigh"
+
+[hosts.codex.roles.review_downgrade]
+model  = "gpt-5.6-sol"
+effort = "high"
+`
+
+func codexPlanJSON() string {
+	return `{
+  "schema_version": 1,
+  "host": "codex",
+  "title": "Codex plan",
+  "issues": [
+    {
+      "id": "a",
+      "title": "Issue A",
+      "objective": "Do A",
+      "acceptance_criteria": ["A works"],
+      "type": "feature",
+      "facts": {"read_only": false},
+      "wave": 1,
+      "required_tests": ["go test ./..."],
+      "usage_class": "light"
+    }
+  ]
+}`
+}
+
+func newBothHostActivateRepo(t *testing.T) string {
+	t.Helper()
+	return newActivateRepoWithConfigAndIgnore(t, testConfigTOMLBothHosts, fullGitignore+".codex/agents/\n")
+}
+
+func renderAgentFiles(t *testing.T, root string) {
+	t.Helper()
+	cfg, err := config.Load(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	files, err := agents.Render(cfg.Hosts.Codex)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := agents.Write(root, files); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func assertNoActivationArtifacts(t *testing.T, root string) {
+	t.Helper()
+	assertNoDeliveryState(t, root)
+	if branches := strings.TrimSpace(rawGit(t, root, "branch", "--list", "orch/*")); branches != "" {
+		t.Errorf("activation branch exists: %s", branches)
+	}
+	if _, err := os.Stat(filepath.Join(root, filepath.FromSlash(WorktreeContainer))); !os.IsNotExist(err) {
+		t.Errorf("worktree container exists after refusal: %v", err)
+	}
+}
+
+func TestActivateCodexAbsentAgentsLeavesNothing(t *testing.T) {
+	root := newBothHostActivateRepo(t)
+	script := &execxtest.Script{T: t}
+	env := Env{RepoRoot: root, Runner: muxRunner{git: execx.Local{}, gh: script}, Now: fixedNow}
+
+	_, err := Activate(context.Background(), env, activationJSON(t, codexPlanJSON()))
+	if !errors.Is(err, ErrAgentsStale) {
+		t.Fatalf("err = %v, want ErrAgentsStale", err)
+	}
+	for _, name := range []string{"orch-scout", "orch-implementer", "orch-specialist", "orch-reviewer", "orch-reviewer-safe"} {
+		if !strings.Contains(err.Error(), agents.Dir+"/"+name+".toml") {
+			t.Errorf("err does not name %s: %v", name, err)
+		}
+	}
+	if !strings.Contains(err.Error(), "orch render-agents") {
+		t.Errorf("err does not name the repair: %v", err)
+	}
+	script.AssertExhausted()
+	assertNoActivationArtifacts(t, root)
+}
+
+func TestActivateCodexEditedAgentRefused(t *testing.T) {
+	root := newBothHostActivateRepo(t)
+	renderAgentFiles(t, root)
+	edited := filepath.Join(root, filepath.FromSlash(agents.Dir), "orch-scout.toml")
+	if err := os.WriteFile(edited, []byte("stale\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	script := &execxtest.Script{T: t}
+	env := Env{RepoRoot: root, Runner: muxRunner{git: execx.Local{}, gh: script}, Now: fixedNow}
+
+	_, err := Activate(context.Background(), env, activationJSON(t, codexPlanJSON()))
+	if !errors.Is(err, ErrAgentsStale) {
+		t.Fatalf("err = %v, want ErrAgentsStale", err)
+	}
+	if !strings.Contains(err.Error(), agents.Dir+"/orch-scout.toml") {
+		t.Errorf("err does not name edited file: %v", err)
+	}
+	if strings.Contains(err.Error(), agents.Dir+"/orch-reviewer.toml") {
+		t.Errorf("err names current file: %v", err)
+	}
+	if !strings.Contains(err.Error(), "orch render-agents") {
+		t.Errorf("err does not name the repair: %v", err)
+	}
+	script.AssertExhausted()
+	assertNoActivationArtifacts(t, root)
+}
+
+func TestActivateCodexCurrentAgentsProceeds(t *testing.T) {
+	root := newBothHostActivateRepo(t)
+	renderAgentFiles(t, root)
+	calls := append(fullTaxonomyScript(),
+		ghIssueCreateCall("Issue A", []string{"ready", "feature", "implementer", "standard"}, 1),
+	)
+	script := &execxtest.Script{T: t, Calls: calls}
+	env := Env{RepoRoot: root, Runner: muxRunner{git: execx.Local{}, gh: script}, Now: fixedNow}
+
+	result, err := Activate(context.Background(), env, activationJSON(t, codexPlanJSON()))
+	if err != nil {
+		t.Fatalf("Activate: %v", err)
+	}
+	script.AssertExhausted()
+	if len(result.Issues) != 1 || result.Issues[0].Number != 1 {
+		t.Errorf("Issues = %+v, want one issue #1", result.Issues)
+	}
+}
+
+func TestActivateClaudeIgnoresAbsentCodexAgentsWithBothHosts(t *testing.T) {
+	root := newBothHostActivateRepo(t)
+	calls := append(fullTaxonomyScript(),
+		ghIssueCreateCall("Issue A", []string{"ready", "feature", "implementer", "standard"}, 1),
+	)
+	script := &execxtest.Script{T: t, Calls: calls}
+	env := Env{RepoRoot: root, Runner: muxRunner{git: execx.Local{}, gh: script}, Now: fixedNow}
+	claudePlan := strings.Replace(codexPlanJSON(), `"host": "codex"`, `"host": "claude"`, 1)
+
+	result, err := Activate(context.Background(), env, activationJSON(t, claudePlan))
+	if err != nil {
+		t.Fatalf("Activate: %v", err)
+	}
+	script.AssertExhausted()
+	if len(result.Issues) != 1 || result.Issues[0].Number != 1 {
+		t.Errorf("Issues = %+v, want one issue #1", result.Issues)
 	}
 }

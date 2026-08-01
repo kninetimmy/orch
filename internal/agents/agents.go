@@ -11,8 +11,10 @@
 package agents
 
 import (
+	"bytes"
 	"errors"
 	"fmt"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -165,6 +167,35 @@ func Write(repoRoot string, files []File) error {
 		}
 	}
 	return nil
+}
+
+// Stale reports every file Write would produce that is absent,
+// unreadable, or byte-different from Render's current output. Paths
+// are repo-relative and slash-form; read errors are joined after every
+// expected file has been checked so callers can name all bad files.
+func Stale(repoRoot string, h *config.Host) ([]string, error) {
+	files, err := Render(h)
+	if err != nil {
+		return nil, err
+	}
+
+	dir := filepath.Join(repoRoot, filepath.FromSlash(Dir))
+	var stale []string
+	var readErrs []error
+	for _, f := range files {
+		rel := Dir + "/" + f.Name + ".toml"
+		got, err := os.ReadFile(filepath.Join(dir, f.Name+".toml"))
+		switch {
+		case errors.Is(err, fs.ErrNotExist):
+			stale = append(stale, rel)
+		case err != nil:
+			stale = append(stale, rel)
+			readErrs = append(readErrs, fmt.Errorf("read %s: %w", rel, err))
+		case !bytes.Equal(got, f.Content):
+			stale = append(stale, rel)
+		}
+	}
+	return stale, errors.Join(readErrs...)
 }
 
 func writeAtomic(path, dir string, data []byte) error {

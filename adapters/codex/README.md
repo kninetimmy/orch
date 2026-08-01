@@ -100,7 +100,7 @@ decision, not an oversight).
    `orch hook codex session-start` silently do not run — the same
    fail-open class as a missing binary, not a denial or an error.
 4. Copy the five agent TOMLs under `agents/` into the project's
-   `.codex/agents/` (or `~/.codex/agents/` for a user-global install).
+   `.codex/agents/`.
    Codex plugins cannot bundle agent definitions, so this copy is a
    separate manual step every install of this adapter needs, not
    something the plugin installs for you — the marketplace install in

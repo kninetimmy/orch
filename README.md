@@ -124,8 +124,7 @@ on this machine. Work in a scratch directory, not in one of my projects.
       into a temporary directory outside my projects:
         git clone --depth 1 https://github.com/kninetimmy/orch.git <tmp>/orch
    b. Copy these five files from <tmp>/orch/adapters/codex/agents/ into
-      .codex/agents/ — use ~/.codex/agents/ for a user-global install, or
-      a specific repository's own .codex/agents/:
+      that repository's own .codex/agents/:
         orch-scout.toml
         orch-implementer.toml
         orch-specialist.toml

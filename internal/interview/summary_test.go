@@ -6,6 +6,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/kninetimmy/orch/internal/agents"
 	"github.com/kninetimmy/orch/internal/config"
 	"github.com/kninetimmy/orch/internal/instructions"
 	"github.com/kninetimmy/orch/internal/lockfile"
@@ -26,6 +27,7 @@ func TestBaseGitignoreLinesMatchSourceConstants(t *testing.T) {
 		config.LocalOverridePath,
 		state.Path,
 		lockfile.Path,
+		agents.Dir + "/",
 	}
 	if len(baseGitignoreLines) != len(want) {
 		t.Fatalf("baseGitignoreLines = %v, want %v", baseGitignoreLines, want)
@@ -92,6 +94,7 @@ func TestBuildSummaryFreshRepo(t *testing.T) {
 		".orchestrator/config.local.toml",
 		".orchestrator/state.json",
 		".orchestrator/delivery.lock",
+		".codex/agents/",
 		metricsGitignoreLine,
 	}
 	if len(summary.GitignoreLines) != len(want) {
@@ -245,7 +248,7 @@ func TestBuildSummaryFiltersExistingGitignoreLines(t *testing.T) {
 		t.Fatalf("materialize: %v", err)
 	}
 	root := t.TempDir()
-	existing := ".orchestrator/worktrees/\nnode_modules/\n.orchestrator/state.json\n"
+	existing := ".orchestrator/worktrees/\nnode_modules/\n.orchestrator/state.json\n.codex/agents/\n"
 	if err := os.WriteFile(filepath.Join(root, ".gitignore"), []byte(existing), 0o644); err != nil {
 		t.Fatal(err)
 	}

@@ -41,6 +41,7 @@
       ".orchestrator/config.local.toml",
       ".orchestrator/state.json",
       ".orchestrator/delivery.lock",
+      ".codex/agents/",
       ".orchestrator/metrics/"
     ]
   }
