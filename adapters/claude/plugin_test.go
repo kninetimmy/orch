@@ -317,12 +317,17 @@ func TestAgentFrontmatter(t *testing.T) {
 // are the two prose anchors the reviewer agents' "## Report" section
 // must carry: the finding stage is about coverage, not a severity
 // filter, and the approve/request-changes verdict is a separate
-// judgment that turns only on findings blocking an acceptance
-// criterion. Neither anchor includes the backtick-quoted
-// `request-changes` token itself, so a formatting change around that
-// token doesn't make this check brittle.
+// judgment turning on a closed pair of grounds. The verdict anchor
+// enumerates both grounds rather than only the blocking one (its
+// original issue #117 form): a wrong-criterion finding does not block
+// an acceptance criterion — it rejects one — so an exclusive blocking
+// rule would foreclose the very verdict the "When a criterion is
+// itself wrong" section grants, and a reviewer reading the file in
+// order would take the later rule and approve. Neither anchor includes
+// the backtick-quoted `request-changes` token itself, so a formatting
+// change around that token doesn't make this check brittle.
 const reviewerCoverageInstruction = "this stage is about coverage, not filtering"
-const reviewerBlockingVerdictInstruction = "applies only when a finding blocks an acceptance criterion"
+const reviewerBlockingVerdictInstruction = "applies on exactly two grounds — a finding blocks an acceptance criterion, or an acceptance criterion is itself wrong"
 
 // TestReviewerReportsCoverageAndBlockingVerdict checks the two reviewer
 // agent files directly by stem, not via agentRoster: agentRoster is a
@@ -384,6 +389,55 @@ func TestDeliverySkillHasRoutedSelectionCue(t *testing.T) {
 
 func TestDeliverySkillHasBranchScopeVerificationGuidance(t *testing.T) {
 	adaptertest.CheckBranchScopeVerificationGuidance(t, deliverySkillPath)
+}
+
+// The three statements that keep a wrong acceptance criterion
+// reachable: the plan-construction rule that a criterion states an
+// observable outcome rather than the mechanism its author imagines,
+// the reviewer's standing to reject a criterion instead of grading
+// conformance to it, and the necessity test a reviewer must apply
+// before asking for more code. Each phrase is pinned without its
+// surrounding punctuation or em dashes, so rewording around a
+// statement stays possible while deleting the statement fails the
+// test.
+const observableOutcomeCriterionGuidance = "An acceptance criterion describes an observable outcome, and never names a function, a control-flow step, or a validity notion the change is expected to introduce"
+const reviewerWrongCriterionGuidance = "You may return `request-changes` on the ground that an acceptance criterion is itself wrong"
+const reviewerAddedCodeNecessityGuidance = "Before you request a change that adds code, establish that the added code needs to exist at all"
+
+// TestDeliverySkillAndReviewersHaveWrongCriterionGuidance checks each
+// of the three statements in the file that owns it: the first in the
+// delivery skill's PlanDoc construction guidance, the other two in both
+// reviewer agent definitions. Like
+// TestReviewerReportsCoverageAndBlockingVerdict above, the reviewer
+// files are addressed by stem rather than through agentRoster, whose
+// job is the tools/model frontmatter. Comparison runs on
+// whitespace-normalized text on both sides, so a statement the markdown
+// hard-wraps still matches.
+func TestDeliverySkillAndReviewersHaveWrongCriterionGuidance(t *testing.T) {
+	data, err := os.ReadFile(deliverySkillPath)
+	if err != nil {
+		t.Fatalf("read %s: %v", deliverySkillPath, err)
+	}
+	skill := adaptertest.NormalizeWhitespace(string(data))
+	if !strings.Contains(skill, adaptertest.NormalizeWhitespace(observableOutcomeCriterionGuidance)) {
+		t.Errorf("%s does not contain the observable-outcome criterion guidance %q",
+			deliverySkillPath, observableOutcomeCriterionGuidance)
+	}
+	for _, stem := range []string{"orch-reviewer", "orch-reviewer-safe"} {
+		t.Run(stem, func(t *testing.T) {
+			path := filepath.Join("agents", stem+".md")
+			data, err := os.ReadFile(path)
+			if err != nil {
+				t.Fatalf("read %s: %v", path, err)
+			}
+			content := adaptertest.NormalizeWhitespace(string(data))
+			for _, phrase := range []string{reviewerWrongCriterionGuidance, reviewerAddedCodeNecessityGuidance} {
+				if !strings.Contains(content, adaptertest.NormalizeWhitespace(phrase)) {
+					t.Errorf("%s: missing reviewer guidance %q", path, phrase)
+				}
+			}
+		})
+	}
 }
 
 // frontmatterMatchRuleSentence is the exact phrase
