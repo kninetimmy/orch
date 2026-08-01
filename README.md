@@ -578,13 +578,12 @@ tagged release.
   and two matching rollouts still fail closed —
   [#148](https://github.com/kninetimmy/orch/pull/148)
 - Claude Code's two reviewer agents now report every finding they make,
-  low-severity and uncertain ones included, and decide the verdict
-  afterwards: `request-changes` turns only on a finding that blocks an
-  acceptance criterion, so a non-blocking nit is recorded in the report
-  without by itself costing another review cycle; before, neither
-  agent said whether a minor or uncertain finding belonged in the
-  report at all, or what separated an `approve` from a
-  `request-changes` —
+  low-severity and uncertain ones included, each carrying a severity
+  and a confidence, and decide the verdict afterwards as a separate
+  judgment, so a nit stays in the report without by itself costing
+  another review cycle; before, neither agent said whether a minor or
+  uncertain finding belonged in the report at all, nor that the verdict
+  was a judgment made after the findings were listed —
   [#117](https://github.com/kninetimmy/orch/pull/117)
 - A verification entry whose text describes the branch as a whole is
   given its `branch-scope:` name prefix at `pr-open`, where the name is
