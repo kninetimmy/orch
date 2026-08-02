@@ -779,6 +779,212 @@ func TestDoctorBothHostsCodexAgentsAbsentFails(t *testing.T) {
 	}
 }
 
+// claudeAgentDefinitionsCheck is the doctor check name the Claude
+// installed-definition assertions below match on.
+const claudeAgentDefinitionsCheck = "claude agent definitions"
+
+// writeClaudeInstall lays out a fake installed Claude plugin root
+// holding one agents/<stem>.md per entry of models, each with just
+// enough frontmatter to be a definition, and returns the root. A stem
+// mapped to the empty string gets a definition with no model line at
+// all — the "definition carrying no model" state.
+func writeClaudeInstall(t *testing.T, models map[string]string) string {
+	t.Helper()
+	root := t.TempDir()
+	dir := filepath.Join(root, "agents")
+	if err := os.Mkdir(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	for stem, model := range models {
+		body := "---\nname: " + stem + "\ntools: Read\n"
+		if model != "" {
+			body += "model: " + model + "\n"
+		}
+		body += "---\n\nfixture\n"
+		if err := os.WriteFile(filepath.Join(dir, stem+".md"), []byte(body), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	return root
+}
+
+// claudeListing is a well-formed single-entry `claude plugin list
+// --json` stdout reporting installRoot as the plugin's install path.
+func claudeListing(t *testing.T, installRoot string) string {
+	t.Helper()
+	return fmt.Sprintf(`[{"id":"orch-claude@orch","version":%q,"enabled":true,"installPath":%q}]`,
+		mustAdapterVersion(t, claudeAdapter), installRoot)
+}
+
+// TestDoctorBothHostsClaudeAgentDefinitionsMatchPass runs with both
+// hosts configured — the shape this repository itself uses — so the
+// passing Claude installed-definition check is pinned alongside, not
+// instead of, the Codex agent-file check.
+func TestDoctorBothHostsClaudeAgentDefinitionsMatchPass(t *testing.T) {
+	env, stdout, _ := testEnv(t)
+	writeConfig(t, env.RepoRoot, validBothHostsTOML)
+	if code := Run([]string{"render-agents"}, env); code != ExitOK {
+		t.Fatalf("render-agents exit = %d, want %d\n%s", code, ExitOK, stdout.String())
+	}
+	stdout.Reset()
+
+	if code := Run([]string{"doctor"}, env); code != ExitOK {
+		t.Fatalf("doctor exit = %d, want %d\n%s", code, ExitOK, stdout.String())
+	}
+	out := stdout.String()
+	for _, want := range []string{"ok    " + claudeAgentDefinitionsCheck, "ok    codex agent files"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("stdout missing %q:\n%s", want, out)
+		}
+	}
+}
+
+// TestDoctorClaudeAgentDefinitionsMismatchFails proves the check names
+// every role whose configured model differs from the model the
+// installed definition pins, with both models, and names no role whose
+// two models agree.
+func TestDoctorClaudeAgentDefinitionsMismatchFails(t *testing.T) {
+	env, stdout, _ := testEnv(t)
+	writeConfig(t, env.RepoRoot, validTOML)
+	// validTOML: scout and implementer claude-sonnet-5, specialist and
+	// reviewer claude-opus-4-8, review_downgrade claude-sonnet-5.
+	root := writeClaudeInstall(t, map[string]string{
+		"orch-scout":         "claude-opus-9",
+		"orch-implementer":   "claude-sonnet-5",
+		"orch-specialist":    "claude-opus-4-8",
+		"orch-reviewer":      "claude-sonnet-5",
+		"orch-reviewer-safe": "claude-sonnet-5",
+	})
+	env.Runner = fakeRunner{toplevel: env.RepoRoot, claudePluginJSON: claudeListing(t, root)}
+
+	if code := Run([]string{"doctor"}, env); code != ExitError {
+		t.Fatalf("doctor exit = %d, want %d\n%s", code, ExitError, stdout.String())
+	}
+	out := stdout.String()
+	if !strings.Contains(out, "FAIL  "+claudeAgentDefinitionsCheck) {
+		t.Fatalf("stdout missing the installed-definition failure:\n%s", out)
+	}
+	for _, want := range []string{
+		`scout: configured "claude-sonnet-5"`,
+		`pins "claude-opus-9"`,
+		`reviewer: configured "claude-opus-4-8"`,
+		`pins "claude-sonnet-5"`,
+	} {
+		if !strings.Contains(out, want) {
+			t.Errorf("stdout missing %q:\n%s", want, out)
+		}
+	}
+	for _, role := range []string{"implementer:", "specialist:", "review_downgrade:"} {
+		if strings.Contains(out, role) {
+			t.Errorf("stdout names %q, whose configured and installed models agree:\n%s", role, out)
+		}
+	}
+}
+
+// TestDoctorClaudeAgentDefinitionsUnavailableFails walks the four ways
+// the installed definitions can be unavailable. Each must fail naming
+// what it hit, and none may report the check as passing.
+func TestDoctorClaudeAgentDefinitionsUnavailableFails(t *testing.T) {
+	current := map[string]string{
+		"orch-scout":         "claude-sonnet-5",
+		"orch-implementer":   "claude-sonnet-5",
+		"orch-specialist":    "claude-opus-4-8",
+		"orch-reviewer":      "claude-opus-4-8",
+		"orch-reviewer-safe": "claude-sonnet-5",
+	}
+	tests := []struct {
+		name    string
+		listing func(*testing.T) string
+		want    []string
+	}{
+		{
+			name: "no installed root",
+			listing: func(t *testing.T) string {
+				return fmt.Sprintf(`[{"id":"orch-claude@orch","version":%q,"enabled":true}]`,
+					mustAdapterVersion(t, claudeAdapter))
+			},
+			want: []string{"carries no install path"},
+		},
+		{
+			name: "agents directory absent",
+			listing: func(t *testing.T) string {
+				return claudeListing(t, t.TempDir())
+			},
+			want: []string{"agents directory", "is absent"},
+		},
+		{
+			name: "definition unreadable",
+			listing: func(t *testing.T) string {
+				root := writeClaudeInstall(t, current)
+				path := filepath.Join(root, "agents", "orch-scout.md")
+				if err := os.Remove(path); err != nil {
+					t.Fatal(err)
+				}
+				// A directory in the definition's place is readable as
+				// a directory entry but never as a file, on every OS.
+				if err := os.Mkdir(path, 0o755); err != nil {
+					t.Fatal(err)
+				}
+				return claudeListing(t, root)
+			},
+			want: []string{"scout: unreadable definition"},
+		},
+		{
+			name: "definition carries no model",
+			listing: func(t *testing.T) string {
+				models := map[string]string{}
+				for stem, model := range current {
+					models[stem] = model
+				}
+				models["orch-reviewer-safe"] = ""
+				return claudeListing(t, writeClaudeInstall(t, models))
+			},
+			want: []string{"review_downgrade:", "frontmatter pins no model"},
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			env, stdout, _ := testEnv(t)
+			writeConfig(t, env.RepoRoot, validTOML)
+			env.Runner = fakeRunner{toplevel: env.RepoRoot, claudePluginJSON: tc.listing(t)}
+
+			if code := Run([]string{"doctor"}, env); code != ExitError {
+				t.Fatalf("doctor exit = %d, want %d\n%s", code, ExitError, stdout.String())
+			}
+			out := stdout.String()
+			if !strings.Contains(out, "FAIL  "+claudeAgentDefinitionsCheck) {
+				t.Fatalf("stdout missing the installed-definition failure:\n%s", out)
+			}
+			if strings.Contains(out, "ok    "+claudeAgentDefinitionsCheck) {
+				t.Fatalf("stdout reports the check as passing too:\n%s", out)
+			}
+			for _, want := range tc.want {
+				if !strings.Contains(out, want) {
+					t.Errorf("stdout missing %q:\n%s", want, out)
+				}
+			}
+		})
+	}
+}
+
+// TestDoctorNoClaudeHostSkipsAgentDefinitionsCheck is the Claude twin
+// of TestDoctorNoCodexHostSkipsAgentCheck above.
+func TestDoctorNoClaudeHostSkipsAgentDefinitionsCheck(t *testing.T) {
+	env, stdout, _ := testEnv(t)
+	writeConfig(t, env.RepoRoot, validCodexTOML)
+	if code := Run([]string{"render-agents"}, env); code != ExitOK {
+		t.Fatalf("render-agents exit = %d, want %d\n%s", code, ExitOK, stdout.String())
+	}
+	stdout.Reset()
+	if code := Run([]string{"doctor"}, env); code != ExitOK {
+		t.Fatalf("doctor exit = %d, want %d\n%s", code, ExitOK, stdout.String())
+	}
+	if strings.Contains(stdout.String(), claudeAgentDefinitionsCheck) {
+		t.Errorf("stdout carries a Claude-only check:\n%s", stdout.String())
+	}
+}
+
 func TestDoctorCodexAgentsCurrentThenAllBadStates(t *testing.T) {
 	env, stdout, _ := testEnv(t)
 	writeConfig(t, env.RepoRoot, validCodexTOML)
