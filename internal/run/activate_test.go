@@ -358,6 +358,38 @@ func TestActivateRecordsApprovedWork(t *testing.T) {
 	if b.Objective != "Do B" {
 		t.Errorf("issue b objective = %q, want the plan's", b.Objective)
 	}
+
+	// Issue a declares no risk domain, so every place carries exactly the
+	// plan's one criterion — the created issue body included.
+	bodyA := script.StdinAt(len(taxonomy))
+	if strings.Contains(bodyA, BlastRadiusCriterion) {
+		t.Error("issue a's created body carries the contributed criterion; a declares no risk domain")
+	}
+
+	// Issue b declares one, so all four sites carry the contributed
+	// criterion last: run state, the audit record, and the issue body's
+	// human-prose acceptance-criteria list. (The gate document is the
+	// fourth, asserted in TestPlanGoldenTwoIssue against this same plan.)
+	if len(b.AcceptanceCriteria) != 2 || b.AcceptanceCriteria[0] != "B works" || b.AcceptanceCriteria[1] != BlastRadiusCriterion {
+		t.Errorf("issue b state criteria = %q, want the plan's plus the contributed criterion", b.AcceptanceCriteria)
+	}
+	bodyB := script.StdinAt(len(taxonomy) + 1)
+	mb, err := manifest.Parse(bodyB)
+	if err != nil {
+		t.Fatalf("Parse issue b's created body: %v", err)
+	}
+	if len(mb.AcceptanceCriteria) != 2 || mb.AcceptanceCriteria[0] != "B works" || mb.AcceptanceCriteria[1] != BlastRadiusCriterion {
+		t.Errorf("issue b audit record criteria = %q, want the plan's plus the contributed criterion", mb.AcceptanceCriteria)
+	}
+	if got := strings.Count(bodyB, BlastRadiusCriterion); got != 3 {
+		t.Errorf("issue b body states the contributed criterion %d time(s), want 3: issueBody's prose list, and the audit record's human bullet and canonical JSON", got)
+	}
+	// Run state and the audit record agree exactly, so resume's
+	// state-vs-manifest comparison (sameWork) finds no divergence to
+	// report on a risk-domain issue.
+	if !sameWork(&b, approvedWork{objective: mb.Objective, acceptanceCriteria: mb.AcceptanceCriteria, requiredTests: mb.RequiredTests}) {
+		t.Errorf("issue b state %+v diverges from its audit record %+v; resume would rewrite it", b, mb)
+	}
 }
 
 // areaPlanJSON is a single-issue plan declaring two area labels,

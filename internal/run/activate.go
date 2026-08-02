@@ -247,7 +247,10 @@ func Activate(ctx context.Context, env Env, reqJSON []byte) (*ActivationResult, 
 		// Persist the plan's dependency edges, wave, approved work text,
 		// and the derived routing decision so the PR B verbs can enforce
 		// dependencies and spawn executors on approved text without
-		// re-taking the plan document.
+		// re-taking the plan document. The criteria are
+		// issueAcceptanceCriteria's list, so dispatch hands the executor
+		// and review measures the reviewer against the same standard the
+		// gate showed the human.
 		stateIssues[i] = state.Issue{
 			PlanID:             pi.ID,
 			Title:              pi.Title,
@@ -255,7 +258,7 @@ func Activate(ctx context.Context, env Env, reqJSON []byte) (*ActivationResult, 
 			DependsOn:          pi.DependsOn,
 			Wave:               pi.Wave,
 			Objective:          pi.Objective,
-			AcceptanceCriteria: pi.AcceptanceCriteria,
+			AcceptanceCriteria: issueAcceptanceCriteria(pi),
 			RequiredTests:      pi.RequiredTests,
 			Decision:           fromRoutingDecision(decisionByID[pi.ID]),
 		}
@@ -283,7 +286,7 @@ func Activate(ctx context.Context, env Env, reqJSON []byte) (*ActivationResult, 
 		body, err = manifest.Upsert(body, manifest.Manifest{
 			SchemaVersion:      manifest.SchemaVersion,
 			Objective:          pi.Objective,
-			AcceptanceCriteria: pi.AcceptanceCriteria,
+			AcceptanceCriteria: issueAcceptanceCriteria(pi),
 			RequiredTests:      pi.RequiredTests,
 			Role:               d.Role,
 			Executor:           d.Executor,
@@ -380,12 +383,16 @@ func planAreaLabels(p *PlanDoc) []string {
 // dependencies named by plan id and wave, usage class, and the plan
 // digest. manifest.Upsert appends the machine-readable audit record
 // after it.
+//
+// The acceptance criteria are issueAcceptanceCriteria's list, matching
+// the audit record rendered directly below them: a reader comparing the
+// two halves of one issue body must not find two different standards.
 func issueBody(pi PlanIssue, waveByID map[string]int, digest string) string {
 	var b strings.Builder
 	fmt.Fprintf(&b, "**Objective**\n\n%s\n\n", pi.Objective)
 
 	b.WriteString("**Acceptance criteria**\n\n")
-	for _, ac := range pi.AcceptanceCriteria {
+	for _, ac := range issueAcceptanceCriteria(pi) {
 		fmt.Fprintf(&b, "- %s\n", ac)
 	}
 	b.WriteString("\n**Required tests**\n\n")

@@ -167,6 +167,112 @@ func TestDeriveRisk(t *testing.T) {
 	}
 }
 
+// TestIssueAcceptanceCriteriaFollowsRiskDomains pins the trigger and the
+// position: a risk-domain issue's list is the plan's plus
+// BlastRadiusCriterion last, and an issue declaring no domain gets
+// exactly what the plan listed and nothing more.
+func TestIssueAcceptanceCriteriaFollowsRiskDomains(t *testing.T) {
+	plain := PlanIssue{AcceptanceCriteria: []string{"one", "two"}}
+	got := issueAcceptanceCriteria(plain)
+	if len(got) != 2 || got[0] != "one" || got[1] != "two" {
+		t.Errorf("no risk domains = %q, want exactly the plan's two criteria", got)
+	}
+
+	risky := PlanIssue{
+		AcceptanceCriteria: []string{"one", "two"},
+		Facts:              PlanFacts{RiskDomains: []string{"data-integrity"}},
+	}
+	got = issueAcceptanceCriteria(risky)
+	if len(got) != 3 {
+		t.Fatalf("with a risk domain = %q, want the plan's two plus one contributed", got)
+	}
+	if got[0] != "one" || got[1] != "two" {
+		t.Errorf("plan criteria = %q, want them preserved in order and unaltered", got[:2])
+	}
+	if got[2] != BlastRadiusCriterion {
+		t.Errorf("contributed criterion = %q, want BlastRadiusCriterion last", got[2])
+	}
+}
+
+// TestIssueAcceptanceCriteriaDoesNotMutatePlan is the digest guard:
+// PlanDoc.Digest marshals the submitted plan struct, so a contributed
+// criterion that leaked into the plan's own slice would make `orch run
+// plan` and `orch run activate` compute different digests for the same
+// document — the failure ActivationRequest's approval check would then
+// report as a plan the human never approved.
+func TestIssueAcceptanceCriteriaDoesNotMutatePlan(t *testing.T) {
+	p, err := DecodePlan([]byte(twoIssuePlanJSON()))
+	if err != nil {
+		t.Fatal(err)
+	}
+	before, err := p.Digest()
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, iss := range p.Issues {
+		_ = issueAcceptanceCriteria(iss)
+	}
+	after, err := p.Digest()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if before != after {
+		t.Errorf("digest changed after reading criteria: %q -> %q", before, after)
+	}
+	// The risky issue's own slice is the plan's, untouched: reading it a
+	// second time must not accumulate a second copy.
+	if b := p.Issues[1]; len(b.AcceptanceCriteria) != 1 || b.AcceptanceCriteria[0] != "B works" {
+		t.Errorf("plan issue b criteria = %q, want the submitted list untouched", b.AcceptanceCriteria)
+	}
+}
+
+// TestBlastRadiusCriterionStatesItsThreeDemands pins the criterion's
+// substance, not just its presence: internal/adaptertest holds both
+// hosts' shipped prose to these same clauses, so a reworded criterion
+// that dropped one would otherwise ship as a silently weaker standard.
+func TestBlastRadiusCriterionStatesItsThreeDemands(t *testing.T) {
+	for _, clause := range []string{
+		"contributed by Orch because this issue declares a risk domain, not by the plan document",
+		"name every element of the structure this change touches and state, for each, whether the behavior it had before this change still holds",
+		"record a behavior this change removes as a before-and-after in the same document that stated the old behavior, rather than deleting that statement",
+		"where a restriction is attributed to one named symbol, establish whether it holds for that symbol alone or for every symbol of its kind, and say which",
+	} {
+		if !strings.Contains(BlastRadiusCriterion, clause) {
+			t.Errorf("BlastRadiusCriterion does not state %q", clause)
+		}
+	}
+}
+
+// TestReviewJudgesTheContributedCriterion proves the contributed
+// criterion is enforced on exactly the terms every plan-supplied one is:
+// Review counts the criteria from state (issue.AcceptanceCriteria), so a
+// review that judges only the plan's is refused for missing coverage,
+// and an approve verdict over the contributed criterion judged
+// unsatisfied is refused as a self-contradiction.
+func TestReviewJudgesTheContributedCriterion(t *testing.T) {
+	criteria := issueAcceptanceCriteria(PlanIssue{
+		AcceptanceCriteria: []string{"B works"},
+		Facts:              PlanFacts{RiskDomains: []string{"data-integrity"}},
+	})
+
+	planOnly := []CriterionJudgment{{Criterion: 1, Judgment: JudgmentSatisfied, Reason: "read it"}}
+	err := checkJudgments(planOnly, VerdictApprove, criteria)
+	if !errors.Is(err, ErrBadRequest) {
+		t.Fatalf("err = %v, want ErrBadRequest for the unjudged contributed criterion", err)
+	}
+	if !strings.Contains(err.Error(), "acceptance criterion 2 carries no judgment") {
+		t.Errorf("err = %v, want it to name criterion 2", err)
+	}
+
+	unsatisfied := append(planOnly, CriterionJudgment{Criterion: 2, Judgment: JudgmentUnsatisfied, Reason: "no enumeration in the PR body"})
+	if err := checkJudgments(unsatisfied, VerdictApprove, criteria); !errors.Is(err, ErrBadRequest) {
+		t.Fatalf("err = %v, want ErrBadRequest refusing approve over an unsatisfied contributed criterion", err)
+	}
+	if err := checkJudgments(unsatisfied, VerdictRequestChanges, criteria); err != nil {
+		t.Errorf("request-changes over an unsatisfied contributed criterion = %v, want accepted", err)
+	}
+}
+
 func TestIssueLabelsRolePerDecision(t *testing.T) {
 	i := PlanIssue{Type: "bug", AreaLabels: []string{"core"}}
 

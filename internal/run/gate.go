@@ -36,6 +36,11 @@ type GateDoc struct {
 // routing the engine derived for it. Executor and Reviewer reuse
 // manifest.Selection — the same exact model/effort pairing the audit
 // record carries.
+//
+// AcceptanceCriteria is issueAcceptanceCriteria's list, not the plan
+// document's field: a risk-domain issue shows one more entry here than
+// the plan submitted, because the human approving this gate is
+// approving the standard the reviewer will actually be held to.
 type GateIssue struct {
 	ID                 string             `json:"id"`
 	Title              string             `json:"title"`
@@ -107,7 +112,7 @@ func Plan(ctx context.Context, env Env, planJSON []byte) (*GateDoc, error) {
 			ID:                 i.ID,
 			Title:              i.Title,
 			Objective:          i.Objective,
-			AcceptanceCriteria: i.AcceptanceCriteria,
+			AcceptanceCriteria: issueAcceptanceCriteria(i),
 			Role:               d.Role,
 			Executor:           d.Executor,
 			Reviewer:           d.Reviewer,

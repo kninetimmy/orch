@@ -127,6 +127,9 @@ func TestPlanGoldenTwoIssue(t *testing.T) {
 	if a.Risk != "standard" {
 		t.Errorf("issue a risk = %q, want standard", a.Risk)
 	}
+	if len(a.AcceptanceCriteria) != 1 || a.AcceptanceCriteria[0] != "A works" {
+		t.Errorf("issue a criteria = %q, want exactly the plan's — a declares no risk domain", a.AcceptanceCriteria)
+	}
 	wantLabelsA := []string{"ready", "feature", "implementer", "standard"}
 	if strings.Join(a.Labels, ",") != strings.Join(wantLabelsA, ",") {
 		t.Errorf("issue a labels = %v, want %v", a.Labels, wantLabelsA)
@@ -144,6 +147,12 @@ func TestPlanGoldenTwoIssue(t *testing.T) {
 	}
 	if b.Risk != "critical" {
 		t.Errorf("issue b risk = %q, want critical", b.Risk)
+	}
+	// b declares a risk domain, so the gate the human approves shows the
+	// engine-contributed criterion alongside the plan's own — and the
+	// digest asserted above is still the submitted plan's, unchanged.
+	if len(b.AcceptanceCriteria) != 2 || b.AcceptanceCriteria[0] != "B works" || b.AcceptanceCriteria[1] != BlastRadiusCriterion {
+		t.Errorf("issue b criteria = %q, want the plan's plus the contributed blast-radius criterion", b.AcceptanceCriteria)
 	}
 	wantLabelsB := []string{"ready", "feature", "specialist", "critical"}
 	if strings.Join(b.Labels, ",") != strings.Join(wantLabelsB, ",") {
