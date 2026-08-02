@@ -12,6 +12,7 @@ import (
 
 	"github.com/kninetimmy/orch/internal/agents"
 	"github.com/kninetimmy/orch/internal/execx"
+	"github.com/kninetimmy/orch/internal/instructions"
 	"github.com/kninetimmy/orch/internal/lockfile"
 	"github.com/kninetimmy/orch/internal/state"
 )
@@ -1029,5 +1030,98 @@ func TestDoctorCodexAgentsCurrentThenAllBadStates(t *testing.T) {
 	}
 	if !strings.Contains(out, "orch render-agents") {
 		t.Errorf("stdout does not name the repair:\n%s", out)
+	}
+}
+
+// managedBlock is the canonical managed block this build renders — the
+// only content a "block and nothing else" instruction file holds.
+func managedBlock(t *testing.T) string {
+	t.Helper()
+	block, err := instructions.Render(instructions.CurrentVersion)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return block
+}
+
+// writeInstructionFile writes name (CLAUDE.md or AGENTS.md) at the
+// repository root with content.
+func writeInstructionFile(t *testing.T, root, name, content string) {
+	t.Helper()
+	if err := os.WriteFile(filepath.Join(root, name), []byte(content), 0o644); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// TestDoctorNotesInstructionFileWithOnlyManagedBlock walks the four
+// states a host's root instruction file can be in. Only the block-and-
+// nothing-else state earns the advisory — the one that leaves that
+// host's agents with no project conventions at all — and it never
+// fails doctor.
+func TestDoctorNotesInstructionFileWithOnlyManagedBlock(t *testing.T) {
+	block := managedBlock(t)
+	tests := []struct {
+		name string
+		// content "" writes no CLAUDE.md at all.
+		content string
+		want    bool
+	}{
+		{name: "managed block alone", content: block + "\n", want: true},
+		{name: "conventions outside the block", content: "# Repo\n\nFail loudly.\n\n" + block + "\n"},
+		{name: "no managed block", content: "# Repo\n\nFail loudly.\n"},
+		{name: "absent"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			env, stdout, _ := testEnv(t)
+			writeConfig(t, env.RepoRoot, validTOML)
+			if tt.content != "" {
+				writeInstructionFile(t, env.RepoRoot, "CLAUDE.md", tt.content)
+			}
+			if code := Run([]string{"doctor"}, env); code != ExitOK {
+				t.Fatalf("exit = %d, want %d\n%s", code, ExitOK, stdout.String())
+			}
+			got := strings.Contains(stdout.String(), "note  CLAUDE.md holds the Orch managed block and nothing else; claude agents see no project conventions")
+			if got != tt.want {
+				t.Errorf("advisory present = %v, want %v:\n%s", got, tt.want, stdout.String())
+			}
+		})
+	}
+}
+
+// TestDoctorInstructionAdvisoryFollowsEnabledHosts pins the advisory to
+// the hosts the configuration enables: both root instruction files hold
+// nothing but the managed block in every case, and only an enabled
+// host's file is reported.
+func TestDoctorInstructionAdvisoryFollowsEnabledHosts(t *testing.T) {
+	block := managedBlock(t)
+	tests := []struct {
+		name       string
+		config     string
+		wantClaude bool
+		wantCodex  bool
+	}{
+		{name: "claude only", config: validTOML, wantClaude: true},
+		{name: "codex only", config: validCodexTOML, wantCodex: true},
+		{name: "both hosts", config: validBothHostsTOML, wantClaude: true, wantCodex: true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			env, stdout, _ := testEnv(t)
+			writeConfig(t, env.RepoRoot, tt.config)
+			writeInstructionFile(t, env.RepoRoot, "CLAUDE.md", block+"\n")
+			writeInstructionFile(t, env.RepoRoot, "AGENTS.md", block+"\n")
+			// Exit code is deliberately not asserted here: a Codex host
+			// with no rendered agent files fails doctor for its own
+			// unrelated reason (TestDoctorBothHostsCodexAgentsAbsentFails).
+			Run([]string{"doctor"}, env)
+			out := stdout.String()
+			if got := strings.Contains(out, "note  CLAUDE.md holds the Orch managed block"); got != tt.wantClaude {
+				t.Errorf("CLAUDE.md advisory present = %v, want %v:\n%s", got, tt.wantClaude, out)
+			}
+			if got := strings.Contains(out, "note  AGENTS.md holds the Orch managed block"); got != tt.wantCodex {
+				t.Errorf("AGENTS.md advisory present = %v, want %v:\n%s", got, tt.wantCodex, out)
+			}
+		})
 	}
 }

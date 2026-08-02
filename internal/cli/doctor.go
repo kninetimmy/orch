@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
 
 	"github.com/kninetimmy/orch/adapters/claude"
@@ -15,6 +16,8 @@ import (
 	"github.com/kninetimmy/orch/internal/execx"
 	"github.com/kninetimmy/orch/internal/ghops"
 	"github.com/kninetimmy/orch/internal/gitops"
+	"github.com/kninetimmy/orch/internal/instructions"
+	"github.com/kninetimmy/orch/internal/interview"
 	"github.com/kninetimmy/orch/internal/lockfile"
 	"github.com/kninetimmy/orch/internal/memhub"
 	"github.com/kninetimmy/orch/internal/metrics"
@@ -150,6 +153,30 @@ func runDoctor(env Env) error {
 			check("codex agent files", staleErr)
 		default:
 			check("codex agent files", nil)
+		}
+	}
+
+	// A root instruction file holding the Orch managed block and
+	// nothing else leaves that host's agents with no project
+	// conventions at all: Orch writes only its own block and never
+	// carries a repository's conventions across from the other host's
+	// file (interview.InstructionFile maps one file per host). A note,
+	// not a failure — Orch cannot author a repository's conventions,
+	// and a repository with genuinely none to state is not broken.
+	if cfgErr == nil {
+		for _, host := range cfg.EnabledHosts() {
+			file := interview.InstructionFile(host)
+			// PlanRemove's DeleteWholeFile already answers exactly this
+			// question: what is left once the managed region is
+			// stripped is otherwise empty. An unreadable file or
+			// structurally broken markers are not this check's subject
+			// — `orch init`/`configure` already block on those — so
+			// they stay silent here rather than borrowing this note.
+			ch, err := instructions.PlanRemoveFile(filepath.Join(env.RepoRoot, file))
+			if err != nil || !ch.DeleteWholeFile {
+				continue
+			}
+			fmt.Fprintf(env.Stdout, "note  %s holds the Orch managed block and nothing else; %s agents see no project conventions — add them outside the block\n", file, host)
 		}
 	}
 
