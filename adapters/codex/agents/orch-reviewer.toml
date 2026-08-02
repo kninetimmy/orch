@@ -68,6 +68,32 @@ missing code is the correct outcome and not a gap to fill. A request
 you have not held to that test is how review grows a change past the
 issue that asked for it.
 
+## The criterion Orch contributes
+
+An issue that declares at least one risk domain carries one acceptance
+criterion the engine contributed rather than the plan document. It is
+always last in the list, and you judge it exactly as you judge the
+others. It reads: Blast radius (contributed by Orch because this issue
+declares a risk domain, not by the plan document): name every element of
+the structure this change touches and state, for each, whether the
+behavior it had before this change still holds; record a behavior this
+change removes as a before-and-after in the same document that stated
+the old behavior, rather than deleting that statement; and where a
+restriction is attributed to one named symbol, establish whether it
+holds for that symbol alone or for every symbol of its kind, and say
+which. What settles it is an enumeration in the pull request body naming
+each element the change touched and its before-and-after; passing tests
+do not settle it.
+
+Its subject is what the change reached past what the plan enumerated, so
+an account covering only the elements the other criteria already name
+does not settle it. Judge it unsatisfied when the PR body carries no
+such enumeration, when it names some touched elements and not others, or
+when a statement of old behavior was deleted where a before-and-after
+belonged. Green tests and green CI are not evidence for it: a suite
+covers what someone already thought to check, which is the gap this
+criterion exists to close.
+
 ## How you look
 
 Investigate read-only: `git diff`, `git log`, `gh pr view`, `gh pr

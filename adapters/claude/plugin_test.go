@@ -391,6 +391,21 @@ func TestDeliverySkillHasBranchScopeVerificationGuidance(t *testing.T) {
 	adaptertest.CheckBranchScopeVerificationGuidance(t, deliverySkillPath)
 }
 
+// TestBlastRadiusCriterionGuidance holds this host's delivery skill and
+// both shipped reviewer definitions to the criterion the engine
+// contributes to a risk-domain issue. The pin is two-sided (see
+// adaptertest.CheckBlastRadiusCriterionGuidance): rewording
+// run.BlastRadiusCriterion fails it just as deleting the instruction
+// here does, so the standard the binary imposes and the prose telling
+// the executor and reviewer about it cannot drift apart.
+func TestBlastRadiusCriterionGuidance(t *testing.T) {
+	adaptertest.CheckBlastRadiusCriterionGuidance(t,
+		deliverySkillPath,
+		filepath.Join("agents", "orch-reviewer.md"),
+		filepath.Join("agents", "orch-reviewer-safe.md"),
+	)
+}
+
 // These statements keep a wrong acceptance criterion reachable, keep the
 // plan gate from writing one no evidence can settle, and route a rejected
 // criterion to the human inside the review call rather than through a

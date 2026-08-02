@@ -4,8 +4,10 @@
 // cross-host invariants — the run-verb allowlist, the four
 // anti-forgery statement literals, the plan/merge gate option text, the
 // setup interview's terminal forms, hook command portability, matcher/
-// guard parity, and the routed-selection prompt cue — have exactly one
-// source instead of a copy per adapter that can silently drift apart.
+// guard parity, the routed-selection prompt cue, and the blast-radius
+// acceptance criterion the engine contributes to a risk-domain issue —
+// have exactly one source instead of a copy per adapter that can
+// silently drift apart.
 //
 // This package carries no Test functions and tests nothing of its own;
 // it is test-support only, imported by adapters/claude/plugin_test.go
@@ -362,6 +364,66 @@ func CheckBranchScopeVerificationGuidance(t *testing.T, deliverySkillPath string
 	for _, phrase := range branchScopeGuidancePhrases {
 		if !strings.Contains(content, normalizeWhitespace(phrase)) {
 			t.Errorf("%s does not contain the branch-scope verification guidance phrase %q", deliverySkillPath, phrase)
+		}
+	}
+}
+
+// blastRadiusClauses are the clauses of run.BlastRadiusCriterion every
+// shipped delivery skill and reviewer definition must state verbatim:
+// the criterion's provenance (the engine contributed it, the plan
+// document did not) and each of the three demands it makes.
+//
+// CheckBlastRadiusCriterionGuidance asserts each one against
+// run.BlastRadiusCriterion itself as well as against the shipped files,
+// which is what makes this a two-sided pin rather than another prose
+// presence check: rewording the criterion the binary contributes fails
+// here just as deleting the instruction describing it does, so the
+// engine's demand and the shipped prose cannot drift apart in either
+// direction.
+var blastRadiusClauses = []string{
+	"contributed by Orch because this issue declares a risk domain, not by the plan document",
+	"name every element of the structure this change touches and state, for each, whether the behavior it had before this change still holds",
+	"record a behavior this change removes as a before-and-after in the same document that stated the old behavior, rather than deleting that statement",
+	"where a restriction is attributed to one named symbol, establish whether it holds for that symbol alone or for every symbol of its kind, and say which",
+}
+
+// blastRadiusEvidence is the sentence naming what settles the
+// contributed criterion. It is required of the shipped files only, not
+// of run.BlastRadiusCriterion: the criterion states what to do, and this
+// states what a reviewer accepts as having done it — a criterion is not
+// its own evidence rule.
+const blastRadiusEvidence = "What settles it is an enumeration in the pull request body naming each element the change touched and its before-and-after; passing tests do not settle it."
+
+// CheckBlastRadiusCriterionGuidance pins each path's whole text against
+// run.BlastRadiusCriterion's clauses and the evidence sentence above.
+// Callers pass their own host's delivery skill and both reviewer agent
+// definitions; the files are read raw, so a Codex definition's prose
+// inside a TOML string is checked the same way a Claude definition's
+// markdown body is.
+//
+// Comparison runs on whitespace-normalized text on both sides, so a
+// clause a markdown reflow or a TOML line wrap happens to split across a
+// line break still counts as present. As with every pin in this package,
+// it catches deletion or rewording of the words and nothing more: no
+// check here observes whether an executor or reviewer that reads the
+// criterion acts on it.
+func CheckBlastRadiusCriterionGuidance(t *testing.T, paths ...string) {
+	t.Helper()
+	criterion := normalizeWhitespace(run.BlastRadiusCriterion)
+	for _, clause := range blastRadiusClauses {
+		if !strings.Contains(criterion, normalizeWhitespace(clause)) {
+			t.Errorf("run.BlastRadiusCriterion no longer states %q; the engine's criterion and the shipped prose pinned to it have diverged", clause)
+		}
+	}
+	for _, path := range paths {
+		content := normalizeWhitespace(readFile(t, path))
+		for _, clause := range blastRadiusClauses {
+			if !strings.Contains(content, normalizeWhitespace(clause)) {
+				t.Errorf("%s does not state the blast-radius criterion clause %q", path, clause)
+			}
+		}
+		if !strings.Contains(content, normalizeWhitespace(blastRadiusEvidence)) {
+			t.Errorf("%s does not state what evidence settles the blast-radius criterion: %q", path, blastRadiusEvidence)
 		}
 	}
 }

@@ -2,6 +2,7 @@ package run
 
 import (
 	"fmt"
+	"slices"
 	"sort"
 
 	"github.com/kninetimmy/orch/internal/config"
@@ -122,6 +123,49 @@ func deriveRisk(i PlanIssue) ghops.Risk {
 		return ghops.RiskCritical
 	}
 	return ghops.RiskStandard
+}
+
+// BlastRadiusCriterion is the one acceptance criterion the engine
+// contributes itself, appended to every plan issue that declares a risk
+// domain (issueAcceptanceCriteria). A plan document's criteria are the
+// whole standard the executor optimizes against and the reviewer is
+// measured against — checkJudgments requires one judgment per criterion
+// and refuses an approve verdict over any unsatisfied one — so a
+// preservation clause naming one thing to protect protects that one
+// thing and nothing adjacent to it. This criterion is what puts
+// "account for what the change actually touched" into that standard
+// rather than leaving it to what the planner happened to enumerate.
+//
+// It is a package-level constant, not prose duplicated per call site,
+// because internal/adaptertest pins both hosts' delivery skills and all
+// four shipped reviewer definitions against this exact text: the
+// engine's demand and the shipped instructions describing it cannot
+// drift apart without failing a test.
+const BlastRadiusCriterion = "Blast radius (contributed by Orch because this issue declares a risk domain, not by the plan document): name every element of the structure this change touches and state, for each, whether the behavior it had before this change still holds; record a behavior this change removes as a before-and-after in the same document that stated the old behavior, rather than deleting that statement; and where a restriction is attributed to one named symbol, establish whether it holds for that symbol alone or for every symbol of its kind, and say which."
+
+// issueAcceptanceCriteria is one issue's full approved criteria list:
+// the plan document's entries, plus BlastRadiusCriterion last when the
+// issue declares at least one risk domain. It is the single source every
+// consumer of a plan issue's criteria reads — the gate document, run
+// state, the audit record, and the created issue body — so dispatch,
+// review, and resume, which all read one of those, see the same list
+// without knowing this function exists. An issue declaring no risk
+// domain gets exactly what its plan document listed.
+//
+// Risk domains are the trigger for the same reason deriveRisk uses them:
+// they are declared facts, already computed, and already what routes an
+// issue to the specialist role.
+//
+// It never mutates i, and appends into a fresh slice rather than onto
+// the plan's own backing array: PlanDoc.Digest marshals the submitted
+// plan struct, so a criterion that reached i.AcceptanceCriteria would
+// make `orch run plan` and `orch run activate` compute different digests
+// for the same document.
+func issueAcceptanceCriteria(i PlanIssue) []string {
+	if len(i.Facts.RiskDomains) == 0 {
+		return i.AcceptanceCriteria
+	}
+	return slices.Concat(i.AcceptanceCriteria, []string{BlastRadiusCriterion})
 }
 
 // issueLabels assembles the full PRD §13 taxonomy for one issue: ready

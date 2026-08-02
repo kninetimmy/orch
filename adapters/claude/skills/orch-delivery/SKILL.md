@@ -102,6 +102,28 @@ it: if the honest answer is a proxy, write the criterion against
 something the repository can actually produce evidence for, or leave it
 out of the plan.
 
+When an issue declares at least one entry in `facts.risk_domains`, the
+engine contributes one further acceptance criterion of its own. The
+`GateDoc`, the created issue body, the audit record, and
+`DispatchResult.acceptance_criteria` all carry it, so a risk-domain
+issue's criteria list is one entry longer than the list your `PlanDoc`
+submitted and the contributed entry is always last. Do not write it into
+the `PlanDoc` yourself — a plan that lists it too carries it twice and
+costs a second judgment saying the same thing. It reads: Blast radius
+(contributed by Orch because this issue declares a risk domain, not by
+the plan document): name every element of the structure this change
+touches and state, for each, whether the behavior it had before this
+change still holds; record a behavior this change removes as a
+before-and-after in the same document that stated the old behavior,
+rather than deleting that statement; and where a restriction is
+attributed to one named symbol, establish whether it holds for that
+symbol alone or for every symbol of its kind, and say which. What
+settles it is an enumeration in the pull request body naming each
+element the change touched and its before-and-after; passing tests do
+not settle it. Present it at the plan gate as part of the issue's
+criteria, exactly like the ones you wrote — it is part of the standard
+the human is approving.
+
 Plan text must never reference machine-local or gitignored paths such
 as `.memhub/`, `.orchestrator/state.json`, or
 `.orchestrator/config.local.toml` — an executor sees only the committed
@@ -345,6 +367,9 @@ in flight at once. For each issue:
    supply yourself. The engine counts the criteria from its own state,
    so the request cannot decide how many it is answering — a missing,
    duplicated, or out-of-range criterion is refused before any mutation.
+   On a risk-domain issue that count includes the engine-contributed
+   blast-radius criterion, last in the list and judged on the same terms
+   as every criterion the plan document supplied.
    A `verdict` of `approve` is accepted only when every criterion is
    judged `satisfied`; record `request-changes` otherwise. Transcribe
    the reviewer's per-criterion calls, never your own reading of its
