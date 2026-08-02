@@ -58,6 +58,15 @@ model  = "claude-sonnet-5"
 effort = "high"
 `
 
+// testClaudeInstallRoot is the install path the default fake `claude
+// plugin list --json` reports for the Orch Claude plugin. Its
+// agents/*.md fixtures pin exactly the models validTOML gives
+// hosts.claude.roles, so doctor's installed-definition check passes by
+// default and a test that wants it to fail says so by scripting its own
+// listing. The path is relative to this package directory, which is
+// where `go test` runs.
+const testClaudeInstallRoot = "testdata/claude-plugin"
+
 // testEnv returns an Env writing to fresh buffers, rooted in an empty
 // temp dir, with every PATH lookup succeeding and a Runner that
 // reports the repo root as a healthy git top level.
@@ -172,7 +181,7 @@ func (f fakeRunner) Run(_ context.Context, c execx.Cmd) (execx.Result, error) {
 				return execx.Result{}, versionErr
 			}
 			if c.Name == "claude" {
-				stdout = fmt.Sprintf(`[{"id":"orch-claude@orch","version":%q,"enabled":true}]`, version)
+				stdout = fmt.Sprintf(`[{"id":"orch-claude@orch","version":%q,"enabled":true,"installPath":%q}]`, version, testClaudeInstallRoot)
 			} else {
 				stdout = fmt.Sprintf(`{"installed":[{"pluginId":"orch@orch","version":%q,"installed":true,"enabled":true}]}`, version)
 			}

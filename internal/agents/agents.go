@@ -8,6 +8,13 @@
 // source of truth: this package never carries its own copy of the
 // prose, so the shipped plugin files and this package's rendered
 // output cannot silently diverge from one another.
+//
+// CheckClaude (claude.go) is the one Claude-side member: a read-only
+// comparison of the installed Claude agent definitions' pinned models
+// against the same effective configuration, for `orch doctor`. It
+// shares roleFiles and profileFor with the Codex rendering above
+// because both hosts name their five definitions identically; it
+// renders and writes nothing.
 package agents
 
 import (

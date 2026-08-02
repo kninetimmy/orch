@@ -499,14 +499,22 @@ the binary now catches: `orch doctor` and Codex plan activation both
 compare the rendered definitions against the effective configuration
 and fail closed naming `orch render-agents`, so activation refuses
 rather than dispatching agents pinned to a stale model. On Claude Code
-nothing in the binary checks this. The Architect's skill instructs it
-to compare the routed model against the installed agent's frontmatter
-and, on a mismatch, to stop and tell you rather than spawn a different
-model — so that stop rests on the Architect following an instruction,
-not on a check the engine performs. Either way, changing a role's
-model — which the Settings section above recommends as ordinary
-tuning — is not finished until the installed agent definitions carry
-it too.
+`orch doctor` reports the same comparison but repairs nothing: it
+resolves the installed plugin root from `claude plugin list --json`,
+reads the model each of the five installed agent definitions pins in
+its frontmatter, and fails as `claude agent definitions`, naming every
+role whose `hosts.claude.roles` model differs together with both
+models — and failing too when those definitions cannot be read at all.
+There is no Claude equivalent of `orch render-agents` to run
+afterwards: you update the installed plugin or change the configured
+model. Claude plan activation does not gate on this, either. The
+Architect's skill still instructs it to compare the routed model
+against the installed agent's frontmatter and, on a mismatch, to stop
+and tell you rather than spawn a different model — so inside a run,
+that stop still rests on the Architect following an instruction, not
+on a check the engine performs. Either way, changing a role's model —
+which the Settings section above recommends as ordinary tuning — is
+not finished until the installed agent definitions carry it too.
 
 **A Codex CLI upgrade that adds a new `apply_patch` directive causes
 denials until `orch` catches up.** The guard's envelope parser treats
