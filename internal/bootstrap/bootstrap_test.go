@@ -13,6 +13,8 @@ import (
 	"github.com/kninetimmy/orch/internal/execx/execxtest"
 	"github.com/kninetimmy/orch/internal/ghops"
 	"github.com/kninetimmy/orch/internal/gitops"
+	"github.com/kninetimmy/orch/internal/instructions"
+	"github.com/kninetimmy/orch/internal/interview"
 )
 
 func TestExecuteHappyPath(t *testing.T) {
@@ -90,6 +92,59 @@ func TestExecuteHappyPath(t *testing.T) {
 	remoteHead := rawGit(t, root, "rev-parse", "refs/remotes/origin/"+BootstrapBranch)
 	if strings.TrimSpace(remoteHead) != head {
 		t.Errorf("origin/%s = %q, want %q (pushed)", BootstrapBranch, strings.TrimSpace(remoteHead), head)
+	}
+}
+
+// TestExecuteSeedsNewInstructionFileFromSibling proves the seed offer
+// survives the whole bootstrap: stage 0 re-derives the seeded content
+// from the raw answers alone (nothing about the file's bytes travels in
+// the AnswerSet), the seeded file passes the §18.13 mechanical
+// validation, and what lands on the bootstrap branch is CLAUDE.md's
+// conventions followed by exactly one managed block.
+func TestExecuteSeedsNewInstructionFileFromSibling(t *testing.T) {
+	const conventions = "# Fixture\n\nRun `go test ./...` before every push.\n"
+	root := newBootstrapRepo(t)
+	block, err := instructions.Render(instructions.CurrentVersion)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(root, "CLAUDE.md"), []byte(conventions+"\n"+block), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	rawGit(t, root, "add", "-A")
+	rawGit(t, root, "commit", "-m", "conventions")
+	rawGit(t, root, "push", "origin", "main")
+
+	facts := interview.Detect(context.Background(), interview.Deps{RepoRoot: root, LookPath: fakeLookPath, Runner: muxRunner{git: execx.Local{}}})
+	answers := fullAnswers(t, facts, root)
+	if answers["seed.instructions.codex"] != "yes" {
+		t.Fatalf("the interview never offered to seed AGENTS.md: %v", answers)
+	}
+
+	calls := taxonomyScript()
+	calls = append(calls, ghIssueCreateCall(1))
+	calls = append(calls, ghCreatePRCall(1))
+	calls = append(calls, ghSetStatusCall(1, ghops.StatusAwaitingReview))
+	script := &execxtest.Script{T: t, Calls: calls}
+	deps := testDeps(root, answers, script, muxRunner{git: execx.Local{}})
+
+	report, err := Execute(context.Background(), deps)
+	if err != nil {
+		t.Fatalf("Execute: %v", err)
+	}
+	script.AssertExhausted()
+	for _, v := range report.Validations {
+		if v.Result != "pass" {
+			t.Errorf("validation %s = %+v, want pass", v.Name, v)
+		}
+	}
+
+	agents := rawGit(t, root, "show", BootstrapBranch+":AGENTS.md")
+	if !strings.HasPrefix(agents, conventions) {
+		t.Errorf("committed AGENTS.md does not open with CLAUDE.md's conventions:\n%s", agents)
+	}
+	if n := strings.Count(agents, "orchestrator:managed:start"); n != 1 {
+		t.Errorf("committed AGENTS.md carries %d managed blocks, want exactly 1:\n%s", n, agents)
 	}
 }
 

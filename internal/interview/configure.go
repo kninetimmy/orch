@@ -84,7 +84,11 @@ func nextAfterSequenceConfigure(facts Facts, committed *config.Config, committed
 	if err != nil {
 		return question.Document{}, err
 	}
-	summary, err := buildConfigureSummary(cfg, committed, committedRaw, repoRoot)
+	seeds := seedFiles(facts, map[string]bool{
+		"claude": cfg.Hosts.Claude != nil && committedHostConfig(committed, "claude") == nil,
+		"codex":  cfg.Hosts.Codex != nil && committedHostConfig(committed, "codex") == nil,
+	}, answers)
+	summary, err := buildConfigureSummary(cfg, committed, committedRaw, repoRoot, seeds)
 	if err != nil {
 		return question.Document{}, err
 	}
@@ -162,6 +166,12 @@ func readCommittedRaw(repoRoot string) ([]byte, error) {
 // (concurrency/merge/memhub/metrics) is included only when
 // pick.settings is answered "yes", defaulted from the committed
 // configuration's current values (committedSettingsDefaults).
+//
+// Last comes any applicable instruction-file seed question (seedDocs,
+// seed.go). It is offered only for a host this change newly enables —
+// a still-enabled host's file is already there — and only when that
+// host's root instruction file is absent while the other host's carries
+// conventions.
 func buildSequenceConfigure(facts Facts, committed *config.Config, answers map[string]string) ([]docSpec, error) {
 	docs := []docSpec{pickerDocConfigure(committed)}
 
@@ -204,6 +214,11 @@ func buildSequenceConfigure(facts Facts, committed *config.Config, answers map[s
 	if answers[idPickSettings] == "yes" {
 		docs = append(docs, settingsDoc(committedSettingsDefaults(committed)))
 	}
+
+	docs = append(docs, seedDocs(facts, map[string]bool{
+		"claude": claudeEnabled && !claudeCommitted,
+		"codex":  codexEnabled && !codexCommitted,
+	})...)
 
 	return docs, nil
 }
@@ -437,7 +452,8 @@ func allFileChangesUnchanged(files []question.FileChange) bool {
 // buildConfigureSummary materializes cfg's rendered TOML and proposed
 // instruction-file changes into a question.Summary for `orch
 // configure` (PRD §18 steps 7-8 applied to an edit rather than a fresh
-// bootstrap): every host cfg enables gets instructions.PlanFile
+// bootstrap): every host cfg enables gets seededPlanFile — plain
+// instructions.PlanFile unless seeds names its file (seed.go)
 // (install, or — the day a version 2 exists — an upgrade diff, PRD §19
 // "upgrade blocks only through Delivery"); every host this change
 // disables instead gets instructions.PlanRemoveFile, block-only
@@ -448,13 +464,13 @@ func allFileChangesUnchanged(files []question.FileChange) bool {
 // config.toml is never double-written. The no-change blocker compares
 // bytes, not revision, so a hand-denormalized committed file can still
 // be re-canonicalized through an otherwise-empty configure change.
-func buildConfigureSummary(cfg, committed *config.Config, committedRaw []byte, repoRoot string) (question.Summary, error) {
+func buildConfigureSummary(cfg, committed *config.Config, committedRaw []byte, repoRoot string, seeds map[string]string) (question.Summary, error) {
 	rendered, err := config.Render(cfg)
 	if err != nil {
 		return question.Summary{}, fmt.Errorf("render configuration for summary: %w", err)
 	}
 
-	enabledFiles, enabledBlockers, err := planInstructionFiles(repoRoot, applicableInstructionFiles(cfg), instructions.PlanFile)
+	enabledFiles, enabledBlockers, err := planInstructionFiles(repoRoot, applicableInstructionFiles(cfg), seededPlanFile(repoRoot, seeds))
 	if err != nil {
 		return question.Summary{}, err
 	}

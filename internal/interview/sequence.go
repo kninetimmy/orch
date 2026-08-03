@@ -174,7 +174,10 @@ func (d docSpec) allAnswered(answers map[string]string) bool {
 // in answers (PRD §18 steps 3-6, fixed order, claude before codex).
 // Role documents for a host are included only once that host's
 // enabled toggle is answered "yes"; the settings document (doc 14) is
-// included only once both toggles are answered at all. It returns
+// included only once both toggles are answered at all, followed by any
+// applicable instruction-file seed question (seedDocs, seed.go), which
+// fires only for an enabled host whose root instruction file is absent
+// while the other host's carries conventions. It returns
 // ErrNoHostEnabled as soon as both toggles are known and both are
 // "no" — the same rule config.validate enforces on the committed file,
 // checked here before any role question is ever asked.
@@ -198,6 +201,7 @@ func buildSequence(facts Facts, answers map[string]string) ([]docSpec, error) {
 	}
 	if claudeKnown && codexKnown {
 		docs = append(docs, settingsDoc(initSettingsDefaults(facts)))
+		docs = append(docs, seedDocs(facts, map[string]bool{"claude": claudeEnabled, "codex": codexEnabled})...)
 	}
 	return docs, nil
 }
