@@ -81,13 +81,17 @@ const metricsGitignoreLine = ".orchestrator/metrics/"
 // rather than aborting Next outright — the human sees the whole
 // summary with the blocker named (PRD §19: stop on conflicting
 // instructions), not a bare error.
-func buildSummary(cfg *config.Config, repoRoot string) (question.Summary, error) {
+//
+// seeds maps a proposed instruction file to the sibling file whose
+// conventions it is seeded from (seedFiles, seed.go); an empty seeds
+// plans every file exactly as it did before seeding existed.
+func buildSummary(cfg *config.Config, repoRoot string, seeds map[string]string) (question.Summary, error) {
 	rendered, err := config.Render(cfg)
 	if err != nil {
 		return question.Summary{}, fmt.Errorf("render configuration for summary: %w", err)
 	}
 
-	files, blockers, err := planInstructionFiles(repoRoot, applicableInstructionFiles(cfg), instructions.PlanFile)
+	files, blockers, err := planInstructionFiles(repoRoot, applicableInstructionFiles(cfg), seededPlanFile(repoRoot, seeds))
 	if err != nil {
 		return question.Summary{}, err
 	}
@@ -125,9 +129,10 @@ func buildSummary(cfg *config.Config, repoRoot string) (question.Summary, error)
 // blocking Plan error into a Blockers entry rather than aborting —
 // buildSummary and interview's own buildConfigureSummary
 // (`orch configure`, configure.go) both share this loop: init only
-// ever calls it with instructions.PlanFile, while configure calls it
-// once with PlanFile (for the hosts it enables) and once more with
-// PlanRemoveFile (for the hosts it disables).
+// ever calls it with seededPlanFile (instructions.PlanFile itself
+// unless this session seeds a file, seed.go), while configure calls it
+// once with seededPlanFile (for the hosts it enables) and once more
+// with PlanRemoveFile (for the hosts it disables).
 func planInstructionFiles(repoRoot string, names []string, planFunc func(string) (instructions.Change, error)) ([]question.FileChange, []string, error) {
 	var files []question.FileChange
 	var blockers []string

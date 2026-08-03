@@ -57,7 +57,7 @@ func TestBuildSummaryFreshRepo(t *testing.T) {
 	}
 	root := t.TempDir()
 
-	summary, err := buildSummary(cfg, root)
+	summary, err := buildSummary(cfg, root, nil)
 	if err != nil {
 		t.Fatalf("buildSummary: %v", err)
 	}
@@ -120,7 +120,7 @@ func TestBuildSummaryGitignoreLineUnconditional(t *testing.T) {
 	if cfg.Metrics.Enabled {
 		t.Fatal("fullAnswers' metrics answer is not disabled; fixture drifted")
 	}
-	summary, err := buildSummary(cfg, t.TempDir())
+	summary, err := buildSummary(cfg, t.TempDir(), nil)
 	if err != nil {
 		t.Fatalf("buildSummary: %v", err)
 	}
@@ -146,7 +146,7 @@ func TestBuildSummaryPreservesExistingUserContent(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	summary, err := buildSummary(cfg, root)
+	summary, err := buildSummary(cfg, root, nil)
 	if err != nil {
 		t.Fatalf("buildSummary: %v", err)
 	}
@@ -186,7 +186,7 @@ func TestBuildSummaryDriftedBlockIsABlocker(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	summary, err := buildSummary(cfg, root)
+	summary, err := buildSummary(cfg, root, nil)
 	if err != nil {
 		t.Fatalf("buildSummary: %v", err)
 	}
@@ -230,7 +230,7 @@ func TestBuildSummaryNestedConflict(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	summary, err := buildSummary(cfg, root)
+	summary, err := buildSummary(cfg, root, nil)
 	if err != nil {
 		t.Fatalf("buildSummary: %v", err)
 	}
@@ -253,7 +253,7 @@ func TestBuildSummaryFiltersExistingGitignoreLines(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	summary, err := buildSummary(cfg, root)
+	summary, err := buildSummary(cfg, root, nil)
 	if err != nil {
 		t.Fatalf("buildSummary: %v", err)
 	}

@@ -2,9 +2,14 @@ package interview
 
 import (
 	"context"
+	"errors"
+	"io/fs"
+	"os"
+	"path/filepath"
 	"strings"
 
 	"github.com/kninetimmy/orch/internal/execx"
+	"github.com/kninetimmy/orch/internal/instructions"
 	"github.com/kninetimmy/orch/internal/memhub"
 )
 
@@ -25,11 +30,12 @@ type Deps struct {
 
 // Facts is Detect's pure snapshot of the local environment (PRD §18
 // steps 1-2): which host CLIs are on PATH, whether RepoRoot sits
-// inside a git repository, whether gh is on PATH, and whether memhub
-// is both on PATH and healthy. Facts feeds question defaults and
-// Complete's audit record; it never travels inside an AnswerSet — an
-// adapter cannot spoof detection by editing the answers map, since
-// Next never reads facts back out of it.
+// inside a git repository, whether gh is on PATH, whether memhub is
+// both on PATH and healthy, and how each host's root instruction file
+// already stands (Instructions, keyed by host name). Facts feeds
+// question defaults and Complete's audit record; it never travels
+// inside an AnswerSet — an adapter cannot spoof detection by editing
+// the answers map, since Next never reads facts back out of it.
 type Facts struct {
 	ClaudeCLI bool
 	CodexCLI  bool
@@ -42,6 +48,20 @@ type Facts struct {
 	MemhubCLI     bool
 	MemhubHealthy bool
 	MemhubDetail  string
+
+	Instructions map[string]InstructionFileState
+}
+
+// InstructionFileState is Detect's classification of one host's root
+// instruction file (InstructionFile names it): whether the file exists
+// at all, and whether it carries any content outside the Orch managed
+// block. It is deliberately part of Facts rather than something the
+// summary step reads for itself, so the seed question (seed.go) can be
+// derived while buildSequence stays a pure function of facts and
+// answers alone.
+type InstructionFileState struct {
+	Exists      bool
+	Conventions bool
 }
 
 // Detect probes deps for every Facts field. It never returns an
@@ -55,7 +75,9 @@ type Facts struct {
 // the git root and so cannot hold before initialization exists.
 // memhub is probed through internal/memhub's Client, the shared PRD
 // §20 client that runs `memhub status` with the repo root as an
-// explicit working directory.
+// explicit working directory. The root instruction files are read
+// directly (classifyInstructionFile), the one probe that touches the
+// repository's own content rather than its tooling.
 func Detect(ctx context.Context, deps Deps) Facts {
 	var f Facts
 	f.ClaudeCLI = lookPathOK(deps.LookPath, "claude")
@@ -73,7 +95,45 @@ func Detect(ctx context.Context, deps Deps) Facts {
 		f.MemhubHealthy, f.MemhubDetail = probeMemhub(ctx, deps)
 	}
 
+	root := f.GitRoot
+	if root == "" {
+		root = deps.RepoRoot
+	}
+	f.Instructions = map[string]InstructionFileState{
+		"claude": classifyInstructionFile(root, InstructionFile("claude")),
+		"codex":  classifyInstructionFile(root, InstructionFile("codex")),
+	}
+
 	return f
+}
+
+// classifyInstructionFile reports whether repoRoot/name exists and
+// whether it holds anything outside the Orch managed block. It reuses
+// instructions.PlanRemove because what is left once the managed region
+// is stripped is exactly the question being asked (the same reading
+// `orch doctor` reports this state from). Like every other Detect
+// probe it reports trouble as data, not failure: an unreadable file or
+// structurally broken markers classify as "exists, no conventions", so
+// nothing is ever seeded from a file this build cannot read or parse,
+// and `orch init`/`configure` still block on those files themselves.
+//
+// The root probed is the detected git root, falling back to
+// Deps.RepoRoot — the same resolution the callers apply before handing
+// a root to Next, so the files classified here are the files the
+// summary step later plans against.
+func classifyInstructionFile(repoRoot, name string) InstructionFileState {
+	data, err := os.ReadFile(filepath.Join(repoRoot, name))
+	if errors.Is(err, fs.ErrNotExist) {
+		return InstructionFileState{}
+	}
+	if err != nil {
+		return InstructionFileState{Exists: true}
+	}
+	ch, err := instructions.PlanRemove(string(data))
+	if err != nil {
+		return InstructionFileState{Exists: true}
+	}
+	return InstructionFileState{Exists: true, Conventions: !instructions.IsOtherwiseEmpty(ch.New)}
 }
 
 // lookPathOK reports whether lookPath resolves name; a nil lookPath
