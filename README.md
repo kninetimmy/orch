@@ -5,7 +5,7 @@
 <p align="center">
   <img src="https://img.shields.io/badge/License-MIT-2E7D32?style=flat&logo=opensourceinitiative&logoColor=white" alt="License: MIT"/>
   <img src="https://img.shields.io/badge/Go-1.26%2B-00ADD8?style=flat&logo=go&logoColor=white" alt="Go 1.26+"/>
-  <img src="https://img.shields.io/badge/Release-v0.6.0-24292F?style=flat&logo=github&logoColor=white" alt="Release: v0.6.0"/>
+  <img src="https://img.shields.io/badge/Release-v0.6.1-24292F?style=flat&logo=github&logoColor=white" alt="Release: v0.6.1"/>
   <br/>
   <img src="https://img.shields.io/badge/Platform-Linux%20%C2%B7%20macOS%20%C2%B7%20Windows-607D8B?style=flat" alt="Platform: Linux, macOS, Windows"/>
   <img src="https://img.shields.io/badge/Hosts-Claude%20Code%20%C2%B7%20Codex%20CLI-6E56CF?style=flat" alt="Hosts: Claude Code and Codex CLI"/>
@@ -70,7 +70,7 @@ The full product definition lives in [ORCH-PRD.md](ORCH-PRD.md).
 
 ## Status
 
-Early software. What can be stated as fact: 15 tagged releases, v0.1.0 through v0.6.0, and every pull request merged since PR #40 carries an Orch audit record in its body — apart from the configuration deliveries, which `orch configure` writes in its own body format. Since PR #40, this repository has been built through the pipeline described above: a plan gate, an isolated worktree per issue, a review dispatched separately from the work, CI, and a merge that fails closed unless it carries an approval pinned to the commit `merge-report` recorded.
+Early software. What can be stated as fact: 16 tagged releases, v0.1.0 through v0.6.1, and every pull request merged since PR #40 carries an Orch audit record in its body — apart from the configuration deliveries, which `orch configure` writes in its own body format. Since PR #40, this repository has been built through the pipeline described above: a plan gate, an isolated worktree per issue, a review dispatched separately from the work, CI, and a merge that fails closed unless it carries an approval pinned to the commit `merge-report` recorded.
 
 All of that evidence comes from one repository: this one.
 
@@ -101,7 +101,7 @@ on this machine. Work in a scratch directory, not in one of my projects.
 
 2. Confirm that `orch` resolves on PATH and that `orch status` prints a
    release version on its first line — a line beginning `orch:` and giving
-   a release tag such as v0.6.0. Run it from anywhere: outside an
+   a release tag such as v0.6.1. Run it from anywhere: outside an
    initialized repository it prints that version line first and then exits
    non-zero saying the repository is not initialized, which is expected
    here. On Windows the installer adds its install directory to my user
@@ -189,7 +189,7 @@ your OS and architecture, verify its SHA-256 against the release's
 `SHA256SUMS` **before** installing, and fail closed on any mismatch.
 
 Linux / macOS — installs to `~/.local/bin` (override with
-`ORCH_INSTALL_DIR`); pin a version with `ORCH_VERSION=v0.6.0`:
+`ORCH_INSTALL_DIR`); pin a version with `ORCH_VERSION=v0.6.1`:
 
 ```sh
 curl -fsSLO https://raw.githubusercontent.com/kninetimmy/orch/main/install.sh
@@ -199,7 +199,7 @@ sh install.sh
 
 Windows (PowerShell) — installs to `%LOCALAPPDATA%\Programs\orch` and
 appends that directory to your user `PATH`; skip the `PATH` change with
-`-NoPathUpdate`, pin a version with `-Version v0.6.0`:
+`-NoPathUpdate`, pin a version with `-Version v0.6.1`:
 
 ```powershell
 iwr https://raw.githubusercontent.com/kninetimmy/orch/main/install.ps1 -OutFile install.ps1
@@ -550,9 +550,72 @@ continue, or `orch abort` to end it.
 <details>
 <summary>Defects already corrected, newest first</summary>
 
-Everything here is merged on `main` and shipped in v0.6.0, the latest
+Everything here is merged on `main` and shipped in v0.6.1, the latest
 tagged release.
 
+- `orch init` and `orch configure` now offer to seed a root
+  instruction file this session creates — one yes/no question naming
+  both files, defaulting to yes, asked when a host being newly enabled
+  has no file of its own while the other host's carries content
+  outside its managed block — and answering yes proposes that
+  sibling's content copied verbatim above a fresh managed block, with
+  the whole proposed file shown as the summary's diff before anything
+  is written; answering no proposes the block-only file as before.
+  Before, the created file held the Orch managed block and nothing
+  else, so that host's agents ran with none of the repository's
+  conventions —
+  [#192](https://github.com/kninetimmy/orch/pull/192)
+- An issue declaring at least one risk domain now carries one further
+  acceptance criterion, contributed by the engine rather than by the
+  plan document and always last: it asks for every element of the
+  structure the change touches to be named with a verdict on whether
+  the behavior it had before still holds, for a removed behavior to be
+  recorded as a before-and-after in the document that stated the old
+  behavior instead of that statement being deleted, and for a
+  restriction attributed to one named symbol to be established as
+  holding for that symbol alone or for every symbol of its kind. The
+  gate document, the run state, the audit record and the created issue
+  body all carry it, so the human approves it and the existing
+  one-judgment-per-criterion rule holds the reviewer to it like any
+  other criterion; both hosts' Delivery skills and every shipped
+  reviewer definition — the standard reviewer and the safe review
+  downgrade alike — now quote it and say what settles it: an
+  enumeration in the pull request body of each element touched with
+  its before-and-after, not a passing test suite. Before, a plan
+  issue's criteria were exactly what the plan document listed, so a
+  preservation clause naming one thing to protect left everything
+  adjacent to it outside the standard the executor and the reviewer
+  were measured against —
+  [#190](https://github.com/kninetimmy/orch/pull/190)
+- `orch doctor` now reports, once per enabled host, a root instruction
+  file — `CLAUDE.md` for claude, `AGENTS.md` for codex — that holds
+  the Orch managed block and nothing else, saying that host's agents
+  see no project conventions and that they belong outside the block.
+  It is a note rather than a failure: Orch cannot author a
+  repository's conventions, and a repository with none to state is not
+  broken. Before, a repository that kept its conventions in one host's
+  file and let Orch create the other's got a file holding the managed
+  block alone, with nothing anywhere reporting it —
+  [#189](https://github.com/kninetimmy/orch/pull/189)
+- `orch doctor` gained `claude agent definitions`, the Claude
+  counterpart of the `codex agent files` check: it resolves the
+  installed plugin root from the install path `claude plugin list
+  --json` reports — the same listing the adapter check just ran, not a
+  second one — reads the model each installed agent definition pins in
+  its frontmatter, and fails naming every role whose
+  `hosts.claude.roles` model differs together with both models. It
+  compares the installed copy rather than this repository's, because a
+  plugin behind head can still carry an older pin, and it fails closed:
+  no install path, an absent agents directory, an unreadable
+  definition and a definition pinning no model are each a failure,
+  never a pass. It repairs nothing — there is no Claude equivalent of
+  `orch render-agents`, so you update the installed plugin or change
+  the configured model. Before, nothing in the binary compared the
+  two on Claude Code, and a role whose configured model no longer
+  matched its installed definition went on being dispatched with only
+  the Architect's skill instruction between the routed selection and a
+  mismatched spawn —
+  [#186](https://github.com/kninetimmy/orch/pull/186)
 - `orch doctor` now checks each configured host's installed Orch
   adapter and fails when it is absent, listed more than once, disabled,
   reporting no version at all, at a different version from the one this
