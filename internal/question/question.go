@@ -149,6 +149,13 @@ type Summary struct {
 // repo-relative with forward slashes regardless of host OS. The
 // bootstrap executor writes NewContent verbatim; Diff is display-only
 // (a unified diff against the file's current content, or its absence).
+// One exception is deliberate: a seeded instruction file (internal/
+// interview's seed.go) is always diffed against absence, so what a
+// human approves is the whole proposed file rather than the changed
+// lines against borrowed context. That covers the case where the file
+// exists holding nothing but the Orch managed block, which the proposal
+// reproduces verbatim; Existed still reports what was found on disk
+// either way.
 // Delete is emit-only: configure-local sets it when clearing the last
 // machine-local override deletes config.local.toml outright rather than
 // writing an empty file (an empty override file would make

@@ -42,6 +42,16 @@ func InstructionFile(host string) string {
 	return instructionFileFor[host]
 }
 
+// SiblingInstructionFile returns the root instruction file name of the
+// host that is not host — the file seeding copies conventions from
+// (seed.go). Exported for the same reason InstructionFile is: `orch
+// doctor`'s block-only advisory names that file as the one `orch
+// configure` can seed from, and the claude/codex pairing itself stays
+// owned here (siblingHost) rather than being restated per caller.
+func SiblingInstructionFile(host string) string {
+	return instructionFileFor[siblingHost(host)]
+}
+
 // baseGitignoreLines are the repo-relative ignore patterns every
 // initialized repository needs, mirroring (as literal strings —
 // Detect's execProber-duplication precedent, so this pre-init-safe

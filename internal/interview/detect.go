@@ -54,14 +54,23 @@ type Facts struct {
 
 // InstructionFileState is Detect's classification of one host's root
 // instruction file (InstructionFile names it): whether the file exists
-// at all, and whether it carries any content outside the Orch managed
-// block. It is deliberately part of Facts rather than something the
-// summary step reads for itself, so the seed question (seed.go) can be
-// derived while buildSequence stays a pure function of facts and
-// answers alone.
+// at all, whether it carries any content outside the Orch managed
+// block, and whether it is nothing but that block. It is deliberately
+// part of Facts rather than something the summary step reads for
+// itself, so the seed question (seed.go) can be derived while
+// buildSequence stays a pure function of facts and answers alone.
+//
+// BlockOnly is strictly narrower than "Exists && !Conventions", and the
+// difference is load-bearing: the seed question's repair case proposes
+// replacing this file's bytes, so it keys on BlockOnly alone. Every
+// classification this build cannot fully vouch for — an unreadable
+// file, a structurally broken marker pair, a drifted or newer-versioned
+// block, and a file carrying no managed block at all (an empty one
+// included) — reports Exists without Conventions and without BlockOnly.
 type InstructionFileState struct {
 	Exists      bool
 	Conventions bool
+	BlockOnly   bool
 }
 
 // Detect probes deps for every Facts field. It never returns an
@@ -107,15 +116,17 @@ func Detect(ctx context.Context, deps Deps) Facts {
 	return f
 }
 
-// classifyInstructionFile reports whether repoRoot/name exists and
-// whether it holds anything outside the Orch managed block. It reuses
+// classifyInstructionFile reports whether repoRoot/name exists, whether
+// it holds anything outside the Orch managed block, and whether it is
+// nothing but that block (isBlockOnly, seed.go). It reuses
 // instructions.PlanRemove because what is left once the managed region
 // is stripped is exactly the question being asked (the same reading
 // `orch doctor` reports this state from). Like every other Detect
 // probe it reports trouble as data, not failure: an unreadable file or
-// structurally broken markers classify as "exists, no conventions", so
-// nothing is ever seeded from a file this build cannot read or parse,
-// and `orch init`/`configure` still block on those files themselves.
+// structurally broken markers classify as "exists, no conventions, not
+// block-only", so nothing is ever seeded from — or, in the repair case,
+// over — a file this build cannot read or parse, and `orch init`/
+// `configure` still block on those files themselves.
 //
 // The root probed is the detected git root, falling back to
 // Deps.RepoRoot — the same resolution the callers apply before handing
@@ -133,7 +144,11 @@ func classifyInstructionFile(repoRoot, name string) InstructionFileState {
 	if err != nil {
 		return InstructionFileState{Exists: true}
 	}
-	return InstructionFileState{Exists: true, Conventions: !instructions.IsOtherwiseEmpty(ch.New)}
+	return InstructionFileState{
+		Exists:      true,
+		Conventions: !instructions.IsOtherwiseEmpty(ch.New),
+		BlockOnly:   isBlockOnly(string(data)),
+	}
 }
 
 // lookPathOK reports whether lookPath resolves name; a nil lookPath

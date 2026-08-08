@@ -177,7 +177,9 @@ func (d docSpec) allAnswered(answers map[string]string) bool {
 // included only once both toggles are answered at all, followed by any
 // applicable instruction-file seed question (seedDocs, seed.go), which
 // fires only for an enabled host whose root instruction file is absent
-// while the other host's carries conventions. It returns
+// while the other host's carries conventions — init offers no repair of
+// an existing block-only file (initSeedScope), which is `orch
+// configure`'s alone. It returns
 // ErrNoHostEnabled as soon as both toggles are known and both are
 // "no" — the same rule config.validate enforces on the committed file,
 // checked here before any role question is ever asked.
@@ -201,7 +203,7 @@ func buildSequence(facts Facts, answers map[string]string) ([]docSpec, error) {
 	}
 	if claudeKnown && codexKnown {
 		docs = append(docs, settingsDoc(initSettingsDefaults(facts)))
-		docs = append(docs, seedDocs(facts, map[string]bool{"claude": claudeEnabled, "codex": codexEnabled})...)
+		docs = append(docs, seedDocs(facts, initSeedScope(claudeEnabled, codexEnabled))...)
 	}
 	return docs, nil
 }

@@ -95,17 +95,14 @@ func Next(facts Facts, answers map[string]string, repoRoot string) (question.Doc
 // document is answered, so the engine materializes the configuration,
 // builds the summary, and resolves approval. Every host `orch init`
 // enables is newly enabled, so the seed offers resolved here
-// (seedFiles, seed.go) are the same ones buildSequence derived from the
-// host toggles.
+// (seedFiles over initSeedScope, seed.go) are the same ones
+// buildSequence derived from the host toggles.
 func nextAfterSequence(facts Facts, answers map[string]string, repoRoot string) (question.Document, error) {
 	cfg, err := materialize(answers)
 	if err != nil {
 		return question.Document{}, err
 	}
-	seeds := seedFiles(facts, map[string]bool{
-		"claude": cfg.Hosts.Claude != nil,
-		"codex":  cfg.Hosts.Codex != nil,
-	}, answers)
+	seeds := seedFiles(facts, initSeedScope(cfg.Hosts.Claude != nil, cfg.Hosts.Codex != nil), answers)
 	summary, err := buildSummary(cfg, repoRoot, seeds)
 	if err != nil {
 		return question.Document{}, err

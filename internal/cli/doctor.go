@@ -158,11 +158,20 @@ func runDoctor(env Env) error {
 
 	// A root instruction file holding the Orch managed block and
 	// nothing else leaves that host's agents with no project
-	// conventions at all: Orch writes only its own block and never
-	// carries a repository's conventions across from the other host's
-	// file (interview.InstructionFile maps one file per host). A note,
-	// not a failure — Orch cannot author a repository's conventions,
-	// and a repository with genuinely none to state is not broken.
+	// conventions at all: Orch writes only its own block, and it
+	// authors no repository's conventions of its own. A note, not a
+	// failure — a repository with genuinely none to state is not broken.
+	//
+	// This note used to add that Orch never carries a repository's
+	// conventions across from the other host's file either
+	// (interview.InstructionFile maps one file per host), which is why
+	// the only advice it could give was to add them by hand. That is the
+	// before; the after is that `orch configure` offers to repair
+	// exactly this state, copying the sibling file's conventions in when
+	// that file has any outside its own block, with a human approving
+	// the whole resulting file first (interview's seed.go). So the note
+	// names that command — reporting a state nothing could repair is
+	// what it used to do.
 	if cfgErr == nil {
 		for _, host := range cfg.EnabledHosts() {
 			file := interview.InstructionFile(host)
@@ -172,11 +181,19 @@ func runDoctor(env Env) error {
 			// structurally broken markers are not this check's subject
 			// — `orch init`/`configure` already block on those — so
 			// they stay silent here rather than borrowing this note.
+			//
+			// Deliberately still the looser reading of "block-only" than
+			// the one seeding will repair (interview's isBlockOnly also
+			// requires the block itself to be current): a drifted or
+			// newer-versioned block-only file is worth reporting here
+			// all the same, and `orch configure` names it as a blocker
+			// rather than silently replacing a body this build cannot
+			// vouch for.
 			ch, err := instructions.PlanRemoveFile(filepath.Join(env.RepoRoot, file))
 			if err != nil || !ch.DeleteWholeFile {
 				continue
 			}
-			fmt.Fprintf(env.Stdout, "note  %s holds the Orch managed block and nothing else; %s agents see no project conventions — add them outside the block\n", file, host)
+			fmt.Fprintf(env.Stdout, "note  %s holds the Orch managed block and nothing else; %s agents see no project conventions — add them outside the block, or run `orch configure`, which offers to seed them from %s when that file has them\n", file, host, interview.SiblingInstructionFile(host))
 		}
 	}
 
