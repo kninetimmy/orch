@@ -419,6 +419,75 @@ func TestExecuteConfigureHappyPath(t *testing.T) {
 	}
 }
 
+// TestExecuteConfigureRepairsBlockOnlyInstructionFile proves the repair
+// offer survives the whole configure flow: AGENTS.md sits holding
+// nothing but the managed block while CLAUDE.md states the repository's
+// conventions, stage 0 re-derives the seeded content from the raw
+// answers alone (nothing about either file's bytes travels in the
+// AnswerSet), the repaired file passes validateConfigure's
+// StatusCurrent check, and what lands on the configure branch is
+// CLAUDE.md's conventions followed by exactly one managed block — with
+// the primary checkout's own AGENTS.md never written.
+func TestExecuteConfigureRepairsBlockOnlyInstructionFile(t *testing.T) {
+	const conventions = "# Fixture\n\nRun `go test ./...` before every push.\n"
+	root := newConfiguredRepo(t) // both hosts enabled, both files block-only
+	block, err := instructions.Render(instructions.CurrentVersion)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(root, "CLAUDE.md"), []byte(conventions+"\n"+block), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	rawGit(t, root, "add", "-A")
+	rawGit(t, root, "commit", "-m", "conventions")
+	rawGit(t, root, "push", "origin", "main")
+
+	// Facts come from a real Detect: the repair offer keys on its
+	// block-only classification, and stage 0 re-runs the same probe.
+	facts := interview.Detect(context.Background(), interview.Deps{RepoRoot: root, LookPath: fakeLookPath, Runner: muxRunner{git: execx.Local{}}})
+	answers := fullConfigureAnswers(t, facts, root, nil)
+	if answers["seed.instructions.codex"] != "yes" {
+		t.Fatalf("the interview never offered to repair AGENTS.md: %v", answers)
+	}
+
+	calls := taxonomyScriptConfigure()
+	calls = append(calls, ghConfigureIssueCreateCall(1))
+	calls = append(calls, ghConfigurePRCreateCall(1))
+	calls = append(calls, ghSetStatusCall(1, ghops.StatusAwaitingReview))
+	script := &execxtest.Script{T: t, Calls: calls}
+	deps := testDeps(root, answers, script, muxRunner{git: execx.Local{}})
+
+	report, err := ExecuteConfigure(context.Background(), deps)
+	if err != nil {
+		t.Fatalf("ExecuteConfigure: %v", err)
+	}
+	script.AssertExhausted()
+	for _, v := range report.Validations {
+		if v.Result != "pass" {
+			t.Errorf("validation %s = %+v, want pass", v.Name, v)
+		}
+	}
+
+	agents := rawGit(t, root, "show", ConfigureBranch+":AGENTS.md")
+	if !strings.HasPrefix(agents, conventions) {
+		t.Errorf("committed AGENTS.md does not open with CLAUDE.md's conventions:\n%s", agents)
+	}
+	if n := strings.Count(agents, "orchestrator:managed:start"); n != 1 {
+		t.Errorf("committed AGENTS.md carries %d managed blocks, want exactly 1:\n%s", n, agents)
+	}
+
+	// The primary checkout was never written: the repair lands on the
+	// configure branch through the disposable worktree, like every other
+	// configure change.
+	primary, err := os.ReadFile(filepath.Join(root, "AGENTS.md"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(primary) != block {
+		t.Errorf("primary checkout's AGENTS.md = %q, want the block-only content it started with", primary)
+	}
+}
+
 func TestExecuteConfigureNotComplete(t *testing.T) {
 	root := newConfiguredRepo(t)
 	deps := testDeps(root, map[string]string{}, &execxtest.Script{T: t}, muxRunner{git: execx.Local{}})

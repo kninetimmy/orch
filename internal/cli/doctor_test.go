@@ -1085,6 +1085,14 @@ func TestDoctorNotesInstructionFileWithOnlyManagedBlock(t *testing.T) {
 			if got != tt.want {
 				t.Errorf("advisory present = %v, want %v:\n%s", got, tt.want, stdout.String())
 			}
+			// The advisory names its repair path: `orch configure` offers
+			// to seed a block-only file from the sibling that has the
+			// conventions (interview's seed.go). Reporting this state
+			// without naming the command that fixes it is what task 168
+			// was filed about.
+			if tt.want && !strings.Contains(stdout.String(), "run `orch configure`, which offers to seed them from AGENTS.md") {
+				t.Errorf("advisory does not name `orch configure` as the repair path:\n%s", stdout.String())
+			}
 		})
 	}
 }

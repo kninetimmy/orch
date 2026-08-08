@@ -84,10 +84,7 @@ func nextAfterSequenceConfigure(facts Facts, committed *config.Config, committed
 	if err != nil {
 		return question.Document{}, err
 	}
-	seeds := seedFiles(facts, map[string]bool{
-		"claude": cfg.Hosts.Claude != nil && committedHostConfig(committed, "claude") == nil,
-		"codex":  cfg.Hosts.Codex != nil && committedHostConfig(committed, "codex") == nil,
-	}, answers)
+	seeds := seedFiles(facts, configureSeedScope(committed, cfg.Hosts.Claude != nil, cfg.Hosts.Codex != nil), answers)
 	summary, err := buildConfigureSummary(cfg, committed, committedRaw, repoRoot, seeds)
 	if err != nil {
 		return question.Document{}, err
@@ -168,10 +165,15 @@ func readCommittedRaw(repoRoot string) ([]byte, error) {
 // configuration's current values (committedSettingsDefaults).
 //
 // Last comes any applicable instruction-file seed question (seedDocs,
-// seed.go). It is offered only for a host this change newly enables —
-// a still-enabled host's file is already there — and only when that
-// host's root instruction file is absent while the other host's carries
-// conventions.
+// seed.go), offered in either of two shapes, both requiring that the
+// other host's file carry conventions outside its own managed block:
+// creating a file this change newly enables a host for, when that file
+// is absent, or repairing any enabled host's file that already exists
+// holding nothing but the managed block. The second is why this
+// sequence, unlike buildSequence, passes a repaired scope at all: a
+// still-enabled host's file is already there, and until now that meant
+// nothing about it could be offered — including the one state `orch
+// doctor` reports and nothing could fix.
 func buildSequenceConfigure(facts Facts, committed *config.Config, answers map[string]string) ([]docSpec, error) {
 	docs := []docSpec{pickerDocConfigure(committed)}
 
@@ -215,12 +217,29 @@ func buildSequenceConfigure(facts Facts, committed *config.Config, answers map[s
 		docs = append(docs, settingsDoc(committedSettingsDefaults(committed)))
 	}
 
-	docs = append(docs, seedDocs(facts, map[string]bool{
-		"claude": claudeEnabled && !claudeCommitted,
-		"codex":  codexEnabled && !codexCommitted,
-	})...)
+	docs = append(docs, seedDocs(facts, configureSeedScope(committed, claudeEnabled, codexEnabled))...)
 
 	return docs, nil
+}
+
+// configureSeedScope is `orch configure`'s seed scope for a session that
+// leaves claudeEnabled/codexEnabled enabled: a host this change newly
+// enables (enabled now, absent from committed) may have its file
+// created seeded, and every host it leaves enabled may have a
+// block-only file repaired. Both of configure's seed call sites
+// (buildSequenceConfigure's question and nextAfterSequenceConfigure's
+// seeds) build it here, so the question asked and the answer honored
+// can never disagree about which offers applied — the asymmetry that
+// would otherwise let a seed be planned for a file no question was ever
+// shown for.
+func configureSeedScope(committed *config.Config, claudeEnabled, codexEnabled bool) seedScope {
+	return seedScope{
+		created: map[string]bool{
+			"claude": claudeEnabled && committedHostConfig(committed, "claude") == nil,
+			"codex":  codexEnabled && committedHostConfig(committed, "codex") == nil,
+		},
+		repaired: map[string]bool{"claude": claudeEnabled, "codex": codexEnabled},
+	}
 }
 
 // pickerDocConfigure is `orch configure`'s doc 1: whether to review or
@@ -455,8 +474,10 @@ func allFileChangesUnchanged(files []question.FileChange) bool {
 // bootstrap): every host cfg enables gets seededPlanFile — plain
 // instructions.PlanFile unless seeds names its file (seed.go)
 // (install, or — the day a version 2 exists — an upgrade diff, PRD §19
-// "upgrade blocks only through Delivery"); every host this change
-// disables instead gets instructions.PlanRemoveFile, block-only
+// "upgrade blocks only through Delivery"); a seeded file is instead
+// proposed whole, as the sibling's conventions above a fresh block,
+// whether it is being created or repaired from block-only; every host
+// this change disables instead gets instructions.PlanRemoveFile, block-only
 // (DeleteWholeFile is deliberately never consulted here: whole-file
 // deletion / deinit is out of scope, contract call 3). ConfigDiff
 // carries the committed-vs-new TOML diff for display; it is kept out
