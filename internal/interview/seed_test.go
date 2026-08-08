@@ -353,12 +353,23 @@ func TestSeedNotOfferedForStillEnabledConfigureHost(t *testing.T) {
 	}
 }
 
-// TestSeedNeverOverwritesAnExistingFile pins planSeeded's fail-safe: if
-// the target file exists carrying content of its own — the interview's
-// facts and the summary's root having disagreed — the ordinary plan runs
-// and the file's own content is preserved, rather than being replaced by
-// a copy of the sibling's.
-func TestSeedNeverOverwritesAnExistingFile(t *testing.T) {
+// TestSeedNeverOverwritesAFileWithConventionsOfItsOwn pins planSeeded's
+// fail-safe: if the target file exists carrying content of its own — the
+// interview's facts and the summary's root having disagreed — the
+// ordinary plan runs and the file's own content is preserved, rather
+// than being replaced by a copy of the sibling's.
+//
+// Before the repair offer existed this test was named
+// TestSeedNeverOverwritesAnExistingFile, and its comment said an
+// existing target file meant the ordinary plan runs and its content is
+// preserved — of ANY existing file, with no qualification. That is the
+// before. The after is narrower: a file whose entire content is the
+// current managed block IS overwritten, by a proposal a human approves
+// first (TestPlanSeededOnlySeedsOverAnAbsentOrBlockOnlyFile pins both
+// halves of the new contract). So the invariant this test pins holds for
+// a file carrying conventions of its own, and the name says that rather
+// than restating an invariant seeding no longer has.
+func TestSeedNeverOverwritesAFileWithConventionsOfItsOwn(t *testing.T) {
 	root := t.TempDir()
 	writeInstructionFile(t, root, "CLAUDE.md", seedConventions+"\n"+managedBlock(t))
 	writeInstructionFile(t, root, "AGENTS.md", "# Codex only\n")
