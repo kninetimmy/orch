@@ -137,14 +137,16 @@ type issueObservations struct {
 }
 
 // approvedWork is the approved plan text an audit record carries. Run
-// state holds the same three fields, but the record is their durable
+// state holds the same four fields, but the record is their durable
 // home: state.json is machine-local and an interrupted run is rebuilt
 // from the posted bodies, so resume carries them back rather than let a
-// resumed run dispatch an empty objective.
+// resumed run dispatch an empty objective — or dispatch required tests
+// without the plan's declaration that CI runs none of them.
 type approvedWork struct {
 	objective          string
 	acceptanceCriteria []string
 	requiredTests      []string
+	testsCIDoesNotRun  []string
 }
 
 // outcome is reconcileIssue's verdict for one issue: the resulting action
@@ -366,6 +368,7 @@ func applyOutcome(iss *state.Issue, o outcome) bool {
 		iss.Objective = o.work.objective
 		iss.AcceptanceCriteria = o.work.acceptanceCriteria
 		iss.RequiredTests = o.work.requiredTests
+		iss.TestsCIDoesNotRun = o.work.testsCIDoesNotRun
 		changed = true
 	}
 	// A blocked outcome records its reason; every other outcome clears any
@@ -386,7 +389,8 @@ func applyOutcome(iss *state.Issue, o outcome) bool {
 func sameWork(iss *state.Issue, w approvedWork) bool {
 	return iss.Objective == w.objective &&
 		slices.Equal(iss.AcceptanceCriteria, w.acceptanceCriteria) &&
-		slices.Equal(iss.RequiredTests, w.requiredTests)
+		slices.Equal(iss.RequiredTests, w.requiredTests) &&
+		slices.Equal(iss.TestsCIDoesNotRun, w.testsCIDoesNotRun)
 }
 
 // --- classify (pure) ---
@@ -808,6 +812,7 @@ func observeIssue(ctx context.Context, gh *ghops.GH, git *gitops.Git, worktrees 
 				objective:          m.Objective,
 				acceptanceCriteria: m.AcceptanceCriteria,
 				requiredTests:      m.RequiredTests,
+				testsCIDoesNotRun:  m.TestsCIDoesNotRun,
 			}
 		}
 	}

@@ -124,8 +124,8 @@ func TestParseBadManifest(t *testing.T) {
 		"unterminated data":    BeginMarker + "\n" + dataOpen + "\n{}\n" + EndMarker,
 		"double data comment":  BeginMarker + "\n" + dataOpen + "\n{}\n" + dataClose + "\n" + dataOpen + "\n{}\n" + dataClose + "\n" + EndMarker,
 		"bad json":             BeginMarker + "\n" + dataOpen + "\nthis is not json\n" + dataClose + "\n" + EndMarker,
-		"schema version zero":  tamperJSON(valid, `"schema_version": 3`, `"schema_version": 0`),
-		"schema version four":  tamperJSON(valid, `"schema_version": 3`, `"schema_version": 4`),
+		"schema version zero":  tamperJSON(valid, `"schema_version": 4`, `"schema_version": 0`),
+		"schema version five":  tamperJSON(valid, `"schema_version": 4`, `"schema_version": 5`),
 		"schema absent":        BeginMarker + "\n" + dataOpen + "\n{\"role\":\"implementer\"}\n" + dataClose + "\n" + EndMarker,
 		"invalid record":       tamperJSON(valid, `"role": "implementer"`, `"role": "wizard"`),
 	}
@@ -260,12 +260,13 @@ const schemaTwoRegion = BeginMarker + `
 ` + EndMarker
 
 // TestSchemaTwoRegionIsAGenuineRender guards the fixture above against a
-// typo. No verification in it carries a commit OID, so a v2 render and a
-// v3 render of the same record differ in exactly one place — the
-// schema_version line — and re-rendering the frozen region's own decoded
-// record at this build's version must reproduce it byte for byte. Without
-// this check a mangled fixture would still be rejected, and the rejection
-// test below would pass for the wrong reason.
+// typo. No verification in it carries a commit OID and it declares no
+// test CI does not run, so a v2 render and this build's render of the
+// same record differ in exactly one place — the schema_version line —
+// and re-rendering the frozen region's own decoded record at this
+// build's version must reproduce it byte for byte. Without this check a
+// mangled fixture would still be rejected, and the rejection test below
+// would pass for the wrong reason.
 func TestSchemaTwoRegionIsAGenuineRender(t *testing.T) {
 	jsonText, err := extractData(schemaTwoRegion)
 	if err != nil {
@@ -289,15 +290,45 @@ func TestSchemaTwoRegionIsAGenuineRender(t *testing.T) {
 	}
 }
 
-// TestParseRejectsSchemaTwoRecord proves the immediately superseded
-// record fails closed through the same unsupported-version path, before
-// the drift compare, and that the error names a remediation that exists.
+// TestParseRejectsSchemaThreeRecord proves a v3 record — the version
+// every posted body in flight when this build ships carries — fails
+// closed through the unsupported-version path, before the drift compare,
+// with the remediation an operator can actually run.
+//
+// Its body is lowered from this build's own render rather than frozen
+// like schemaOneRegion and schemaTwoRegion above, because that
+// construction is exact for this pair: v4's only added field is optional
+// and renders nothing when the plan declared nothing, so a genuine v3
+// render of a declaration-free record and a v4 render of it differ in
+// exactly the schema_version line. Freezing a copy would assert the same
+// bytes with more of them.
+func TestParseRejectsSchemaThreeRecord(t *testing.T) {
+	body := tamperJSON(mustRender(t, fullManifest()), `"schema_version": 4`, `"schema_version": 3`)
+	_, err := Parse(body)
+	if !errors.Is(err, ErrBadManifest) {
+		t.Fatalf("err = %v, want ErrBadManifest", err)
+	}
+	if !strings.Contains(err.Error(), "schema_version 3 is unsupported") {
+		t.Errorf("err %q does not name the unsupported version", err)
+	}
+	if errors.Is(err, ErrDrift) {
+		t.Error("a v3 record was reported as drift; the version check must come first")
+	}
+	if !strings.Contains(err.Error(), "orch abort") {
+		t.Errorf("err %q does not name a remediation that exists", err)
+	}
+}
+
+// TestParseRejectsSchemaTwoRecord proves an earlier superseded record
+// fails closed through the same unsupported-version path, before the
+// drift compare, and that the error names a remediation that exists.
 //
 // Nothing else would catch it. A v2 record decodes cleanly into this
 // build's struct and re-renders to the same bytes but for the version
 // line, so its verifications would silently read as gathered at no
-// commit — which in v3 is a claim about the evidence, not the absence of
-// one — and the OID they lack cannot be recovered after the fact.
+// commit — which from v3 on is a claim about the evidence, not the
+// absence of one — and the OID they lack cannot be recovered after the
+// fact.
 func TestParseRejectsSchemaTwoRecord(t *testing.T) {
 	_, err := Parse(schemaTwoRegion)
 	if !errors.Is(err, ErrBadManifest) {
@@ -321,8 +352,8 @@ func TestParseDrift(t *testing.T) {
 		"blank line inserted":   strings.Replace(base, "### Orch audit record\n", "### Orch audit record\n\n", 1),
 		"sentence inserted":     strings.Replace(base, "**Verification:**", "An extra human sentence.\n\n**Verification:**", 1),
 		"json keys reordered": strings.Replace(base,
-			"{\n  \"schema_version\": 3,\n  \"objective\": \""+fixtureObjective+"\",",
-			"{\n  \"objective\": \""+fixtureObjective+"\",\n  \"schema_version\": 3,", 1),
+			"{\n  \"schema_version\": 4,\n  \"objective\": \""+fixtureObjective+"\",",
+			"{\n  \"objective\": \""+fixtureObjective+"\",\n  \"schema_version\": 4,", 1),
 	}
 	for name, body := range cases {
 		t.Run(name, func(t *testing.T) {

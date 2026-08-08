@@ -125,7 +125,7 @@ func TestDispatchDependencyEnforcement(t *testing.T) {
 
 	// Unmet: a is not merged/cleaned.
 	script := &execxtest.Script{T: t}
-	_, err := Dispatch(context.Background(), ghEnv(root, script), []byte(`{"schema_version":2,"issue_number":2}`))
+	_, err := Dispatch(context.Background(), ghEnv(root, script), []byte(`{"schema_version":3,"issue_number":2}`))
 	if !errors.Is(err, ErrDependencyUnmet) {
 		t.Fatalf("err = %v, want ErrDependencyUnmet", err)
 	}
@@ -138,7 +138,7 @@ func TestDispatchDependencyEnforcement(t *testing.T) {
 		t.Fatal(err)
 	}
 	script = &execxtest.Script{T: t}
-	_, err = Dispatch(context.Background(), ghEnv(root, script), []byte(`{"schema_version":2,"issue_number":2}`))
+	_, err = Dispatch(context.Background(), ghEnv(root, script), []byte(`{"schema_version":3,"issue_number":2}`))
 	if !errors.Is(err, ErrDependencyAbandoned) {
 		t.Fatalf("err = %v, want ErrDependencyAbandoned", err)
 	}
@@ -166,7 +166,7 @@ func TestDispatchWithoutApprovedWorkFailsClosed(t *testing.T) {
 			before := stateBytes(t, root)
 
 			script := &execxtest.Script{T: t}
-			_, err := Dispatch(context.Background(), ghEnv(root, script), []byte(`{"schema_version":2,"issue_number":1}`))
+			_, err := Dispatch(context.Background(), ghEnv(root, script), []byte(`{"schema_version":3,"issue_number":1}`))
 			if err == nil {
 				t.Fatal("Dispatch accepted an issue with no approved work")
 			}
@@ -189,7 +189,7 @@ func TestDispatchWithoutApprovedWorkFailsClosed(t *testing.T) {
 func TestConfigDriftFailsClosed(t *testing.T) {
 	root := setupDeliveryRepo(t, "r2", []state.Issue{fixtureIssue("a", 1, state.PhaseWorktreeReady)})
 	script := &execxtest.Script{T: t}
-	_, err := Dispatch(context.Background(), ghEnv(root, script), []byte(`{"schema_version":2,"issue_number":1}`))
+	_, err := Dispatch(context.Background(), ghEnv(root, script), []byte(`{"schema_version":3,"issue_number":1}`))
 	if !errors.Is(err, ErrConfigDrift) {
 		t.Fatalf("err = %v, want ErrConfigDrift", err)
 	}

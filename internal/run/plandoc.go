@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"regexp"
+	"slices"
 	"sort"
 	"strings"
 
@@ -30,6 +31,18 @@ type PlanDoc struct {
 }
 
 // PlanIssue is one unit of work in the plan.
+//
+// TestsCIDoesNotRun names the entries of RequiredTests the plan author
+// declares the repository's CI does not run, so the human at the gate
+// approves knowing which of the issue's gates CI actually holds. It is a
+// declaration, never a derivation: nothing here reads workflow
+// definitions or build tags, so an omitted field means the plan made no
+// statement — not that CI runs every required test.
+//
+// Being optional with omitempty is what keeps a plan that makes no
+// statement digest-identical to the same document submitted before this
+// field existed: Digest marshals this struct, and a nil slice is omitted
+// from that marshal entirely.
 type PlanIssue struct {
 	ID                 string    `json:"id"`
 	Title              string    `json:"title"`
@@ -41,6 +54,7 @@ type PlanIssue struct {
 	DependsOn          []string  `json:"depends_on,omitempty"`
 	Wave               int       `json:"wave"`
 	RequiredTests      []string  `json:"required_tests"`
+	TestsCIDoesNotRun  []string  `json:"tests_ci_does_not_run,omitempty"`
 	UsageClass         string    `json:"usage_class"` // light|medium|heavy
 }
 
@@ -183,6 +197,26 @@ func (p *PlanDoc) Validate(cfg *config.Config) error {
 		for j, rt := range iss.RequiredTests {
 			if rt == "" {
 				fail("%s: required_tests[%d] must not be empty", prefix, j)
+			}
+		}
+		// A declared entry must name one of this issue's own required
+		// tests by exact command: every renderer of the declaration
+		// annotates a required test in place, matching on that string, so
+		// an entry naming anything else (a typo, or a test the plan
+		// dropped from required_tests on a later revision) would be a
+		// statement the human never sees at the gate — the failure this
+		// declaration exists to prevent. The rule is this field's alone
+		// among PlanIssue's string lists, not a general rule about them:
+		// acceptance_criteria and required_tests are checked only for
+		// non-emptiness, depends_on resolves against the plan's issue ids,
+		// and area_labels resolve against the repository at activation.
+		for j, t := range iss.TestsCIDoesNotRun {
+			if t == "" {
+				fail("%s: tests_ci_does_not_run[%d] must not be empty", prefix, j)
+				continue
+			}
+			if !slices.Contains(iss.RequiredTests, t) {
+				fail("%s: tests_ci_does_not_run[%d] %q does not name one of this issue's required_tests", prefix, j, t)
 			}
 		}
 		if !usageClasses[iss.UsageClass] {

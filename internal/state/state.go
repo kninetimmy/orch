@@ -140,12 +140,12 @@ type Issue struct {
 	DependsOn []string `json:"depends_on,omitempty"`
 	Wave      int      `json:"wave,omitempty"`
 
-	// Objective, AcceptanceCriteria, and RequiredTests are the approved
-	// plan text, copied at EnterDelivery so dispatch hands the executor a
-	// transcription of what a human approved rather than a recollection
-	// of it. Their durable home is the issue body's audit record, and
-	// `orch resume` repopulates them from it on every phase where it
-	// already parses that record.
+	// Objective, AcceptanceCriteria, RequiredTests, and TestsCIDoesNotRun
+	// are the approved plan text, copied at EnterDelivery so dispatch
+	// hands the executor a transcription of what a human approved rather
+	// than a recollection of it. Their durable home is the issue body's
+	// audit record, and `orch resume` repopulates them from it on every
+	// phase where it already parses that record.
 	//
 	// They are optional in the persisted file rather than required by
 	// validateIssues because a run activated by a build older than the
@@ -154,9 +154,16 @@ type Issue struct {
 	// refuses, so resume takes its failure path and blocks the issue
 	// instead of repopulating anything. The remediation there is abort,
 	// never resume (internal/run/dispatch.go, checkApprovedWork).
+	//
+	// TestsCIDoesNotRun is optional for a second reason of its own, which
+	// does not extend to the three fields above it: an empty list is the
+	// honest reading of a plan that declared nothing, not a gap in a
+	// record, so checkApprovedWork does not require it and no phase
+	// treats its absence as damage.
 	Objective          string   `json:"objective,omitempty"`
 	AcceptanceCriteria []string `json:"acceptance_criteria,omitempty"`
 	RequiredTests      []string `json:"required_tests,omitempty"`
+	TestsCIDoesNotRun  []string `json:"tests_ci_does_not_run,omitempty"`
 
 	// Decision is the current routing for the issue, set at activation
 	// and updated by escalate. Required from the dispatched phase onward.

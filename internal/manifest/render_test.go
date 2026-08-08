@@ -70,6 +70,47 @@ func TestRenderShowsCommitOIDInBothViews(t *testing.T) {
 	}
 }
 
+// TestRenderShowsCIDeclarationInBothViews pins the plan's CI declaration
+// into the human markdown as well as the canonical JSON, and pins it
+// beside the test it qualifies rather than as a separate list: a reviewer
+// reads this record on a PR, where the data comment does not display at
+// all, so a declaration living only there would tell nobody that the
+// required test above it is the only thing that will ever run it. It also
+// checks the record says nothing about the tests it did not name, since a
+// note on every bullet would carry no information.
+func TestRenderShowsCIDeclarationInBothViews(t *testing.T) {
+	m := fullManifest()
+	got, err := Render(m)
+	if err != nil {
+		t.Fatalf("Render: %v", err)
+	}
+	human, data, ok := strings.Cut(got, "\n"+dataOpen+"\n")
+	if !ok {
+		t.Fatal("could not split the region into its human and JSON views")
+	}
+	if want := "- " + mdCode(fixtureLocalOnlyTest) + CIDoesNotRunNote + "\n"; !strings.Contains(human, want) {
+		t.Errorf("the human markdown does not annotate the declared test\nwant line: %q\n--- human ---\n%s", want, human)
+	}
+	if !strings.Contains(data, `"tests_ci_does_not_run": [`) {
+		t.Errorf("the canonical JSON does not carry tests_ci_does_not_run\n--- data ---\n%s", data)
+	}
+	if n := strings.Count(human, CIDoesNotRunNote); n != 1 {
+		t.Errorf("the human markdown carries %d CI notes, want exactly one: only %q was declared", n, fixtureLocalOnlyTest)
+	}
+
+	// A record declaring nothing renders no note at all and omits the
+	// field, so a plan that made no statement produces the same bytes it
+	// produced before the declaration existed.
+	m.TestsCIDoesNotRun = nil
+	silent, err := Render(m)
+	if err != nil {
+		t.Fatalf("Render (no declaration): %v", err)
+	}
+	if strings.Contains(silent, CIDoesNotRunNote) || strings.Contains(silent, "tests_ci_does_not_run") {
+		t.Errorf("a record declaring nothing still mentions the declaration:\n%s", silent)
+	}
+}
+
 func TestRenderDeterministic(t *testing.T) {
 	for name, m := range goldenCases() {
 		t.Run(name, func(t *testing.T) {

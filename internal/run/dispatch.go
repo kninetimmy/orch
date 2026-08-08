@@ -13,11 +13,22 @@ import (
 )
 
 // DispatchSchemaVersion is the dispatch request/result schema this build
-// accepts and emits. v2 adds the approved objective, acceptance
+// accepts and emits. v2 added the approved objective, acceptance
 // criteria, and required tests to the result, so an adapter's spawn
 // prompt is a transcription of what a human approved rather than the
-// Architect's recollection of it.
-const DispatchSchemaVersion = 2
+// Architect's recollection of it. v3 adds which of those required tests
+// the plan declared the repository's CI does not run.
+//
+// The version rises for a result-only field because the request's
+// version is the one thing that can refuse an adapter predating it. An
+// adapter written against v2 transcribes exactly the three fields v2
+// named; handed a v3 result it would drop the declaration silently, and
+// the executor would never learn that a test the human approved as
+// local-only is local-only — the same nobody-runs-it failure the
+// declaration exists to surface. Before v3, a request carrying
+// schema_version 2 was accepted; this build rejects it with the message
+// below, and the remedy is to update the host adapter.
+const DispatchSchemaVersion = 3
 
 // DispatchRequest asks to hand one worktree-ready issue to its executor.
 type DispatchRequest struct {
@@ -37,13 +48,21 @@ type DispatchResult struct {
 	Executor      manifest.Selection `json:"executor"`
 	Reviewer      manifest.Selection `json:"reviewer"`
 	Rationale     string             `json:"rationale"`
-	// Objective, AcceptanceCriteria, and RequiredTests are the approved
-	// plan text verbatim. The adapter transcribes them into the spawn
-	// prompt; it never paraphrases or re-derives them, because what the
-	// executor is told to build is what the human approved.
+	// Objective, AcceptanceCriteria, RequiredTests, and TestsCIDoesNotRun
+	// are the approved plan text verbatim. The adapter transcribes them
+	// into the spawn prompt; it never paraphrases or re-derives them,
+	// because what the executor is told to build is what the human
+	// approved.
+	//
+	// TestsCIDoesNotRun names entries of RequiredTests, so the adapter
+	// transcribes it against the test it qualifies: the executor is being
+	// told this required test is the only thing that will ever run it. It
+	// is absent when the plan declared nothing, which is not a claim that
+	// CI runs every required test.
 	Objective          string   `json:"objective"`
 	AcceptanceCriteria []string `json:"acceptance_criteria"`
 	RequiredTests      []string `json:"required_tests"`
+	TestsCIDoesNotRun  []string `json:"tests_ci_does_not_run,omitempty"`
 }
 
 // Dispatch moves a worktree-ready issue to dispatched: it enforces the
@@ -129,6 +148,7 @@ func Dispatch(ctx context.Context, env Env, reqJSON []byte) (*DispatchResult, er
 		Objective:          issue.Objective,
 		AcceptanceCriteria: issue.AcceptanceCriteria,
 		RequiredTests:      issue.RequiredTests,
+		TestsCIDoesNotRun:  issue.TestsCIDoesNotRun,
 	}, nil
 }
 

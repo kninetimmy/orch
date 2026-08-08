@@ -41,6 +41,15 @@ type GateDoc struct {
 // document's field: a risk-domain issue shows one more entry here than
 // the plan submitted, because the human approving this gate is
 // approving the standard the reviewer will actually be held to.
+//
+// TestsCIDoesNotRun is the plan's own declaration, passed through
+// unchanged: the engine derives no part of it. It names entries of
+// RequiredTests, so the adapter rendering this gate presents it beside
+// the test it qualifies rather than as a separate list, and the human
+// approves knowing which required tests only ever run locally. It is
+// absent for a plan that declared nothing, which leaves the gate
+// document byte-identical to what the same plan produced before the
+// declaration existed.
 type GateIssue struct {
 	ID                 string             `json:"id"`
 	Title              string             `json:"title"`
@@ -54,6 +63,7 @@ type GateIssue struct {
 	DependsOn          []string           `json:"depends_on,omitempty"`
 	Wave               int                `json:"wave"`
 	RequiredTests      []string           `json:"required_tests"`
+	TestsCIDoesNotRun  []string           `json:"tests_ci_does_not_run,omitempty"`
 	Risk               string             `json:"risk"`
 	UsageClass         string             `json:"usage_class"`
 	Labels             []string           `json:"labels"`
@@ -121,6 +131,7 @@ func Plan(ctx context.Context, env Env, planJSON []byte) (*GateDoc, error) {
 			DependsOn:          i.DependsOn,
 			Wave:               i.Wave,
 			RequiredTests:      i.RequiredTests,
+			TestsCIDoesNotRun:  i.TestsCIDoesNotRun,
 			Risk:               string(deriveRisk(i)),
 			UsageClass:         i.UsageClass,
 			Labels:             flattenLabels(labels),
