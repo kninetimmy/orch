@@ -329,10 +329,19 @@ func TestSeedOfferedForConfigureNewlyEnabledHost(t *testing.T) {
 	}
 }
 
-// TestSeedNotOfferedForStillEnabledConfigureHost proves the offer is
-// scoped to a host this change newly enables: a committed-enabled host
-// whose file happens to be missing is not seeded behind the human's
-// back — `orch doctor` reports that state instead.
+// TestSeedNotOfferedForStillEnabledConfigureHost proves the CREATE
+// offer is scoped to a host this change newly enables: a
+// committed-enabled host whose file happens to be missing does not get
+// one created behind the human's back — `orch doctor` reports that state
+// instead.
+//
+// Before the repair offer existed that restriction covered seeding as a
+// whole: a still-enabled host was never offered anything. After it, a
+// still-enabled host IS offered a seed when its file exists holding
+// nothing but the managed block (TestConfigureRepairsBlockOnlyFileFromSibling),
+// so the restriction this test pins now holds for the create offer
+// alone — which is exactly why the fixture leaves AGENTS.md absent
+// rather than block-only.
 func TestSeedNotOfferedForStillEnabledConfigureHost(t *testing.T) {
 	root := t.TempDir()
 	writeCommittedConfigLocal(t, root)
