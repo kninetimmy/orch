@@ -3,6 +3,7 @@ package manifest
 import (
 	"encoding/json"
 	"fmt"
+	"slices"
 	"strings"
 )
 
@@ -65,9 +66,20 @@ func writeHuman(b *strings.Builder, m Manifest) {
 	writeVerifications(b, m.Verifications)
 }
 
+// CIDoesNotRunNote is the clause rendered after a required test the
+// record names in Manifest.TestsCIDoesNotRun, leading separator
+// included so every renderer emits the same bytes. It is exported
+// because the run engine writes the created issue's prose required-tests
+// list above this managed region and must annotate it identically: a
+// reader comparing the two halves of one issue body must not find one
+// half saying CI does not run a test and the other silent about it.
+const CIDoesNotRunNote = " — CI does not run this test"
+
 // writeWork renders the approved work the record carries: the objective
 // as a paragraph, then the acceptance criteria and the required tests as
-// bullet lists (tests are commands, so they render as code spans).
+// bullet lists (tests are commands, so they render as code spans). A
+// required test the record names in TestsCIDoesNotRun carries
+// CIDoesNotRunNote after its command.
 //
 // It repeats prose the created issue body already carries above the
 // managed region, deliberately: the drift check compares a re-render of
@@ -82,7 +94,11 @@ func writeWork(b *strings.Builder, m Manifest) {
 	}
 	b.WriteString("\n**Required tests:**\n")
 	for _, rt := range m.RequiredTests {
-		fmt.Fprintf(b, "- %s\n", mdCode(rt))
+		fmt.Fprintf(b, "- %s", mdCode(rt))
+		if slices.Contains(m.TestsCIDoesNotRun, rt) {
+			b.WriteString(CIDoesNotRunNote)
+		}
+		b.WriteByte('\n')
 	}
 	b.WriteByte('\n')
 }

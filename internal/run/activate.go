@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"path/filepath"
+	"slices"
 	"strings"
 	"time"
 
@@ -260,6 +261,7 @@ func Activate(ctx context.Context, env Env, reqJSON []byte) (*ActivationResult, 
 			Objective:          pi.Objective,
 			AcceptanceCriteria: issueAcceptanceCriteria(pi),
 			RequiredTests:      pi.RequiredTests,
+			TestsCIDoesNotRun:  pi.TestsCIDoesNotRun,
 			Decision:           fromRoutingDecision(decisionByID[pi.ID]),
 		}
 	}
@@ -288,6 +290,7 @@ func Activate(ctx context.Context, env Env, reqJSON []byte) (*ActivationResult, 
 			Objective:          pi.Objective,
 			AcceptanceCriteria: issueAcceptanceCriteria(pi),
 			RequiredTests:      pi.RequiredTests,
+			TestsCIDoesNotRun:  pi.TestsCIDoesNotRun,
 			Role:               d.Role,
 			Executor:           d.Executor,
 			RoutingRationale:   d.Rationale,
@@ -387,6 +390,9 @@ func planAreaLabels(p *PlanDoc) []string {
 // The acceptance criteria are issueAcceptanceCriteria's list, matching
 // the audit record rendered directly below them: a reader comparing the
 // two halves of one issue body must not find two different standards.
+// For the same reason a required test the plan declared CI does not run
+// carries manifest.CIDoesNotRunNote here, the exact clause the record's
+// own required-tests list appends below.
 func issueBody(pi PlanIssue, waveByID map[string]int, digest string) string {
 	var b strings.Builder
 	fmt.Fprintf(&b, "**Objective**\n\n%s\n\n", pi.Objective)
@@ -397,7 +403,11 @@ func issueBody(pi PlanIssue, waveByID map[string]int, digest string) string {
 	}
 	b.WriteString("\n**Required tests**\n\n")
 	for _, rt := range pi.RequiredTests {
-		fmt.Fprintf(&b, "- `%s`\n", rt)
+		fmt.Fprintf(&b, "- `%s`", rt)
+		if slices.Contains(pi.TestsCIDoesNotRun, rt) {
+			b.WriteString(manifest.CIDoesNotRunNote)
+		}
+		b.WriteByte('\n')
 	}
 
 	b.WriteString("\n**Dependencies**\n\n")

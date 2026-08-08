@@ -224,6 +224,86 @@ func wantPhase(t *testing.T, root string, number int, want state.Phase) {
 	t.Fatalf("issue #%d not found", number)
 }
 
+// TestCIDeclarationReachesTheExecutorAndReviewer follows one plan's
+// per-test declaration through every place downstream of the gate that
+// states an issue's required tests: the created issue body's prose list,
+// the audit record inside that body (the copy pr-open mirrors onto the
+// PR, which is where a reviewer reads the approved work), run state, and
+// the dispatch result the adapter transcribes into the executor's prompt.
+// Any one of them silently dropping it would tell somebody the required
+// test is a gate CI holds when the human approved it as one nobody holds.
+func TestCIDeclarationReachesTheExecutorAndReviewer(t *testing.T) {
+	root := newLifecycleRepo(t)
+	const title = "Fix the status lock race"
+
+	taxonomy := fullTaxonomyScript()
+	calls := append(taxonomy, ghIssueCreateCall(title, []string{"ready", "bug", "implementer", "standard"}, 1))
+	script := &execxtest.Script{T: t, Calls: calls}
+	env := Env{RepoRoot: root, Runner: muxRunner{git: execx.Local{}, gh: script}, Now: fixedNow}
+	if _, err := Activate(context.Background(), env, activationJSON(t, ciDeclarationPlanJSON())); err != nil {
+		t.Fatalf("Activate: %v", err)
+	}
+	script.AssertExhausted()
+
+	// The created issue body: the prose required-tests list above the
+	// managed region and the audit record's own list inside it both
+	// annotate the declared test and only it, so a reader comparing the
+	// two halves of one body finds them saying the same thing.
+	body := script.StdinAt(len(taxonomy))
+	wantProse := "- `" + planLocalOnlyTest + "`" + manifest.CIDoesNotRunNote + "\n"
+	if !strings.Contains(body, wantProse) {
+		t.Errorf("the created issue body's prose list does not annotate the declared test\nwant line: %q\n--- body ---\n%s", wantProse, body)
+	}
+	if strings.Contains(body, "- `"+planCITest+"`"+manifest.CIDoesNotRunNote) {
+		t.Errorf("the created issue body annotates a test the plan did not declare\n--- body ---\n%s", body)
+	}
+	if got := strings.Count(body, manifest.CIDoesNotRunNote); got != 2 {
+		t.Errorf("the body states the CI note %d time(s), want 2: the prose list and the audit record's human bullet", got)
+	}
+	m, err := manifest.Parse(body)
+	if err != nil {
+		t.Fatalf("Parse the created issue body: %v", err)
+	}
+	if len(m.TestsCIDoesNotRun) != 1 || m.TestsCIDoesNotRun[0] != planLocalOnlyTest {
+		t.Errorf("audit record tests_ci_does_not_run = %q, want just %q", m.TestsCIDoesNotRun, planLocalOnlyTest)
+	}
+
+	// Run state, which is what dispatch reads.
+	st := loadRun(t, root)
+	iss := st.Run.Issues[0]
+	if len(iss.TestsCIDoesNotRun) != 1 || iss.TestsCIDoesNotRun[0] != planLocalOnlyTest {
+		t.Errorf("run state tests_ci_does_not_run = %q, want just %q", iss.TestsCIDoesNotRun, planLocalOnlyTest)
+	}
+	// State and the record agree, so a resume of this run finds nothing to
+	// rewrite — and a resume that had to rebuild state from the record
+	// would restore the declaration with the rest of the approved work.
+	if !sameWork(&iss, approvedWork{
+		objective:          m.Objective,
+		acceptanceCriteria: m.AcceptanceCriteria,
+		requiredTests:      m.RequiredTests,
+		testsCIDoesNotRun:  m.TestsCIDoesNotRun,
+	}) {
+		t.Errorf("run state %+v diverges from its audit record %+v", iss, m)
+	}
+
+	// The dispatch result: the adapter's whole spawn brief.
+	dispatched := runVerb(t, root, Dispatch, `{"schema_version":3,"issue_number":1}`,
+		ghAuth(), ghRepoViewCall("main"), ghSetStatusCall(1, ghops.StatusInProgress))
+	if len(dispatched.RequiredTests) != 2 {
+		t.Fatalf("dispatch required tests = %q, want the plan's two", dispatched.RequiredTests)
+	}
+	if len(dispatched.TestsCIDoesNotRun) != 1 || dispatched.TestsCIDoesNotRun[0] != planLocalOnlyTest {
+		t.Errorf("dispatch tests_ci_does_not_run = %q, want just %q", dispatched.TestsCIDoesNotRun, planLocalOnlyTest)
+	}
+	resultJSON, err := json.Marshal(dispatched)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(resultJSON), `"tests_ci_does_not_run":["`+planLocalOnlyTest+`"]`) {
+		t.Errorf("the dispatch result an adapter reads does not carry the declaration:\n%s", resultJSON)
+	}
+}
+
 // TestLifecycleWalk drives one issue from activation through cleanup and
 // run completion in a real git sandbox with scripted gh, asserting the
 // phase after every verb, the exact status transitions (via the scripted
@@ -246,7 +326,7 @@ func TestLifecycleWalk(t *testing.T) {
 
 	// dispatch. The result is the adapter's whole spawn brief, so it must
 	// carry the approved work verbatim alongside the routed selection.
-	dispatched := runVerb(t, root, Dispatch, `{"schema_version":2,"issue_number":1}`,
+	dispatched := runVerb(t, root, Dispatch, `{"schema_version":3,"issue_number":1}`,
 		ghAuth(), ghRepoViewCall("main"), ghSetStatusCall(1, ghops.StatusInProgress))
 	wantPhase(t, root, 1, state.PhaseDispatched)
 	if dispatched.Objective != "Make status reporting race-free" {

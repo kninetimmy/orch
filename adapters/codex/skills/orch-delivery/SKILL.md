@@ -60,6 +60,7 @@ a routed selection.
                      "fully_specified": false, "unsurprising": false}
     },
     "depends_on": [], "wave": 1, "required_tests": ["..."],
+    "tests_ci_does_not_run": ["..."],
     "usage_class": "medium"
   }]
 }
@@ -82,6 +83,19 @@ leaves the bar for "done" to be invented later. Each required test names
 the exact command that gates the change (`go test ./...`, `gofmt -l .`);
 it is not an invitation for comprehensive coverage, just the check this
 change must pass.
+
+When the repository's CI does not run one of those required tests — it
+sits behind a build tag no workflow enables, needs a tool or credential
+CI has not got, or no workflow invokes it at all — name that exact
+command in `tests_ci_does_not_run`. Every entry must match one of the
+same issue's `required_tests` strings exactly, or the plan is rejected.
+The engine renders the declaration beside the test it names at the plan
+gate, in the created issue body, and in the dispatch result, so the human
+approves knowing which of the issue's gates CI actually holds and the
+executor knows which check nothing but a local run will ever execute.
+Omit the field unless you checked the repository's workflows yourself: it
+is a claim about that repository, and saying nothing is honest where a
+guess is not. Omitting it never asserts that CI runs everything.
 
 An acceptance criterion describes an observable outcome, and never
 names a function, a control-flow step, or a validity notion the change
@@ -167,14 +181,20 @@ Call `orch run plan` with the `PlanDoc` on stdin. The result is a
 `issues[]` — each with `id`, `title`, `objective`,
 `acceptance_criteria`, `role`, `executor` (`{model, effort}`),
 `reviewer` (`{model, effort}`), `reviewer_downgraded`,
-`routing_rationale`, `depends_on`, `wave`, `required_tests`, `risk`,
-`usage_class`, `labels`.
+`routing_rationale`, `depends_on`, `wave`, `required_tests`,
+`tests_ci_does_not_run`, `risk`, `usage_class`, `labels`.
 
 Render the gate in full prose before asking anything: every field of
 every issue (name the routed model and effort plainly, and explain a
 `reviewer_downgraded` via `routing_rationale`), then the run-level
 fields (`plan_title`, `host`, `merge_strategy`, `config_revision` +
 `config_overrides` if any, `memhub`, `ci`).
+
+Render each entry of `tests_ci_does_not_run` against the required test it
+names, not as a list of its own: the human is approving that command as a
+check nothing but a local run will ever execute. An absent field is the
+plan saying nothing about CI coverage — never report it as a finding that
+CI runs every required test.
 
 Then ask, via Codex's `request_user_input` primitive, **one** question
 — header `Plan gate` — offering exactly these four options in order
@@ -261,9 +281,10 @@ child is never a candidate. Capture every completed agent separately:
 When capture returns no total, omit the corresponding optional field.
 
 1. **Dispatch** — `orch run dispatch` with
-   `{"schema_version": 2, "issue_number": N}`. Result
+   `{"schema_version": 3, "issue_number": N}`. Result
    (`DispatchResult`): `branch`, `worktree`, `executor`, `reviewer`,
-   `rationale`, `objective`, `acceptance_criteria`, `required_tests`.
+   `rationale`, `objective`, `acceptance_criteria`, `required_tests`,
+   `tests_ci_does_not_run`.
 
 2. **Dispatch the executor** — dispatch `orch-implementer` or
    `orch-specialist` (per the routed role) by naming the agent in your
@@ -301,7 +322,10 @@ When capture returns no total, omit the corresponding optional field.
    `DispatchResult.objective`, `.acceptance_criteria`, and
    `.required_tests` into the prompt **verbatim** — this is the text a
    human approved at the plan gate, not the Architect's recollection of
-   it — along with the worktree path and branch.
+   it — along with the worktree path and branch. Transcribe each entry of
+   `.tests_ci_does_not_run` against the required test it names, so the
+   executor is told which of its required checks CI will not repeat; drop
+   nothing, an unstated one reads as a check CI holds.
 
    Before dispatching, you (the Architect) perform whatever memhub
    recall is relevant to the issue, with the main checkout as cwd —

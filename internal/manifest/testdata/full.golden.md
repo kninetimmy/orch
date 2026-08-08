@@ -9,7 +9,7 @@
 
 **Required tests:**
 - `go test ./internal/manifest/...`
-- `go vet ./...`
+- `go vet ./...` — CI does not run this test
 
 | Field | Value |
 | --- | --- |
@@ -32,7 +32,7 @@
 
 <!-- orch:manifest:data
 {
-  "schema_version": 3,
+  "schema_version": 4,
   "objective": "Ship the manifest round trip.",
   "acceptance_criteria": [
     "Render and Parse agree on every field.",
@@ -40,6 +40,9 @@
   ],
   "required_tests": [
     "go test ./internal/manifest/...",
+    "go vet ./..."
+  ],
+  "tests_ci_does_not_run": [
     "go vet ./..."
   ],
   "role": "implementer",

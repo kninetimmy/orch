@@ -2,6 +2,7 @@ package run
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"os"
 	"path/filepath"
@@ -160,6 +161,48 @@ func TestPlanGoldenTwoIssue(t *testing.T) {
 	}
 	if len(b.DependsOn) != 1 || b.DependsOn[0] != "a" || b.Wave != 2 {
 		t.Errorf("issue b deps/wave = %v/%d", b.DependsOn, b.Wave)
+	}
+}
+
+// TestPlanGateShowsWhichRequiredTestsCIDoesNotRun proves the gate the
+// human decides on carries the plan's per-test declaration, on the issue
+// that made it and naming the required test it qualifies — so approving
+// the plan is approving a required test known to run nowhere but locally.
+// It also pins the silent case: a plan that declares nothing leaves the
+// field absent rather than reporting an empty declaration as a fact about
+// CI coverage.
+func TestPlanGateShowsWhichRequiredTestsCIDoesNotRun(t *testing.T) {
+	root := setupRepo(t, testConfigTOML)
+	env := Env{RepoRoot: root, Now: fixedNow}
+
+	doc, err := Plan(context.Background(), env, []byte(ciDeclarationPlanJSON()))
+	if err != nil {
+		t.Fatalf("Plan: %v", err)
+	}
+	if len(doc.Issues) != 1 {
+		t.Fatalf("Issues = %+v, want 1", doc.Issues)
+	}
+	iss := doc.Issues[0]
+	if len(iss.RequiredTests) != 2 || iss.RequiredTests[0] != planCITest || iss.RequiredTests[1] != planLocalOnlyTest {
+		t.Fatalf("required_tests = %q, want the plan's two", iss.RequiredTests)
+	}
+	if len(iss.TestsCIDoesNotRun) != 1 || iss.TestsCIDoesNotRun[0] != planLocalOnlyTest {
+		t.Errorf("tests_ci_does_not_run = %q, want just %q", iss.TestsCIDoesNotRun, planLocalOnlyTest)
+	}
+
+	silent, err := Plan(context.Background(), env, []byte(validPlanJSON()))
+	if err != nil {
+		t.Fatalf("Plan (no declaration): %v", err)
+	}
+	if got := silent.Issues[0].TestsCIDoesNotRun; got != nil {
+		t.Errorf("a plan declaring nothing produced tests_ci_does_not_run = %q, want none", got)
+	}
+	gateJSON, err := json.Marshal(silent)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(gateJSON), "tests_ci_does_not_run") {
+		t.Errorf("the gate document for a plan declaring nothing still carries the field:\n%s", gateJSON)
 	}
 }
 

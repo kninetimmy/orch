@@ -64,6 +64,41 @@ func validPlanJSON() string {
 }`
 }
 
+// planCITest is the required test ciDeclarationPlanJSON says nothing
+// about, and planLocalOnlyTest the one it declares the repository's CI
+// does not run.
+const (
+	planCITest        = "go test ./..."
+	planLocalOnlyTest = "go test -tags golden ./..."
+)
+
+// ciDeclarationPlanJSON is validPlanJSON plus a second required test the
+// plan declares CI does not run — the fixture for following that
+// declaration from the plan gate through to the executor. The first
+// required test stays undeclared, so no assertion on the second can pass
+// against a renderer that annotates every bullet alike.
+func ciDeclarationPlanJSON() string {
+	return `{
+  "schema_version": 1,
+  "host": "claude",
+  "title": "Fix status lock",
+  "issues": [
+    {
+      "id": "fix-status-lock",
+      "title": "Fix the status lock race",
+      "objective": "Make status reporting race-free",
+      "acceptance_criteria": ["no data race under -race"],
+      "type": "bug",
+      "facts": {"read_only": false},
+      "wave": 1,
+      "required_tests": ["` + planCITest + `", "` + planLocalOnlyTest + `"],
+      "tests_ci_does_not_run": ["` + planLocalOnlyTest + `"],
+      "usage_class": "light"
+    }
+  ]
+}`
+}
+
 // twoIssuePlanJSON is a two-issue, two-wave plan where "b" depends on
 // "a", passing Validate against testConfig().
 func twoIssuePlanJSON() string {

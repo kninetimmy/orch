@@ -101,6 +101,16 @@ func TestPlanDocValidate(t *testing.T) {
 			mutate: func(p *PlanDoc) { p.Issues[0].UsageClass = "extreme" },
 			wantIn: `usage_class "extreme" is not one of`,
 		},
+		"empty ci declaration": {
+			mutate: func(p *PlanDoc) { p.Issues[0].TestsCIDoesNotRun = []string{""} },
+			wantIn: "tests_ci_does_not_run[0] must not be empty",
+		},
+		"ci declaration names no required test": {
+			mutate: func(p *PlanDoc) {
+				p.Issues[0].TestsCIDoesNotRun = []string{"go test -tags golden ./..."}
+			},
+			wantIn: `tests_ci_does_not_run[0] "go test -tags golden ./..." does not name one of this issue's required_tests`,
+		},
 		"bad wave": {
 			mutate: func(p *PlanDoc) { p.Issues[0].Wave = 0 },
 			wantIn: "wave must be >= 1",
@@ -230,6 +240,66 @@ func TestDigestStableAcrossWhitespaceAndKeyOrder(t *testing.T) {
 	}
 	if !strings.HasPrefix(da, "sha256:") {
 		t.Errorf("Digest = %q, want sha256: prefix", da)
+	}
+}
+
+// preCIDeclarationDigest is validPlanJSON's digest as builds before the
+// tests_ci_does_not_run declaration existed computed it, recomputed
+// independently from that build's PlanDoc/PlanIssue definitions rather
+// than copied from this build's output.
+//
+// It is pinned as a literal on purpose: `orch run plan` and
+// `orch run activate` both recompute the digest from the submitted
+// document, and a plan approved by one build must activate on another, so
+// a plan that declares nothing has to marshal to the same bytes it always
+// did. An optional field with a non-omitempty tag, or one given a
+// non-nil empty default anywhere on the decode path, would break that
+// silently — every existing plan and every replay of a prior one would
+// fail approval with a digest mismatch and nothing would say why.
+const preCIDeclarationDigest = "sha256:00b4d082433c906b228cc85941ea2a16a957253af75e45d96c9b65e73a60902e"
+
+func TestDigestUnchangedForAPlanThatDeclaresNothing(t *testing.T) {
+	p := mustDecodePlan(t, validPlanJSON())
+	if p.Issues[0].TestsCIDoesNotRun != nil {
+		t.Fatalf("a plan declaring nothing decoded to %q, want nil", p.Issues[0].TestsCIDoesNotRun)
+	}
+	got, err := p.Digest()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got != preCIDeclarationDigest {
+		t.Errorf("Digest = %q, want the pre-declaration digest %q: a plan that declares nothing must marshal to the bytes it always did", got, preCIDeclarationDigest)
+	}
+
+	data, err := json.Marshal(p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(data), "tests_ci_does_not_run") {
+		t.Errorf("canonical marshal mentions the declaration a plan never made:\n%s", data)
+	}
+}
+
+// TestDigestCoversTheCIDeclaration is the other half: once a plan does
+// declare, the declaration is part of what the human approved, so it must
+// be inside the digest the approval is tied to rather than a field an
+// adapter could revise between gate and activation.
+func TestDigestCoversTheCIDeclaration(t *testing.T) {
+	silent := mustDecodePlan(t, validPlanJSON())
+	declaring := mustDecodePlan(t, ciDeclarationPlanJSON())
+	if err := declaring.Validate(testConfig()); err != nil {
+		t.Fatalf("Validate: %v", err)
+	}
+	a, err := silent.Digest()
+	if err != nil {
+		t.Fatal(err)
+	}
+	b, err := declaring.Digest()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if a == b {
+		t.Error("declaring a test CI does not run left the digest unchanged; the approval would not cover it")
 	}
 }
 

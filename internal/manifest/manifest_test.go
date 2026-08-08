@@ -36,8 +36,15 @@ const (
 	fixtureFixOID    = "c5e70981a3f6b2d4079b1c3e52e40578b2e4a1c3"
 )
 
+// fixtureLocalOnlyTest is the required test the full fixture declares the
+// repository's CI does not run, pinned as a constant so a test can assert
+// the annotated bullet by exact command.
+const fixtureLocalOnlyTest = "go vet ./..."
+
 // fullManifest exercises every optional field and every repeatable one:
-// multi-entry acceptance criteria and required tests, two escalations
+// multi-entry acceptance criteria and required tests, one of them
+// declared as a test CI does not run and the other not (so the golden
+// pins the annotated and the plain bullet side by side), two escalations
 // (an escalation with a role and At, a substitution without), and three
 // verifications, the last a CI-state entry with no command. Two carry a
 // commit OID and disagree about which one; the middle entry carries none,
@@ -48,7 +55,8 @@ func fullManifest() Manifest {
 		"Render and Parse agree on every field.",
 		"A hand-edited region fails closed.",
 	}
-	m.RequiredTests = []string{"go test ./internal/manifest/...", "go vet ./..."}
+	m.RequiredTests = []string{"go test ./internal/manifest/...", fixtureLocalOnlyTest}
+	m.TestsCIDoesNotRun = []string{fixtureLocalOnlyTest}
 	m.EffortDelivery = EffortDeliveryPromptCue
 	m.Escalations = []Escalation{
 		{
@@ -76,15 +84,17 @@ func fullManifest() Manifest {
 
 // hostileManifest packs marker-forging and markdown-breaking content
 // into every free-text field: an objective and an acceptance criterion
-// each smuggling a marker line, a required test that is exactly the
-// data-close; a rationale containing "-->", a line equal to EndMarker, a
-// CRLF pair, and a <script> tag; a command with backticks, pipes, and an
-// ampersand; a model with a pipe; a config revision with all three
-// entity characters; an escalation whose reason is a data-close and
-// whose At smuggles a begin-marker line; and a verification whose name,
-// result, commit OID, and At each smuggle a marker or data-comment line.
-// Render must escape all of it so the region still contains exactly one
-// of each structural line and parses back.
+// each smuggling a marker line; a required test that is exactly the
+// data-close, declared as one CI does not run so its annotation lands
+// after a hostile code span; a rationale containing "-->", a line equal
+// to EndMarker, a CRLF pair, and a <script> tag; a command with
+// backticks, pipes, and an ampersand; a model with a pipe; a config
+// revision with all three entity characters; an escalation whose reason
+// is a data-close and whose At smuggles a begin-marker line; and a
+// verification whose name, result, commit OID, and At each smuggle a
+// marker or data-comment line. Render must escape all of it so the
+// region still contains exactly one of each structural line and parses
+// back.
 func hostileManifest() Manifest {
 	return Manifest{
 		SchemaVersion: SchemaVersion,
@@ -93,9 +103,10 @@ func hostileManifest() Manifest {
 			"Criterion with a marker line\n" + EndMarker,
 			"Criterion with &<> entities and a | pipe.",
 		},
-		RequiredTests: []string{dataClose, "go test -run 'A|B' ./..."},
-		Role:          RoleReviewer,
-		Executor:      Selection{Model: "weird|model", Effort: "high"},
+		RequiredTests:     []string{dataClose, "go test -run 'A|B' ./..."},
+		TestsCIDoesNotRun: []string{dataClose},
+		Role:              RoleReviewer,
+		Executor:          Selection{Model: "weird|model", Effort: "high"},
 		RoutingRationale: "Rationale with a marker attempt -->\r\n" +
 			EndMarker + "\n" +
 			"and a <script>alert(1)</script> tag.",
@@ -130,13 +141,18 @@ func TestValidateRejects(t *testing.T) {
 	}{
 		"original schema version":   {func(m *Manifest) { m.SchemaVersion = 1 }, "schema_version 1 is unsupported"},
 		"superseded schema version": {func(m *Manifest) { m.SchemaVersion = 2 }, "schema_version 2 is unsupported"},
-		"future schema version":     {func(m *Manifest) { m.SchemaVersion = 4 }, "schema_version 4 is unsupported"},
+		"prior schema version":      {func(m *Manifest) { m.SchemaVersion = 3 }, "schema_version 3 is unsupported"},
+		"future schema version":     {func(m *Manifest) { m.SchemaVersion = 5 }, "schema_version 5 is unsupported"},
 		"absent schema version":     {func(m *Manifest) { m.SchemaVersion = 0 }, "schema_version 0 is unsupported"},
 		"empty objective":           {func(m *Manifest) { m.Objective = "" }, "objective is empty"},
 		"no acceptance criteria":    {func(m *Manifest) { m.AcceptanceCriteria = nil }, "acceptance_criteria is empty"},
 		"empty acceptance criteria": {func(m *Manifest) { m.AcceptanceCriteria[1] = "" }, "acceptance_criteria[1] is empty"},
 		"no required tests":         {func(m *Manifest) { m.RequiredTests = nil }, "required_tests is empty"},
 		"empty required test":       {func(m *Manifest) { m.RequiredTests[0] = "" }, "required_tests[0] is empty"},
+		"empty ci declaration": {func(m *Manifest) { m.TestsCIDoesNotRun = []string{""} },
+			"tests_ci_does_not_run[0] is empty"},
+		"ci declaration names no required test": {func(m *Manifest) { m.TestsCIDoesNotRun = []string{"go test -tags golden ./..."} },
+			`tests_ci_does_not_run[0] "go test -tags golden ./..." does not name one of required_tests`},
 		"unknown role":              {func(m *Manifest) { m.Role = "wizard" }, `role "wizard" is not one of`},
 		"empty executor model":      {func(m *Manifest) { m.Executor.Model = "" }, "executor.model is empty"},
 		"empty executor effort":     {func(m *Manifest) { m.Executor.Effort = "" }, "executor.effort is empty"},

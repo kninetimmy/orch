@@ -567,7 +567,7 @@ func TestResumeAdoptsOrphanPR(t *testing.T) {
 	}
 	script.AssertExhausted()
 
-	runVerb(t, root, Dispatch, `{"schema_version":2,"issue_number":1}`,
+	runVerb(t, root, Dispatch, `{"schema_version":3,"issue_number":1}`,
 		ghAuth(), ghRepoViewCall("main"), ghSetStatusCall(1, ghops.StatusInProgress))
 
 	wtDir := filepath.Join(root, ".orchestrator", "worktrees", "issue-1")

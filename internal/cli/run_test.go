@@ -122,7 +122,7 @@ func TestRunStatusNeverReadsStdin(t *testing.T) {
 // valid document yields ExitError, never ExitUsage.
 func TestRunLifecycleVerbsAreRouted(t *testing.T) {
 	verbs := map[string]string{
-		"dispatch":        `{"schema_version":2,"issue_number":1}`,
+		"dispatch":        `{"schema_version":3,"issue_number":1}`,
 		"pr-open":         `{"schema_version":1,"issue_number":1,"verifications":[{"name":"t","result":"pass"}]}`,
 		"review-worktree": `{"schema_version":1,"issue_number":1,"head_oid":"0123456789abcdef0123456789abcdef01234567"}`,
 		"review":          `{"schema_version":2,"issue_number":1,"reviewed_head_oid":"h","verdict":"approve","summary":"s","reviewer":{"model":"m","effort":"e"},"judgments":[{"criterion":1,"judgment":"satisfied","reason":"r"}]}`,

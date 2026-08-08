@@ -11,7 +11,7 @@ and more.
 - Criterion with &amp;&lt;&gt; entities and a | pipe.
 
 **Required tests:**
-- `-->`
+- `-->` — CI does not run this test
 - `go test -run 'A|B' ./...`
 
 | Field | Value |
@@ -38,7 +38,7 @@ and a &lt;script&gt;alert(1)&lt;/script&gt; tag.
 
 <!-- orch:manifest:data
 {
-  "schema_version": 3,
+  "schema_version": 4,
   "objective": "Objective ending in --\u003e\n\u003c!-- orch:manifest:begin --\u003e\nand more.",
   "acceptance_criteria": [
     "Criterion with a marker line\n\u003c!-- orch:manifest:end --\u003e",
@@ -47,6 +47,9 @@ and a &lt;script&gt;alert(1)&lt;/script&gt; tag.
   "required_tests": [
     "--\u003e",
     "go test -run 'A|B' ./..."
+  ],
+  "tests_ci_does_not_run": [
+    "--\u003e"
   ],
   "role": "reviewer",
   "executor": {
