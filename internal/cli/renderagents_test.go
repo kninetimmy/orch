@@ -1,7 +1,9 @@
 package cli
 
 import (
+	"context"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -193,6 +195,36 @@ func TestRenderAgentsAnyUnignoredDestinationRefusesBeforeWriting(t *testing.T) {
 		if _, err := os.Stat(filepath.Join(env.RepoRoot, filepath.FromSlash(dir))); !os.IsNotExist(err) {
 			t.Errorf("%s exists after refusal (stat err = %v), want absent", dir, err)
 		}
+	}
+}
+
+func TestRenderAgentsNegatedOutputRefusesBeforeWriting(t *testing.T) {
+	if _, err := exec.LookPath("git"); err != nil {
+		t.Skipf("git not on PATH: %v", err)
+	}
+	env, _, stderr := testEnv(t)
+	local := execx.Local{}
+	res, err := local.Run(context.Background(), execx.Cmd{
+		Name: "git", Args: []string{"init", "-b", "main"}, Dir: env.RepoRoot,
+	})
+	if err != nil || res.ExitCode != 0 {
+		t.Fatalf("git init: result = %+v, err = %v", res, err)
+	}
+	env.Runner = local
+	writeConfigOnly(t, env.RepoRoot, validTOML)
+	ignore := ".claude/agents/*\n!.claude/agents/orch-scout.md\n"
+	if err := os.WriteFile(filepath.Join(env.RepoRoot, ".gitignore"), []byte(ignore), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	if code := Run([]string{"render-agents"}, env); code != ExitError {
+		t.Errorf("exit = %d, want %d", code, ExitError)
+	}
+	if !strings.Contains(stderr.String(), agents.ClaudeDir+"/orch-scout.md") {
+		t.Errorf("stderr = %q, want negated output path", stderr.String())
+	}
+	if _, err := os.Stat(filepath.Join(env.RepoRoot, filepath.FromSlash(agents.ClaudeDir))); !os.IsNotExist(err) {
+		t.Errorf("%s exists after refusal (stat err = %v), want absent", agents.ClaudeDir, err)
 	}
 }
 
