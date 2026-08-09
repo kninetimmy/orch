@@ -289,20 +289,20 @@ When capture returns no total, omit the corresponding optional field.
 2. **Dispatch the executor** — dispatch `orch-implementer` or
    `orch-specialist` (per the routed role) by naming the agent in your
    prompt; Codex has no per-spawn model override, so the agent that
-   actually runs is whatever its installed TOML (`model`,
-   `model_reasoning_effort`) pins. Before dispatching, the selection
-   **currently in force** for the routed role — `DispatchResult`'s
+   actually runs is whatever its project TOML under `.codex/agents/`
+   (`model`, `model_reasoning_effort`) pins. Before dispatching, the
+   selection **currently in force** for the routed role — `DispatchResult`'s
    `(model, effort)`, superseded by the most recent `EscalateResult`'s
    `(model, effort)` if the issue has been rerouted since dispatch,
-   never the dispatch-time value once superseded — **must match an
-   installed `orch-*` agent TOML exactly**. The installed TOMLs are the
+   never the dispatch-time value once superseded — **must match a
+   project `orch-*` agent TOML exactly**. The project TOMLs are the
    authority for what that match requires, not this list: by default
    they pin `orch-scout` gpt-5.6-luna/max, `orch-implementer`
    gpt-5.6-terra/max, `orch-specialist` gpt-5.6-sol/max,
    `orch-reviewer` gpt-5.6-sol/xhigh, `orch-reviewer-safe`
    gpt-5.6-sol/high, but a repository that overrides
    `hosts.codex.roles` and re-renders with `orch render-agents` gets
-   different pins. **If no installed TOML matches the routed selection,
+   different pins. **If no project TOML matches the routed selection,
    stop and tell the human — never dispatch a mismatched agent, and
    never report the routed selection as if it ran.** Every dispatch
    prompt opens with:
@@ -312,7 +312,7 @@ When capture returns no total, omit the corresponding optional field.
    ```
 
    Effort is a real host parameter on Codex: `model_reasoning_effort` is
-   pinned in the dispatched agent's own installed TOML and is what
+   pinned in the dispatched agent's own project TOML and is what
    actually runs, not layered on afterward, so there is no prompt cue
    standing in for it the way there is on Claude. The host enforces
    whatever TOML was dispatched, not that it matches the routed
@@ -366,7 +366,7 @@ When capture returns no total, omit the corresponding optional field.
    dispatch, never the dispatch-time value once superseded. If that
    selection names the §10
    safe-downgrade profile instead of the standard reviewer profile,
-   dispatch `orch-reviewer-safe` by name — it is the installed TOML that
+   dispatch `orch-reviewer-safe` by name — it is the project TOML that
    encodes that downgrade, since Codex has no per-spawn model override
    to apply it ad hoc. `reviewed_head_oid` must be the PR's **live**
    head OID at review time (e.g. via `gh pr view`), never a cached
@@ -514,9 +514,9 @@ Result `kind`:
   recent `EscalateResult` and the only one describing the routing in
   force, for both roles even if only one changed. Before dispatching
   either into the **same worktree** (never a new one), confirm the new
-  selection's `(model, effort)` against an installed `orch-*` agent
+  selection's `(model, effort)` against a project `orch-*` agent
   TOML under the same match rule as the dispatch steps above — **if no
-  installed TOML matches the new selection, stop and tell the human —
+  project TOML matches the new selection, stop and tell the human —
   never dispatch a mismatched agent, and never report the routed
   selection as if it ran.**
 - `return-to-architect` — the issue is blocked for human design work;

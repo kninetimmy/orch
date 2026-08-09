@@ -425,7 +425,7 @@ func TestDeliverySkillPinsCodexChildUsageMapping(t *testing.T) {
 
 // tomlMatchRuleSentence is the exact phrase orch-delivery/SKILL.md must
 // state: on Codex there is no per-spawn model override, so a routed
-// selection that matches no installed orch-* TOML must stop and tell
+// selection that matches no project orch-* TOML must stop and tell
 // the human rather than silently dispatching a mismatched agent.
 const tomlMatchRuleSentence = "stop and tell the human"
 
@@ -435,7 +435,7 @@ const tomlMatchRuleSentence = "stop and tell the human"
 // TestDeliverySkillStatesFrontmatterMatchRule in
 // adapters/claude/plugin_test.go — its Task tool's model parameter is a
 // coarse tier-alias enum, so a per-spawn override cannot express an
-// exact routed version there either, and only an installed agent
+// exact routed version there either, and only a project agent
 // definition's frontmatter pins one. The containment check runs on
 // whitespace-normalized text on both sides (via
 // adaptertest.NormalizeWhitespace), so a site the markdown hard-wraps

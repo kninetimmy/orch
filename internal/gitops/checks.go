@@ -167,3 +167,30 @@ func (g *Git) RequireIgnored(ctx context.Context, path string) error {
 	}
 	return nil
 }
+
+// RequireIgnoredPath returns nil only when the exact path is
+// git-ignored. Callers use it for known output files; RequireIgnored is
+// the directory check for paths whose children are not known yet.
+func (g *Git) RequireIgnoredPath(ctx context.Context, path string) error {
+	canon, err := paths.Canonical(path)
+	if err != nil {
+		return err
+	}
+	rel, err := filepath.Rel(g.root, canon)
+	if err != nil {
+		return fmt.Errorf("compute path for %s relative to %s: %w", canon, g.root, err)
+	}
+	relSlash := filepath.ToSlash(rel)
+	res, err := g.run(ctx, g.root, "check-ignore", "-q", "--", relSlash)
+	if err != nil {
+		return err
+	}
+	switch res.ExitCode {
+	case 0:
+		return nil
+	case 1:
+		return fmt.Errorf("%w: %s; add an ignore rule covering %q to .gitignore", ErrNotIgnored, canon, relSlash)
+	default:
+		return fmt.Errorf("git check-ignore in %s exited %d: %s", g.root, res.ExitCode, strings.TrimSpace(res.Stderr))
+	}
+}

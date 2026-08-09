@@ -5,10 +5,18 @@
 // directory are read directly by Claude Code, never compiled.
 package claude
 
-import _ "embed"
+import "embed"
 
 // PluginManifestJSON is the shipped plugin manifest and therefore the
 // canonical adapter version for this build.
 //
 //go:embed .claude-plugin/plugin.json
 var PluginManifestJSON string
+
+// AgentDefinitions embeds the five shipped Claude agent definitions
+// verbatim. internal/agents renders each repository's project-local
+// .claude/agents/*.md from these bytes, so the plugin and generated
+// definitions have one canonical body.
+//
+//go:embed agents/*.md
+var AgentDefinitions embed.FS

@@ -118,26 +118,14 @@ on this machine. Work in a scratch directory, not in one of my projects.
          codex plugin marketplace add kninetimmy/orch
          codex plugin add orch@orch
 
-4. Codex CLI only. Skip this entire step on Claude Code, which needs no
-   clone:
-   a. Codex plugins cannot ship agent definitions, so clone the repository
-      into a temporary directory outside my projects:
-        git clone --depth 1 https://github.com/kninetimmy/orch.git <tmp>/orch
-   b. Copy these five files from <tmp>/orch/adapters/codex/agents/ into
-      that repository's own .codex/agents/:
-        orch-scout.toml
-        orch-implementer.toml
-        orch-specialist.toml
-        orch-reviewer.toml
-        orch-reviewer-safe.toml
-   c. Delete <tmp>/orch afterwards. Nothing else from the clone is needed.
-   d. Add both of these stanzas to ~/.codex/config.toml, leaving any
+4. Codex CLI only. Skip this entire step on Claude Code:
+   a. Add both of these stanzas to ~/.codex/config.toml, leaving any
       existing content in place:
         [tools.experimental_request_user_input]
 
         [features]
         default_mode_request_user_input = true
-   e. Tell me that Codex CLI shows a one-time trust prompt for the
+   b. Tell me that Codex CLI shows a one-time trust prompt for the
       plugin's bundled hooks, that approving it is an action only I can
       take, and that the hooks do not run at all until I approve it. Do
       not report the install as finished as though the hooks were live.
@@ -156,7 +144,13 @@ on this machine. Work in a scratch directory, not in one of my projects.
    inside every repository I want orchestrated; Orch does nothing at all
    in a repository that has not been initialized; and `orch init` does not
    write the configuration into my working tree — it opens a pull request
-   carrying .orchestrator/config.toml for me to review and merge.
+   carrying .orchestrator/config.toml for me to review and merge. After
+   that PR is merged, `orch render-agents` must be run in the repository;
+   it generates project definitions for every enabled host and must be
+   rerun after role configuration or Orch changes. Before this change,
+   the Codex instructions also allowed manually copying five TOMLs and
+   Claude had no project-render step; after it, this command is the one
+   per-repository workflow for both hosts.
 ```
 
 ### Then initialize each repository you want orchestrated
@@ -227,10 +221,11 @@ by its exact name: `orch-claude` on Claude Code, `orch` on Codex CLI.
 Then follow the host-specific steps in the adapter
 READMEs — [Claude Code](adapters/claude/README.md#install-order),
 [Codex CLI](adapters/codex/README.md#install-order). Codex CLI needs
-three more things the plugin install cannot do for you: the one-time
-hook trust approval, the five agent TOMLs copied into `.codex/agents/`
-(or rendered there with `orch render-agents`), and the two
-`request_user_input` stanzas in `~/.codex/config.toml`.
+two more things the plugin install cannot do for you: the one-time hook
+trust approval and the two `request_user_input` stanzas in
+`~/.codex/config.toml`. Every initialized repository, on either host,
+also needs `orch render-agents` after initialization, role-configuration
+changes, and upgrades.
 
 **Plugin upgrade (existing installs).** Do not repeat the first-install
 commands above. Upgrade the configured host's marketplace and adapter:
@@ -298,7 +293,7 @@ commands:
   resume           Reconcile an interrupted Delivery run against GitHub and continue
   abort            Stop dispatch and return to Assist
   metrics          Show local metrics
-  render-agents    Render the five Codex agent TOMLs from configuration into .codex/agents/
+  render-agents    Render project agent definitions for every enabled host
   run              Adapter plumbing: Delivery run verbs (JSON stdin/stdout; not a human command)
   guard            Adapter plumbing: pre-write enforcement for host hooks (not a human command)
   hook             Adapter plumbing: host lifecycle-event verbs (not a human command)
@@ -485,36 +480,28 @@ confirm the sandbox actually works on that machine before setting
 effort reaches a Claude subagent as a cue in its prompt, not as a host
 parameter, so the effort in the audit record is what was routed rather
 than something the host applied. The record says so outright, as
-`Effort delivery: prompt-cue`. Codex pins effort in the installed
-agent TOML and the host enforces it.
+`Effort delivery: prompt-cue`. Codex pins effort in the project agent
+TOML and the host enforces it.
 
 **A model override does not reach a dispatched agent by itself, on
 either host.** Neither host can override a model per spawn, so the
-routed selection has to match an installed agent definition. On Codex
-that means the five agent TOMLs are a separate install step the
-marketplace install does not perform — you copy them or run `orch
-render-agents` — and after you change `hosts.codex.roles`, the
-installed TOMLs still pin the old model until you re-render. That much
-the binary now catches: `orch doctor` and Codex plan activation both
-compare the rendered definitions against the effective configuration
-and fail closed naming `orch render-agents`, so activation refuses
-rather than dispatching agents pinned to a stale model. On Claude Code
-`orch doctor` reports the same comparison but repairs nothing: it
-resolves the installed plugin root from `claude plugin list --json`,
-reads the model each of the five installed agent definitions pins in
-its frontmatter, and fails as `claude agent definitions`, naming every
-role whose `hosts.claude.roles` model differs together with both
-models — and failing too when those definitions cannot be read at all.
-There is no Claude equivalent of `orch render-agents` to run
-afterwards: you update the installed plugin or change the configured
-model. Claude plan activation does not gate on this, either. The
-Architect's skill still instructs it to compare the routed model
-against the installed agent's frontmatter and, on a mismatch, to stop
-and tell you rather than spawn a different model — so inside a run,
-that stop still rests on the Architect following an instruction, not
-on a check the engine performs. Either way, changing a role's model —
-which the Settings section above recommends as ordinary tuning — is
-not finished until the installed agent definitions carry it too.
+routed selection has to match the active project agent definition.
+Before, only Codex had generated project files: Claude doctor compared
+the configured model to the installed plugin copy, repaired nothing,
+and Claude activation did not gate on the mismatch. After, `orch
+render-agents` writes all five dispatched roles for every enabled host
+under `.claude/agents/` or `.codex/agents/`, using the shipped plugin
+definition as the canonical body and changing only that host's routing
+fields. Claude Code's [scope priority
+table](https://code.claude.com/docs/en/sub-agents#choose-the-subagent-scope)
+places project definitions above plugin definitions, so a generated
+same-named `.claude/agents/` file is what runs while retaining the
+plugin's descriptions, tool allowlists, and role instructions. `orch
+doctor` checks each enabled host's project files separately from
+installed-adapter health, and plan activation checks the selected
+host; both fail closed, name every missing, unreadable, or stale path,
+and direct you to `orch render-agents`. Changing effective role
+configuration or upgrading Orch is not finished until you re-render.
 
 **A Codex CLI upgrade that adds a new `apply_patch` directive causes
 denials until `orch` catches up.** The guard's envelope parser treats
@@ -615,7 +602,10 @@ tagged release.
   matched its installed definition went on being dispatched with only
   the Architect's skill instruction between the routed selection and a
   mismatched spawn —
-  [#186](https://github.com/kninetimmy/orch/pull/186)
+  [#186](https://github.com/kninetimmy/orch/pull/186). That installed-copy
+  comparison was the before state for this change; after, Claude uses
+  rendered project definitions and both doctor and activation gate them,
+  while installed-adapter health remains its own check.
 - `orch doctor` now checks each configured host's installed Orch
   adapter and fails when it is absent, listed more than once, disabled,
   reporting no version at all, at a different version from the one this
@@ -632,7 +622,9 @@ tagged release.
   render-agents`; before, definitions rendered from an older
   configuration went on being dispatched with nothing reporting them
   stale —
-  [#166](https://github.com/kninetimmy/orch/pull/166)
+  [#166](https://github.com/kninetimmy/orch/pull/166). That Codex-only
+  coverage was the before state; after this change the same generated-file
+  check covers every enabled host.
 - Every reviewer agent definition on both hosts — the standard
   reviewer and the safe review downgrade alike — now states that a
   `request-changes` verdict is not confined to findings that block an
@@ -712,7 +704,10 @@ tagged release.
 - Claude spawns stopped passing a coarse tier alias as the model,
   which could never express an exact routed version; a spawn now
   matches the installed agent's frontmatter or stops —
-  [#70](https://github.com/kninetimmy/orch/pull/70)
+  [#70](https://github.com/kninetimmy/orch/pull/70). That installed-agent
+  match was the before state; after this change, a spawn matches the
+  rendered project agent's frontmatter, which takes precedence over the
+  plugin copy.
 - Claude Code gained an `orch-reviewer-safe` agent, so a routed
   reviewer downgrade dispatches the reviewer the audit record names —
   [#66](https://github.com/kninetimmy/orch/pull/66)
@@ -874,7 +869,7 @@ its own.
 | `internal/routing/` | Pure role routing and the escalation ladder |
 | `internal/guard/` | Mechanical pre-write enforcement behind host PreToolUse hooks |
 | `internal/run/` | The Delivery run engine: plan gate, activation, per-issue lifecycle, resume |
-| `internal/agents/` | Renders the five Codex agent TOMLs `orch render-agents` writes, substituting model/effort onto the canonical embedded bodies |
+| `internal/agents/` | Renders each enabled host's five project agent definitions, substituting host-supported routing fields onto canonical embedded bodies |
 | `internal/instructions/` | Managed instruction-block engine for AGENTS.md/CLAUDE.md |
 | `internal/question/` | Host-neutral native question contract (documents out, answer sets back) |
 | `internal/interview/` | Pure question engines for `init`, `configure` and `configure-local` |

@@ -43,7 +43,7 @@ import (
 )
 
 // RoleSpec is one role's committed host profile: the exact model and
-// effort string an installed agent definition must carry.
+// effort string a canonical shipped agent definition must carry.
 type RoleSpec struct {
 	Model  string
 	Effort string

@@ -59,7 +59,9 @@ never re-derives a decision the engine already made.
 - `agents/orch-scout.md`, `agents/orch-implementer.md`,
   `agents/orch-specialist.md`, `agents/orch-reviewer.md`,
   `agents/orch-reviewer-safe.md` — the five role subagents the Architect
-  spawns during Delivery, each with its own model and tool whitelist
+  spawns during Delivery, and the canonical bodies `orch render-agents`
+  copies into each repository's `.claude/agents/`, each with its own
+  model and tool whitelist
   (scout, reviewer, and reviewer-safe carry none of the four guarded
   write tools, but only scout is read-only by whitelist alone: both
   reviewers carry `Bash`, which can write unguarded — see Known
@@ -67,9 +69,9 @@ never re-derives a decision the engine already made.
   `orch-reviewer-safe` is the §10 safe-review downgrade encoding:
   Claude Code's Task tool `model` parameter only takes coarse tier
   aliases (`sonnet`/`opus`/`haiku`/`fable`), so a per-spawn override
-  cannot express a routed selection. A separate installed agent is
-  shipped instead because only an installed definition carries its own
-  system prompt — the safe-downgrade framing and instructions — and a
+  cannot express a routed selection. A separate named agent is shipped
+  because its definition carries its own system prompt — the
+  safe-downgrade framing and instructions — and a
   distinct name the frontmatter-match rule can verify; the effort
   difference from the full reviewer rides the spawn-time prompt cue,
   per the Known limitations bullet below, not a frontmatter field.
@@ -93,6 +95,22 @@ lists both hosts' adapters — install this host's by its exact name,
 `orch-claude`. The Codex entry (`orch`, source `adapters/codex`) may
 also appear in listings; it bundles Codex-format components and is not
 this adapter.
+
+After `orch init` has been merged in a repository, run `orch
+render-agents` there. It writes all five definitions to
+`.claude/agents/`, substituting only each role's configured `model` and
+preserving the shipped description, tool allowlist, and instructions.
+Claude Code's [subagent scope priority
+table](https://code.claude.com/docs/en/sub-agents#choose-the-subagent-scope)
+gives a same-named project definition higher priority than the plugin's
+`agents/` definition, so these generated project files are what
+dispatched Orch roles run. Initialization and configuration add
+both `.claude/agents/` and `.codex/agents/` to `.gitignore`; rendering
+refuses before writing if any enabled host's destination is not ignored.
+Run it again after changing `hosts.claude.roles` or upgrading Orch. If
+the `.claude/agents/` directory did not exist when the current Claude
+Code session started, restart it or use `/agents` to load the files
+immediately after their first render.
 
 This ordering matters mechanically, not just procedurally. Both hooks
 above are bare commands (`orch guard claude`, `orch hook claude
@@ -118,6 +136,8 @@ claude plugin update orch-claude@orch
 ```
 
 Restart Claude Code after the upgrade so it loads the updated adapter.
+Then run `orch render-agents` in each initialized repository so its
+project definitions match the upgraded canonical bodies.
 
 ## Known limitations
 
@@ -147,6 +167,12 @@ bugs:
   `internal/adaptertest.CheckRoutedSelectionCue`, called from both
   adapters' `plugin_test.go`, pins that the prompt cue text is present in
   `orch-delivery/SKILL.md`, not that it changed model behavior.
+- **Configured models take effect through generated project files, not
+  automatically.** Run `orch render-agents` after a committed or local
+  `hosts.claude.roles` change. `orch doctor` and Claude plan activation
+  both fail closed, name every missing, unreadable, or stale definition,
+  and direct you to that command; the installed-plugin adapter check is
+  separate.
 - **`orch guard`'s `--role` narrowing is unused by this adapter.**
   Hooks in Claude Code are plugin-global, not scoped per subagent, so
   the adapter never passes `--role` when invoking guard. Read-only role

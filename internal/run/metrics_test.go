@@ -13,7 +13,6 @@ import (
 	"github.com/kninetimmy/orch/internal/execx/execxtest"
 	"github.com/kninetimmy/orch/internal/ghops"
 	"github.com/kninetimmy/orch/internal/metrics"
-	"github.com/kninetimmy/orch/internal/paths"
 	"github.com/kninetimmy/orch/internal/state"
 )
 
@@ -49,27 +48,7 @@ func setupDeliveryRepoWithConfig(t *testing.T, tomlContent, planRev string, issu
 // disk.
 func newActivateRepoWithConfig(t *testing.T, tomlContent string) string {
 	t.Helper()
-	setupGitEnv(t)
-	root, err := paths.Canonical(t.TempDir())
-	if err != nil {
-		t.Fatal(err)
-	}
-	rawGit(t, root, "init", "-b", "main")
-	if err := os.WriteFile(filepath.Join(root, "README.md"), []byte("hi\n"), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(filepath.Join(root, ".gitignore"), []byte(fullGitignore), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.MkdirAll(filepath.Join(root, ".orchestrator"), 0o755); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(filepath.Join(root, ".orchestrator", "config.toml"), []byte(tomlContent), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	rawGit(t, root, "add", "-A")
-	rawGit(t, root, "commit", "-m", "initial")
-	return root
+	return newActivateRepoWithConfigAndIgnore(t, tomlContent, fullGitignore)
 }
 
 // newLifecycleRepoWithConfig mirrors lifecycle_test.go's newLifecycleRepo

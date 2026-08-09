@@ -1,20 +1,7 @@
-// Package agents renders the five Codex agent TOMLs `orch
-// render-agents` writes into <repo>/.codex/agents/ (PRD §22): each
-// file's model and model_reasoning_effort are substituted from the
-// effective configuration's hosts.codex.roles, but the surrounding
-// body — name, description, developer_instructions — is the canonical
-// shipped text embedded from adapters/codex/agents/*.toml
-// (adapters/codex/embed.go's AgentTOMLs). That embed is the one
-// source of truth: this package never carries its own copy of the
-// prose, so the shipped plugin files and this package's rendered
-// output cannot silently diverge from one another.
-//
-// CheckClaude (claude.go) is the one Claude-side member: a read-only
-// comparison of the installed Claude agent definitions' pinned models
-// against the same effective configuration, for `orch doctor`. It
-// shares roleFiles and profileFor with the Codex rendering above
-// because both hosts name their five definitions identically; it
-// renders and writes nothing.
+// Package agents renders the five dispatched role definitions `orch
+// render-agents` writes for every enabled host. Each file starts from
+// the canonical definition embedded directly from its shipped adapter;
+// rendering substitutes only the routing fields that host supports.
 package agents
 
 import (
@@ -25,29 +12,33 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"strconv"
 	"strings"
 
+	"github.com/kninetimmy/orch/adapters/claude"
 	"github.com/kninetimmy/orch/adapters/codex"
 	"github.com/kninetimmy/orch/internal/config"
 )
 
-// Dir is the repo-relative, slash-form destination directory `orch
-// render-agents` writes into. It is a machine-local artifact (like
-// config.local.toml), not a committed one: a repository's own
-// .gitignore, not this package, decides whether it is tracked.
-const Dir = ".codex/agents"
+// Project-local generated-agent destinations. Initialization and
+// configuration add both to .gitignore whether or not both hosts are
+// currently enabled, so enabling the other host later stays safe.
+const (
+	ClaudeDir = ".claude/agents"
+	CodexDir  = ".codex/agents"
+)
 
-// roleFile pairs one hosts.codex.roles key with the canonical TOML
-// file stem it renders. review_downgrade maps to orch-reviewer-safe:
-// the §10 safe-review-downgrade profile has no role of its own file
-// name (see adapters/codex/README.md).
+// roleFile pairs one hosts.<host>.roles key with the canonical file
+// stem it renders. review_downgrade maps to orch-reviewer-safe: the
+// safe-review-downgrade profile has no role of its own file name.
 type roleFile struct {
 	role string
 	stem string
 }
 
-// roleFiles lists the five agent files this package renders, in the
-// same fixed order every run produces them.
+// roleFiles lists every dispatched role definition in the fixed order
+// every host render produces. Architect has no definition because the
+// Architect is the host session itself, never a dispatched agent.
 var roleFiles = []roleFile{
 	{"scout", "orch-scout"},
 	{"implementer", "orch-implementer"},
@@ -56,16 +47,27 @@ var roleFiles = []roleFile{
 	{"review_downgrade", "orch-reviewer-safe"},
 }
 
-// File is one rendered agent TOML: Name is the file stem (e.g.
-// "orch-scout", no extension), Content its fully substituted bytes.
+// File is one rendered project agent definition. Path is repo-relative
+// and slash-form; Content is the fully substituted canonical body.
 type File struct {
-	Name    string
+	Path    string
 	Content []byte
 }
 
+// Destination returns host's repo-relative generated-agent directory.
+func Destination(host string) (string, error) {
+	switch host {
+	case "claude":
+		return ClaudeDir, nil
+	case "codex":
+		return CodexDir, nil
+	default:
+		return "", fmt.Errorf("agents: unsupported host %q", host)
+	}
+}
+
 // profileFor returns role's RoleProfile from roles. role is always one
-// of roleFiles' five keys; architect has no agent file (the Architect
-// is the host session itself, never a dispatched agent).
+// of roleFiles' five keys.
 func profileFor(roles config.Roles, role string) config.RoleProfile {
 	switch role {
 	case "scout":
@@ -84,48 +86,54 @@ func profileFor(roles config.Roles, role string) config.RoleProfile {
 	}
 }
 
-// Render produces the five agent TOMLs for h's roles, in roleFiles
-// order. h must not be nil — the caller (`orch render-agents`) fails
-// closed before calling Render when hosts.codex is not enabled.
-func Render(h *config.Host) ([]File, error) {
+// Render produces host's five project agent definitions in roleFiles
+// order. h must be the enabled host's effective configuration.
+func Render(host string, h *config.Host) ([]File, error) {
 	if h == nil {
-		return nil, errors.New("agents.Render: codex host is nil")
+		return nil, fmt.Errorf("agents.Render: %s host is nil", host)
 	}
+	dir, err := Destination(host)
+	if err != nil {
+		return nil, err
+	}
+
 	files := make([]File, 0, len(roleFiles))
 	for _, rf := range roleFiles {
-		canonical, err := codex.AgentTOMLs.ReadFile("agents/" + rf.stem + ".toml")
-		if err != nil {
-			return nil, fmt.Errorf("read canonical %s.toml: %w", rf.stem, err)
-		}
 		profile := profileFor(h.Roles, rf.role)
-		content, err := substitute(canonical, profile.Model, profile.Effort)
-		if err != nil {
-			return nil, fmt.Errorf("render %s.toml: %w", rf.stem, err)
+		var canonical, content []byte
+		var ext string
+		switch host {
+		case "claude":
+			ext = ".md"
+			canonical, err = claude.AgentDefinitions.ReadFile("agents/" + rf.stem + ext)
+			if err == nil {
+				content, err = substituteClaude(canonical, profile.Model)
+			}
+		case "codex":
+			ext = ".toml"
+			canonical, err = codex.AgentTOMLs.ReadFile("agents/" + rf.stem + ext)
+			if err == nil {
+				content, err = substituteCodex(canonical, profile.Model, profile.Effort)
+			}
 		}
-		files = append(files, File{Name: rf.stem, Content: content})
+		if err != nil {
+			return nil, fmt.Errorf("render %s/%s%s: %w", host, rf.stem, ext, err)
+		}
+		files = append(files, File{Path: dir + "/" + rf.stem + ext, Content: content})
 	}
 	return files, nil
 }
 
-// developerInstructionsHeader marks where every canonical agent TOML's
-// substitutable header (name, description, model,
-// model_reasoning_effort) ends and its role-specific prose begins.
-// substitute never rewrites anything at or past this marker, so a
-// coincidental mention of a model name inside the prose is never
-// touched.
+// developerInstructionsHeader marks where every canonical Codex agent
+// TOML's substitutable header ends and its role-specific prose begins.
 const developerInstructionsHeader = "\ndeveloper_instructions = \"\"\"\n"
 
-var modelLine = regexp.MustCompile(`(?m)^model = "[^"]*"$`)
-var effortLine = regexp.MustCompile(`(?m)^model_reasoning_effort = "[^"]*"$`)
+var codexModelLine = regexp.MustCompile(`(?m)^model = "[^"]*"$`)
+var codexEffortLine = regexp.MustCompile(`(?m)^model_reasoning_effort = "[^"]*"$`)
 
-// substitute replaces canonical's model and model_reasoning_effort
-// values with model and effort, leaving every other byte — including
-// the entire developer_instructions body — untouched. It fails closed
-// if canonical does not have the expected shape (missing
-// developer_instructions marker, or not exactly one model /
-// model_reasoning_effort line in the header), rather than silently
-// rewriting the wrong line or leaving a value unsubstituted.
-func substitute(canonical []byte, model, effort string) ([]byte, error) {
+// substituteCodex replaces only model and model_reasoning_effort in
+// canonical's header, leaving every other byte untouched.
+func substituteCodex(canonical []byte, model, effort string) ([]byte, error) {
 	s := string(canonical)
 	idx := strings.Index(s, developerInstructionsHeader)
 	if idx < 0 {
@@ -133,13 +141,45 @@ func substitute(canonical []byte, model, effort string) ([]byte, error) {
 	}
 	header, rest := s[:idx], s[idx:]
 
-	header, err := replaceOneLine(header, modelLine, fmt.Sprintf("model = %q", model))
+	header, err := replaceOneLine(header, codexModelLine, fmt.Sprintf("model = %q", model))
 	if err != nil {
 		return nil, fmt.Errorf("model: %w", err)
 	}
-	header, err = replaceOneLine(header, effortLine, fmt.Sprintf("model_reasoning_effort = %q", effort))
+	header, err = replaceOneLine(header, codexEffortLine, fmt.Sprintf("model_reasoning_effort = %q", effort))
 	if err != nil {
 		return nil, fmt.Errorf("model_reasoning_effort: %w", err)
+	}
+	return []byte(header + rest), nil
+}
+
+const claudeFrontmatterStart = "---\n"
+const claudeFrontmatterEnd = "\n---\n"
+
+var claudeModelLine = regexp.MustCompile(`(?m)^model: [^\r\n]*$`)
+
+// substituteClaude replaces only model in canonical's frontmatter.
+// This adapter does not pin Claude effort in project definitions; it
+// continues to travel as the Delivery skill's prompt cue. The unchanged
+// canonical value remains byte-identical; every override is quoted so
+// YAML cannot reinterpret it or let it inject another frontmatter field.
+func substituteClaude(canonical []byte, model string) ([]byte, error) {
+	s := string(canonical)
+	if !strings.HasPrefix(s, claudeFrontmatterStart) {
+		return nil, errors.New("canonical Markdown has no leading frontmatter")
+	}
+	end := strings.Index(s[len(claudeFrontmatterStart):], claudeFrontmatterEnd)
+	if end < 0 {
+		return nil, errors.New("canonical Markdown has no closing frontmatter delimiter")
+	}
+	end += len(claudeFrontmatterStart)
+	header, rest := s[:end], s[end:]
+	value := strconv.Quote(model)
+	if claudeModelLine.FindString(header) == "model: "+model {
+		value = model
+	}
+	header, err := replaceOneLine(header, claudeModelLine, "model: "+value)
+	if err != nil {
+		return nil, fmt.Errorf("model: %w", err)
 	}
 	return []byte(header + rest), nil
 }
@@ -154,21 +194,15 @@ func replaceOneLine(s string, pattern *regexp.Regexp, replacement string) (strin
 	return pattern.ReplaceAllLiteralString(s, replacement), nil
 }
 
-// Write atomically writes each of files into repoRoot's Dir, creating
-// the directory if absent and overwriting any existing file: a temp
-// file in the same directory, synced, then renamed over the
-// destination (internal/config.WriteLocal's shape, which also replaces
-// atomically on Windows). On any single file's failure the files
-// written before it are left in place; the failing file's own prior
-// content, if any, is left untouched and its temp file removed on a
-// best-effort basis.
+// Write atomically writes files into their project directories,
+// creating those directories if absent and overwriting existing files.
 func Write(repoRoot string, files []File) error {
-	dir := filepath.Join(repoRoot, filepath.FromSlash(Dir))
-	if err := os.MkdirAll(dir, 0o755); err != nil {
-		return fmt.Errorf("create %s: %w", Dir, err)
-	}
 	for _, f := range files {
-		path := filepath.Join(dir, f.Name+".toml")
+		path := filepath.Join(repoRoot, filepath.FromSlash(f.Path))
+		dir := filepath.Dir(path)
+		if err := os.MkdirAll(dir, 0o755); err != nil {
+			return fmt.Errorf("create %s: %w", filepath.ToSlash(filepath.Dir(f.Path)), err)
+		}
 		if err := writeAtomic(path, dir, f.Content); err != nil {
 			return err
 		}
@@ -176,30 +210,28 @@ func Write(repoRoot string, files []File) error {
 	return nil
 }
 
-// Stale reports every file Write would produce that is absent,
-// unreadable, or byte-different from Render's current output. Paths
-// are repo-relative and slash-form; read errors are joined after every
-// expected file has been checked so callers can name all bad files.
-func Stale(repoRoot string, h *config.Host) ([]string, error) {
-	files, err := Render(h)
+// Stale reports every definition for host that is absent, unreadable,
+// or byte-different from Render's current output. Read errors are joined
+// after every expected path has been checked so callers can name all of
+// them at once.
+func Stale(repoRoot, host string, h *config.Host) ([]string, error) {
+	files, err := Render(host, h)
 	if err != nil {
 		return nil, err
 	}
 
-	dir := filepath.Join(repoRoot, filepath.FromSlash(Dir))
 	var stale []string
 	var readErrs []error
 	for _, f := range files {
-		rel := Dir + "/" + f.Name + ".toml"
-		got, err := os.ReadFile(filepath.Join(dir, f.Name+".toml"))
+		got, err := os.ReadFile(filepath.Join(repoRoot, filepath.FromSlash(f.Path)))
 		switch {
 		case errors.Is(err, fs.ErrNotExist):
-			stale = append(stale, rel)
+			stale = append(stale, f.Path)
 		case err != nil:
-			stale = append(stale, rel)
-			readErrs = append(readErrs, fmt.Errorf("read %s: %w", rel, err))
+			stale = append(stale, f.Path)
+			readErrs = append(readErrs, fmt.Errorf("read %s: %w", f.Path, err))
 		case !bytes.Equal(got, f.Content):
-			stale = append(stale, rel)
+			stale = append(stale, f.Path)
 		}
 	}
 	return stale, errors.Join(readErrs...)

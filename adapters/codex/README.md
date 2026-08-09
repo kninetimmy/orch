@@ -67,8 +67,8 @@ do.
   `model_reasoning_effort`. `orch-reviewer-safe` is the §10 safe-review
   downgrade encoding: since Codex has no per-spawn model override, the
   downgrade the engine computes for a mechanical/low-risk/
-  fully-specified/unsurprising issue has to be an installed TOML of its
-  own, dispatched by name exactly like `orch-reviewer`.
+  fully-specified/unsurprising issue has to have its own project TOML
+  under `.codex/agents/`, dispatched by name exactly like `orch-reviewer`.
 
 No `commands/` directory and no prompt files ship with this adapter:
 Codex custom prompts (slash commands) are deprecated, so skills are
@@ -99,16 +99,16 @@ decision, not an oversight).
    they run at all. Until that approval happens, `orch guard codex` and
    `orch hook codex session-start` silently do not run — the same
    fail-open class as a missing binary, not a denial or an error.
-4. Copy the five agent TOMLs under `agents/` into the project's
-   `.codex/agents/`.
-   Codex plugins cannot bundle agent definitions, so this copy is a
-   separate manual step every install of this adapter needs, not
-   something the plugin installs for you — the marketplace install in
-   step 2 does not remove it. `orch render-agents` (PRD §22) is the
-   mechanical alternative to a manual copy: it renders the same five
-   files, with `model`/`model_reasoning_effort` substituted from the
-   repository's own `hosts.codex.roles`, into the project's
-   `.codex/agents/` directly.
+4. After `orch init` is merged in a repository, run `orch
+   render-agents` there. Codex plugins cannot bundle agent definitions,
+   so the command writes the five canonical TOMLs to the project's
+   `.codex/agents/`, substituting `model` and
+   `model_reasoning_effort` from the effective `hosts.codex.roles`.
+   It also renders every other enabled host, and refuses before writing
+   unless every enabled destination is git-ignored. Run it again after
+   changing role configuration or upgrading Orch. Before this change a
+   manual five-file copy was an accepted alternative; after it,
+   `orch render-agents` is the single per-repository workflow.
 5. Enable the `request_user_input` question primitive — verified on
    codex-cli 0.144.1, both of these in `~/.codex/config.toml`:
 
@@ -181,29 +181,30 @@ bugs:
   absence of session-start context are the mitigations; there is no way
   to make either gap fail closed from inside the hook itself.
 - **No per-spawn model override.** Codex CLI dispatches an agent with
-  whatever `model`/`model_reasoning_effort` its installed TOML pins —
+  whatever `model`/`model_reasoning_effort` its project TOML pins —
   there is no host mechanism to override either per dispatch. This is
   not a Codex-specific constraint relative to Claude Code: both hosts
-  require the routed selection to match an installed agent definition
-  exactly, because Claude Code's Task tool `model` parameter only
+  require the routed selection to match an active project agent
+  definition exactly, because Claude Code's Task tool `model` parameter only
   accepts coarse tier aliases (`sonnet`/`opus`/`haiku`/`fable`), never
   an exact version string, so a per-spawn override cannot express a
   routed selection there either. `orch-delivery`'s spawn step therefore
   stops and tells the human on a mismatch, on either host, rather than
   silently substituting a mismatched agent or reporting the routed
   selection as if it ran. The genuine Codex-specific piece is effort:
-  it is pinned in the installed TOML and enforced by the host, whereas
+  it is pinned in the project TOML and enforced by the host, whereas
   Claude Code subagent spawns take no effort parameter at all and the
   routed effort is only conveyed as a prompt cue. `orch-reviewer-safe`
   exists specifically so the §10 safe-downgrade row has a real
-  installed TOML to dispatch, instead of dead-ending at that same
+  project TOML to dispatch, instead of dead-ending at that same
   stop-and-tell-human rule on every routine downgrade.
 - **A configured non-default model is applied by `orch render-agents`,
   not automatically.** A repository that overrides the §10 defaults
   must run `orch render-agents` (PRD §22) itself — install and upgrade
-  do not run it for you — to re-render the five files under
-  `.codex/agents/` from the current `hosts.codex.roles` before the
-  override takes effect for dispatched agents.
+  do not run it for you — to re-render every enabled host's project
+  definitions from the effective role configuration before the
+  override takes effect for dispatched agents. `orch doctor` and plan
+  activation fail closed on missing, unreadable, or stale definitions.
 - **An unrecognized future `apply_patch` envelope directive denies,
   fail-closed.** `internal/guard`'s envelope parser treats any `*** `
   directive line it does not already recognize as a malformed envelope

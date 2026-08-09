@@ -20,4 +20,5 @@ coverage.html
 .orchestrator/metrics/
 
 # Generated orch render-agents output
+.claude/agents/
 .codex/agents/
