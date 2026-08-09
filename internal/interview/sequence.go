@@ -2,7 +2,7 @@ package interview
 
 import (
 	"fmt"
-	"strings"
+	"slices"
 
 	"github.com/kninetimmy/orch/internal/question"
 )
@@ -109,10 +109,11 @@ var hostModels = map[string][]string{
 
 // hostEfforts lists each host's full closed effort enum — every value
 // internal/config's effortsByHost accepts for that host, in the same
-// order validate.go's effortList documents — not just the subset
-// offered as literal select options (effortsOffered). validEffort
-// (configurelocal.go) checks a typed value against this full list, so
-// it stays the single full-domain source of truth the interview owns.
+// order validate.go's effortList documents — not just the window any
+// one question offers as literal select options (effortsOffered).
+// validEffort (configurelocal.go) checks a typed value against this
+// full list, so it stays the single full-domain source of truth the
+// interview owns.
 var hostEfforts = map[string][]string{
 	"codex":  {"low", "medium", "high", "xhigh", "max", "ultra"},
 	"claude": {"low", "medium", "high", "xhigh", "max"},
@@ -124,19 +125,28 @@ var hostEfforts = map[string][]string{
 // for the FreeText escape hatch to cover the rest.
 const maxOfferedEfforts = 4
 
-// effortsOffered returns the leading maxOfferedEfforts values of
-// host's full effort enum (hostEfforts) — the subset an effort
-// question offers as literal Options. Every level hostEfforts lists
-// beyond this subset remains expressible only through that question's
-// FreeText escape hatch, validated against hostEfforts' full domain
-// wherever a typed value is ingested (validEffort, and internal/config's
-// own Parse/RenderLocal round-trip checks).
-func effortsOffered(host string) []string {
+// effortsOffered returns the contiguous window of host's full effort
+// enum (hostEfforts) an effort question whose default is def offers as
+// literal Options: the leading maxOfferedEfforts values, or — when def
+// sits past them — the maxOfferedEfforts values ending at def, so a
+// question never recommends a level it does not itself offer. The
+// window is therefore per-question, not per-host: the Codex roles
+// defaulting to "max" (defaultProfiles) offer a higher window than
+// those defaulting to "xhigh". Every level outside the window remains
+// expressible only through that question's FreeText escape hatch,
+// validated against hostEfforts' full domain wherever a typed value is
+// ingested (validEffort, and internal/config's own Parse/RenderLocal
+// round-trip checks).
+func effortsOffered(host, def string) []string {
 	efforts := hostEfforts[host]
-	if len(efforts) > maxOfferedEfforts {
-		return efforts[:maxOfferedEfforts]
+	if len(efforts) <= maxOfferedEfforts {
+		return efforts
 	}
-	return efforts
+	end := maxOfferedEfforts
+	if i := slices.Index(efforts, def); i >= end {
+		end = i + 1
+	}
+	return efforts[end-maxOfferedEfforts : end]
 }
 
 // hostLabels is each host key's human-readable display name.
@@ -298,26 +308,19 @@ func modelOptions(host, def string) []question.Option {
 	return opts
 }
 
-// effortOptions lists host's offered effort subset (effortsOffered),
-// marking def as Recommended. def need not be among these options —
-// the question's FreeText escape hatch admits any other value in
-// host's full effort enum (hostEfforts); SpecCheck permits a Default
-// outside Options exactly when FreeText is set.
+// effortOptions lists host's offered effort window (effortsOffered),
+// marking def as Recommended. Each option is labelled with the literal
+// enum token it submits — the same token config.toml, the routing
+// table, and the FreeText escape hatch use — rather than a prose gloss
+// that would hide it. Values outside the window stay reachable through
+// that hatch.
 func effortOptions(host, def string) []question.Option {
-	efforts := effortsOffered(host)
+	efforts := effortsOffered(host, def)
 	opts := make([]question.Option, len(efforts))
 	for i, e := range efforts {
-		opts[i] = question.Option{Value: e, Label: effortLabel(e), Recommended: e == def}
+		opts[i] = question.Option{Value: e, Label: e, Recommended: e == def}
 	}
 	return opts
-}
-
-// effortLabel title-cases an effort enum value for display.
-func effortLabel(effort string) string {
-	if effort == "xhigh" {
-		return "Extra high"
-	}
-	return strings.ToUpper(effort[:1]) + effort[1:]
 }
 
 // settingsDefaults holds settingsDoc's four question defaults, so init

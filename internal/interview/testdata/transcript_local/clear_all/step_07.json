@@ -37,20 +37,20 @@
       "options": [
         {
           "value": "low",
-          "label": "Low"
+          "label": "low"
         },
         {
           "value": "medium",
-          "label": "Medium"
+          "label": "medium"
         },
         {
           "value": "high",
-          "label": "High (committed)",
+          "label": "high (committed)",
           "recommended": true
         },
         {
           "value": "xhigh",
-          "label": "Extra high"
+          "label": "xhigh"
         }
       ],
       "free_text": true,

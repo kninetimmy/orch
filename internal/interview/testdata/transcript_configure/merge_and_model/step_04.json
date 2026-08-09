@@ -34,19 +34,19 @@
       "options": [
         {
           "value": "low",
-          "label": "Low"
+          "label": "low"
         },
         {
           "value": "medium",
-          "label": "Medium"
+          "label": "medium"
         },
         {
           "value": "high",
-          "label": "High"
+          "label": "high"
         },
         {
           "value": "xhigh",
-          "label": "Extra high",
+          "label": "xhigh",
           "recommended": true
         }
       ],

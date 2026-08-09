@@ -527,17 +527,19 @@ func modelOptionsLocal(host, committedVal, effectiveVal string) []question.Optio
 	return opts
 }
 
-// effortOptionsLocal lists host's offered effort subset
-// (effortsOffered), marking committedVal's option "(committed)" in its
-// Label and effectiveVal Recommended. Neither value need be among
-// these options — the question's FreeText escape hatch admits any
-// other value in host's full effort enum (hostEfforts), validated by
+// effortOptionsLocal lists the effort window offered around
+// effectiveVal (effortsOffered), labelling each option with the
+// literal enum token it submits, marking committedVal's option
+// "(committed)" in its Label and effectiveVal Recommended. The window
+// always contains effectiveVal; committedVal need not be among these
+// options — the question's FreeText escape hatch admits any other
+// value in host's full effort enum (hostEfforts), validated by
 // validEffort wherever a typed value is ingested.
 func effortOptionsLocal(host, committedVal, effectiveVal string) []question.Option {
-	efforts := effortsOffered(host)
+	efforts := effortsOffered(host, effectiveVal)
 	opts := make([]question.Option, len(efforts))
 	for i, e := range efforts {
-		label := effortLabel(e)
+		label := e
 		if e == committedVal {
 			label += " (committed)"
 		}
