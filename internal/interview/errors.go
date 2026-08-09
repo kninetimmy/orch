@@ -24,7 +24,7 @@ var (
 	ErrApprovalBlocked = errors.New("cannot approve while blockers remain")
 	// ErrBadAnswer reports a free-text answer that fails its
 	// ingestion-time semantic check at materialization: a model string
-	// containing whitespace, or a concurrency value that is not an
-	// integer >= 1.
+	// containing whitespace or shortening a known model id, or a
+	// concurrency value that is not an integer >= 1.
 	ErrBadAnswer = errors.New("answer fails its semantic validation")
 )

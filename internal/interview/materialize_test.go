@@ -146,3 +146,63 @@ func TestMaterializeRoundTripsThroughRenderAndParse(t *testing.T) {
 		t.Errorf("ConfigRevision = %q, want a sha256: prefix", cfg.ConfigRevision)
 	}
 }
+
+// TestValidateModelFreeTextNearMiss proves issue #207's shared seam:
+// a typed model that shortens (or mis-cases) a known model id for the
+// question's host is rejected with every matching full id suggested,
+// while a known id and an id resembling nothing known both pass. Both
+// question id shapes are covered — init/`orch configure`'s
+// "host.<host>.role.<role>.model" and configure-local's
+// "hosts.<host>.roles.<role>.model" — since all three interviews reach
+// this one function.
+func TestValidateModelFreeTextNearMiss(t *testing.T) {
+	tests := []struct {
+		id       string
+		value    string
+		wantErr  bool
+		wantText string
+	}{
+		{id: roleModelID("claude", "architect"), value: "fable-5", wantErr: true, wantText: "claude-fable-5"},
+		{id: roleModelID("claude", "architect"), value: "opus-5", wantErr: true, wantText: "claude-opus-5"},
+		{id: roleModelID("claude", "architect"), value: "Claude-Opus-5", wantErr: true, wantText: "claude-opus-5"},
+		{id: roleModelID("codex", "architect"), value: "sol", wantErr: true, wantText: "gpt-5.6-sol"},
+		{id: localRoleModelID("claude", "reviewer"), value: "fable-5", wantErr: true, wantText: "claude-fable-5"},
+		{id: roleModelID("claude", "architect"), value: "claude-opus-5"},
+		{id: roleModelID("claude", "architect"), value: "claude-fable-5"},
+		{id: roleModelID("claude", "architect"), value: "claude-opus-6"},
+		{id: roleModelID("claude", "architect"), value: "claude-opus-4-8"},
+		{id: roleModelID("codex", "architect"), value: "gpt-5.6-sol"},
+		{id: localRoleModelID("codex", "reviewer"), value: "gpt-5.7-nova"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.id+"="+tt.value, func(t *testing.T) {
+			err := validateModelFreeText(tt.id, tt.value)
+			if !tt.wantErr {
+				if err != nil {
+					t.Fatalf("validateModelFreeText(%q, %q) = %v, want nil", tt.id, tt.value, err)
+				}
+				return
+			}
+			if !errors.Is(err, ErrBadAnswer) {
+				t.Fatalf("validateModelFreeText(%q, %q) = %v, want ErrBadAnswer", tt.id, tt.value, err)
+			}
+			if !strings.Contains(err.Error(), tt.wantText) {
+				t.Errorf("error %q does not suggest the full id %q", err, tt.wantText)
+			}
+		})
+	}
+}
+
+// TestValidateModelFreeTextSuggestsEveryMatch proves a value shortening
+// more than one known id names all of them, not just the first.
+func TestValidateModelFreeTextSuggestsEveryMatch(t *testing.T) {
+	err := validateModelFreeText(roleModelID("claude", "architect"), "claude")
+	if !errors.Is(err, ErrBadAnswer) {
+		t.Fatalf("validateModelFreeText err = %v, want ErrBadAnswer", err)
+	}
+	for _, want := range hostLocalModels["claude"] {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("error %q does not suggest %q", err, want)
+		}
+	}
+}

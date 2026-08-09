@@ -17,7 +17,9 @@ import (
 // Free-text answers get one more ingestion-time check materialize
 // itself owns, beyond question.ValidateAnswer's generic
 // membership/non-blank contract: a model string must contain no
-// whitespace, and the concurrency value must parse as an integer >= 1.
+// whitespace and must not be a near miss of a known model id
+// (validateModelFreeText), and the concurrency value must parse as an
+// integer >= 1.
 // Once the struct is built, Revision computes its content hash, and
 // then Render/Parse round-trip it — the exact artifact bootstrap would
 // commit is proven loadable, and the real validate() enums (which
@@ -101,8 +103,9 @@ func setRoleProfile(r *config.Roles, role string, p config.RoleProfile) {
 }
 
 // validateModelFreeText enforces the free-text ingestion rule for a
-// model answer: non-empty after trimming, and no internal whitespace
-// (an exact model version string never contains any).
+// model answer: non-empty after trimming, no internal whitespace (an
+// exact model version string never contains any), and not a near miss
+// of a known model id for the question's host.
 func validateModelFreeText(id, value string) error {
 	trimmed := strings.TrimSpace(value)
 	if trimmed == "" {
@@ -111,7 +114,45 @@ func validateModelFreeText(id, value string) error {
 	if strings.ContainsAny(value, " \t\n\r") {
 		return fmt.Errorf("%w: %s: model %q must not contain whitespace", ErrBadAnswer, id, value)
 	}
+	if suggestions := nearMissModels(id, value); len(suggestions) > 0 {
+		return fmt.Errorf("%w: %s: model %q looks like a shortened form of a known %s model; did you mean %s?",
+			ErrBadAnswer, id, value, modelHost(id), strings.Join(suggestions, ", "))
+	}
 	return nil
+}
+
+// nearMissModels returns every known model id for id's host that
+// carries value as a substring, case-insensitively — the did-you-mean
+// set for a shortened form like "fable-5" or a mis-cased
+// "Claude-Opus-5". The model domain stays otherwise open (routing
+// treats ids as opaque strings): a value equal to a known id is not a
+// near miss, and a value resembling no known id yields no suggestions
+// and so passes.
+func nearMissModels(id, value string) []string {
+	known := hostLocalModels[modelHost(id)]
+	lowered := strings.ToLower(value)
+	var suggestions []string
+	for _, model := range known {
+		if model == value {
+			return nil
+		}
+		if strings.Contains(model, lowered) {
+			suggestions = append(suggestions, model)
+		}
+	}
+	return suggestions
+}
+
+// modelHost returns the host name a model question id carries in its
+// second dotted segment — "host.<host>.role.<role>.model" for init and
+// `orch configure`, "hosts.<host>.roles.<role>.model" for
+// `orch configure-local` — or "" for an id shaped like neither.
+func modelHost(id string) string {
+	parts := strings.Split(id, ".")
+	if len(parts) < 2 {
+		return ""
+	}
+	return parts[1]
 }
 
 // parseConcurrency enforces the free-text ingestion rule for
