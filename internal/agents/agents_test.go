@@ -10,6 +10,7 @@ import (
 
 	"github.com/BurntSushi/toml"
 
+	"github.com/kninetimmy/orch/adapters/claude"
 	"github.com/kninetimmy/orch/adapters/codex"
 	"github.com/kninetimmy/orch/internal/adaptertest"
 	"github.com/kninetimmy/orch/internal/agents"
@@ -35,6 +36,25 @@ func defaultCodexHost() *config.Host {
 	}}
 }
 
+func defaultClaudeHost() *config.Host {
+	p := adaptertest.Profile("claude")
+	rp := func(role string) config.RoleProfile {
+		return config.RoleProfile{Model: p[role].Model, Effort: p[role].Effort}
+	}
+	return &config.Host{Roles: config.Roles{
+		Architect:       rp("scout"), // architect has no agent file; value irrelevant here
+		Scout:           rp("scout"),
+		Implementer:     rp("implementer"),
+		Specialist:      rp("specialist"),
+		Reviewer:        rp("reviewer"),
+		ReviewDowngrade: rp("reviewer-safe"),
+	}}
+}
+
+func stem(f agents.File) string {
+	return strings.TrimSuffix(filepath.Base(f.Path), filepath.Ext(f.Path))
+}
+
 // TestRenderDefaultProfileByteIdenticalToShipped pins acceptance
 // criterion 3: with hosts.codex.roles equal to the PRD §10 defaults,
 // every rendered file is byte-identical to its shipped counterpart
@@ -42,7 +62,7 @@ func defaultCodexHost() *config.Host {
 // Render itself uses, since that embed is the single canonical
 // source — see adapters/codex/embed.go).
 func TestRenderDefaultProfileByteIdenticalToShipped(t *testing.T) {
-	files, err := agents.Render(defaultCodexHost())
+	files, err := agents.Render("codex", defaultCodexHost())
 	if err != nil {
 		t.Fatalf("Render: %v", err)
 	}
@@ -50,12 +70,36 @@ func TestRenderDefaultProfileByteIdenticalToShipped(t *testing.T) {
 		t.Fatalf("Render returned %d files, want 5", len(files))
 	}
 	for _, f := range files {
-		want, err := codex.AgentTOMLs.ReadFile("agents/" + f.Name + ".toml")
+		name := stem(f)
+		want, err := codex.AgentTOMLs.ReadFile("agents/" + name + ".toml")
 		if err != nil {
-			t.Fatalf("read shipped %s.toml: %v", f.Name, err)
+			t.Fatalf("read shipped %s.toml: %v", name, err)
 		}
 		if string(f.Content) != string(want) {
-			t.Errorf("%s.toml does not match shipped file\n--- got ---\n%s\n--- want ---\n%s", f.Name, f.Content, want)
+			t.Errorf("%s.toml does not match shipped file\n--- got ---\n%s\n--- want ---\n%s", name, f.Content, want)
+		}
+	}
+}
+
+func TestRenderClaudeDefaultProfileByteIdenticalToShipped(t *testing.T) {
+	files, err := agents.Render("claude", defaultClaudeHost())
+	if err != nil {
+		t.Fatalf("Render: %v", err)
+	}
+	if len(files) != 5 {
+		t.Fatalf("Render returned %d files, want 5", len(files))
+	}
+	for _, f := range files {
+		name := stem(f)
+		want, err := claude.AgentDefinitions.ReadFile("agents/" + name + ".md")
+		if err != nil {
+			t.Fatalf("read shipped %s.md: %v", name, err)
+		}
+		if string(f.Content) != string(want) {
+			t.Errorf("%s.md does not match shipped file", name)
+		}
+		if f.Path != agents.ClaudeDir+"/"+name+".md" {
+			t.Errorf("Path = %q, want %s/%s.md", f.Path, agents.ClaudeDir, name)
 		}
 	}
 }
@@ -63,7 +107,7 @@ func TestRenderDefaultProfileByteIdenticalToShipped(t *testing.T) {
 // TestRenderOrderAndNames pins the exact five file stems Render
 // produces, in order.
 func TestRenderOrderAndNames(t *testing.T) {
-	files, err := agents.Render(defaultCodexHost())
+	files, err := agents.Render("codex", defaultCodexHost())
 	if err != nil {
 		t.Fatalf("Render: %v", err)
 	}
@@ -72,8 +116,8 @@ func TestRenderOrderAndNames(t *testing.T) {
 		t.Fatalf("got %d files, want %d", len(files), len(want))
 	}
 	for i, f := range files {
-		if f.Name != want[i] {
-			t.Errorf("files[%d].Name = %q, want %q", i, f.Name, want[i])
+		if got := stem(f); got != want[i] {
+			t.Errorf("files[%d] stem = %q, want %q", i, got, want[i])
 		}
 	}
 }
@@ -102,7 +146,7 @@ func TestRenderOverrideSubstitution(t *testing.T) {
 		Reviewer:        config.RoleProfile{Model: "gpt-9000-ultra", Effort: "medium"},
 		ReviewDowngrade: config.RoleProfile{Model: "gpt-9000", Effort: "high"},
 	}}
-	files, err := agents.Render(h)
+	files, err := agents.Render("codex", h)
 	if err != nil {
 		t.Fatalf("Render: %v", err)
 	}
@@ -115,51 +159,153 @@ func TestRenderOverrideSubstitution(t *testing.T) {
 		"orch-reviewer-safe": h.Roles.ReviewDowngrade,
 	}
 	for _, f := range files {
+		name := stem(f)
 		var a agentTOML
 		meta, err := toml.Decode(string(f.Content), &a)
 		if err != nil {
-			t.Fatalf("decode %s: %v", f.Name, err)
+			t.Fatalf("decode %s: %v", name, err)
 		}
 		if undecoded := meta.Undecoded(); len(undecoded) != 0 {
-			t.Errorf("%s: unrecognized keys %v", f.Name, undecoded)
+			t.Errorf("%s: unrecognized keys %v", name, undecoded)
 		}
-		wp := want[f.Name]
+		wp := want[name]
 		if a.Model != wp.Model {
-			t.Errorf("%s: model = %q, want %q", f.Name, a.Model, wp.Model)
+			t.Errorf("%s: model = %q, want %q", name, a.Model, wp.Model)
 		}
 		if a.ModelReasoningEffort != wp.Effort {
-			t.Errorf("%s: model_reasoning_effort = %q, want %q", f.Name, a.ModelReasoningEffort, wp.Effort)
+			t.Errorf("%s: model_reasoning_effort = %q, want %q", name, a.ModelReasoningEffort, wp.Effort)
 		}
-		if a.Name != f.Name {
-			t.Errorf("%s: name = %q, want %q", f.Name, a.Name, f.Name)
+		if a.Name != name {
+			t.Errorf("%s: name = %q, want %q", name, a.Name, name)
 		}
 		if a.Description == "" {
-			t.Errorf("%s: description is empty", f.Name)
+			t.Errorf("%s: description is empty", name)
 		}
 		if a.DeveloperInstructions == "" {
-			t.Errorf("%s: developer_instructions is empty", f.Name)
+			t.Errorf("%s: developer_instructions is empty", name)
 		}
 
-		shipped, err := codex.AgentTOMLs.ReadFile("agents/" + f.Name + ".toml")
+		shipped, err := codex.AgentTOMLs.ReadFile("agents/" + name + ".toml")
 		if err != nil {
-			t.Fatalf("read shipped %s.toml: %v", f.Name, err)
+			t.Fatalf("read shipped %s.toml: %v", name, err)
 		}
 		var sa agentTOML
 		if _, err := toml.Decode(string(shipped), &sa); err != nil {
-			t.Fatalf("decode shipped %s: %v", f.Name, err)
+			t.Fatalf("decode shipped %s: %v", name, err)
 		}
 		if a.Description != sa.Description {
-			t.Errorf("%s: description changed from shipped text", f.Name)
+			t.Errorf("%s: description changed from shipped text", name)
 		}
 		if a.DeveloperInstructions != sa.DeveloperInstructions {
-			t.Errorf("%s: developer_instructions changed from shipped text", f.Name)
+			t.Errorf("%s: developer_instructions changed from shipped text", name)
 		}
 	}
 }
 
+func TestRenderClaudeOverrideChangesOnlyModelLines(t *testing.T) {
+	h := defaultClaudeHost()
+	h.Roles.Scout.Model = "claude-haiku-5"
+	h.Roles.Implementer.Model = "claude-sonnet-5"
+	h.Roles.Specialist.Model = "claude-opus-5-1"
+	h.Roles.Reviewer.Model = "claude-opus-5-2"
+	h.Roles.ReviewDowngrade.Model = "claude-sonnet-5-1"
+	// Effort is intentionally different too: this adapter conveys it in
+	// the spawn prompt, so it must change no definition byte.
+	h.Roles.Scout.Effort = "max"
+	h.Roles.Implementer.Effort = "low"
+
+	files, err := agents.Render("claude", h)
+	if err != nil {
+		t.Fatalf("Render: %v", err)
+	}
+	wantModel := map[string]string{
+		"orch-scout":         h.Roles.Scout.Model,
+		"orch-implementer":   h.Roles.Implementer.Model,
+		"orch-specialist":    h.Roles.Specialist.Model,
+		"orch-reviewer":      h.Roles.Reviewer.Model,
+		"orch-reviewer-safe": h.Roles.ReviewDowngrade.Model,
+	}
+	for _, f := range files {
+		name := stem(f)
+		shipped, err := claude.AgentDefinitions.ReadFile("agents/" + name + ".md")
+		if err != nil {
+			t.Fatal(err)
+		}
+		gotLines := strings.Split(string(f.Content), "\n")
+		wantLines := strings.Split(string(shipped), "\n")
+		if len(gotLines) != len(wantLines) {
+			t.Fatalf("%s line count changed: got %d, want %d", name, len(gotLines), len(wantLines))
+		}
+		for i := range gotLines {
+			if gotLines[i] == wantLines[i] {
+				continue
+			}
+			if !strings.HasPrefix(gotLines[i], "model: ") || !strings.HasPrefix(wantLines[i], "model: ") {
+				t.Errorf("%s line %d changed outside model frontmatter:\n got %q\nwant %q", name, i+1, gotLines[i], wantLines[i])
+			}
+		}
+		if !strings.Contains(string(f.Content), "\nmodel: \""+wantModel[name]+"\"\n") {
+			t.Errorf("%s does not pin model %q", name, wantModel[name])
+		}
+	}
+}
+
+func TestRenderClaudeEffortOnlyIsByteIdentical(t *testing.T) {
+	h := defaultClaudeHost()
+	h.Roles.Scout.Effort = "max"
+	h.Roles.Implementer.Effort = "low"
+	h.Roles.Specialist.Effort = "medium"
+	h.Roles.Reviewer.Effort = "xhigh"
+	h.Roles.ReviewDowngrade.Effort = "high"
+	files, err := agents.Render("claude", h)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, f := range files {
+		want, err := claude.AgentDefinitions.ReadFile("agents/" + stem(f) + ".md")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if string(f.Content) != string(want) {
+			t.Errorf("%s changed for an effort-only override", f.Path)
+		}
+	}
+}
+
+func TestRenderClaudeQuotesUnsafeModel(t *testing.T) {
+	h := defaultClaudeHost()
+	h.Roles.Scout.Model = "wrong\ntools: Bash"
+	files, err := agents.Render("claude", h)
+	if err != nil {
+		t.Fatal(err)
+	}
+	content := string(files[0].Content)
+	if !strings.Contains(content, `model: "wrong\ntools: Bash"`) {
+		t.Errorf("unsafe model was not quoted:\n%s", content)
+	}
+	if strings.Count(content, "\ntools:") != 1 {
+		t.Errorf("unsafe model injected a tools field:\n%s", content)
+	}
+
+	h.Roles.Scout.Model = "true"
+	files, err = agents.Render("claude", h)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(files[0].Content), `model: "true"`) {
+		t.Errorf("YAML keyword model was not quoted:\n%s", files[0].Content)
+	}
+}
+
 func TestRenderNilHostFailsClosed(t *testing.T) {
-	if _, err := agents.Render(nil); err == nil {
+	if _, err := agents.Render("codex", nil); err == nil {
 		t.Error("agents.Render(nil) succeeded, want an error")
+	}
+}
+
+func TestRenderUnknownHostFailsClosed(t *testing.T) {
+	if _, err := agents.Render("other", &config.Host{}); err == nil {
+		t.Error("Render accepted an unsupported host")
 	}
 }
 
@@ -167,20 +313,20 @@ func TestRenderNilHostFailsClosed(t *testing.T) {
 // package documents: a rendered file must never introduce a carriage
 // return the shipped source did not already contain.
 func TestRenderNoTrailingCR(t *testing.T) {
-	files, err := agents.Render(defaultCodexHost())
+	files, err := agents.Render("codex", defaultCodexHost())
 	if err != nil {
 		t.Fatalf("Render: %v", err)
 	}
 	for _, f := range files {
 		if strings.Contains(string(f.Content), "\r") {
-			t.Errorf("%s: rendered content contains a carriage return", f.Name)
+			t.Errorf("%s: rendered content contains a carriage return", f.Path)
 		}
 	}
 }
 
 func TestWriteCreatesDirectoryAndFiles(t *testing.T) {
 	root := t.TempDir()
-	files, err := agents.Render(defaultCodexHost())
+	files, err := agents.Render("codex", defaultCodexHost())
 	if err != nil {
 		t.Fatalf("Render: %v", err)
 	}
@@ -188,7 +334,7 @@ func TestWriteCreatesDirectoryAndFiles(t *testing.T) {
 		t.Fatalf("Write: %v", err)
 	}
 
-	dir := filepath.Join(root, filepath.FromSlash(agents.Dir))
+	dir := filepath.Join(root, filepath.FromSlash(agents.CodexDir))
 	entries, err := os.ReadDir(dir)
 	if err != nil {
 		t.Fatalf("ReadDir: %v", err)
@@ -197,12 +343,12 @@ func TestWriteCreatesDirectoryAndFiles(t *testing.T) {
 		t.Fatalf("wrote %d files, want 5", len(entries))
 	}
 	for _, f := range files {
-		got, err := os.ReadFile(filepath.Join(dir, f.Name+".toml"))
+		got, err := os.ReadFile(filepath.Join(root, filepath.FromSlash(f.Path)))
 		if err != nil {
-			t.Fatalf("read written %s: %v", f.Name, err)
+			t.Fatalf("read written %s: %v", f.Path, err)
 		}
 		if string(got) != string(f.Content) {
-			t.Errorf("%s: written content does not match Render's output", f.Name)
+			t.Errorf("%s: written content does not match Render's output", f.Path)
 		}
 	}
 
@@ -214,11 +360,35 @@ func TestWriteCreatesDirectoryAndFiles(t *testing.T) {
 	}
 }
 
+func TestWriteCreatesBothHostDirectories(t *testing.T) {
+	root := t.TempDir()
+	claudeFiles, err := agents.Render("claude", defaultClaudeHost())
+	if err != nil {
+		t.Fatal(err)
+	}
+	codexFiles, err := agents.Render("codex", defaultCodexHost())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := agents.Write(root, append(claudeFiles, codexFiles...)); err != nil {
+		t.Fatal(err)
+	}
+	for _, dir := range []string{agents.ClaudeDir, agents.CodexDir} {
+		entries, err := os.ReadDir(filepath.Join(root, filepath.FromSlash(dir)))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(entries) != 5 {
+			t.Errorf("%s has %d files, want 5", dir, len(entries))
+		}
+	}
+}
+
 // TestWriteOverwritesExisting asserts a second Write replaces stale
 // content rather than leaving it or appending to it.
 func TestWriteOverwritesExisting(t *testing.T) {
 	root := t.TempDir()
-	dir := filepath.Join(root, filepath.FromSlash(agents.Dir))
+	dir := filepath.Join(root, filepath.FromSlash(agents.CodexDir))
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		t.Fatal(err)
 	}
@@ -227,7 +397,7 @@ func TestWriteOverwritesExisting(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	files, err := agents.Render(defaultCodexHost())
+	files, err := agents.Render("codex", defaultCodexHost())
 	if err != nil {
 		t.Fatalf("Render: %v", err)
 	}
@@ -247,7 +417,7 @@ func TestWriteOverwritesExisting(t *testing.T) {
 func TestStaleReportsEveryBadFile(t *testing.T) {
 	root := t.TempDir()
 	h := defaultCodexHost()
-	files, err := agents.Render(h)
+	files, err := agents.Render("codex", h)
 	if err != nil {
 		t.Fatalf("Render: %v", err)
 	}
@@ -255,7 +425,7 @@ func TestStaleReportsEveryBadFile(t *testing.T) {
 		t.Fatalf("Write: %v", err)
 	}
 
-	dir := filepath.Join(root, filepath.FromSlash(agents.Dir))
+	dir := filepath.Join(root, filepath.FromSlash(agents.CodexDir))
 	if err := os.Remove(filepath.Join(dir, "orch-scout.toml")); err != nil {
 		t.Fatal(err)
 	}
@@ -270,23 +440,23 @@ func TestStaleReportsEveryBadFile(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	stale, err := agents.Stale(root, h)
+	stale, err := agents.Stale(root, "codex", h)
 	want := []string{
-		agents.Dir + "/orch-scout.toml",
-		agents.Dir + "/orch-implementer.toml",
-		agents.Dir + "/orch-reviewer.toml",
+		agents.CodexDir + "/orch-scout.toml",
+		agents.CodexDir + "/orch-implementer.toml",
+		agents.CodexDir + "/orch-reviewer.toml",
 	}
 	if strings.Join(stale, ",") != strings.Join(want, ",") {
 		t.Errorf("Stale = %v, want %v", stale, want)
 	}
-	if err == nil || !strings.Contains(err.Error(), agents.Dir+"/orch-implementer.toml") {
+	if err == nil || !strings.Contains(err.Error(), agents.CodexDir+"/orch-implementer.toml") {
 		t.Errorf("err = %v, want unreadable file named", err)
 	}
 }
 
 func TestStaleTracksEffectiveConfiguration(t *testing.T) {
 	root := t.TempDir()
-	files, err := agents.Render(defaultCodexHost())
+	files, err := agents.Render("codex", defaultCodexHost())
 	if err != nil {
 		t.Fatalf("Render: %v", err)
 	}
@@ -296,11 +466,32 @@ func TestStaleTracksEffectiveConfiguration(t *testing.T) {
 
 	h := defaultCodexHost()
 	h.Roles.Reviewer = config.RoleProfile{Model: "gpt-9000-ultra", Effort: "low"}
-	stale, err := agents.Stale(root, h)
+	stale, err := agents.Stale(root, "codex", h)
 	if err != nil {
 		t.Fatalf("Stale: %v", err)
 	}
-	want := agents.Dir + "/orch-reviewer.toml"
+	want := agents.CodexDir + "/orch-reviewer.toml"
+	if len(stale) != 1 || stale[0] != want {
+		t.Errorf("Stale = %v, want [%s]", stale, want)
+	}
+}
+
+func TestStaleTracksClaudeEffectiveConfiguration(t *testing.T) {
+	root := t.TempDir()
+	h := defaultClaudeHost()
+	files, err := agents.Render("claude", h)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := agents.Write(root, files); err != nil {
+		t.Fatal(err)
+	}
+	h.Roles.Reviewer.Model = "claude-opus-5-1"
+	stale, err := agents.Stale(root, "claude", h)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := agents.ClaudeDir + "/orch-reviewer.md"
 	if len(stale) != 1 || stale[0] != want {
 		t.Errorf("Stale = %v, want [%s]", stale, want)
 	}

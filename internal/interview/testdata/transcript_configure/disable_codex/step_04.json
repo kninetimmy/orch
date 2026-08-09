@@ -24,6 +24,7 @@
         ".orchestrator/config.local.toml",
         ".orchestrator/state.json",
         ".orchestrator/delivery.lock",
+        ".claude/agents/",
         ".codex/agents/",
         ".orchestrator/metrics/"
       ],

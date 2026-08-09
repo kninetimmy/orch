@@ -122,37 +122,32 @@ func runDoctor(env Env) error {
 
 	if cfgErr == nil {
 		if cfg.Hosts.Claude != nil {
-			// The Claude counterpart of the codex agent files check
-			// below. It compares the installed definitions, resolved
-			// from the same listing the adapter check just read, not
-			// this repository's adapters/claude/agents copy: an
-			// installed plugin behind head can still pin an older
-			// model. A failed adapter check leaves no install path, so
-			// this one fails closed rather than reporting a pass it
-			// never established.
-			plugin, adapterErr := checkAdapter(env, claudeAdapter)
-			check("claude adapter", adapterErr)
-			check("claude agent definitions", agents.CheckClaude(cfg.Hosts.Claude, plugin.InstallPath))
+			check("claude adapter", checkAdapter(env, claudeAdapter))
 		}
 		if cfg.Hosts.Codex != nil {
-			_, adapterErr := checkAdapter(env, codexAdapter)
-			check("codex adapter", adapterErr)
+			check("codex adapter", checkAdapter(env, codexAdapter))
 		}
 	}
 
-	if cfgErr == nil && cfg.Hosts.Codex != nil {
-		stale, staleErr := agents.Stale(env.RepoRoot, cfg.Hosts.Codex)
-		switch {
-		case len(stale) > 0:
-			detail := strings.Join(stale, ", ")
-			if staleErr != nil {
-				detail += fmt.Sprintf(" (%v)", staleErr)
+	if cfgErr == nil {
+		for _, host := range cfg.EnabledHosts() {
+			h := cfg.Hosts.Claude
+			if host == "codex" {
+				h = cfg.Hosts.Codex
 			}
-			check("codex agent files", fmt.Errorf("absent, unreadable, or out of date: %s; run `orch render-agents` to regenerate them", detail))
-		case staleErr != nil:
-			check("codex agent files", staleErr)
-		default:
-			check("codex agent files", nil)
+			stale, staleErr := agents.Stale(env.RepoRoot, host, h)
+			switch {
+			case len(stale) > 0:
+				detail := strings.Join(stale, ", ")
+				if staleErr != nil {
+					detail += fmt.Sprintf(" (%v)", staleErr)
+				}
+				check(host+" agent files", fmt.Errorf("absent, unreadable, or out of date: %s; run `orch render-agents` to regenerate them", detail))
+			case staleErr != nil:
+				check(host+" agent files", staleErr)
+			default:
+				check(host+" agent files", nil)
+			}
 		}
 	}
 
@@ -261,30 +256,18 @@ func runDoctor(env Env) error {
 }
 
 type adapterPlugin struct {
-	ID       string `json:"id"`
-	PluginID string `json:"pluginId"`
-	Version  string `json:"version"`
-	// InstallPath is the installed plugin root the Claude CLI reports;
-	// the Codex listing carries no such field and leaves it empty.
-	InstallPath string `json:"installPath"`
-	Installed   bool   `json:"installed"`
-	Enabled     bool   `json:"enabled"`
+	ID        string `json:"id"`
+	PluginID  string `json:"pluginId"`
+	Version   string `json:"version"`
+	Installed bool   `json:"installed"`
+	Enabled   bool   `json:"enabled"`
 }
 
-// checkAdapter returns the matched plugin entry alongside its verdict,
-// so a caller that needs a field of the installed plugin — the Claude
-// agent-definition check needs its install path — reads it from the
-// listing this call already ran instead of running the listing twice.
-// The returned entry is the zero value whenever no single matching
-// entry was reached.
-func checkAdapter(env Env, spec adapterSpec) (adapterPlugin, error) {
-	// found is the single matching entry once one is established, so a
-	// failure past that point still hands the caller the entry it
-	// failed on — a disabled or stale plugin still has an install path,
-	// and reporting none would be untrue.
-	var found adapterPlugin
-	fail := func(detail string) (adapterPlugin, error) {
-		return found, fmt.Errorf("%s; %s", detail, spec.repair)
+// checkAdapter independently verifies the enabled host's installed
+// plugin. Project agent-file freshness is a separate doctor check.
+func checkAdapter(env Env, spec adapterSpec) error {
+	fail := func(detail string) error {
+		return fmt.Errorf("%s; %s", detail, spec.repair)
 	}
 
 	expected, err := adapterVersion(spec.manifestJSON)
@@ -347,7 +330,6 @@ func checkAdapter(env Env, spec adapterSpec) (adapterPlugin, error) {
 	}
 
 	plugin := matches[0]
-	found = plugin
 	versionDetail := fmt.Sprintf("expected %q", expected)
 	if plugin.Version != "" {
 		versionDetail = fmt.Sprintf("installed %q, expected %q", plugin.Version, expected)
@@ -364,7 +346,7 @@ func checkAdapter(env Env, spec adapterSpec) (adapterPlugin, error) {
 	if plugin.Version != expected {
 		return fail(fmt.Sprintf("%s version mismatch: installed %q, expected %q", spec.pluginID, plugin.Version, expected))
 	}
-	return plugin, nil
+	return nil
 }
 
 func adapterVersion(manifestJSON string) (string, error) {

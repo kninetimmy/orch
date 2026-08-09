@@ -515,6 +515,14 @@ orch render-agents
 There is no manual Delivery command. Plan approval activates Delivery, and completion returns to
 Assist.
 
+`orch render-agents` generates all five dispatched role definitions for every enabled host from
+the effective `hosts.<host>.roles` configuration. It writes Claude Markdown under
+`.claude/agents/` and Codex TOML under `.codex/agents/`, using each shipped plugin definition as
+the canonical body and changing only routing fields the host supports. Both destinations are
+gitignored machine-local output. Doctor checks every enabled host and activation checks the
+selected host; missing, unreadable, or stale definitions fail closed with the affected paths and
+the render command as remediation. Installed-adapter health is checked separately.
+
 ## 23. Acceptance criteria
 
 V1 is acceptable when:

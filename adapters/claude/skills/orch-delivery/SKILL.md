@@ -250,24 +250,20 @@ in flight at once. For each issue:
 
 2. **Spawn the executor** — spawn `orch-implementer` or
    `orch-specialist` (per the routed role) via the Task tool **by
-   name, with no model override**, so the installed agent definition's
+   name, with no model override**, so the project agent definition's
    frontmatter `model` is what runs. The Task tool's `model` parameter
    accepts only the coarse tier aliases `sonnet`, `opus`, `haiku` and
    `fable` — never an exact version string like `claude-sonnet-5` — so
    an override can never express a routed selection, and is never the
-   way to honor routing. Before spawning, confirm that the installed
-   executor agent's frontmatter `model` equals the selection
+   way to honor routing. The same-named definition under this project's
+   `.claude/agents/` takes precedence over the plugin's canonical copy;
+   `orch render-agents` creates it, and activation already fails closed
+   when it is missing or stale. Before spawning, confirm that project
+   definition's frontmatter `model` equals the selection
    **currently in force**: the most recent `EscalateResult.executor.model`
    when an escalation has rerouted the issue since dispatch, or
-   `DispatchResult.executor.model` otherwise. Compare against the
-   **installed** plugin copy: `~/.claude/plugins/installed_plugins.json`
-   resolves it — its `plugins["orch-claude@orch"]` array's single
-   entry's `installPath` member names the installed plugin's root (its
-   `agents/` subdirectory holds the copy to compare against), and its
-   `version` and `gitCommitSha` members name exactly which build is
-   installed — not this repository's `adapters/claude/agents/` copy,
-   since a plugin version behind head can still carry an older pin.
-   **If the routed model matches no installed agent's frontmatter,
+   `DispatchResult.executor.model` otherwise. **If the routed model
+   matches no project agent's frontmatter,
    stop and tell the human — never spawn a mismatched agent, and never
    report the routed selection as if it ran.** Every spawn prompt
    opens with:
@@ -281,7 +277,7 @@ in flight at once. For each issue:
    task does not need deep reasoning." Claude Code subagent spawns take
    no effort parameter, so this sentence is the only way the routed
    effort reaches the executor: the routed *model* is pinned by the
-   installed agent definition the match rule above checks, but the
+   project agent definition the match rule above checks, but the
    routed *effort* is only *conveyed* as this prompt cue — nothing
    checks that the executor actually reasoned at that depth. Transcribe
    `DispatchResult.objective`, `.acceptance_criteria`, and
@@ -339,20 +335,14 @@ in flight at once. For each issue:
    `model` parameter accepts only the coarse tier aliases `sonnet`,
    `opus`, `haiku` and `fable`, never an exact version string, so it
    cannot express a routed selection and an override is never the way
-   to honor routing — only the installed agent definition's
+   to honor routing — only the project agent definition's
    frontmatter pins an exact model. Before spawning, confirm that the
    selected reviewer agent's frontmatter `model` equals the selection
    **currently in force**: the most recent `EscalateResult.reviewer.model`
    when an escalation has rerouted the issue since dispatch, or
-   `DispatchResult.reviewer.model` otherwise. Compare against the
-   **installed** plugin copy: `~/.claude/plugins/installed_plugins.json`
-   resolves it — its `plugins["orch-claude@orch"]` array's single
-   entry's `installPath` member names the installed plugin's root (its
-   `agents/` subdirectory holds the copy to compare against), and its
-   `version` and `gitCommitSha` members name exactly which build is
-   installed — not this repository's `adapters/claude/agents/` copy,
-   since a plugin version behind head can still carry an older pin.
-   **If the routed model matches no installed agent's frontmatter,
+   `DispatchResult.reviewer.model` otherwise. Check the same-named file
+   under `.claude/agents/`, which takes precedence over the plugin copy.
+   **If the routed model matches no project agent's frontmatter,
    stop and tell the human — never spawn a mismatched agent, and never
    report the routed selection as if it ran.** `reviewed_head_oid`
    must be the PR's **live** head OID at review time (e.g. via
@@ -501,9 +491,9 @@ Result `kind`:
   recent `EscalateResult` and the only one describing the routing in
   force, for both roles even if only one changed. Before spawning
   either into the **same worktree** (never a new one), confirm the new
-  selection's `model` against an installed agent definition's
+  selection's `model` against its project agent definition's
   frontmatter under the same match rule as the spawn steps above — **if
-  the new selection matches no installed agent's frontmatter, stop and
+  the new selection matches no project agent's frontmatter, stop and
   tell the human — never spawn a mismatched agent, and never report the
   routed selection as if it ran.**
 - `return-to-architect` — the issue is blocked for human design work;

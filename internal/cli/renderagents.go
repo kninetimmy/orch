@@ -11,22 +11,15 @@ import (
 )
 
 // runRenderAgents implements `orch render-agents` (PRD §22): it loads
-// the effective configuration (config.Load: committed config.toml plus
-// any config.local.toml overlay) and, when hosts.codex is enabled,
-// renders the five Codex agent TOMLs into <repo>/.codex/agents/ from
-// hosts.codex.roles — the mechanical alternative to hand-editing the
-// installed TOMLs adapters/codex/README.md's install step 4 and known
-// limitations both point to. It fails closed (config.Load already
-// fails closed on a missing or invalid configuration) when the repo is
-// not orch-initialized, the configuration is invalid, or hosts.codex
-// is not enabled.
+// the effective configuration and renders every enabled host's five
+// project agent definitions from hosts.<host>.roles. Every destination
+// is proved git-ignored before any file is written, so a two-host run
+// cannot partially write one host before discovering the other is
+// unsafe.
 func runRenderAgents(env Env) error {
 	cfg, err := config.Load(env.RepoRoot)
 	if err != nil {
 		return err
-	}
-	if cfg.Hosts.Codex == nil {
-		return fmt.Errorf("hosts.codex is not enabled in configuration; enable it with `orch configure` before running `orch render-agents`")
 	}
 
 	ctx := context.Background()
@@ -34,20 +27,34 @@ func runRenderAgents(env Env) error {
 	if err != nil {
 		return err
 	}
-	dir := filepath.Join(env.RepoRoot, filepath.FromSlash(agents.Dir))
-	if err := git.RequireIgnored(ctx, dir); err != nil {
-		return fmt.Errorf("%w; run `orch configure` to add the rendered-agent destination to .gitignore", err)
+	for _, host := range cfg.EnabledHosts() {
+		destination, err := agents.Destination(host)
+		if err != nil {
+			return err
+		}
+		dir := filepath.Join(env.RepoRoot, filepath.FromSlash(destination))
+		if err := git.RequireIgnored(ctx, dir); err != nil {
+			return fmt.Errorf("%w; run `orch configure` to add both rendered-agent destinations to .gitignore", err)
+		}
 	}
 
-	files, err := agents.Render(cfg.Hosts.Codex)
-	if err != nil {
-		return err
+	var files []agents.File
+	for _, host := range cfg.EnabledHosts() {
+		h := cfg.Hosts.Claude
+		if host == "codex" {
+			h = cfg.Hosts.Codex
+		}
+		rendered, err := agents.Render(host, h)
+		if err != nil {
+			return err
+		}
+		files = append(files, rendered...)
 	}
 	if err := agents.Write(env.RepoRoot, files); err != nil {
 		return err
 	}
 	for _, f := range files {
-		fmt.Fprintf(env.Stdout, "wrote %s/%s.toml\n", agents.Dir, f.Name)
+		fmt.Fprintf(env.Stdout, "wrote %s\n", f.Path)
 	}
 	return nil
 }

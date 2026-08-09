@@ -286,8 +286,11 @@ func TestGoldenTranscriptConfigureEnableCodexFromClaudeOnly(t *testing.T) {
 	if change.Diff == "" {
 		t.Error("AGENTS.md Diff is empty, want an install diff")
 	}
-	if !strings.Contains(strings.Join(doc.Complete.Summary.GitignoreLines, "\n"), ".codex/agents/") {
-		t.Errorf("GitignoreLines = %v, want rendered-agent destination", doc.Complete.Summary.GitignoreLines)
+	gitignore := strings.Join(doc.Complete.Summary.GitignoreLines, "\n")
+	for _, destination := range []string{".claude/agents/", ".codex/agents/"} {
+		if !strings.Contains(gitignore, destination) {
+			t.Errorf("GitignoreLines = %v, want %s", doc.Complete.Summary.GitignoreLines, destination)
+		}
 	}
 }
 

@@ -57,12 +57,13 @@ func SiblingInstructionFile(host string) string {
 // Detect's execProber-duplication precedent, so this pre-init-safe
 // package need not import internal/run/state/lockfile) the values of
 // run.WorktreeContainer+"/", config.LocalOverridePath, state.Path,
-// lockfile.Path, and agents.Dir+"/".
+// lockfile.Path, agents.ClaudeDir+"/", and agents.CodexDir+"/".
 var baseGitignoreLines = []string{
 	".orchestrator/worktrees/",
 	".orchestrator/config.local.toml",
 	".orchestrator/state.json",
 	".orchestrator/delivery.lock",
+	".claude/agents/",
 	".codex/agents/",
 }
 

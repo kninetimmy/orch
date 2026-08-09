@@ -117,7 +117,7 @@ func wrapAfterEnter(err error) error {
 //   - Phase 1 (pure validation): decode/validate the plan and its
 //     approval, derive routing and labels for every issue.
 //   - Phase 2 (read-only preflights): Assist+no-lock, current rendered
-//     agent files for a Codex plan, clean primary
+//     project agent files for the plan's host, clean primary
 //     checkout, authenticated GitHub remote, primary on the default
 //     branch (F4), every plan-declared area label existing in the
 //     repository (area labels are repository-defined per PRD §13, so
@@ -184,18 +184,20 @@ func Activate(ctx context.Context, env Env, reqJSON []byte) (*ActivationResult, 
 	if err := requireAssistNoLock(env.RepoRoot); err != nil {
 		return nil, err
 	}
+	agentHost := cfg.Hosts.Claude
 	if plan.Host == "codex" {
-		stale, staleErr := agents.Stale(env.RepoRoot, cfg.Hosts.Codex)
-		if len(stale) > 0 {
-			detail := strings.Join(stale, ", ")
-			if staleErr != nil {
-				detail += fmt.Sprintf(" (%v)", staleErr)
-			}
-			return nil, fmt.Errorf("%w: %s; run `orch render-agents` in the primary checkout, then resubmit", ErrAgentsStale, detail)
-		}
+		agentHost = cfg.Hosts.Codex
+	}
+	stale, staleErr := agents.Stale(env.RepoRoot, plan.Host, agentHost)
+	if len(stale) > 0 {
+		detail := strings.Join(stale, ", ")
 		if staleErr != nil {
-			return nil, staleErr
+			detail += fmt.Sprintf(" (%v)", staleErr)
 		}
+		return nil, fmt.Errorf("%w: %s; run `orch render-agents` in the primary checkout, then resubmit", ErrAgentsStale, detail)
+	}
+	if staleErr != nil {
+		return nil, staleErr
 	}
 	git, err := gitops.Open(ctx, env.Runner, env.RepoRoot)
 	if err != nil {
