@@ -121,10 +121,13 @@ func renderLocalHost(b *strings.Builder, host string, overrides map[string]strin
 	return nil
 }
 
-// validateLocalModel enforces the same free-text ingestion rule
-// interview.materialize's validateModelFreeText applies to a committed
-// role answer: non-empty after trimming, and no internal whitespace (an
-// exact model version string never contains any).
+// validateLocalModel enforces the same model-string shape rule
+// interview.materialize's validateModelFreeText applies: non-empty
+// after trimming, and no internal whitespace (an exact model version
+// string never contains any). The interview's extra near-miss check on
+// a newly typed answer (validateModelAnswer) is deliberately not
+// mirrored here: this function also passes judgment on a local file
+// already written, which must keep rendering whatever it holds.
 func validateLocalModel(key, value string) error {
 	trimmed := strings.TrimSpace(value)
 	if trimmed == "" {

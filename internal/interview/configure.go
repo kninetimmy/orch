@@ -381,7 +381,7 @@ func applyHostConfigure(cfg *config.Config, host string, answers map[string]stri
 	case toggleKnown && toggleVal == "no":
 		setConfigHost(cfg, host, nil)
 	case hasRoleAnswers:
-		h, err := materializeHost(host, answers)
+		h, err := materializeHost(host, answers, committedHostConfig(cfg, host))
 		if err != nil {
 			return err
 		}

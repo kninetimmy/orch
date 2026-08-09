@@ -490,3 +490,49 @@ func TestNextConfigureRejectsNearMissModel(t *testing.T) {
 		t.Fatalf("Kind = %q, want %q", doc.Kind, question.DocSummary)
 	}
 }
+
+// TestNextConfigureAcceptsNearMissCommittedDefault proves the same for
+// `orch configure` as TestNextConfigureLocalAcceptsNearMissCommittedDefault
+// does for configure-local: a committed near-miss model is offered as
+// the role question's default (committedRoleDefaults), and accepting it
+// reaches the summary rather than failing the interview at
+// materializeConfigure.
+func TestNextConfigureAcceptsNearMissCommittedDefault(t *testing.T) {
+	root := t.TempDir()
+	cfg := writeCommittedConfigLocal(t, root)
+	cfg.Hosts.Claude.Roles.Architect.Model = "opus-5"
+	writeCommittedConfig(t, root, cfg)
+	writeInstalledBlock(t, root, "CLAUDE.md")
+	writeInstalledBlock(t, root, "AGENTS.md")
+	writeNoMissingGitignore(t, root)
+	facts := configureFacts()
+
+	answers := map[string]string{}
+	overrides := map[string]string{idPickRolesClaude: "yes"}
+	for i := 0; i < 100; i++ {
+		doc, err := NextConfigure(facts, answers, root)
+		if err != nil {
+			t.Fatalf("NextConfigure: %v", err)
+		}
+		if doc.Kind != question.DocQuestions {
+			if got := answers[roleModelID("claude", "architect")]; got != "opus-5" {
+				t.Fatalf("architect model default = %q, want the committed opus-5", got)
+			}
+			if doc.Kind != question.DocSummary {
+				t.Fatalf("Kind = %q, want %q", doc.Kind, question.DocSummary)
+			}
+			return
+		}
+		for _, q := range doc.Questions {
+			if v, ok := overrides[q.ID]; ok {
+				answers[q.ID] = v
+				continue
+			}
+			if q.Default == "" {
+				t.Fatalf("question %s has no default to answer with", q.ID)
+			}
+			answers[q.ID] = q.Default
+		}
+	}
+	t.Fatal("NextConfigure did not reach a non-questions document within 100 steps")
+}
