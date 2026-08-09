@@ -661,7 +661,11 @@ func materializeLocal(committed *config.Config, seeded map[string]string, answer
 
 // applyRoleAnswers applies host's six answered role questions onto
 // overrides, clearing (setOrClear) each leaf whose answer equals
-// committed's own value.
+// committed's own value. The near-miss model check
+// (validateModelAnswer) is measured against the value the model
+// question defaulted to — the override overrides already carries for
+// that key, or the committed value when it carries none — so leaving a
+// near-miss default alone is not treated as newly typing it.
 func applyRoleAnswers(committed *config.Config, host string, answers, overrides map[string]string) error {
 	h := committedHostConfig(committed, host)
 	for _, rs := range roleSpecs {
@@ -669,10 +673,14 @@ func applyRoleAnswers(committed *config.Config, host string, answers, overrides 
 		effortKey := localRoleEffortID(host, rs.key)
 		modelVal := answers[modelKey]
 		effortVal := answers[effortKey]
-		if err := validateModelFreeText(modelKey, modelVal); err != nil {
+		cp := committedProfile(h, rs.key)
+		current := cp.Model
+		if seeded, ok := overrides[modelKey]; ok {
+			current = seeded
+		}
+		if err := validateModelAnswer(modelKey, modelVal, current); err != nil {
 			return err
 		}
-		cp := committedProfile(h, rs.key)
 		setOrClear(overrides, modelKey, modelVal, cp.Model)
 		setOrClear(overrides, effortKey, effortVal, cp.Effort)
 	}

@@ -433,3 +433,106 @@ func TestInstructionFilePinned(t *testing.T) {
 		t.Errorf(`InstructionFile("bogus") = %q, want ""`, got)
 	}
 }
+
+// TestNextConfigureRejectsNearMissModel proves issue #207 for
+// `orch configure`: a typed model shortening a known id is rejected
+// with that full id suggested, and the corrected id then reaches the
+// summary — mirroring answerAllConfigureWithDefaults' walk but
+// answering the claude role questions from overrides.
+func TestNextConfigureRejectsNearMissModel(t *testing.T) {
+	root := t.TempDir()
+	writeCommittedConfigLocal(t, root)
+	writeInstalledBlock(t, root, "CLAUDE.md")
+	writeInstalledBlock(t, root, "AGENTS.md")
+	writeNoMissingGitignore(t, root)
+	facts := configureFacts()
+
+	modelID := roleModelID("claude", "architect")
+	walk := func(model string) (question.Document, error) {
+		overrides := map[string]string{idPickRolesClaude: "yes", modelID: model}
+		answers := map[string]string{}
+		for i := 0; i < 100; i++ {
+			doc, err := NextConfigure(facts, answers, root)
+			if err != nil {
+				return question.Document{}, err
+			}
+			if doc.Kind != question.DocQuestions {
+				return doc, nil
+			}
+			for _, q := range doc.Questions {
+				if v, ok := overrides[q.ID]; ok {
+					answers[q.ID] = v
+					continue
+				}
+				if q.Default == "" {
+					t.Fatalf("question %s has no default to answer with", q.ID)
+				}
+				answers[q.ID] = q.Default
+			}
+		}
+		t.Fatal("NextConfigure did not reach a non-questions document within 100 steps")
+		return question.Document{}, nil
+	}
+
+	_, err := walk("opus-5")
+	if !errors.Is(err, ErrBadAnswer) {
+		t.Fatalf("NextConfigure err = %v, want ErrBadAnswer", err)
+	}
+	if !strings.Contains(err.Error(), "claude-opus-5") {
+		t.Errorf("error %q does not suggest the full id claude-opus-5", err)
+	}
+
+	doc, err := walk("claude-opus-5")
+	if err != nil {
+		t.Fatalf("NextConfigure after correction: %v", err)
+	}
+	if doc.Kind != question.DocSummary {
+		t.Fatalf("Kind = %q, want %q", doc.Kind, question.DocSummary)
+	}
+}
+
+// TestNextConfigureAcceptsNearMissCommittedDefault proves the same for
+// `orch configure` as TestNextConfigureLocalAcceptsNearMissCommittedDefault
+// does for configure-local: a committed near-miss model is offered as
+// the role question's default (committedRoleDefaults), and accepting it
+// reaches the summary rather than failing the interview at
+// materializeConfigure.
+func TestNextConfigureAcceptsNearMissCommittedDefault(t *testing.T) {
+	root := t.TempDir()
+	cfg := writeCommittedConfigLocal(t, root)
+	cfg.Hosts.Claude.Roles.Architect.Model = "opus-5"
+	writeCommittedConfig(t, root, cfg)
+	writeInstalledBlock(t, root, "CLAUDE.md")
+	writeInstalledBlock(t, root, "AGENTS.md")
+	writeNoMissingGitignore(t, root)
+	facts := configureFacts()
+
+	answers := map[string]string{}
+	overrides := map[string]string{idPickRolesClaude: "yes"}
+	for i := 0; i < 100; i++ {
+		doc, err := NextConfigure(facts, answers, root)
+		if err != nil {
+			t.Fatalf("NextConfigure: %v", err)
+		}
+		if doc.Kind != question.DocQuestions {
+			if got := answers[roleModelID("claude", "architect")]; got != "opus-5" {
+				t.Fatalf("architect model default = %q, want the committed opus-5", got)
+			}
+			if doc.Kind != question.DocSummary {
+				t.Fatalf("Kind = %q, want %q", doc.Kind, question.DocSummary)
+			}
+			return
+		}
+		for _, q := range doc.Questions {
+			if v, ok := overrides[q.ID]; ok {
+				answers[q.ID] = v
+				continue
+			}
+			if q.Default == "" {
+				t.Fatalf("question %s has no default to answer with", q.ID)
+			}
+			answers[q.ID] = q.Default
+		}
+	}
+	t.Fatal("NextConfigure did not reach a non-questions document within 100 steps")
+}

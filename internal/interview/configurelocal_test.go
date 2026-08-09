@@ -45,6 +45,16 @@ func writeCommittedConfigLocal(t *testing.T, root string) *config.Config {
 			}},
 		},
 	}
+	writeCommittedConfig(t, root, cfg)
+	return cfg
+}
+
+// writeCommittedConfig revisions, renders, and writes cfg to root's
+// committed configuration path — the tail writeCommittedConfigLocal
+// shares with any test that needs the same fixture carrying one edited
+// value.
+func writeCommittedConfig(t *testing.T, root string, cfg *config.Config) {
+	t.Helper()
 	rev, err := config.Revision(cfg)
 	if err != nil {
 		t.Fatal(err)
@@ -61,7 +71,6 @@ func writeCommittedConfigLocal(t *testing.T, root string) *config.Config {
 	if err := os.WriteFile(filepath.Join(root, filepath.FromSlash(config.Path)), data, 0o644); err != nil {
 		t.Fatal(err)
 	}
-	return cfg
 }
 
 // writeLocalOverrideFile writes content verbatim to root's
@@ -495,5 +504,103 @@ func TestHostLocalModelsPinsFableFive(t *testing.T) {
 		if hostLocalModels["claude"][i] != m {
 			t.Errorf("hostLocalModels[claude][%d] = %q, want %q", i, hostLocalModels["claude"][i], m)
 		}
+	}
+}
+
+// TestNextConfigureLocalRejectsNearMissModel proves issue #207 for
+// `orch configure-local`: a typed model shortening a known id — here
+// the local-override-only claude-fable-5 — is rejected with that full
+// id suggested, and the corrected id then reaches the summary, so no
+// config.local.toml is ever written from the near miss.
+func TestNextConfigureLocalRejectsNearMissModel(t *testing.T) {
+	root := t.TempDir()
+	writeCommittedConfigLocal(t, root)
+
+	modelKey := localRoleModelID("claude", "architect")
+	walk := func(model string) (question.Document, error) {
+		overrides := map[string]string{idPickClaude: "yes", modelKey: model}
+		answers := map[string]string{}
+		for i := 0; i < 100; i++ {
+			doc, err := NextConfigureLocal(answers, root)
+			if err != nil {
+				return question.Document{}, err
+			}
+			if doc.Kind != question.DocQuestions {
+				return doc, nil
+			}
+			for _, q := range doc.Questions {
+				if v, ok := overrides[q.ID]; ok {
+					answers[q.ID] = v
+					continue
+				}
+				if q.Default == "" {
+					t.Fatalf("question %s has no default to answer with", q.ID)
+				}
+				answers[q.ID] = q.Default
+			}
+		}
+		t.Fatal("NextConfigureLocal did not reach a non-questions document within 100 steps")
+		return question.Document{}, nil
+	}
+
+	_, err := walk("fable-5")
+	if !errors.Is(err, ErrBadAnswer) {
+		t.Fatalf("NextConfigureLocal err = %v, want ErrBadAnswer", err)
+	}
+	if !strings.Contains(err.Error(), "claude-fable-5") {
+		t.Errorf("error %q does not suggest the full id claude-fable-5", err)
+	}
+
+	doc, err := walk("claude-fable-5")
+	if err != nil {
+		t.Fatalf("NextConfigureLocal after correction: %v", err)
+	}
+	if doc.Kind != question.DocSummary {
+		t.Fatalf("Kind = %q, want %q", doc.Kind, question.DocSummary)
+	}
+}
+
+// TestNextConfigureLocalPreservesNearMissOverride proves the near-miss
+// rule leaves an existing config.local.toml alone: a near-miss model
+// override in an area this session does not pick is preserved in the
+// proposed file, exactly as materializeLocal promises for every valid
+// override of an unpicked area.
+func TestNextConfigureLocalPreservesNearMissOverride(t *testing.T) {
+	root := t.TempDir()
+	writeCommittedConfigLocal(t, root)
+	writeLocalOverrideFile(t, root, `[hosts.claude.roles.architect]
+model = "opus-5"
+`)
+
+	codexModel := localRoleModelID("codex", "architect")
+	doc, _ := answerLocalWithOverrides(t, root, map[string]string{idPickCodex: "yes", codexModel: "gpt-5.6-luna"})
+	if doc.Kind != question.DocSummary {
+		t.Fatalf("Kind = %q, want %q", doc.Kind, question.DocSummary)
+	}
+	if len(doc.Summary.Files) == 0 {
+		t.Fatalf("Summary.Files is empty, want the proposed config.local.toml")
+	}
+	if !strings.Contains(doc.Summary.Files[0].NewContent, `model = "opus-5"`) {
+		t.Errorf("proposed file dropped the unpicked area's existing override:\n%s", doc.Summary.Files[0].NewContent)
+	}
+}
+
+// TestNextConfigureLocalAcceptsNearMissCommittedDefault proves a
+// repository initialized before the near-miss rule existed still walks
+// configure-local end to end: the model question defaults to the
+// committed near-miss id, and accepting that default reaches the
+// summary instead of failing the interview.
+func TestNextConfigureLocalAcceptsNearMissCommittedDefault(t *testing.T) {
+	root := t.TempDir()
+	cfg := writeCommittedConfigLocal(t, root)
+	cfg.Hosts.Claude.Roles.Architect.Model = "opus-5"
+	writeCommittedConfig(t, root, cfg)
+
+	doc, answers := answerLocalWithOverrides(t, root, map[string]string{idPickClaude: "yes"})
+	if got := answers[localRoleModelID("claude", "architect")]; got != "opus-5" {
+		t.Fatalf("architect model default = %q, want the committed opus-5", got)
+	}
+	if doc.Kind != question.DocSummary {
+		t.Fatalf("Kind = %q, want %q", doc.Kind, question.DocSummary)
 	}
 }

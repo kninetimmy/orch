@@ -146,3 +146,93 @@ func TestMaterializeRoundTripsThroughRenderAndParse(t *testing.T) {
 		t.Errorf("ConfigRevision = %q, want a sha256: prefix", cfg.ConfigRevision)
 	}
 }
+
+// TestValidateModelAnswerNearMiss proves issue #207's shared seam:
+// a typed model that shortens (or mis-cases) a known model id for the
+// question's host is rejected with every matching full id suggested,
+// while a known id and an id resembling nothing known both pass. Both
+// question id shapes are covered — init/`orch configure`'s
+// "host.<host>.role.<role>.model" and configure-local's
+// "hosts.<host>.roles.<role>.model" — since all three interviews reach
+// this one function.
+func TestValidateModelAnswerNearMiss(t *testing.T) {
+	tests := []struct {
+		id       string
+		value    string
+		wantErr  bool
+		wantText string
+	}{
+		{id: roleModelID("claude", "architect"), value: "fable-5", wantErr: true, wantText: "claude-fable-5"},
+		{id: roleModelID("claude", "architect"), value: "opus-5", wantErr: true, wantText: "claude-opus-5"},
+		{id: roleModelID("claude", "architect"), value: "Claude-Opus-5", wantErr: true, wantText: "claude-opus-5"},
+		{id: roleModelID("codex", "architect"), value: "sol", wantErr: true, wantText: "gpt-5.6-sol"},
+		{id: localRoleModelID("claude", "reviewer"), value: "fable-5", wantErr: true, wantText: "claude-fable-5"},
+		{id: roleModelID("claude", "architect"), value: "claude-opus-5"},
+		{id: roleModelID("claude", "architect"), value: "claude-fable-5"},
+		{id: roleModelID("claude", "architect"), value: "claude-opus-6"},
+		{id: roleModelID("claude", "architect"), value: "claude-opus-4-8"},
+		{id: roleModelID("codex", "architect"), value: "gpt-5.6-sol"},
+		{id: localRoleModelID("codex", "reviewer"), value: "gpt-5.7-nova"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.id+"="+tt.value, func(t *testing.T) {
+			err := validateModelAnswer(tt.id, tt.value, "")
+			if !tt.wantErr {
+				if err != nil {
+					t.Fatalf("validateModelAnswer(%q, %q) = %v, want nil", tt.id, tt.value, err)
+				}
+				return
+			}
+			if !errors.Is(err, ErrBadAnswer) {
+				t.Fatalf("validateModelAnswer(%q, %q) = %v, want ErrBadAnswer", tt.id, tt.value, err)
+			}
+			if !strings.Contains(err.Error(), tt.wantText) {
+				t.Errorf("error %q does not suggest the full id %q", err, tt.wantText)
+			}
+		})
+	}
+}
+
+// TestValidateModelAnswerSuggestsEveryMatch proves a value shortening
+// more than one known id names all of them, not just the first.
+func TestValidateModelAnswerSuggestsEveryMatch(t *testing.T) {
+	err := validateModelAnswer(roleModelID("claude", "architect"), "claude", "")
+	if !errors.Is(err, ErrBadAnswer) {
+		t.Fatalf("validateModelAnswer err = %v, want ErrBadAnswer", err)
+	}
+	for _, want := range hostLocalModels["claude"] {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("error %q does not suggest %q", err, want)
+		}
+	}
+}
+
+// TestValidateModelAnswerExemptsCurrentValue proves the near-miss rule
+// targets new input only: the value a key already carries — what its
+// question offered as the Default — answers back unchanged, so a
+// configuration written before the rule existed stays answerable. The
+// shape rule is not exempted with it.
+func TestValidateModelAnswerExemptsCurrentValue(t *testing.T) {
+	id := roleModelID("claude", "architect")
+	if err := validateModelAnswer(id, "opus-5", "opus-5"); err != nil {
+		t.Errorf("validateModelAnswer with value == current = %v, want nil", err)
+	}
+	if err := validateModelAnswer(id, "opus-5", "claude-opus-4-8"); !errors.Is(err, ErrBadAnswer) {
+		t.Errorf("validateModelAnswer with a newly typed near miss = %v, want ErrBadAnswer", err)
+	}
+	if err := validateModelAnswer(id, "", ""); !errors.Is(err, ErrBadAnswer) {
+		t.Errorf("validateModelAnswer with an empty current value = %v, want ErrBadAnswer", err)
+	}
+}
+
+// TestStringifyLeafValueKeepsNearMissModel proves the near-miss rule
+// never reaches seedOverrides' filter: a model already written to
+// config.local.toml classifies as a valid preference whatever it looks
+// like, so an unpicked area's overrides survive materializeLocal
+// untouched.
+func TestStringifyLeafValueKeepsNearMissModel(t *testing.T) {
+	got, ok := stringifyLeafValue(localRoleModelID("claude", "architect"), "opus-5")
+	if !ok || got != "opus-5" {
+		t.Errorf("stringifyLeafValue = (%q, %v), want (\"opus-5\", true)", got, ok)
+	}
+}

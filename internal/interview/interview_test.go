@@ -323,3 +323,33 @@ func TestStatelessnessReAsksExactlyOneQuestion(t *testing.T) {
 		})
 	}
 }
+
+// TestNextRejectsNearMissModelThenAcceptsCorrection proves issue #207
+// for `orch init`: a typed model shortening a known id is rejected
+// with that full id suggested, and resubmitting the same question with
+// the full id walks straight on to the summary — the rejection is a
+// re-ask, never an abort.
+func TestNextRejectsNearMissModelThenAcceptsCorrection(t *testing.T) {
+	facts := bothHostsFacts()
+	root := t.TempDir()
+	answers := answerAllWithDefaults(t, facts, root)
+
+	modelID := roleModelID("claude", "architect")
+	answers[modelID] = "fable-5"
+	_, err := Next(facts, answers, root)
+	if !errors.Is(err, ErrBadAnswer) {
+		t.Fatalf("Next err = %v, want ErrBadAnswer", err)
+	}
+	if !strings.Contains(err.Error(), "claude-fable-5") {
+		t.Errorf("error %q does not suggest the full id claude-fable-5", err)
+	}
+
+	answers[modelID] = "claude-fable-5"
+	doc, err := Next(facts, answers, root)
+	if err != nil {
+		t.Fatalf("Next after correction: %v", err)
+	}
+	if doc.Kind != question.DocSummary {
+		t.Fatalf("Kind = %q, want %q", doc.Kind, question.DocSummary)
+	}
+}
