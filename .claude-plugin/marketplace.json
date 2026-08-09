@@ -3,7 +3,7 @@
   "owner": { "name": "kninetimmy" },
   "metadata": {
     "description": "Host adapters for the Orch development orchestrator",
-    "version": "0.6.2"
+    "version": "0.6.3"
   },
   "plugins": [
     {
