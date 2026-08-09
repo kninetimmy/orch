@@ -1,6 +1,8 @@
 package interview
 
 import (
+	"slices"
+	"strings"
 	"testing"
 
 	"github.com/kninetimmy/orch/internal/question"
@@ -135,20 +137,43 @@ func TestHostEffortsAcceptedByConfig(t *testing.T) {
 // within question.SpecCheck's 2-4-option cap and never offers a value
 // hostEfforts does not itself list for that host — combined with
 // TestHostEffortsAcceptedByConfig, this closes issue #124 criterion 5
-// for every interview-offered effort option too.
+// for every interview-offered effort option too. It also proves the
+// window is a contiguous run of the host enum that contains the
+// question's own default, whatever that default is (issue #208): the
+// Codex roles defaulting to "max" must be able to select it.
 func TestEffortsOfferedIsSubsetOfHostEfforts(t *testing.T) {
-	for host := range hostEfforts {
-		offered := effortsOffered(host)
-		if len(offered) < 2 || len(offered) > 4 {
-			t.Fatalf("effortsOffered(%s) = %v, want 2-4 options", host, offered)
+	for host, efforts := range hostEfforts {
+		for _, def := range efforts {
+			offered := effortsOffered(host, def)
+			if len(offered) < 2 || len(offered) > 4 {
+				t.Fatalf("effortsOffered(%s, %s) = %v, want 2-4 options", host, def, offered)
+			}
+			if !slices.Contains(offered, def) {
+				t.Errorf("effortsOffered(%s, %s) = %v, does not offer its own default", host, def, offered)
+			}
+			if i := slices.Index(efforts, offered[0]); i < 0 || !slices.Equal(efforts[i:i+len(offered)], offered) {
+				t.Errorf("effortsOffered(%s, %s) = %v, not a contiguous run of hostEfforts[%s] = %v", host, def, offered, host, efforts)
+			}
 		}
-		full := map[string]bool{}
-		for _, e := range hostEfforts[host] {
-			full[e] = true
-		}
-		for _, e := range offered {
-			if !full[e] {
-				t.Errorf("effortsOffered(%s) offers %q, not in hostEfforts[%s]", host, e, host)
+	}
+}
+
+// TestEffortOptionsLabelLiteralTokens proves every effort option an
+// interview surface offers is labelled with the literal enum token it
+// submits, not a prose gloss that hides it (issue #208) — the token
+// config.toml and the FreeText escape hatch both use.
+func TestEffortOptionsLabelLiteralTokens(t *testing.T) {
+	for host, efforts := range hostEfforts {
+		for _, def := range efforts {
+			for _, o := range effortOptions(host, def) {
+				if !strings.Contains(o.Label, o.Value) {
+					t.Errorf("effortOptions(%s, %s): label %q omits token %q", host, def, o.Label, o.Value)
+				}
+			}
+			for _, o := range effortOptionsLocal(host, def, def) {
+				if !strings.Contains(o.Label, o.Value) {
+					t.Errorf("effortOptionsLocal(%s, %s): label %q omits token %q", host, def, o.Label, o.Value)
+				}
 			}
 		}
 	}

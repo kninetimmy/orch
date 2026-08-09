@@ -36,20 +36,21 @@
       "kind": "select",
       "options": [
         {
-          "value": "low",
-          "label": "Low"
-        },
-        {
           "value": "medium",
-          "label": "Medium"
+          "label": "medium"
         },
         {
           "value": "high",
-          "label": "High"
+          "label": "high"
         },
         {
           "value": "xhigh",
-          "label": "Extra high"
+          "label": "xhigh"
+        },
+        {
+          "value": "max",
+          "label": "max",
+          "recommended": true
         }
       ],
       "free_text": true,
