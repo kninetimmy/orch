@@ -55,13 +55,14 @@ so the Architect can surface the rejected criterion and reason to the
 human.
 
 A criterion is also wrong when the only evidence available for it is a
-proxy for what it asked. A criterion requiring a check on how an agent
-routes, what it decides, or how it behaves is the standing instance:
-nothing in the repository observes an instruction an agent follows, so
-the only thing that can satisfy such a criterion is a check asserting
-the instruction's prose is still present — which pins the words and
-says nothing about the behavior the criterion asked about. Judge that
-criterion wrong rather than accepting the proxy as evidence for it.
+proxy for what it asked. A criterion requiring a check on how an LLM
+agent routes, what it decides, or how it behaves is the standing
+instance: nothing in the repository observes an instruction an agent
+follows, so the only thing that can satisfy such a criterion is a
+check asserting the instruction's prose is still present — which pins
+the words and says nothing about the behavior the criterion asked
+about. Judge that criterion wrong rather than accepting the proxy as
+evidence for it.
 
 Before you request a change that adds code, establish that the added
 code needs to exist at all. "This case is unhandled" is a finding only
