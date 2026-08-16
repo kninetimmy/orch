@@ -19,23 +19,13 @@ Orch sits underneath the CLI you already use (Claude Code or Codex CLI) and take
 
 The payoff: cheap, fast models handle read-only exploration and mechanical work, a frontier model gets spent only where the plan calls for it, and every change that lands is auditable and gated by a human at the one step that matters — the merge.
 
+**[Jump to Quickstart →](#quickstart)** · **[See how it works →](#how-it-works)**
+
 <br>
 
 <p align="center">
   <img src="docs/images/orch-overview.gif" alt="Animated overview of how Orch works: in Assist the guard denies a tracked-file write with its verbatim reason and allows git-ignored scratch; approving a plan enters Delivery, routing pins the exact model, and writes land only inside the registered issue worktree before the run auto-returns to Assist" width="920"/>
 </p>
-
----
-
-## What you actually get
-
-- **Read-only by default.** Assist mode mechanically denies every write to a file git does not ignore — not a convention the agent is asked to honor, but a decision `orch guard` makes before the write happens.
-- **You route the model, not the agent.** Six roles — architect, scout, implementer, specialist, reviewer, and a cheaper review downgrade — each pin an exact model version and effort level you choose, so a cheap model handles read-only work and a frontier model is spent only where the plan calls for it.
-- **Every issue gets its own worktree.** Delivery work happens on its own branch, in its own isolated git worktree, never in your primary checkout.
-- **A separate dispatch reviews the work.** The pull request is reviewed in a dispatch separate from the one that wrote it — never the same run marking its own homework.
-- **You hold the merge gate.** Nothing lands on your default branch until you approve it, and the merge fails closed if the pull request moved after your approval.
-- **Every issue and PR carries an audit record.** The exact model, the effort, how the host actually delivered that effort, and the routing rationale are recorded on the issue and mirrored onto its pull request.
-- **Works with the CLI you already use.** Orch works with both [Claude Code](adapters/claude/README.md) and [Codex CLI](adapters/codex/README.md), so you keep working in the agent you already have.
 
 ---
 
@@ -66,17 +56,18 @@ Concretely, asking for a change goes like this:
 4. A reviewer reviews the pull request. CI runs.
 5. You approve the merge, and it runs against GitHub pinned to the commit that approval names — it fails closed if the pull request moved after that.
 
+Each issue then walks the engine's Delivery pipeline, phase by phase:
+
+<p align="center">
+  <img src="docs/images/delivery-pipeline.gif" alt="Animated Delivery pipeline: one issue walks the engine's closed phase lifecycle from plan approval through activation, dispatch, pull request, review cycles, the OID-pinned human merge gate, cleanup, and completion back to Assist, with failure routes and engine guarantees alongside" width="920"/>
+</p>
+
 The full product definition lives in [ORCH-PRD.md](ORCH-PRD.md).
 
-## Status
+## Quickstart
 
-Early software. What can be stated as fact: 19 tagged releases, v0.1.0 through v0.7.0, and every pull request merged since PR #40 carries an Orch audit record in its body — apart from the configuration deliveries, which `orch configure` writes in its own body format. Since PR #40, this repository has been built through the pipeline described above: a plan gate, an isolated worktree per issue, a review dispatched separately from the work, CI, and a merge that fails closed unless it carries an approval pinned to the commit `merge-report` recorded.
-
-All of that evidence comes from one repository: this one.
-
-## Install
-
-### Have your agent do it
+<details>
+<summary><b>Have your agent do it</b> — recommended: one prompt, pasted into Claude Code or Codex CLI</summary>
 
 Paste this into a Claude Code or Codex CLI session, started anywhere.
 It does not assume you have cloned this repository.
@@ -147,11 +138,11 @@ on this machine. Work in a scratch directory, not in one of my projects.
    carrying .orchestrator/config.toml for me to review and merge. After
    that PR is merged, `orch render-agents` must be run in the repository;
    it generates project definitions for every enabled host and must be
-   rerun after role configuration or Orch changes. Before this change,
-   the Codex instructions also allowed manually copying five TOMLs and
-   Claude had no project-render step; after it, this command is the one
-   per-repository workflow for both hosts.
+   rerun after role configuration or Orch changes. This command is the
+   one per-repository workflow for both hosts.
 ```
+
+</details>
 
 ### Then initialize each repository you want orchestrated
 
@@ -277,6 +268,20 @@ go install github.com/kninetimmy/orch/cmd/orch@latest
 
 </details>
 
+---
+
+## What you actually get
+
+- **Read-only by default.** Assist mode mechanically denies every write to a file git does not ignore — not a convention the agent is asked to honor, but a decision `orch guard` makes before the write happens.
+- **You route the model, not the agent.** Six roles — architect, scout, implementer, specialist, reviewer, and a cheaper review downgrade — each pin an exact model version and effort level you choose, so a cheap model handles read-only work and a frontier model is spent only where the plan calls for it.
+- **Every issue gets its own worktree.** Delivery work happens on its own branch, in its own isolated git worktree, never in your primary checkout.
+- **A separate dispatch reviews the work.** The pull request is reviewed in a dispatch separate from the one that wrote it — never the same run marking its own homework.
+- **You hold the merge gate.** Nothing lands on your default branch until you approve it, and the merge fails closed if the pull request moved after your approval.
+- **Every issue and PR carries an audit record.** The exact model, the effort, how the host actually delivered that effort, and the routing rationale are recorded on the issue and mirrored onto its pull request.
+- **Works with the CLI you already use.** Orch works with both [Claude Code](adapters/claude/README.md) and [Codex CLI](adapters/codex/README.md), so you keep working in the agent you already have.
+
+---
+
 ## Day to day
 
 `orch help` lists every command, human and plumbing, in one place:
@@ -387,6 +392,12 @@ Every memhub command runs with the primary checkout as its working
 directory, never inside a per-issue worktree, because worktrees never
 receive a copy of the memhub database.
 
+## Status
+
+Early software. What can be stated as fact: 19 tagged releases, v0.1.0 through v0.7.0, and every pull request merged since PR #40 carries an Orch audit record in its body — apart from the configuration deliveries, which `orch configure` writes in its own body format. Since PR #40, this repository has been built through the pipeline described above: a plan gate, an isolated worktree per issue, a review dispatched separately from the work, CI, and a merge that fails closed unless it carries an approval pinned to the commit `merge-report` recorded.
+
+All of that evidence comes from one repository: this one.
+
 ## Known issues and limitations
 
 <details>
@@ -486,13 +497,10 @@ TOML and the host enforces it.
 **A model override does not reach a dispatched agent by itself, on
 either host.** Neither host can override a model per spawn, so the
 routed selection has to match the active project agent definition.
-Before, only Codex had generated project files: Claude doctor compared
-the configured model to the installed plugin copy, repaired nothing,
-and Claude activation did not gate on the mismatch. After, `orch
-render-agents` writes all five dispatched roles for every enabled host
-under `.claude/agents/` or `.codex/agents/`, using the shipped plugin
-definition as the canonical body and changing only that host's routing
-fields. Claude Code's [scope priority
+`orch render-agents` writes all five dispatched roles for every
+enabled host under `.claude/agents/` or `.codex/agents/`, using the
+shipped plugin definition as the canonical body and changing only
+that host's routing fields. Claude Code's [scope priority
 table](https://code.claude.com/docs/en/sub-agents#choose-the-subagent-scope)
 places project definitions above plugin definitions, so a generated
 same-named `.claude/agents/` file is what runs while retaining the
@@ -802,11 +810,8 @@ point is recoverable.
 
 ### The Delivery pipeline
 
-<br>
-
-<p align="center">
-  <img src="docs/images/delivery-pipeline.gif" alt="Animated Delivery pipeline: one issue walks the engine's closed phase lifecycle from plan approval through activation, dispatch, pull request, review cycles, the OID-pinned human merge gate, cleanup, and completion back to Assist, with failure routes and engine guarantees alongside" width="920"/>
-</p>
+The animation in [How it works](#how-it-works) walks this lifecycle end
+to end; what follows is the same pipeline in detail.
 
 A run starts at the **plan gate**: a schema-versioned plan document
 (issues, dependency waves, risk facts) is validated fail-closed, and a
