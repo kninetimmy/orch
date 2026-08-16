@@ -5,7 +5,7 @@
 <p align="center">
   <img src="https://img.shields.io/badge/License-MIT-2E7D32?style=flat&logo=opensourceinitiative&logoColor=white" alt="License: MIT"/>
   <img src="https://img.shields.io/badge/Go-1.26%2B-00ADD8?style=flat&logo=go&logoColor=white" alt="Go 1.26+"/>
-  <img src="https://img.shields.io/badge/Release-v0.6.1-24292F?style=flat&logo=github&logoColor=white" alt="Release: v0.6.1"/>
+  <img src="https://img.shields.io/badge/Release-v0.7.0-24292F?style=flat&logo=github&logoColor=white" alt="Release: v0.7.0"/>
   <br/>
   <img src="https://img.shields.io/badge/Platform-Linux%20%C2%B7%20macOS%20%C2%B7%20Windows-607D8B?style=flat" alt="Platform: Linux, macOS, Windows"/>
   <img src="https://img.shields.io/badge/Hosts-Claude%20Code%20%C2%B7%20Codex%20CLI-6E56CF?style=flat" alt="Hosts: Claude Code and Codex CLI"/>
@@ -22,7 +22,7 @@ The payoff: cheap, fast models handle read-only exploration and mechanical work,
 <br>
 
 <p align="center">
-  <img src="docs/images/orch-overview.gif" alt="Animated Orch system overview: a human uses Claude Code or Codex through Orch policy controls, routing and a write guard into an isolated worktree, independent verification, and a human-approved GitHub merge" width="920"/>
+  <img src="docs/images/orch-overview.gif" alt="Animated overview of how Orch works: in Assist the guard denies a tracked-file write with its verbatim reason and allows git-ignored scratch; approving a plan enters Delivery, routing pins the exact model, and writes land only inside the registered issue worktree before the run auto-returns to Assist" width="920"/>
 </p>
 
 ---
@@ -54,7 +54,7 @@ The payoff: cheap, fast models handle read-only exploration and mechanical work,
 | Reviewer | Reviews the pull request in a separate dispatch from the one that wrote it |
 | Review downgrade | A cheaper reviewer, allowed only when the plan affirms all four of mechanical, low-risk, fully specified, unsurprising |
 
-Which role gets an issue is derived from the issue's own facts by a deterministic table, not chosen by the model that will run it. The reviewer is always a separate dispatch and never the session that wrote the code, but under the shipped defaults it is often not a different model: on Claude every role runs `claude-opus-5`, so both sides always match; on Codex the specialist and the reviewer share `gpt-5.6-sol` while the implementer runs `gpt-5.6-terra` and the downgraded reviewer `gpt-5.6-sol`, so a specialist run has the same model on both sides but a downgraded review pairs different ones. Effort is where the hosts diverge: a specialist run's reviewer matches the specialist's effort on Claude (high on both) but not on Codex (max executor, xhigh reviewer), and a downgraded review drops effort below the implementer's on Codex (max to high) but not on Claude (medium on both).
+Which role gets an issue is derived from the issue's own facts by a deterministic table, not chosen by the model that will run it. The reviewer is always a separate dispatch — never the session that wrote the code — though under the shipped defaults it is often the same model on both sides. What Orch guarantees is the independent dispatch and the recorded routing, not model diversity; pin different models per role (the Settings table below) if you want that too.
 
 **The guard.** None of the above is an instruction the agent is asked to honor. Both host adapters wire the CLI's pre-write hook to `orch guard`, a subcommand of the same binary, which is consulted before the agent writes a file and answers allow or deny. In Assist it denies every write to a file git does not ignore. In Delivery it allows a write only inside a worktree registered to the running plan, on that worktree's registered branch, in a phase where writing is allowed. Git internals are never writable, and neither is the orchestrator state your session is running against. It fails closed: anything it cannot establish is a denial. What it enforces is containment — it cannot tell which role is writing, and a file written by a shell command never reaches it at all (see [Known issues](#known-issues-and-limitations)).
 
@@ -70,7 +70,7 @@ The full product definition lives in [ORCH-PRD.md](ORCH-PRD.md).
 
 ## Status
 
-Early software. What can be stated as fact: 16 tagged releases, v0.1.0 through v0.6.1, and every pull request merged since PR #40 carries an Orch audit record in its body — apart from the configuration deliveries, which `orch configure` writes in its own body format. Since PR #40, this repository has been built through the pipeline described above: a plan gate, an isolated worktree per issue, a review dispatched separately from the work, CI, and a merge that fails closed unless it carries an approval pinned to the commit `merge-report` recorded.
+Early software. What can be stated as fact: 19 tagged releases, v0.1.0 through v0.7.0, and every pull request merged since PR #40 carries an Orch audit record in its body — apart from the configuration deliveries, which `orch configure` writes in its own body format. Since PR #40, this repository has been built through the pipeline described above: a plan gate, an isolated worktree per issue, a review dispatched separately from the work, CI, and a merge that fails closed unless it carries an approval pinned to the commit `merge-report` recorded.
 
 All of that evidence comes from one repository: this one.
 
@@ -101,7 +101,7 @@ on this machine. Work in a scratch directory, not in one of my projects.
 
 2. Confirm that `orch` resolves on PATH and that `orch status` prints a
    release version on its first line — a line beginning `orch:` and giving
-   a release tag such as v0.6.1. Run it from anywhere: outside an
+   a release tag such as v0.7.0. Run it from anywhere: outside an
    initialized repository it prints that version line first and then exits
    non-zero saying the repository is not initialized, which is expected
    here. On Windows the installer adds its install directory to my user
@@ -183,7 +183,7 @@ your OS and architecture, verify its SHA-256 against the release's
 `SHA256SUMS` **before** installing, and fail closed on any mismatch.
 
 Linux / macOS — installs to `~/.local/bin` (override with
-`ORCH_INSTALL_DIR`); pin a version with `ORCH_VERSION=v0.6.1`:
+`ORCH_INSTALL_DIR`); pin a version with `ORCH_VERSION=v0.7.0`:
 
 ```sh
 curl -fsSLO https://raw.githubusercontent.com/kninetimmy/orch/main/install.sh
@@ -193,7 +193,7 @@ sh install.sh
 
 Windows (PowerShell) — installs to `%LOCALAPPDATA%\Programs\orch` and
 appends that directory to your user `PATH`; skip the `PATH` change with
-`-NoPathUpdate`, pin a version with `-Version v0.6.1`:
+`-NoPathUpdate`, pin a version with `-Version v0.7.0`:
 
 ```powershell
 iwr https://raw.githubusercontent.com/kninetimmy/orch/main/install.ps1 -OutFile install.ps1
@@ -537,9 +537,29 @@ continue, or `orch abort` to end it.
 <details>
 <summary>Defects already corrected, newest first</summary>
 
-Everything here is merged on `main` and shipped in v0.6.1, the latest
+Everything here is merged on `main` and shipped in v0.7.0, the latest
 tagged release.
 
+- The wrong-criterion guidance in all four reviewer agent definitions —
+  both hosts, standard reviewer and safe downgrade alike — now names a
+  criterion about "how an LLM agent routes, decides, or behaves" as the
+  standing instance of proxy-only evidence, instead of stating it of
+  any agent; before, a reviewer applying the sentence literally could
+  judge a criterion about this repository's own engine routing wrong —
+  routing that is deterministic Go under a direct test suite — and
+  needlessly block the issue —
+  [#213](https://github.com/kninetimmy/orch/pull/213)
+- The interviews' effort questions now include the role's configured
+  default among the options they offer; before, a Codex role defaulting
+  to `max` was asked to pick from four options that did not contain it,
+  so the shipped default could not be chosen as offered —
+  [#210](https://github.com/kninetimmy/orch/pull/210)
+- A model string typed into an interview that is a near miss of a known
+  model now gets a did-you-mean check before it is accepted, and the
+  check fires only on values you type — never on on-disk values or the
+  engine's own proposed defaults; before, a near-miss string was pinned
+  verbatim —
+  [#209](https://github.com/kninetimmy/orch/pull/209)
 - `orch init` and `orch configure` now offer to seed a root
   instruction file this session creates — one yes/no question naming
   both files, defaulting to yes, asked when a host being newly enabled
@@ -785,7 +805,7 @@ point is recoverable.
 <br>
 
 <p align="center">
-  <img src="docs/images/delivery-pipeline.gif" alt="Animated Delivery lifecycle: plan approval activates an issue and worktree, deterministic dispatch implements in isolation, then a pull request receives independent review, required CI, human merge approval, cleanup, and return to Assist" width="920"/>
+  <img src="docs/images/delivery-pipeline.gif" alt="Animated Delivery pipeline: one issue walks the engine's closed phase lifecycle from plan approval through activation, dispatch, pull request, review cycles, the OID-pinned human merge gate, cleanup, and completion back to Assist, with failure routes and engine guarantees alongside" width="920"/>
 </p>
 
 A run starts at the **plan gate**: a schema-versioned plan document
