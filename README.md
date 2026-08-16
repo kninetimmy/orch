@@ -22,7 +22,7 @@ The payoff: cheap, fast models handle read-only exploration and mechanical work,
 <br>
 
 <p align="center">
-  <img src="docs/images/orch-overview.svg" alt="Orch system overview: you and your host CLI, the orch binary naming the guard, routing, and run engine, and GitHub" width="920"/>
+  <img src="docs/images/orch-overview.gif" alt="Animated Orch system overview: a human uses Claude Code or Codex through Orch policy controls, routing and a write guard into an isolated worktree, independent verification, and a human-approved GitHub merge" width="920"/>
 </p>
 
 ---
@@ -785,7 +785,7 @@ point is recoverable.
 <br>
 
 <p align="center">
-  <img src="docs/images/delivery-pipeline.svg" alt="Delivery pipeline left to right: plan gate, activation, dispatch, implement, PR, review, CI, merge gate, cleanup" width="920"/>
+  <img src="docs/images/delivery-pipeline.gif" alt="Animated Delivery lifecycle: plan approval activates an issue and worktree, deterministic dispatch implements in isolation, then a pull request receives independent review, required CI, human merge approval, cleanup, and return to Assist" width="920"/>
 </p>
 
 A run starts at the **plan gate**: a schema-versioned plan document
