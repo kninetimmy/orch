@@ -108,8 +108,9 @@
   </g>
   <g id="node-observability" data-graph-role="node" data-node-id="observability" data-semantic-role="rect" data-motion-role="" data-motion-stage="" data-motion-order="" data-parent="" data-deployment-id="" data-topic-id="" data-span-id="" data-station-order="" data-status="" data-start-ms="" data-duration-ms="" data-parent-span="" data-graph-bounds="580,510,700,570">
   <rect x="580.0" y="510.0" width="120.0" height="60.0" rx="10.0" fill="#efe8de" stroke="#d0c3b3" stroke-width="1.8"/>
-  <text x="640.0" y="540.0" text-anchor="middle" class="node-title" font-size="12.0">Independent verification</text>
-  <text x="640.0" y="562.0" text-anchor="middle" class="node-sub">review + required CI</text>
+  <text x="640.0" y="532.0" text-anchor="middle" class="node-title" font-size="13.0">Independent</text>
+  <text x="640.0" y="548.0" text-anchor="middle" class="node-title" font-size="13.0">verification</text>
+  <text x="640.0" y="564.0" text-anchor="middle" class="node-sub">review + required CI</text>
   </g>
   <g id="node-registry" data-graph-role="node" data-node-id="registry" data-semantic-role="rect" data-motion-role="" data-motion-stage="" data-motion-order="" data-parent="" data-deployment-id="" data-topic-id="" data-span-id="" data-station-order="" data-status="" data-start-ms="" data-duration-ms="" data-parent-span="" data-graph-bounds="760,510,880,570">
   <rect x="760.0" y="510.0" width="120.0" height="60.0" rx="10.0" fill="#efe8de" stroke="#d0c3b3" stroke-width="1.8"/>

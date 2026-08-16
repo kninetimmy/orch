@@ -101,10 +101,12 @@
   <text x="480.0" y="528.0" text-anchor="middle" class="node-type">REVIEW</text>
   <text x="480.0" y="546.0" text-anchor="middle" class="node-title" font-size="14.89">Independent review</text>
   </g>
-  <g id="node-release" data-graph-role="node" data-node-id="release" data-semantic-role="rect" data-motion-role="" data-motion-stage="" data-motion-order="" data-parent="" data-deployment-id="" data-topic-id="" data-span-id="" data-station-order="" data-status="" data-start-ms="" data-duration-ms="" data-parent-span="" data-graph-bounds="700,510,880,570">
-  <rect x="700.0" y="510.0" width="180.0" height="60.0" rx="14.0" fill="#ffffff" stroke="#dce5e3" stroke-width="1.8"/>
-  <text x="790.0" y="528.0" text-anchor="middle" class="node-type">COMPLETE</text>
-  <text x="790.0" y="546.0" text-anchor="middle" class="node-title" font-size="12.0">Required CI + merge gate</text>
+  <g id="node-release" data-graph-role="node" data-node-id="release" data-semantic-role="rect" data-motion-role="" data-motion-stage="" data-motion-order="" data-parent="" data-deployment-id="" data-topic-id="" data-span-id="" data-station-order="" data-status="" data-start-ms="" data-duration-ms="" data-parent-span="" data-graph-bounds="700,500,880,570">
+  <rect x="700.0" y="500.0" width="180.0" height="70.0" rx="14.0" fill="#ffffff" stroke="#dce5e3" stroke-width="1.8"/>
+  <text x="790.0" y="520.0" text-anchor="middle" class="node-type">COMPLETE</text>
+  <text x="790.0" y="538.0" text-anchor="middle" class="node-title" font-size="13.0">Required CI</text>
+  <text x="790.0" y="550.0" text-anchor="middle" class="node-sub" font-size="11.0">Human merge gate</text>
+  <text x="790.0" y="564.0" text-anchor="middle" class="node-sub" font-size="11.0">Cleanup → Assist</text>
   </g>
   <g id="connect-label" data-graph-role="label" data-owner="connect" data-graph-bounds="269.12,152,360.88,172">
   <rect x="269.12" y="152.0" width="91.76" height="20" rx="6" fill="#ffffff" opacity="0.96"/>
@@ -136,7 +138,7 @@
   </g>
   <g id="promote-label" data-graph-role="label" data-owner="promote" data-graph-bounds="578.08,509,691.92,529">
   <rect x="578.08" y="509.0" width="113.84" height="20" rx="6" fill="#ffffff" opacity="0.96"/>
-  <text x="635.0" y="523.0" text-anchor="middle" class="arrow-label">cleanup → Assist</text>
+  <text x="635.0" y="523.0" text-anchor="middle" class="arrow-label">review approval</text>
   </g>
   <g id="legend" data-graph-role="legend">
     <rect id="legend-zone" data-graph-role="reserved" data-reserved-kind="legend" x="38" y="611" width="514.16" height="46" rx="10" fill="none" stroke="none"/>
