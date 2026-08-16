@@ -76,7 +76,7 @@
   </g>
   <g id="node-n6" data-graph-role="node" data-node-id="n6" data-semantic-role="quality-gate" data-graph-bounds="770,390,900,460">
     <rect x="770" y="390" width="130" height="70" rx="6" fill="#111111" stroke="#f87171" stroke-width="1.5"/>
-    <text x="835" y="412" text-anchor="middle" class="node" fill="#f87171">Review + complete</text>
+    <text x="835" y="412" text-anchor="middle" class="node" fill="#f87171">Review + merge</text>
     <text x="835" y="432" text-anchor="middle" class="detail">required CI</text>
     <text x="835" y="448" text-anchor="middle" class="detail">human merge gate</text>
   </g>
@@ -106,7 +106,7 @@
   </g>
   <g id="feedback-label" data-graph-role="label" data-owner="feedback" data-graph-bounds="713,274,827,294">
     <rect x="713" y="274" width="114" height="20" rx="5" fill="#0a0a0a" opacity="0.96"/>
-    <text x="770" y="289" text-anchor="middle" class="edge-label">merge approval</text>
+    <text x="770" y="289" text-anchor="middle" class="edge-label">review feedback</text>
   </g>
   <g id="legend" data-graph-role="legend">
     <rect id="legend-zone" data-graph-role="reserved" data-reserved-kind="legend" x="40" y="555" width="880" height="70" fill="none" stroke="none"/>
