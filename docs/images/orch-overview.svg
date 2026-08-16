@@ -1,127 +1,221 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 700" width="960" height="700"
-  data-generator="fireworks-tech-graph" data-schema-version="1" data-text-metrics="heuristic-v1" data-style-id="8"
-  data-visual-theme="Dark Luxury" data-diagram-type="architecture" data-semantic-profile="generic"
-  data-semantic-valid="true" data-motion-scene="golden-circuit" data-quality-profile="showcase"
-  data-max-bends-per-edge="2" data-max-total-bends="8" data-max-route-stretch="1.35"
-  data-max-bridged-crossings="0" data-min-node-gap="40" data-min-container-gutter="20"
-  data-min-label-clearance="4" data-min-segment-length="16">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 700" width="960" height="700">
   <style>
     text { font-family: -apple-system, "Helvetica Neue", Arial, "PingFang SC", sans-serif; }
-    .title { font-family: Georgia, "Times New Roman", serif; font-size: 24px; font-weight: 700; fill: #f5f0eb; }
-    .section { font-family: Georgia, "Times New Roman", serif; font-size: 14px; font-weight: 700; fill: #c9a96e; }
-    .node { font-size: 14px; font-weight: 600; }
-    .detail { font-size: 11px; fill: #a39787; }
-    .edge-label { font-size: 11px; font-weight: 600; fill: #a39787; }
-    .legend { font-size: 11px; fill: #a39787; }
-    .footnote { font-size: 11px; fill: #6b5f53; }
+    .ttl { font-family: Georgia, "Times New Roman", serif; font-size: 24px; font-weight: 700; fill: #f5f0eb; }
+    .sub { font-size: 12px; fill: #a39787; }
+    .sec { font-family: Georgia, "Times New Roman", serif; font-size: 12px; font-weight: 700; fill: #c9a96e; opacity: 0.75; }
+    .nm  { font-size: 14px; font-weight: 600; }
+    .sm  { font-size: 10px; fill: #a39787; }
+    .xs  { font-size: 9px; fill: #6b5f53; }
+    .fn  { font-family: "Cascadia Code", "SF Mono", Consolas, "Courier New", monospace; font-size: 10px; fill: #a39787; }
+    .chip { font-family: "Cascadia Code", "SF Mono", Consolas, "Courier New", monospace; font-size: 12px; font-weight: 600; }
+    .badge { font-size: 12px; font-weight: 700; }
   </style>
   <defs>
-    <marker id="arrow-gold" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
-      <polygon points="0 0,10 3.5,0 7" fill="#d4a574"/>
-    </marker>
-    <marker id="arrow-sky" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
-      <polygon points="0 0,10 3.5,0 7" fill="#38bdf8"/>
-    </marker>
-    <marker id="arrow-violet" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
-      <polygon points="0 0,10 3.5,0 7" fill="#a78bfa"/>
-    </marker>
-    <marker id="arrow-mint" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
-      <polygon points="0 0,10 3.5,0 7" fill="#6ee7b7"/>
-    </marker>
-    <marker id="arrow-rose" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
-      <polygon points="0 0,10 3.5,0 7" fill="#f87171"/>
+    <marker id="arr-muted" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto">
+      <polygon points="0 0,8 3,0 6" fill="#6b5f53"/>
     </marker>
   </defs>
-  <rect width="960" height="700" fill="#0a0a0a" data-graph-role="background"/>
-  <text x="48" y="50" class="title">Orch: governed delivery from request to merge</text>
-  <text x="48" y="74" class="detail">A host stays useful while Orch fixes policy, containment, and verification boundaries.</text>
-  <line x1="48" y1="100" x2="912" y2="100" stroke="#1a1a1a" stroke-width="1"/>
-  <rect id="upper" x="40" y="120" width="880" height="130" rx="8" fill="none" stroke="#d4a574" stroke-width="1" stroke-dasharray="6 4" opacity="0.5" data-graph-role="container" data-container-id="upper" data-semantic-role="boundary" data-graph-bounds="40,120,920,250"/>
-  <rect id="upper-header" x="48" y="126" width="190" height="30" fill="none" stroke="none" data-graph-role="reserved" data-reserved-kind="container-header"/>
-  <text x="54" y="146" class="section">GOVERNED ENTRY</text>
-  <rect id="lower" x="40" y="340" width="880" height="170" rx="8" fill="none" stroke="#d4a574" stroke-width="1" stroke-dasharray="6 4" opacity="0.5" data-graph-role="container" data-container-id="lower" data-semantic-role="boundary" data-graph-bounds="40,340,920,510"/>
-  <rect id="lower-header" x="48" y="346" width="220" height="30" fill="none" stroke="none" data-graph-role="reserved" data-reserved-kind="container-header"/>
-  <text x="54" y="366" class="section">DELIVERY + EVIDENCE</text>
-  <path id="request" data-graph-role="edge" data-edge-id="request" data-source="n1" data-target="n2" data-edge-kind="flow" data-flow="primary" data-motion-role="primary" data-motion-stage="1" data-motion-order="0" data-bends="0" data-route-stretch="1" data-critical="false" d="M 220 195 H 300" fill="none" stroke="#d4a574" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" marker-end="url(#arrow-gold)"/>
-  <path id="dispatch" data-graph-role="edge" data-edge-id="dispatch" data-source="n2" data-target="n3" data-edge-kind="flow" data-flow="primary" data-motion-role="primary" data-motion-stage="2" data-motion-order="0" data-bends="0" data-route-stretch="1" data-critical="false" d="M 480 195 H 560" fill="none" stroke="#d4a574" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" marker-end="url(#arrow-gold)"/>
-  <path id="context" data-graph-role="edge" data-edge-id="context" data-source="n3" data-target="n4" data-edge-kind="flow" data-flow="read" data-motion-role="memory-read" data-motion-stage="3" data-motion-order="0" data-bends="2" data-route-stretch="1" data-critical="false" d="M 632 225 V 300 H 390 V 390" fill="none" stroke="#38bdf8" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" marker-end="url(#arrow-sky)"/>
-  <path id="tool-call" data-graph-role="edge" data-edge-id="tool-call" data-source="n3" data-target="n5" data-edge-kind="dependency" data-flow="dependency" data-motion-role="tool-call" data-motion-stage="3" data-motion-order="1" data-bends="0" data-route-stretch="1" data-critical="false" d="M 668 225 V 390" fill="none" stroke="#a78bfa" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" stroke-dasharray="6 3" marker-end="url(#arrow-violet)"/>
-  <path id="data" data-graph-role="edge" data-edge-id="data" data-source="n4" data-target="n5" data-edge-kind="flow" data-flow="data" data-motion-role="data" data-motion-stage="4" data-motion-order="0" data-bends="0" data-route-stretch="1" data-critical="false" d="M 480 425 H 550" fill="none" stroke="#6ee7b7" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" marker-end="url(#arrow-mint)"/>
-  <path id="trace" data-graph-role="edge" data-edge-id="trace" data-source="n5" data-target="n6" data-edge-kind="telemetry" data-flow="primary" data-motion-role="trace" data-motion-stage="5" data-motion-order="0" data-bends="0" data-route-stretch="1" data-critical="false" d="M 730 425 H 770" fill="none" stroke="#d4a574" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" marker-end="url(#arrow-gold)"/>
-  <path id="feedback" data-graph-role="edge" data-edge-id="feedback" data-source="n6" data-target="n3" data-edge-kind="feedback" data-flow="feedback" data-motion-role="feedback" data-motion-stage="6" data-motion-order="0" data-bends="2" data-route-stretch="1" data-critical="false" d="M 835 390 V 300 H 704 V 225" fill="none" stroke="#f87171" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" stroke-dasharray="4 3" marker-end="url(#arrow-rose)"/>
-  <g id="node-n1" data-graph-role="node" data-node-id="n1" data-semantic-role="client" data-graph-bounds="60,165,220,225">
-    <rect x="60" y="165" width="160" height="60" rx="6" fill="#111111" stroke="#94a3b8" stroke-width="1.5"/>
-    <text x="140" y="192" text-anchor="middle" class="node" fill="#94a3b8">Human</text>
-    <text x="140" y="212" text-anchor="middle" class="detail">plans + approves</text>
+
+  <rect width="960" height="700" fill="#0a0a0a"/>
+  <text x="48" y="50" class="ttl">How Orch works</text>
+  <text x="48" y="74" class="sub">Two decisions never belong to the agent: which model runs, and what may be written. Orch answers both mechanically.</text>
+  <line x1="48" y1="94" x2="912" y2="94" stroke="#1a1a1a" stroke-width="1"/>
+
+  <!-- ============ static routes (under nodes) ============ -->
+  <g stroke="#6b5f53" stroke-width="1" fill="none" opacity="0.5">
+    <path d="M 165,212 L 165,250" marker-end="url(#arr-muted)"/>
+    <path d="M 165,320 L 165,390" marker-end="url(#arr-muted)"/>
+    <path d="M 266,184 L 316,184 L 316,206 L 358,206" marker-end="url(#arr-muted)"/>
+    <path d="M 266,428 L 312,428 L 312,468 L 358,468" marker-end="url(#arr-muted)"/>
+    <path d="M 596,455 L 636,455 L 636,202 L 688,202" marker-end="url(#arr-muted)"/>
+    <path d="M 596,470 L 648,470 L 648,318 L 688,318" marker-end="url(#arr-muted)"/>
+    <path d="M 596,485 L 660,485 L 660,452 L 688,452" marker-end="url(#arr-muted)"/>
   </g>
-  <g id="node-n2" data-graph-role="node" data-node-id="n2" data-semantic-role="gateway" data-graph-bounds="300,165,480,225">
-    <rect x="300" y="165" width="180" height="60" rx="6" fill="#111111" stroke="#fbbf24" stroke-width="1.5"/>
-    <text x="390" y="192" text-anchor="middle" class="node" fill="#fbbf24">Claude Code or Codex</text>
-    <text x="390" y="212" text-anchor="middle" class="detail">your existing host</text>
+  <text x="268" y="178" class="xs" fill="#c9a96e">
+    approve a plan
+    <animate attributeName="opacity" values="0.5;0.5;1;1;0.5;0.5" keyTimes="0;0.4444;0.45;0.5389;0.5444;1" dur="9s" repeatCount="indefinite"/>
+  </text>
+  <text x="270" y="422" class="xs">every file write</text>
+
+  <!-- deny intent flash on the tracked-files route -->
+  <g opacity="0">
+    <path d="M 596,455 L 636,455 L 636,202 L 688,202" stroke="#f87171" stroke-width="1.5" stroke-dasharray="5,4" fill="none"/>
+    <line x1="676" y1="192" x2="690" y2="206" stroke="#f87171" stroke-width="2.5"/>
+    <line x1="690" y1="192" x2="676" y2="206" stroke="#f87171" stroke-width="2.5"/>
+    <animate attributeName="opacity" values="0;0;0.85;0.85;0;0;0.85;0.85;0;0" keyTimes="0;0.1278;0.1333;0.1833;0.1889;0.8389;0.8444;0.8833;0.8889;1" dur="9s" repeatCount="indefinite"/>
   </g>
-  <g id="node-n3" data-graph-role="node" data-node-id="n3" data-semantic-role="agent-runtime" data-graph-bounds="560,165,740,225">
-    <rect x="560" y="165" width="180" height="60" rx="6" fill="#111111" stroke="#a78bfa" stroke-width="1.5"/>
-    <text x="650" y="192" text-anchor="middle" class="node" fill="#a78bfa">Orch policy controls</text>
-    <text x="650" y="212" text-anchor="middle" class="detail">routing + write guard</text>
+
+  <!-- ============ YOUR SESSION ============ -->
+  <rect x="40" y="120" width="250" height="460" rx="8" fill="none" stroke="#d4a574" stroke-width="0.5" stroke-dasharray="6,4" opacity="0.4"/>
+  <text x="52" y="140" class="sec">YOUR SESSION</text>
+
+  <rect x="64" y="156" width="202" height="56" rx="6" fill="#111111" stroke="#e8c49a" stroke-width="1.5"/>
+  <text x="78" y="180" class="nm" fill="#e8c49a">You</text>
+  <text x="78" y="198" class="sm">describe the change &#183; approve gates</text>
+
+  <rect x="64" y="250" width="202" height="70" rx="6" fill="#111111" stroke="#a78bfa" stroke-width="1.5"/>
+  <text x="78" y="274" class="nm" fill="#a78bfa">Claude Code &#183; Codex CLI</text>
+  <text x="78" y="292" class="sm">the CLI you already use;</text>
+  <text x="78" y="306" class="sm">its pre-write hook calls orch guard</text>
+
+  <rect x="64" y="396" width="202" height="64" rx="6" fill="#111111" stroke="#5a9e6f" stroke-width="1.5"/>
+  <text x="78" y="420" class="nm" fill="#5a9e6f">Coding agent</text>
+  <text x="78" y="438" class="sm">reads freely &#8212; every write</text>
+  <text x="78" y="452" class="sm">is checked before it happens</text>
+
+  <!-- ============ ORCH ============ -->
+  <rect x="340" y="120" width="280" height="460" rx="8" fill="none" stroke="#d4a574" stroke-width="0.5" stroke-dasharray="6,4" opacity="0.4"/>
+  <text x="352" y="140" class="sec">ORCH &#183; ONE GO BINARY</text>
+
+  <!-- mode / state -->
+  <rect x="364" y="156" width="232" height="100" rx="6" fill="#111111" stroke="#38bdf8" stroke-width="1.5"/>
+  <text x="378" y="178" class="nm" fill="#38bdf8">Mode</text>
+  <text x="430" y="178" class="fn">.orchestrator/state.json</text>
+  <!-- ASSIST chip: dim base + lit overlay -->
+  <rect x="378" y="192" width="100" height="30" rx="15" fill="#1a1a1a" stroke="#4a4238" stroke-width="1"/>
+  <text x="428" y="211" class="chip" fill="#6b5f53" text-anchor="middle">ASSIST</text>
+  <g>
+    <rect x="378" y="192" width="100" height="30" rx="15" fill="#1a1a1a" stroke="#d4a574" stroke-width="1.5"/>
+    <text x="428" y="211" class="chip" fill="#e8c49a" text-anchor="middle">ASSIST</text>
+    <animate attributeName="opacity" values="1;1;0;0;1;1" keyTimes="0;0.5333;0.5389;0.9444;0.95;1" dur="9s" repeatCount="indefinite"/>
   </g>
-  <g id="node-n4" data-graph-role="node" data-node-id="n4" data-semantic-role="memory" data-graph-bounds="300,390,480,460">
-    <rect x="300" y="390" width="180" height="70" rx="6" fill="#111111" stroke="#38bdf8" stroke-width="1.5"/>
-    <text x="390" y="417" text-anchor="middle" class="node" fill="#38bdf8">Approved Delivery</text>
-    <text x="390" y="437" text-anchor="middle" class="detail">issue-scoped work</text>
+  <!-- DELIVERY chip -->
+  <rect x="486" y="192" width="100" height="30" rx="15" fill="#1a1a1a" stroke="#4a4238" stroke-width="1"/>
+  <text x="536" y="211" class="chip" fill="#6b5f53" text-anchor="middle">DELIVERY</text>
+  <g opacity="0">
+    <rect x="486" y="192" width="100" height="30" rx="15" fill="#1a1a1a" stroke="#fbbf24" stroke-width="1.5"/>
+    <text x="536" y="211" class="chip" fill="#fbbf24" text-anchor="middle">DELIVERY</text>
+    <animate attributeName="opacity" values="0;0;1;1;0;0" keyTimes="0;0.5333;0.5389;0.9444;0.95;1" dur="9s" repeatCount="indefinite"/>
   </g>
-  <g id="node-n5" data-graph-role="node" data-node-id="n5" data-semantic-role="tool-runtime" data-graph-bounds="550,390,730,460">
-    <rect x="550" y="390" width="180" height="70" rx="6" fill="#111111" stroke="#5a9e6f" stroke-width="1.5"/>
-    <text x="640" y="417" text-anchor="middle" class="node" fill="#5a9e6f">Isolated worktree</text>
-    <text x="640" y="437" text-anchor="middle" class="detail">implementation</text>
+  <text x="378" y="244" class="fn" opacity="0">
+    delivery.lock held &#8212; exclusive across hosts
+    <animate attributeName="opacity" values="0;0;1;1;0;0" keyTimes="0;0.5389;0.5556;0.9389;0.9444;1" dur="9s" repeatCount="indefinite"/>
+  </text>
+
+  <!-- routing -->
+  <rect x="364" y="286" width="232" height="100" rx="6" fill="#111111" stroke="#5a9e6f" stroke-width="1.5"/>
+  <text x="378" y="308" class="nm" fill="#5a9e6f">Routing table</text>
+  <text x="378" y="326" class="sm">five rows, first match wins, fail closed</text>
+  <text x="378" y="340" class="sm">issue facts &#8594; role &#183; exact model &#183; effort</text>
+  <g opacity="0">
+    <rect x="378" y="352" width="204" height="24" rx="12" fill="#1a1a1a" stroke="#6ee7b7" stroke-width="1"/>
+    <text x="480" y="368" class="xs" fill="#6ee7b7" text-anchor="middle">issue &#8594; implementer &#183; your pinned model</text>
+    <animate attributeName="opacity" values="0;0;1;1;0;0" keyTimes="0;0.5556;0.5667;0.9389;0.9444;1" dur="9s" repeatCount="indefinite"/>
   </g>
-  <g id="node-n6" data-graph-role="node" data-node-id="n6" data-semantic-role="quality-gate" data-graph-bounds="770,390,900,460">
-    <rect x="770" y="390" width="130" height="70" rx="6" fill="#111111" stroke="#f87171" stroke-width="1.5"/>
-    <text x="835" y="412" text-anchor="middle" class="node" fill="#f87171">Verify + merge</text>
-    <text x="835" y="432" text-anchor="middle" class="detail">review + required CI</text>
-    <text x="835" y="448" text-anchor="middle" class="detail">human approval</text>
+
+  <!-- guard -->
+  <rect x="364" y="430" width="232" height="110" rx="6" fill="#111111" stroke="#fbbf24" stroke-width="1.5">
+    <animate attributeName="stroke"
+      values="#fbbf24;#fbbf24;#f87171;#f87171;#fbbf24;#fbbf24;#6ee7b7;#6ee7b7;#fbbf24;#fbbf24;#6ee7b7;#6ee7b7;#fbbf24;#fbbf24;#f87171;#f87171;#fbbf24;#fbbf24"
+      keyTimes="0;0.1222;0.1278;0.2278;0.2333;0.3222;0.3278;0.3833;0.3889;0.6889;0.6944;0.75;0.7556;0.8333;0.8389;0.9278;0.9333;1"
+      dur="9s" repeatCount="indefinite"/>
+  </rect>
+  <text x="378" y="454" class="nm" fill="#fbbf24">orch guard</text>
+  <text x="378" y="472" class="sm">consulted by the host before</text>
+  <text x="378" y="486" class="sm">every file write &#183; decision table</text>
+  <text x="378" y="500" class="sm">anything unprovable is a deny</text>
+  <text x="378" y="524" class="fn">allow / deny &#8212; fails closed</text>
+
+  <!-- verdict badges -->
+  <g opacity="0">
+    <rect x="436" y="398" width="88" height="24" rx="12" fill="#1a1a1a" stroke="#f87171" stroke-width="1.5"/>
+    <text x="480" y="415" class="badge" fill="#f87171" text-anchor="middle">DENY</text>
+    <animate attributeName="opacity" values="0;0;1;1;0;0;1;1;0;0" keyTimes="0;0.1278;0.1333;0.2389;0.2444;0.8333;0.8389;0.9389;0.9444;1" dur="9s" repeatCount="indefinite"/>
   </g>
-  <g id="request-label" data-graph-role="label" data-owner="request" data-graph-bounds="257.5,135,322.5,155">
-    <rect x="257.5" y="135" width="65" height="20" rx="5" fill="#0a0a0a" opacity="0.96"/>
-    <text x="290" y="150" text-anchor="middle" class="edge-label">request</text>
+  <g opacity="0">
+    <rect x="436" y="398" width="88" height="24" rx="12" fill="#1a1a1a" stroke="#6ee7b7" stroke-width="1.5"/>
+    <text x="480" y="415" class="badge" fill="#6ee7b7" text-anchor="middle">ALLOW</text>
+    <animate attributeName="opacity" values="0;0;1;1;0;0;1;1;0;0" keyTimes="0;0.3222;0.3278;0.4;0.4056;0.6889;0.6944;0.7667;0.7722;1" dur="9s" repeatCount="indefinite"/>
   </g>
-  <g id="dispatch-label" data-graph-role="label" data-owner="dispatch" data-graph-bounds="470,135,570,155">
-    <rect x="470" y="135" width="100" height="20" rx="5" fill="#0a0a0a" opacity="0.96"/>
-    <text x="520" y="150" text-anchor="middle" class="edge-label">approved run</text>
+
+  <!-- verdict reasons (guard's verbatim strings) -->
+  <g opacity="0">
+    <text x="480" y="558" class="fn" fill="#f87171" text-anchor="middle">"assist is read-only for repository files;</text>
+    <text x="480" y="572" class="fn" fill="#f87171" text-anchor="middle">ask for a Delivery plan"</text>
+    <animate attributeName="opacity" values="0;0;1;1;0;0" keyTimes="0;0.1333;0.1389;0.2444;0.25;1" dur="9s" repeatCount="indefinite"/>
   </g>
-  <g id="context-label" data-graph-role="label" data-owner="context" data-graph-bounds="464,274,536,294">
-    <rect x="464" y="274" width="72" height="20" rx="5" fill="#0a0a0a" opacity="0.96"/>
-    <text x="500" y="289" text-anchor="middle" class="edge-label">activate</text>
+  <text x="480" y="564" class="fn" fill="#f87171" text-anchor="middle" opacity="0">
+    "outside every registered worktree"
+    <animate attributeName="opacity" values="0;0;1;1;0;0" keyTimes="0;0.8389;0.8444;0.9444;0.95;1" dur="9s" repeatCount="indefinite"/>
+  </text>
+
+  <!-- ============ YOUR REPOSITORY ============ -->
+  <rect x="670" y="120" width="250" height="460" rx="8" fill="none" stroke="#d4a574" stroke-width="0.5" stroke-dasharray="6,4" opacity="0.4"/>
+  <text x="682" y="140" class="sec">YOUR REPOSITORY</text>
+
+  <rect x="694" y="170" width="202" height="64" rx="6" fill="#111111" stroke="#38bdf8" stroke-width="1.5"/>
+  <text x="708" y="194" class="nm" fill="#38bdf8">Tracked files</text>
+  <text x="708" y="212" class="sm">everything git does not ignore</text>
+
+  <g>
+    <rect x="694" y="290" width="202" height="56" rx="6" fill="#111111" stroke="#94a3b8" stroke-width="1.5"/>
+    <text x="708" y="314" class="nm" fill="#94a3b8">Git-ignored scratch</text>
+    <text x="708" y="332" class="sm">local notes, temp files &#8212; fair game</text>
   </g>
-  <g id="tool-call-label" data-graph-role="label" data-owner="tool-call" data-graph-bounds="660.5,315,739.5,335">
-    <rect x="660.5" y="315" width="79" height="20" rx="5" fill="#0a0a0a" opacity="0.96"/>
-    <text x="700" y="330" text-anchor="middle" class="edge-label">implement</text>
+  <rect x="694" y="290" width="202" height="56" rx="6" fill="none" stroke="#6ee7b7" stroke-width="2" opacity="0">
+    <animate attributeName="opacity" values="0;0;0.9;0.9;0;0" keyTimes="0;0.4;0.4056;0.4444;0.45;1" dur="9s" repeatCount="indefinite"/>
+  </rect>
+
+  <g opacity="0.45">
+    <rect x="694" y="410" width="202" height="84" rx="6" fill="#111111" stroke="#6ee7b7" stroke-width="1.5"/>
+    <text x="708" y="434" class="nm" fill="#6ee7b7">Issue worktree</text>
+    <text x="708" y="452" class="fn">.orchestrator/worktrees/&#8230;</text>
+    <text x="708" y="468" class="sm">its own branch, one issue's work</text>
+    <animate attributeName="opacity" values="0.45;0.45;1;1;0.45;0.45" keyTimes="0;0.5333;0.5444;0.9444;0.95;1" dur="9s" repeatCount="indefinite"/>
   </g>
-  <g id="data-label" data-graph-role="label" data-owner="data" data-graph-bounds="477,365,563,385">
-    <rect x="477" y="365" width="86" height="20" rx="5" fill="#0a0a0a" opacity="0.96"/>
-    <text x="520" y="380" text-anchor="middle" class="edge-label">issue work</text>
-  </g>
-  <g id="trace-label" data-graph-role="label" data-owner="trace" data-graph-bounds="718.5,365,811.5,385">
-    <rect x="718.5" y="365" width="93" height="20" rx="5" fill="#0a0a0a" opacity="0.96"/>
-    <text x="765" y="380" text-anchor="middle" class="edge-label">review + CI</text>
-  </g>
-  <g id="feedback-label" data-graph-role="label" data-owner="feedback" data-graph-bounds="727,274,813,294">
-    <rect x="727" y="274" width="86" height="20" rx="5" fill="#0a0a0a" opacity="0.96"/>
-    <text x="770" y="289" text-anchor="middle" class="edge-label">human gate</text>
-  </g>
-  <g id="legend" data-graph-role="legend">
-    <rect id="legend-zone" data-graph-role="reserved" data-reserved-kind="legend" x="40" y="555" width="880" height="70" fill="none" stroke="none"/>
-    <path data-graph-role="decoration" d="M 48 580 H 82" fill="none" stroke="#d4a574" stroke-width="1.7" marker-end="url(#arrow-gold)"/>
-    <text data-graph-role="decoration" x="93" y="584" class="legend">delivery flow</text>
-    <path data-graph-role="decoration" d="M 220 580 H 254" fill="none" stroke="#38bdf8" stroke-width="1.7" marker-end="url(#arrow-sky)"/>
-    <text data-graph-role="decoration" x="265" y="584" class="legend">activation</text>
-    <path data-graph-role="decoration" d="M 392 580 H 426" fill="none" stroke="#a78bfa" stroke-width="1.7" marker-end="url(#arrow-violet)"/>
-    <text data-graph-role="decoration" x="437" y="584" class="legend">implementation</text>
-    <path data-graph-role="decoration" d="M 564 580 H 598" fill="none" stroke="#6ee7b7" stroke-width="1.7" marker-end="url(#arrow-mint)"/>
-    <text data-graph-role="decoration" x="609" y="584" class="legend">evidence</text>
-    <path data-graph-role="decoration" d="M 736 580 H 770" fill="none" stroke="#f87171" stroke-width="1.7" marker-end="url(#arrow-rose)"/>
-    <text data-graph-role="decoration" x="781" y="584" class="legend">human gate</text>
-  </g>
-  <g id="footer" data-graph-role="reserved" data-graph-bounds="48,660,912,686">
-    <text x="48" y="680" class="footnote">Assist is read-only; approved Delivery runs use isolated worktrees and return through verification.</text>
-  </g>
+  <text x="708" y="484" class="xs" fill="#6ee7b7" opacity="0">
+    registered to the active run
+    <animate attributeName="opacity" values="0;0;1;1;0;0" keyTimes="0;0.5389;0.5556;0.9389;0.9444;1" dur="9s" repeatCount="indefinite"/>
+  </text>
+  <rect x="694" y="410" width="202" height="84" rx="6" fill="none" stroke="#6ee7b7" stroke-width="2" opacity="0">
+    <animate attributeName="opacity" values="0;0;0.9;0.9;0;0" keyTimes="0;0.7444;0.75;0.8;0.8056;1" dur="9s" repeatCount="indefinite"/>
+  </rect>
+
+  <!-- ============ moving pulses ============ -->
+  <!-- pulse 1: write attempt, denied in assist -->
+  <circle r="5" fill="#38bdf8" opacity="0">
+    <animate attributeName="opacity" values="0;0;1;1;0;0" keyTimes="0;0.0556;0.0667;0.1167;0.1222;1" dur="9s" repeatCount="indefinite"/>
+    <animateMotion path="M 266,428 L 312,428 L 312,468 L 364,468" calcMode="linear" keyPoints="0;0;1;1" keyTimes="0;0.0556;0.1222;1" dur="9s" repeatCount="indefinite"/>
+  </circle>
+  <!-- pulse 2: write to ignored scratch, allowed -->
+  <circle r="5" fill="#38bdf8" opacity="0">
+    <animate attributeName="opacity" values="0;0;1;1;0;0" keyTimes="0;0.2556;0.2611;0.3167;0.3222;1" dur="9s" repeatCount="indefinite"/>
+    <animateMotion path="M 266,428 L 312,428 L 312,468 L 364,468" calcMode="linear" keyPoints="0;0;1;1" keyTimes="0;0.2556;0.3222;1" dur="9s" repeatCount="indefinite"/>
+  </circle>
+  <circle r="5" fill="#6ee7b7" opacity="0">
+    <animate attributeName="opacity" values="0;0;1;1;0;0" keyTimes="0;0.3222;0.3278;0.4056;0.4111;1" dur="9s" repeatCount="indefinite"/>
+    <animateMotion path="M 596,470 L 648,470 L 648,318 L 694,318" calcMode="linear" keyPoints="0;0;1;1" keyTimes="0;0.3222;0.4111;1" dur="9s" repeatCount="indefinite"/>
+  </circle>
+  <!-- approval pulse -->
+  <circle r="5" fill="#e8c49a" opacity="0">
+    <animate attributeName="opacity" values="0;0;1;1;0;0" keyTimes="0;0.4667;0.4722;0.5278;0.5333;1" dur="9s" repeatCount="indefinite"/>
+    <animateMotion path="M 266,184 L 316,184 L 316,206 L 364,206" calcMode="linear" keyPoints="0;0;1;1" keyTimes="0;0.4667;0.5333;1" dur="9s" repeatCount="indefinite"/>
+  </circle>
+  <!-- pulse 3: write inside the registered worktree, allowed -->
+  <circle r="5" fill="#38bdf8" opacity="0">
+    <animate attributeName="opacity" values="0;0;1;1;0;0" keyTimes="0;0.6222;0.6278;0.6833;0.6889;1" dur="9s" repeatCount="indefinite"/>
+    <animateMotion path="M 266,428 L 312,428 L 312,468 L 364,468" calcMode="linear" keyPoints="0;0;1;1" keyTimes="0;0.6222;0.6889;1" dur="9s" repeatCount="indefinite"/>
+  </circle>
+  <circle r="5" fill="#6ee7b7" opacity="0">
+    <animate attributeName="opacity" values="0;0;1;1;0;0" keyTimes="0;0.6889;0.6944;0.75;0.7556;1" dur="9s" repeatCount="indefinite"/>
+    <animateMotion path="M 596,485 L 660,485 L 660,452 L 694,452" calcMode="linear" keyPoints="0;0;1;1" keyTimes="0;0.6889;0.7556;1" dur="9s" repeatCount="indefinite"/>
+  </circle>
+  <!-- pulse 4: write outside the worktree in delivery, denied -->
+  <circle r="5" fill="#38bdf8" opacity="0">
+    <animate attributeName="opacity" values="0;0;1;1;0;0" keyTimes="0;0.7778;0.7833;0.8278;0.8333;1" dur="9s" repeatCount="indefinite"/>
+    <animateMotion path="M 266,428 L 312,428 L 312,468 L 364,468" calcMode="linear" keyPoints="0;0;1;1" keyTimes="0;0.7778;0.8333;1" dur="9s" repeatCount="indefinite"/>
+  </circle>
+
+  <!-- ============ legend ============ -->
+  <line x1="48" y1="618" x2="912" y2="618" stroke="#1a1a1a" stroke-width="1"/>
+  <circle cx="56" cy="648" r="4" fill="#38bdf8"/>
+  <text x="66" y="652" class="sm">write attempt</text>
+  <circle cx="166" cy="648" r="4" fill="#6ee7b7"/>
+  <text x="176" y="652" class="sm">allowed</text>
+  <circle cx="246" cy="648" r="4" fill="#f87171"/>
+  <text x="256" y="652" class="sm">denied</text>
+  <circle cx="326" cy="648" r="4" fill="#e8c49a"/>
+  <text x="336" y="652" class="sm">your approval</text>
+  <text x="912" y="652" class="xs" text-anchor="end">deny reasons shown are the guard's own strings &#183; run complete &#8594; auto-return to Assist</text>
 </svg>

@@ -1,127 +1,257 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 700" width="960" height="700"
-  data-generator="fireworks-tech-graph" data-schema-version="1" data-text-metrics="heuristic-v1" data-style-id="8"
-  data-visual-theme="Dark Luxury" data-diagram-type="architecture" data-semantic-profile="generic"
-  data-semantic-valid="true" data-motion-scene="golden-circuit" data-quality-profile="showcase"
-  data-max-bends-per-edge="2" data-max-total-bends="8" data-max-route-stretch="1.35"
-  data-max-bridged-crossings="0" data-min-node-gap="40" data-min-container-gutter="20"
-  data-min-label-clearance="4" data-min-segment-length="16">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 700" width="960" height="700">
   <style>
     text { font-family: -apple-system, "Helvetica Neue", Arial, "PingFang SC", sans-serif; }
-    .title { font-family: Georgia, "Times New Roman", serif; font-size: 24px; font-weight: 700; fill: #f5f0eb; }
-    .section { font-family: Georgia, "Times New Roman", serif; font-size: 14px; font-weight: 700; fill: #c9a96e; }
-    .node { font-size: 14px; font-weight: 600; }
-    .detail { font-size: 11px; fill: #a39787; }
-    .edge-label { font-size: 11px; font-weight: 600; fill: #a39787; }
-    .legend { font-size: 11px; fill: #a39787; }
-    .footnote { font-size: 11px; fill: #6b5f53; }
+    .ttl { font-family: Georgia, "Times New Roman", serif; font-size: 24px; font-weight: 700; fill: #f5f0eb; }
+    .sub { font-size: 12px; fill: #a39787; }
+    .sec { font-family: Georgia, "Times New Roman", serif; font-size: 11px; font-weight: 700; fill: #c9a96e; opacity: 0.75; }
+    .nm  { font-size: 14px; font-weight: 600; }
+    .sm  { font-size: 10px; fill: #a39787; }
+    .xs  { font-size: 9px; fill: #6b5f53; }
+    .fn  { font-family: "Cascadia Code", "SF Mono", Consolas, "Courier New", monospace; font-size: 10px; fill: #a39787; }
+    .ph  { font-family: "Cascadia Code", "SF Mono", Consolas, "Courier New", monospace; font-size: 12px; font-weight: 600; }
+    .vb  { font-family: "Cascadia Code", "SF Mono", Consolas, "Courier New", monospace; font-size: 10px; fill: #c9a96e; }
+    .gl  { font-size: 9px; }
   </style>
   <defs>
-    <marker id="arrow-gold" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
-      <polygon points="0 0,10 3.5,0 7" fill="#d4a574"/>
-    </marker>
-    <marker id="arrow-sky" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
-      <polygon points="0 0,10 3.5,0 7" fill="#38bdf8"/>
-    </marker>
-    <marker id="arrow-violet" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
-      <polygon points="0 0,10 3.5,0 7" fill="#a78bfa"/>
-    </marker>
-    <marker id="arrow-mint" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
-      <polygon points="0 0,10 3.5,0 7" fill="#6ee7b7"/>
-    </marker>
-    <marker id="arrow-rose" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
-      <polygon points="0 0,10 3.5,0 7" fill="#f87171"/>
+    <marker id="arr-gold" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto">
+      <polygon points="0 0,8 3,0 6" fill="#8c7458"/>
     </marker>
   </defs>
-  <rect width="960" height="700" fill="#0a0a0a" data-graph-role="background"/>
-  <text x="48" y="50" class="title">Orch Delivery: approval-gated issue lifecycle</text>
-  <text x="48" y="74" class="detail">The run moves forward only with deterministic dispatch, independent evidence, and two human gates.</text>
-  <line x1="48" y1="100" x2="912" y2="100" stroke="#1a1a1a" stroke-width="1"/>
-  <rect id="upper" x="40" y="120" width="880" height="130" rx="8" fill="none" stroke="#d4a574" stroke-width="1" stroke-dasharray="6 4" opacity="0.5" data-graph-role="container" data-container-id="upper" data-semantic-role="boundary" data-graph-bounds="40,120,920,250"/>
-  <rect id="upper-header" x="48" y="126" width="190" height="30" fill="none" stroke="none" data-graph-role="reserved" data-reserved-kind="container-header"/>
-  <text x="54" y="146" class="section">GOVERNED ENTRY</text>
-  <rect id="lower" x="40" y="340" width="880" height="170" rx="8" fill="none" stroke="#d4a574" stroke-width="1" stroke-dasharray="6 4" opacity="0.5" data-graph-role="container" data-container-id="lower" data-semantic-role="boundary" data-graph-bounds="40,340,920,510"/>
-  <rect id="lower-header" x="48" y="346" width="220" height="30" fill="none" stroke="none" data-graph-role="reserved" data-reserved-kind="container-header"/>
-  <text x="54" y="366" class="section">DELIVERY + EVIDENCE</text>
-  <path id="request" data-graph-role="edge" data-edge-id="request" data-source="n1" data-target="n2" data-edge-kind="flow" data-flow="primary" data-motion-role="primary" data-motion-stage="1" data-motion-order="0" data-bends="0" data-route-stretch="1" data-critical="false" d="M 220 195 H 300" fill="none" stroke="#d4a574" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" marker-end="url(#arrow-gold)"/>
-  <path id="dispatch" data-graph-role="edge" data-edge-id="dispatch" data-source="n2" data-target="n3" data-edge-kind="flow" data-flow="primary" data-motion-role="primary" data-motion-stage="2" data-motion-order="0" data-bends="0" data-route-stretch="1" data-critical="false" d="M 480 195 H 560" fill="none" stroke="#d4a574" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" marker-end="url(#arrow-gold)"/>
-  <path id="context" data-graph-role="edge" data-edge-id="context" data-source="n3" data-target="n4" data-edge-kind="flow" data-flow="read" data-motion-role="memory-read" data-motion-stage="3" data-motion-order="0" data-bends="2" data-route-stretch="1" data-critical="false" d="M 632 225 V 300 H 390 V 390" fill="none" stroke="#38bdf8" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" marker-end="url(#arrow-sky)"/>
-  <path id="tool-call" data-graph-role="edge" data-edge-id="tool-call" data-source="n3" data-target="n5" data-edge-kind="dependency" data-flow="dependency" data-motion-role="tool-call" data-motion-stage="3" data-motion-order="1" data-bends="0" data-route-stretch="1" data-critical="false" d="M 668 225 V 390" fill="none" stroke="#a78bfa" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" stroke-dasharray="6 3" marker-end="url(#arrow-violet)"/>
-  <path id="data" data-graph-role="edge" data-edge-id="data" data-source="n4" data-target="n5" data-edge-kind="flow" data-flow="data" data-motion-role="data" data-motion-stage="4" data-motion-order="0" data-bends="0" data-route-stretch="1" data-critical="false" d="M 480 425 H 550" fill="none" stroke="#6ee7b7" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" marker-end="url(#arrow-mint)"/>
-  <path id="trace" data-graph-role="edge" data-edge-id="trace" data-source="n5" data-target="n6" data-edge-kind="telemetry" data-flow="primary" data-motion-role="trace" data-motion-stage="5" data-motion-order="0" data-bends="0" data-route-stretch="1" data-critical="false" d="M 730 425 H 770" fill="none" stroke="#d4a574" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" marker-end="url(#arrow-gold)"/>
-  <path id="feedback" data-graph-role="edge" data-edge-id="feedback" data-source="n6" data-target="n3" data-edge-kind="feedback" data-flow="feedback" data-motion-role="feedback" data-motion-stage="6" data-motion-order="0" data-bends="2" data-route-stretch="1" data-critical="false" d="M 835 390 V 300 H 704 V 225" fill="none" stroke="#f87171" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" stroke-dasharray="4 3" marker-end="url(#arrow-rose)"/>
-  <g id="node-n1" data-graph-role="node" data-node-id="n1" data-semantic-role="client" data-graph-bounds="60,165,220,225">
-    <rect x="60" y="165" width="160" height="60" rx="6" fill="#111111" stroke="#94a3b8" stroke-width="1.5"/>
-    <text x="140" y="192" text-anchor="middle" class="node" fill="#94a3b8">Plan approval gate</text>
-    <text x="140" y="212" text-anchor="middle" class="detail">human approval</text>
+
+  <rect width="960" height="700" fill="#0a0a0a"/>
+  <text x="48" y="50" class="ttl">The Delivery pipeline</text>
+  <text x="48" y="74" class="sub">One issue, phase by phase &#8212; the closed lifecycle the run engine drives, with a human at both gates.</text>
+  <line x1="48" y1="94" x2="912" y2="94" stroke="#1a1a1a" stroke-width="1"/>
+
+  <!-- ============ plan gate ============ -->
+  <rect x="48" y="118" width="270" height="86" rx="6" fill="#111111" stroke="#d4a574" stroke-width="1.5"/>
+  <text x="64" y="142" class="nm" fill="#e8c49a">Plan gate</text>
+  <text x="64" y="162" class="sm">executor + reviewer derived from issue</text>
+  <text x="64" y="176" class="sm">facts alone &#8212; you read it, you approve it</text>
+  <text x="64" y="194" class="xs">approving is what enters Delivery</text>
+  <circle cx="262" cy="140" r="14" fill="none" stroke="#e8c49a" stroke-width="1.5">
+    <animate attributeName="opacity" values="0.8;0.15;0.8;0.15;0.8;0;0" keyTimes="0;0.016;0.032;0.048;0.064;0.08;1" dur="10s" repeatCount="indefinite"/>
+  </circle>
+  <g opacity="0">
+    <rect x="230" y="128" width="72" height="22" rx="11" fill="#1a1a1a" stroke="#d4a574" stroke-width="1.2"/>
+    <text x="266" y="143" class="xs" fill="#e8c49a" text-anchor="middle">approved</text>
+    <animate attributeName="opacity" values="0;0;1;1;0;0" keyTimes="0;0.08;0.09;0.955;0.985;1" dur="10s" repeatCount="indefinite"/>
   </g>
-  <g id="node-n2" data-graph-role="node" data-node-id="n2" data-semantic-role="gateway" data-graph-bounds="300,165,480,225">
-    <rect x="300" y="165" width="180" height="60" rx="6" fill="#111111" stroke="#fbbf24" stroke-width="1.5"/>
-    <text x="390" y="192" text-anchor="middle" class="node" fill="#fbbf24">Approved plan</text>
-    <text x="390" y="212" text-anchor="middle" class="detail">fixed contract</text>
+  <text x="336" y="142" class="fn" opacity="0">
+    delivery.lock acquired &#183; worktrees created
+    <animate attributeName="opacity" values="0;0;1;1;0;0" keyTimes="0;0.09;0.105;0.955;0.985;1" dur="10s" repeatCount="indefinite"/>
+  </text>
+
+  <!-- ============ verb labels row 1 ============ -->
+  <text x="203" y="250" class="vb" text-anchor="middle">activate</text>
+  <text x="531" y="250" class="vb" text-anchor="middle">dispatch</text>
+  <text x="695" y="250" class="vb" text-anchor="middle">pr-open</text>
+  <text x="789" y="356" class="vb">review</text>
+  <text x="695" y="408" class="vb" text-anchor="middle">merge-report</text>
+  <text x="531" y="408" class="vb" text-anchor="middle">merge</text>
+  <text x="367" y="408" class="vb" text-anchor="middle">cleanup</text>
+  <text x="203" y="408" class="vb" text-anchor="middle">complete</text>
+
+  <!-- ============ arrows ============ -->
+  <g stroke="#8c7458" stroke-width="1.2" fill="none" opacity="0.8">
+    <path d="M 194,289 L 208,289" marker-end="url(#arr-gold)"/>
+    <path d="M 358,289 L 372,289" marker-end="url(#arr-gold)"/>
+    <path d="M 522,289 L 536,289" marker-end="url(#arr-gold)"/>
+    <path d="M 686,289 L 700,289" marker-end="url(#arr-gold)"/>
+    <path d="M 777,318 L 777,416" marker-end="url(#arr-gold)"/>
+    <path d="M 704,449 L 690,449" marker-end="url(#arr-gold)"/>
+    <path d="M 540,449 L 526,449" marker-end="url(#arr-gold)"/>
+    <path d="M 376,449 L 362,449" marker-end="url(#arr-gold)"/>
+    <path d="M 212,449 L 198,449" marker-end="url(#arr-gold)"/>
+    <path d="M 121,204 L 121,254" marker-end="url(#arr-gold)"/>
   </g>
-  <g id="node-n3" data-graph-role="node" data-node-id="n3" data-semantic-role="agent-runtime" data-graph-bounds="560,165,740,225">
-    <rect x="560" y="165" width="180" height="60" rx="6" fill="#111111" stroke="#a78bfa" stroke-width="1.5"/>
-    <text x="650" y="192" text-anchor="middle" class="node" fill="#a78bfa">Deterministic routing</text>
-    <text x="650" y="212" text-anchor="middle" class="detail">role → model + effort</text>
+
+  <!-- review cycle loop -->
+  <circle cx="884" cy="449" r="30" fill="none" stroke="#a78bfa" stroke-width="1.2" stroke-dasharray="5,4" opacity="0.5"/>
+  <text x="884" y="497" class="xs" fill="#a78bfa" text-anchor="middle">request-changes &#8635;</text>
+
+  <!-- ============ phase chips: dim base + lit overlay ============ -->
+  <!-- row 1 -->
+  <g>
+    <rect x="48" y="260" width="146" height="58" rx="6" fill="#111111" stroke="#3a352e" stroke-width="1.2"/>
+    <text x="121" y="284" class="ph" fill="#8c7e72" text-anchor="middle">planned</text>
+    <text x="121" y="302" class="gl" fill="#6b5f53" text-anchor="middle">in the approved plan</text>
   </g>
-  <g id="node-n4" data-graph-role="node" data-node-id="n4" data-semantic-role="memory" data-graph-bounds="300,390,480,460">
-    <rect x="300" y="390" width="180" height="70" rx="6" fill="#111111" stroke="#38bdf8" stroke-width="1.5"/>
-    <text x="390" y="417" text-anchor="middle" class="node" fill="#38bdf8">Issue + worktree</text>
-    <text x="390" y="437" text-anchor="middle" class="detail">activate in isolation</text>
+  <g opacity="0">
+    <rect x="48" y="260" width="146" height="58" rx="6" fill="#161310" stroke="#d4a574" stroke-width="1.6"/>
+    <text x="121" y="284" class="ph" fill="#d4a574" text-anchor="middle">planned</text>
+    <text x="121" y="302" class="gl" fill="#a39787" text-anchor="middle">in the approved plan</text>
+    <text x="182" y="276" class="gl" fill="#e8c49a">&#10003;</text>
+    <animate attributeName="opacity" values="0;0;1;1;0;0" keyTimes="0;0.11;0.115;0.955;0.985;1" dur="10s" repeatCount="indefinite"/>
   </g>
-  <g id="node-n5" data-graph-role="node" data-node-id="n5" data-semantic-role="tool-runtime" data-graph-bounds="550,390,730,460">
-    <rect x="550" y="390" width="180" height="70" rx="6" fill="#111111" stroke="#5a9e6f" stroke-width="1.5"/>
-    <text x="640" y="417" text-anchor="middle" class="node" fill="#5a9e6f">Implement + open PR</text>
-    <text x="640" y="437" text-anchor="middle" class="detail">issue-scoped change</text>
+  <g>
+    <rect x="212" y="260" width="146" height="58" rx="6" fill="#111111" stroke="#3a352e" stroke-width="1.2"/>
+    <text x="285" y="284" class="ph" fill="#8c7e72" text-anchor="middle">issue-created</text>
+    <text x="285" y="302" class="gl" fill="#6b5f53" text-anchor="middle">issue + audit record</text>
   </g>
-  <g id="node-n6" data-graph-role="node" data-node-id="n6" data-semantic-role="quality-gate" data-graph-bounds="770,390,900,460">
-    <rect x="770" y="390" width="130" height="70" rx="6" fill="#111111" stroke="#f87171" stroke-width="1.5"/>
-    <text x="835" y="412" text-anchor="middle" class="node" fill="#f87171">Review + merge</text>
-    <text x="835" y="432" text-anchor="middle" class="detail">required CI</text>
-    <text x="835" y="448" text-anchor="middle" class="detail">human merge gate</text>
+  <g opacity="0">
+    <rect x="212" y="260" width="146" height="58" rx="6" fill="#161310" stroke="#d4a574" stroke-width="1.6"/>
+    <text x="285" y="284" class="ph" fill="#d4a574" text-anchor="middle">issue-created</text>
+    <text x="285" y="302" class="gl" fill="#a39787" text-anchor="middle">issue + audit record</text>
+    <text x="346" y="276" class="gl" fill="#e8c49a">&#10003;</text>
+    <animate attributeName="opacity" values="0;0;1;1;0;0" keyTimes="0;0.19;0.195;0.955;0.985;1" dur="10s" repeatCount="indefinite"/>
   </g>
-  <g id="request-label" data-graph-role="label" data-owner="request" data-graph-bounds="240,135,340,155">
-    <rect x="240" y="135" width="100" height="20" rx="5" fill="#0a0a0a" opacity="0.96"/>
-    <text x="290" y="150" text-anchor="middle" class="edge-label">approve plan</text>
+  <g>
+    <rect x="376" y="260" width="146" height="58" rx="6" fill="#111111" stroke="#3a352e" stroke-width="1.2"/>
+    <text x="449" y="284" class="ph" fill="#8c7e72" text-anchor="middle">worktree-ready</text>
+    <text x="449" y="302" class="gl" fill="#6b5f53" text-anchor="middle">branch + worktree made</text>
   </g>
-  <g id="dispatch-label" data-graph-role="label" data-owner="dispatch" data-graph-bounds="484,135,556,155">
-    <rect x="484" y="135" width="72" height="20" rx="5" fill="#0a0a0a" opacity="0.96"/>
-    <text x="520" y="150" text-anchor="middle" class="edge-label">activate</text>
+  <g opacity="0">
+    <rect x="376" y="260" width="146" height="58" rx="6" fill="#161310" stroke="#d4a574" stroke-width="1.6"/>
+    <text x="449" y="284" class="ph" fill="#d4a574" text-anchor="middle">worktree-ready</text>
+    <text x="449" y="302" class="gl" fill="#a39787" text-anchor="middle">branch + worktree made</text>
+    <text x="510" y="276" class="gl" fill="#e8c49a">&#10003;</text>
+    <animate attributeName="opacity" values="0;0;1;1;0;0" keyTimes="0;0.26;0.265;0.955;0.985;1" dur="10s" repeatCount="indefinite"/>
   </g>
-  <g id="context-label" data-graph-role="label" data-owner="context" data-graph-bounds="453.5,274,546.5,294">
-    <rect x="453.5" y="274" width="93" height="20" rx="5" fill="#0a0a0a" opacity="0.96"/>
-    <text x="500" y="289" text-anchor="middle" class="edge-label">issue scope</text>
+  <g>
+    <rect x="540" y="260" width="146" height="58" rx="6" fill="#111111" stroke="#3a352e" stroke-width="1.2"/>
+    <text x="613" y="284" class="ph" fill="#8c7e72" text-anchor="middle">dispatched</text>
+    <text x="613" y="302" class="gl" fill="#6b5f53" text-anchor="middle">executor at work</text>
   </g>
-  <g id="tool-call-label" data-graph-role="label" data-owner="tool-call" data-graph-bounds="660.5,315,739.5,335">
-    <rect x="660.5" y="315" width="79" height="20" rx="5" fill="#0a0a0a" opacity="0.96"/>
-    <text x="700" y="330" text-anchor="middle" class="edge-label">implement</text>
+  <g opacity="0">
+    <rect x="540" y="260" width="146" height="58" rx="6" fill="#101512" stroke="#5a9e6f" stroke-width="1.6"/>
+    <text x="613" y="284" class="ph" fill="#5a9e6f" text-anchor="middle">dispatched</text>
+    <text x="613" y="302" class="gl" fill="#a39787" text-anchor="middle">executor at work</text>
+    <text x="674" y="276" class="gl" fill="#e8c49a">&#10003;</text>
+    <animate attributeName="opacity" values="0;0;1;1;0;0" keyTimes="0;0.33;0.335;0.955;0.985;1" dur="10s" repeatCount="indefinite"/>
   </g>
-  <g id="data-label" data-graph-role="label" data-owner="data" data-graph-bounds="487.5,365,552.5,385">
-    <rect x="487.5" y="365" width="65" height="20" rx="5" fill="#0a0a0a" opacity="0.96"/>
-    <text x="520" y="380" text-anchor="middle" class="edge-label">open PR</text>
+  <g>
+    <rect x="704" y="260" width="146" height="58" rx="6" fill="#111111" stroke="#3a352e" stroke-width="1.2"/>
+    <text x="777" y="284" class="ph" fill="#8c7e72" text-anchor="middle">pr-open</text>
+    <text x="777" y="302" class="gl" fill="#6b5f53" text-anchor="middle">PR up, strictly ahead</text>
   </g>
-  <g id="trace-label" data-graph-role="label" data-owner="trace" data-graph-bounds="718.5,365,811.5,385">
-    <rect x="718.5" y="365" width="93" height="20" rx="5" fill="#0a0a0a" opacity="0.96"/>
-    <text x="765" y="380" text-anchor="middle" class="edge-label">review + CI</text>
+  <g opacity="0">
+    <rect x="704" y="260" width="146" height="58" rx="6" fill="#101512" stroke="#5a9e6f" stroke-width="1.6"/>
+    <text x="777" y="284" class="ph" fill="#5a9e6f" text-anchor="middle">pr-open</text>
+    <text x="777" y="302" class="gl" fill="#a39787" text-anchor="middle">PR up, strictly ahead</text>
+    <text x="838" y="276" class="gl" fill="#e8c49a">&#10003;</text>
+    <animate attributeName="opacity" values="0;0;1;1;0;0" keyTimes="0;0.41;0.415;0.955;0.985;1" dur="10s" repeatCount="indefinite"/>
   </g>
-  <g id="feedback-label" data-graph-role="label" data-owner="feedback" data-graph-bounds="713,274,827,294">
-    <rect x="713" y="274" width="114" height="20" rx="5" fill="#0a0a0a" opacity="0.96"/>
-    <text x="770" y="289" text-anchor="middle" class="edge-label">review feedback</text>
+  <!-- row 2 -->
+  <g>
+    <rect x="704" y="420" width="146" height="58" rx="6" fill="#111111" stroke="#3a352e" stroke-width="1.2"/>
+    <text x="777" y="444" class="ph" fill="#8c7e72" text-anchor="middle">in-review</text>
+    <text x="777" y="462" class="gl" fill="#6b5f53" text-anchor="middle">independent review &#183; CI</text>
   </g>
-  <g id="legend" data-graph-role="legend">
-    <rect id="legend-zone" data-graph-role="reserved" data-reserved-kind="legend" x="40" y="555" width="880" height="70" fill="none" stroke="none"/>
-    <path data-graph-role="decoration" d="M 48 580 H 82" fill="none" stroke="#d4a574" stroke-width="1.7" marker-end="url(#arrow-gold)"/>
-    <text data-graph-role="decoration" x="93" y="584" class="legend">gated lifecycle</text>
-    <path data-graph-role="decoration" d="M 220 580 H 254" fill="none" stroke="#38bdf8" stroke-width="1.7" marker-end="url(#arrow-sky)"/>
-    <text data-graph-role="decoration" x="265" y="584" class="legend">issue scope</text>
-    <path data-graph-role="decoration" d="M 392 580 H 426" fill="none" stroke="#a78bfa" stroke-width="1.7" marker-end="url(#arrow-violet)"/>
-    <text data-graph-role="decoration" x="437" y="584" class="legend">implementation</text>
-    <path data-graph-role="decoration" d="M 564 580 H 598" fill="none" stroke="#6ee7b7" stroke-width="1.7" marker-end="url(#arrow-mint)"/>
-    <text data-graph-role="decoration" x="609" y="584" class="legend">evidence</text>
-    <path data-graph-role="decoration" d="M 736 580 H 770" fill="none" stroke="#f87171" stroke-width="1.7" marker-end="url(#arrow-rose)"/>
-    <text data-graph-role="decoration" x="781" y="584" class="legend">merge gate</text>
+  <g opacity="0">
+    <rect x="704" y="420" width="146" height="58" rx="6" fill="#131019" stroke="#a78bfa" stroke-width="1.6"/>
+    <text x="777" y="444" class="ph" fill="#a78bfa" text-anchor="middle">in-review</text>
+    <text x="777" y="462" class="gl" fill="#a39787" text-anchor="middle">independent review &#183; CI</text>
+    <text x="838" y="436" class="gl" fill="#e8c49a">&#10003;</text>
+    <animate attributeName="opacity" values="0;0;1;1;0;0" keyTimes="0;0.48;0.485;0.955;0.985;1" dur="10s" repeatCount="indefinite"/>
   </g>
-  <g id="footer" data-graph-role="reserved" data-graph-bounds="48,660,912,686">
-    <text x="48" y="680" class="footnote">Plan approval opens Delivery. Merge approval completes cleanup and returns the repository to Assist.</text>
+  <g>
+    <rect x="540" y="420" width="146" height="58" rx="6" fill="#111111" stroke="#3a352e" stroke-width="1.2"/>
+    <text x="613" y="444" class="ph" fill="#8c7e72" text-anchor="middle">awaiting-merge</text>
+    <text x="613" y="462" class="gl" fill="#6b5f53" text-anchor="middle">head OID pinned</text>
   </g>
+  <g opacity="0">
+    <rect x="540" y="420" width="146" height="58" rx="6" fill="#171307" stroke="#fbbf24" stroke-width="1.6"/>
+    <text x="613" y="444" class="ph" fill="#fbbf24" text-anchor="middle">awaiting-merge</text>
+    <text x="613" y="462" class="gl" fill="#a39787" text-anchor="middle">head OID pinned</text>
+    <text x="674" y="436" class="gl" fill="#e8c49a">&#10003;</text>
+    <animate attributeName="opacity" values="0;0;1;1;0;0" keyTimes="0;0.68;0.685;0.955;0.985;1" dur="10s" repeatCount="indefinite"/>
+  </g>
+  <g>
+    <rect x="376" y="420" width="146" height="58" rx="6" fill="#111111" stroke="#3a352e" stroke-width="1.2"/>
+    <text x="449" y="444" class="ph" fill="#8c7e72" text-anchor="middle">merged</text>
+    <text x="449" y="462" class="gl" fill="#6b5f53" text-anchor="middle">delivered &#183; closed</text>
+  </g>
+  <g opacity="0">
+    <rect x="376" y="420" width="146" height="58" rx="6" fill="#0f1613" stroke="#6ee7b7" stroke-width="1.6"/>
+    <text x="449" y="444" class="ph" fill="#6ee7b7" text-anchor="middle">merged</text>
+    <text x="449" y="462" class="gl" fill="#a39787" text-anchor="middle">delivered &#183; closed</text>
+    <text x="510" y="436" class="gl" fill="#e8c49a">&#10003;</text>
+    <animate attributeName="opacity" values="0;0;1;1;0;0" keyTimes="0;0.79;0.795;0.955;0.985;1" dur="10s" repeatCount="indefinite"/>
+  </g>
+  <g>
+    <rect x="212" y="420" width="146" height="58" rx="6" fill="#111111" stroke="#3a352e" stroke-width="1.2"/>
+    <text x="285" y="444" class="ph" fill="#8c7e72" text-anchor="middle">cleaned</text>
+    <text x="285" y="462" class="gl" fill="#6b5f53" text-anchor="middle">worktree removed</text>
+  </g>
+  <g opacity="0">
+    <rect x="212" y="420" width="146" height="58" rx="6" fill="#121316" stroke="#94a3b8" stroke-width="1.6"/>
+    <text x="285" y="444" class="ph" fill="#94a3b8" text-anchor="middle">cleaned</text>
+    <text x="285" y="462" class="gl" fill="#a39787" text-anchor="middle">worktree removed</text>
+    <text x="346" y="436" class="gl" fill="#e8c49a">&#10003;</text>
+    <animate attributeName="opacity" values="0;0;1;1;0;0" keyTimes="0;0.85;0.855;0.955;0.985;1" dur="10s" repeatCount="indefinite"/>
+  </g>
+  <g>
+    <rect x="48" y="420" width="146" height="58" rx="6" fill="#111111" stroke="#3a352e" stroke-width="1.2"/>
+    <text x="121" y="444" class="ph" fill="#8c7e72" text-anchor="middle">complete</text>
+    <text x="121" y="462" class="gl" fill="#6b5f53" text-anchor="middle">&#8594; back to Assist</text>
+  </g>
+  <g opacity="0">
+    <rect x="48" y="420" width="146" height="58" rx="6" fill="#161310" stroke="#e8c49a" stroke-width="1.6"/>
+    <text x="121" y="444" class="ph" fill="#e8c49a" text-anchor="middle">complete</text>
+    <text x="121" y="462" class="gl" fill="#a39787" text-anchor="middle">&#8594; back to Assist</text>
+    <text x="182" y="436" class="gl" fill="#e8c49a">&#10003;</text>
+    <animate attributeName="opacity" values="0;0;1;1;0;0" keyTimes="0;0.91;0.915;0.955;0.985;1" dur="10s" repeatCount="indefinite"/>
+  </g>
+
+  <!-- writable-phase underlines -->
+  <g stroke="#6ee7b7" stroke-width="2" opacity="0.55">
+    <line x1="556" y1="326" x2="670" y2="326"/>
+    <line x1="720" y1="326" x2="834" y2="326"/>
+    <line x1="720" y1="486" x2="834" y2="486"/>
+  </g>
+
+  <!-- merge gate labels -->
+  <g opacity="0.45">
+    <text x="531" y="498" class="sm" fill="#e8c49a" text-anchor="middle">you approve the merge</text>
+    <text x="531" y="511" class="fn" text-anchor="middle">gh pr merge --match-head-commit &lt;approved OID&gt;</text>
+    <animate attributeName="opacity" values="0.45;0.45;1;1;0.45;0.45" keyTimes="0;0.68;0.69;0.78;0.79;1" dur="10s" repeatCount="indefinite"/>
+  </g>
+  <path d="M 540,449 L 526,449" stroke="#e8c49a" stroke-width="3" fill="none" opacity="0">
+    <animate attributeName="opacity" values="0;0;0.9;0.25;0.9;0.25;0.9;0;0" keyTimes="0;0.68;0.69;0.71;0.73;0.75;0.76;0.77;1" dur="10s" repeatCount="indefinite"/>
+  </path>
+
+  <!-- legend line -->
+  <line x1="48" y1="521" x2="78" y2="521" stroke="#6ee7b7" stroke-width="2" opacity="0.55"/>
+  <text x="86" y="524" class="xs">the guard allows agent writes only in these phases &#8212; and only inside the issue's worktree</text>
+
+  <!-- ============ token ============ -->
+  <g opacity="0">
+    <circle r="8" fill="#d4a574" opacity="0.3"/>
+    <circle r="4.5" fill="#e8c49a" stroke="#d4a574" stroke-width="1"/>
+    <animate attributeName="opacity" values="0;0;1;1;0;0" keyTimes="0;0.075;0.085;0.95;0.985;1" dur="10s" repeatCount="indefinite"/>
+    <animateMotion
+      path="M 121,232 L 121,311 L 285,311 L 449,311 L 613,311 L 777,311 L 777,471 L 884,479 A 30,30 0 1 1 884,478.9 L 777,471 L 613,471 L 449,471 L 285,471 L 121,471"
+      calcMode="linear"
+      keyPoints="0;0;0.04043;0.04043;0.12435;0.12435;0.20828;0.20828;0.29221;0.29221;0.37614;0.37614;0.45801;0.45801;0.51292;0.60938;0.66430;0.66430;0.74822;0.74822;0.83215;0.83215;0.91608;0.91608;1;1"
+      keyTimes="0;0.08;0.11;0.15;0.19;0.22;0.26;0.29;0.33;0.37;0.41;0.44;0.48;0.50;0.52;0.60;0.62;0.64;0.68;0.76;0.79;0.82;0.85;0.88;0.91;1"
+      dur="10s" repeatCount="indefinite"/>
+  </g>
+
+  <!-- ============ bottom panels ============ -->
+  <rect x="48" y="540" width="522" height="96" rx="8" fill="none" stroke="#f87171" stroke-width="0.5" stroke-dasharray="6,4" opacity="0.35"/>
+  <text x="60" y="558" class="sec" fill="#b98a86">FAILURE ROUTES &#183; FROM ANY NON-TERMINAL PHASE</text>
+  <g opacity="0.6">
+    <rect x="64" y="570" width="152" height="48" rx="6" fill="#111111" stroke="#f87171" stroke-width="1"/>
+    <text x="76" y="589" class="sm" fill="#f87171" font-weight="600">escalate</text>
+    <text x="76" y="605" class="xs">failed model is retired</text>
+    <rect x="232" y="570" width="152" height="48" rx="6" fill="#111111" stroke="#f87171" stroke-width="1"/>
+    <text x="244" y="589" class="sm" fill="#f87171" font-weight="600">block</text>
+    <text x="244" y="605" class="xs">a secret stops the run</text>
+    <rect x="400" y="570" width="152" height="48" rx="6" fill="#111111" stroke="#f87171" stroke-width="1"/>
+    <text x="412" y="589" class="sm" fill="#f87171" font-weight="600">abandon</text>
+    <text x="412" y="605" class="xs">PR closed &#183; work preserved</text>
+  </g>
+
+  <rect x="586" y="540" width="326" height="96" rx="8" fill="none" stroke="#d4a574" stroke-width="0.5" stroke-dasharray="6,4" opacity="0.4"/>
+  <text x="598" y="558" class="sec">ENGINE GUARANTEES</text>
+  <text x="598" y="580" class="xs" fill="#a39787">errors never mutate state; it advances only on success</text>
+  <text x="598" y="598" class="xs" fill="#a39787">state.json persisted after every sub-step (each &#10003;)</text>
+  <text x="598" y="616" class="xs" fill="#a39787">orch resume reconciles a crashed run against GitHub</text>
+
+  <!-- completion banner -->
+  <text x="480" y="668" class="sub" fill="#e8c49a" text-anchor="middle" opacity="0">
+    every issue cleaned &#8212; delivery.lock released, the repository returns to Assist
+    <animate attributeName="opacity" values="0;0;1;1;0;0" keyTimes="0;0.91;0.925;0.965;0.99;1" dur="10s" repeatCount="indefinite"/>
+  </text>
 </svg>
