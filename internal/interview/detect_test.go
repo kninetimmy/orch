@@ -28,13 +28,13 @@ func TestDetectAllPresentAndHealthy(t *testing.T) {
 		{Name: "git", Args: []string{"rev-parse", "--show-toplevel"}, Dir: "/repo", Stdout: "/repo\n", Exit: 0},
 		{Name: "memhub", Args: []string{"status"}, Dir: "/repo", Exit: 0},
 	}}
-	deps := Deps{RepoRoot: "/repo", LookPath: fakeLookPath("claude", "codex", "git", "gh", "memhub"), Runner: script}
+	deps := Deps{RepoRoot: "/repo", LookPath: fakeLookPath("claude", "codex", "opencode2", "git", "gh", "memhub"), Runner: script}
 
 	facts := Detect(context.Background(), deps)
 	script.AssertExhausted()
 
-	if !facts.ClaudeCLI || !facts.CodexCLI || !facts.Gh {
-		t.Fatalf("facts = %+v, want claude/codex/gh all true", facts)
+	if !facts.ClaudeCLI || !facts.CodexCLI || !facts.OpenCodeCLI || !facts.Gh {
+		t.Fatalf("facts = %+v, want claude/codex/opencode/gh all true", facts)
 	}
 	if !facts.Git || facts.GitRoot != "/repo" {
 		t.Errorf("git facts = %v/%q, want true/\"/repo\"", facts.Git, facts.GitRoot)
@@ -86,8 +86,8 @@ func TestDetectNoGit(t *testing.T) {
 	if !facts.ClaudeCLI {
 		t.Error("ClaudeCLI = false, want true")
 	}
-	if facts.CodexCLI || facts.Gh {
-		t.Errorf("facts = %+v, want codex/gh false", facts)
+	if facts.CodexCLI || facts.OpenCodeCLI || facts.Gh {
+		t.Errorf("facts = %+v, want codex/opencode/gh false", facts)
 	}
 }
 
@@ -107,7 +107,7 @@ func TestDetectGitNotARepo(t *testing.T) {
 
 func TestDetectNilLookPath(t *testing.T) {
 	facts := Detect(context.Background(), Deps{RepoRoot: "/repo"})
-	if facts.ClaudeCLI || facts.CodexCLI || facts.Git || facts.Gh || facts.MemhubCLI {
+	if facts.ClaudeCLI || facts.CodexCLI || facts.OpenCodeCLI || facts.Git || facts.Gh || facts.MemhubCLI {
 		t.Errorf("facts = %+v, want every field false with a nil LookPath", facts)
 	}
 }

@@ -44,7 +44,7 @@ func newLeafClasses() map[string]leafClass {
 		"concurrency.max_subagents": classPreference,
 		"metrics.enabled":           classPreference,
 	}
-	for _, host := range []string{"codex", "claude"} {
+	for _, host := range []string{"codex", "claude", "opencode"} {
 		for _, role := range roleNames {
 			prefix := "hosts." + host + ".roles." + role
 			m[prefix+".model"] = classPreference
@@ -219,6 +219,8 @@ func hostPtr(cfg *Config, name string) *Host {
 		return cfg.Hosts.Codex
 	case "claude":
 		return cfg.Hosts.Claude
+	case "opencode":
+		return cfg.Hosts.OpenCode
 	default:
 		return nil
 	}
@@ -231,6 +233,8 @@ func setHostPtr(cfg *Config, name string, h *Host) {
 		cfg.Hosts.Codex = h
 	case "claude":
 		cfg.Hosts.Claude = h
+	case "opencode":
+		cfg.Hosts.OpenCode = h
 	}
 }
 

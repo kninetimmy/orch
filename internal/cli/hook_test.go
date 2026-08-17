@@ -309,4 +309,14 @@ func TestHookSessionStartSharedLinesAcrossHosts(t *testing.T) {
 	if claudeShared != codexShared {
 		t.Errorf("shared lines differ:\nclaude: %q\ncodex:  %q", claudeShared, codexShared)
 	}
+
+	envOpenCode, stdoutOpenCode, stderr3 := testEnv(t)
+	writeConfig(t, envOpenCode.RepoRoot, validOpenCodeTOML)
+	if code := Run([]string{"hook", "opencode", "session-start"}, envOpenCode); code != ExitOK {
+		t.Fatalf("opencode exit = %d, want %d (stderr %q)", code, ExitOK, stderr3.String())
+	}
+	openCodeShared := strings.TrimSuffix(stdoutOpenCode.String(), sessionStartClosing["opencode"]+"\n")
+	if claudeShared != openCodeShared {
+		t.Errorf("shared lines differ:\nclaude: %q\nopencode: %q", claudeShared, openCodeShared)
+	}
 }

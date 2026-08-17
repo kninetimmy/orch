@@ -102,6 +102,7 @@ func runInitReport(env Env) error {
 	fmt.Fprintln(env.Stdout, "orch init: detection report")
 	fmt.Fprintf(env.Stdout, "  claude CLI:  %s\n", yesNo(facts.ClaudeCLI))
 	fmt.Fprintf(env.Stdout, "  codex CLI:   %s\n", yesNo(facts.CodexCLI))
+	fmt.Fprintf(env.Stdout, "  opencode2:   %s\n", yesNo(facts.OpenCodeCLI))
 	fmt.Fprintf(env.Stdout, "  git:         %s\n", yesNo(facts.Git))
 	if facts.Git {
 		fmt.Fprintf(env.Stdout, "  git root:    %s\n", facts.GitRoot)

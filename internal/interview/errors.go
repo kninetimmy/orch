@@ -6,12 +6,11 @@ import "errors"
 // with %w and detail (config/run house style) rather than replace
 // them.
 var (
-	// ErrNoHostEnabled reports that both host.claude.enabled and
-	// host.codex.enabled are answered "no" — the same "at least one
-	// host" rule config.validate enforces on the committed file,
-	// checked here as soon as both toggles are known so the adapter
+	// ErrNoHostEnabled reports that every offered host toggle is answered
+	// "no" — the same "at least one host" rule config.validate enforces on
+	// the committed file, checked as soon as all toggles are known so the adapter
 	// can fix it before walking any role questions.
-	ErrNoHostEnabled = errors.New("at least one of Claude Code or Codex CLI must be enabled")
+	ErrNoHostEnabled = errors.New("at least one of Claude Code, Codex CLI, or OpenCode V2 must be enabled")
 	// ErrUnknownAnswer reports an answer key that names no question in
 	// the sequence the current facts and prior answers derive — either
 	// a genuine typo, or a question that is not (or no longer)

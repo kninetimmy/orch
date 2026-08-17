@@ -102,7 +102,7 @@ func nextAfterSequence(facts Facts, answers map[string]string, repoRoot string) 
 	if err != nil {
 		return question.Document{}, err
 	}
-	seeds := seedFiles(facts, initSeedScope(cfg.Hosts.Claude != nil, cfg.Hosts.Codex != nil), answers)
+	seeds := seedFiles(facts, initSeedScope(cfg.Hosts.Claude != nil, cfg.Hosts.Codex != nil || cfg.Hosts.OpenCode != nil), answers)
 	summary, err := buildSummary(cfg, repoRoot, seeds)
 	if err != nil {
 		return question.Document{}, err

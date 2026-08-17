@@ -28,6 +28,7 @@ import (
 const (
 	idPickClaude   = "pick.claude"
 	idPickCodex    = "pick.codex"
+	idPickOpenCode = "pick.opencode"
 	idPickSettings = "pick.settings"
 )
 
@@ -340,6 +341,8 @@ func committedHostConfig(committed *config.Config, host string) *config.Host {
 		return committed.Hosts.Claude
 	case "codex":
 		return committed.Hosts.Codex
+	case "opencode":
+		return committed.Hosts.OpenCode
 	default:
 		return nil
 	}
@@ -375,6 +378,8 @@ func pickIDForHost(host string) string {
 		return idPickClaude
 	case "codex":
 		return idPickCodex
+	case "opencode":
+		return idPickOpenCode
 	default:
 		return ""
 	}
@@ -394,6 +399,9 @@ func buildSequenceLocal(committed *config.Config, seeded map[string]string, answ
 	}
 	if committed.Hosts.Codex != nil && answers[idPickCodex] == "yes" {
 		docs = append(docs, localRoleDocSpecs("codex", committed, seeded)...)
+	}
+	if committed.Hosts.OpenCode != nil && answers[idPickOpenCode] == "yes" {
+		docs = append(docs, localRoleDocSpecs("opencode", committed, seeded)...)
 	}
 	if answers[idPickSettings] == "yes" {
 		docs = append(docs, localSettingsDoc(committed, seeded))
@@ -426,6 +434,13 @@ func pickerDocLocal(committed *config.Config, seeded map[string]string) docSpec 
 			Kind:    question.KindSelect,
 			Default: def,
 			Options: yesNoOptions(def),
+		})
+	}
+	if committed.Hosts.OpenCode != nil {
+		def := boolValue(hasHostOverride(seeded, "opencode"))
+		qs = append(qs, question.Question{
+			ID: idPickOpenCode, Header: "OpenCode", Prompt: "Review or change OpenCode V2's local overrides?",
+			Kind: question.KindSelect, Default: def, Options: yesNoOptions(def),
 		})
 	}
 	settingsDef := boolValue(hasSettingsOverride(seeded))
@@ -634,7 +649,7 @@ func materializeLocal(committed *config.Config, seeded map[string]string, answer
 		overrides[k] = v
 	}
 
-	for _, host := range []string{"claude", "codex"} {
+	for _, host := range []string{"claude", "codex", "opencode"} {
 		if answers[pickIDForHost(host)] != "yes" {
 			continue
 		}

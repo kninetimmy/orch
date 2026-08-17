@@ -11,6 +11,7 @@ import (
 
 	"github.com/kninetimmy/orch/adapters/claude"
 	"github.com/kninetimmy/orch/adapters/codex"
+	"github.com/kninetimmy/orch/adapters/opencode"
 	"github.com/kninetimmy/orch/internal/agents"
 	"github.com/kninetimmy/orch/internal/config"
 	"github.com/kninetimmy/orch/internal/execx"
@@ -46,6 +47,13 @@ var (
 		pluginID:     "orch@orch",
 		manifestJSON: codex.PluginManifestJSON,
 		repair:       "run `codex plugin marketplace upgrade orch`, then restart Codex CLI",
+	}
+	opencodeAdapter = adapterSpec{
+		host:         "opencode",
+		executable:   "opencode2",
+		pluginID:     "orch.delivery",
+		manifestJSON: opencode.PackageJSON,
+		repair:       "install the pinned Orch OpenCode adapter, then restart the OpenCode V2 service",
 	}
 )
 
@@ -127,14 +135,14 @@ func runDoctor(env Env) error {
 		if cfg.Hosts.Codex != nil {
 			check("codex adapter", checkAdapter(env, codexAdapter))
 		}
+		if cfg.Hosts.OpenCode != nil {
+			check("opencode adapter", checkOpenCodeAdapter(env, opencodeAdapter))
+		}
 	}
 
 	if cfgErr == nil {
 		for _, host := range cfg.EnabledHosts() {
-			h := cfg.Hosts.Claude
-			if host == "codex" {
-				h = cfg.Hosts.Codex
-			}
+			h := cfg.Host(host)
 			stale, staleErr := agents.Stale(env.RepoRoot, host, h)
 			switch {
 			case len(stale) > 0:
@@ -360,6 +368,61 @@ func adapterVersion(manifestJSON string) (string, error) {
 		return "", errors.New("manifest has no version")
 	}
 	return manifest.Version, nil
+}
+
+const pinnedOpenCodeVersion = "opencode2 v0.0.0-next-17444"
+
+// checkOpenCodeAdapter pins the beta runtime contract and checks the active
+// plugin ID. V2's plugin API does not currently expose adapter versions.
+func checkOpenCodeAdapter(env Env, spec adapterSpec) error {
+	fail := func(detail string) error { return fmt.Errorf("%s; %s", detail, spec.repair) }
+	if _, err := env.LookPath(spec.executable); err != nil {
+		return fail(fmt.Sprintf("%s not found on PATH: %v", spec.executable, err))
+	}
+	version, err := env.Runner.Run(context.Background(), execx.Cmd{Name: spec.executable, Args: []string{"--version"}, Dir: env.RepoRoot})
+	if err != nil {
+		return fail(fmt.Sprintf("run `%s --version`: %v", spec.executable, err))
+	}
+	if version.ExitCode != 0 {
+		detail := strings.TrimSpace(version.Stderr)
+		if detail == "" {
+			detail = "no error output"
+		}
+		return fail(fmt.Sprintf("`%s --version` exited %d: %s", spec.executable, version.ExitCode, detail))
+	}
+	if got := strings.TrimSpace(version.Stdout); got != pinnedOpenCodeVersion {
+		return fail(fmt.Sprintf("OpenCode V2 contract drift: got %q, want %q", got, pinnedOpenCodeVersion))
+	}
+	listing, err := env.Runner.Run(context.Background(), execx.Cmd{Name: spec.executable, Args: []string{"api", "get", "/api/plugin"}, Dir: env.RepoRoot})
+	command := spec.executable + " api get /api/plugin"
+	if err != nil {
+		return fail(fmt.Sprintf("run `%s`: %v", command, err))
+	}
+	if listing.ExitCode != 0 {
+		detail := strings.TrimSpace(listing.Stderr)
+		if detail == "" {
+			detail = "no error output"
+		}
+		return fail(fmt.Sprintf("`%s` exited %d: %s", command, listing.ExitCode, detail))
+	}
+	var response struct {
+		Data []struct {
+			ID string `json:"id"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal([]byte(listing.Stdout), &response); err != nil || response.Data == nil {
+		return fail(fmt.Sprintf("malformed `%s` output: expected an object with a data array", command))
+	}
+	count := 0
+	for _, plugin := range response.Data {
+		if plugin.ID == spec.pluginID {
+			count++
+		}
+	}
+	if count != 1 {
+		return fail(fmt.Sprintf("%s appears %d times; exactly one active plugin is required", spec.pluginID, count))
+	}
+	return nil
 }
 
 func decodeAdapterPlugins(host string, data []byte) ([]adapterPlugin, error) {

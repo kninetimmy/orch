@@ -184,7 +184,7 @@ type Issue struct {
 // Run describes the active Delivery run.
 type Run struct {
 	ID        string    `json:"id"`
-	Host      string    `json:"host"` // "claude" or "codex"
+	Host      string    `json:"host"` // "claude", "codex", or "opencode"
 	StartedAt time.Time `json:"started_at"`
 	Plan      PlanRef   `json:"plan"`
 	Issues    []Issue   `json:"issues"`

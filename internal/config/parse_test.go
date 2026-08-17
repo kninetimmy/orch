@@ -54,7 +54,7 @@ func TestParseInvalid(t *testing.T) {
 		{"invalid/bad_effort.toml", `"ultra"`},
 		{"invalid/bad_merge_strategy.toml", `"fast-forward"`},
 		{"invalid/bad_memhub_mode.toml", `"maybe"`},
-		{"invalid/no_hosts.toml", "at least one of hosts.codex or hosts.claude"},
+		{"invalid/no_hosts.toml", "at least one of hosts.codex, hosts.claude, or hosts.opencode"},
 		{"invalid/missing_role.toml", "hosts.claude.roles.reviewer.model"},
 	}
 	for _, tt := range tests {

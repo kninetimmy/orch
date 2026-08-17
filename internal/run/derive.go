@@ -15,13 +15,7 @@ import (
 // routing.Profile the pure routing package consumes. config owns the
 // model/effort vocabulary; routing never sees a config.Host directly.
 func hostProfile(cfg *config.Config, host string) (routing.Profile, error) {
-	var h *config.Host
-	switch host {
-	case "claude":
-		h = cfg.Hosts.Claude
-	case "codex":
-		h = cfg.Hosts.Codex
-	}
+	h := cfg.Host(host)
 	if h == nil {
 		return routing.Profile{}, fmt.Errorf("host %q is not enabled in configuration", host)
 	}
@@ -48,7 +42,7 @@ func hostProfile(cfg *config.Config, host string) (routing.Profile, error) {
 // stop making.
 func effortDelivery(host string) (manifest.EffortDelivery, error) {
 	switch host {
-	case "codex":
+	case "codex", "opencode":
 		return manifest.EffortDeliveryParameter, nil
 	case "claude":
 		return manifest.EffortDeliveryPromptCue, nil
@@ -98,6 +92,7 @@ func modelDenylist(cfg *config.Config) []string {
 	}
 	add(cfg.Hosts.Claude)
 	add(cfg.Hosts.Codex)
+	add(cfg.Hosts.OpenCode)
 	names := make([]string, 0, len(seen))
 	for m := range seen {
 		names = append(names, m)

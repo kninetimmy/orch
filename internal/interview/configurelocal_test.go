@@ -443,6 +443,27 @@ effort = "ultra"
 func TestConfigureLocalLeafIDsMatchPreferenceKeys(t *testing.T) {
 	root := t.TempDir()
 	writeCommittedConfigLocal(t, root)
+	raw, err := os.ReadFile(filepath.Join(root, filepath.FromSlash(config.Path)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	committed, err := config.Parse(raw)
+	if err != nil {
+		t.Fatal(err)
+	}
+	openCode := *committed.Hosts.Codex
+	committed.Hosts.OpenCode = &openCode
+	committed.ConfigRevision, err = config.Revision(committed)
+	if err != nil {
+		t.Fatal(err)
+	}
+	raw, err = config.Render(committed)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(root, filepath.FromSlash(config.Path)), raw, 0o644); err != nil {
+		t.Fatal(err)
+	}
 
 	answers := map[string]string{}
 	seen := map[string]bool{}
@@ -455,7 +476,7 @@ func TestConfigureLocalLeafIDsMatchPreferenceKeys(t *testing.T) {
 			break
 		}
 		for _, q := range doc.Questions {
-			if q.ID == idPickClaude || q.ID == idPickCodex || q.ID == idPickSettings {
+			if q.ID == idPickClaude || q.ID == idPickCodex || q.ID == idPickOpenCode || q.ID == idPickSettings {
 				answers[q.ID] = "yes"
 				continue
 			}

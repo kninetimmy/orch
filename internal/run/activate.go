@@ -184,10 +184,7 @@ func Activate(ctx context.Context, env Env, reqJSON []byte) (*ActivationResult, 
 	if err := requireAssistNoLock(env.RepoRoot); err != nil {
 		return nil, err
 	}
-	agentHost := cfg.Hosts.Claude
-	if plan.Host == "codex" {
-		agentHost = cfg.Hosts.Codex
-	}
+	agentHost := cfg.Host(plan.Host)
 	stale, staleErr := agents.Stale(env.RepoRoot, plan.Host, agentHost)
 	if len(stale) > 0 {
 		detail := strings.Join(stale, ", ")

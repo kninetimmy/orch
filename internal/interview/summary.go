@@ -13,11 +13,12 @@ import (
 	"github.com/kninetimmy/orch/internal/question"
 )
 
-// instructionFileFor names the root instruction file a host owns
-// (contract call 4): AGENTS.md for Codex, CLAUDE.md for Claude Code.
+// instructionFileFor names the root instruction file a host owns: AGENTS.md
+// for Codex and OpenCode, CLAUDE.md for Claude Code.
 var instructionFileFor = map[string]string{
-	"claude": "CLAUDE.md",
-	"codex":  "AGENTS.md",
+	"claude":   "CLAUDE.md",
+	"codex":    "AGENTS.md",
+	"opencode": "AGENTS.md",
 }
 
 // applicableInstructionFiles lists, in claude-then-codex order, the
@@ -29,6 +30,9 @@ func applicableInstructionFiles(cfg *config.Config) []string {
 	}
 	if cfg.Hosts.Codex != nil {
 		names = append(names, instructionFileFor["codex"])
+	}
+	if cfg.Hosts.OpenCode != nil && cfg.Hosts.Codex == nil {
+		names = append(names, instructionFileFor["opencode"])
 	}
 	return names
 }
@@ -57,7 +61,9 @@ func SiblingInstructionFile(host string) string {
 // Detect's execProber-duplication precedent, so this pre-init-safe
 // package need not import internal/run/state/lockfile) the values of
 // run.WorktreeContainer+"/", config.LocalOverridePath, state.Path,
-// lockfile.Path, agents.ClaudeDir+"/", and agents.CodexDir+"/".
+// lockfile.Path and the generated-agent directories. Before OpenCode support,
+// this fixed list ended with the Claude and Codex directories; OpenCode's
+// directory is added conditionally by gitignoreLines below.
 var baseGitignoreLines = []string{
 	".orchestrator/worktrees/",
 	".orchestrator/config.local.toml",
@@ -120,7 +126,7 @@ func buildSummary(cfg *config.Config, repoRoot string, seeds map[string]string) 
 		conflictLines = append(conflictLines, fmt.Sprintf("%s: %s", filepath.ToSlash(rel), c.Report.Detail))
 	}
 
-	gitignore, err := gitignoreLines(repoRoot)
+	gitignore, err := gitignoreLines(repoRoot, cfg)
 	if err != nil {
 		return question.Summary{}, err
 	}
@@ -182,8 +188,11 @@ func isBlockingPlanError(err error) bool {
 // metricsGitignoreLine's own doc comment) — filtered against whatever
 // repoRoot's .gitignore already contains, so the summary proposes only
 // genuinely missing lines.
-func gitignoreLines(repoRoot string) ([]string, error) {
+func gitignoreLines(repoRoot string, cfg *config.Config) ([]string, error) {
 	want := append(append([]string{}, baseGitignoreLines...), metricsGitignoreLine)
+	if cfg.Hosts.OpenCode != nil {
+		want = append(want, ".opencode/agents/")
+	}
 
 	existing, err := readGitignore(repoRoot)
 	if err != nil {
@@ -236,6 +245,9 @@ func buildComplete(summary question.Summary, facts Facts) *question.Complete {
 		"memhub_cli":     boolValue(facts.MemhubCLI),
 		"memhub_healthy": boolValue(facts.MemhubHealthy),
 		"memhub_detail":  facts.MemhubDetail,
+	}
+	if facts.OpenCodeCLI {
+		detection["opencode_cli"] = "yes"
 	}
 
 	var reasons []string

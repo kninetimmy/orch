@@ -22,8 +22,8 @@ import (
 // (EnterDelivery does not recompute it — the caller has already
 // validated the plan and its approval).
 func EnterDelivery(repoRoot, host string, plan PlanRef, issues []Issue) (*State, error) {
-	if host != "claude" && host != "codex" {
-		return nil, fmt.Errorf("unknown host %q (want claude or codex)", host)
+	if host != "claude" && host != "codex" && host != "opencode" {
+		return nil, fmt.Errorf("unknown host %q (want claude, codex, or opencode)", host)
 	}
 	if plan.Digest == "" {
 		return nil, errors.New("EnterDelivery: plan digest must not be empty")

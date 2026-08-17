@@ -65,6 +65,28 @@ func TestMaterializeSingleHost(t *testing.T) {
 	}
 }
 
+func TestMaterializeOpenCodeOnly(t *testing.T) {
+	answers := fullAnswers()
+	answers[idHostClaudeEnabled] = "no"
+	answers[idHostCodexEnabled] = "no"
+	answers[idHostOpenCodeEnabled] = "yes"
+	for _, rs := range roleSpecs {
+		def := defaultProfiles["opencode"][rs.key]
+		answers[roleModelID("opencode", rs.key)] = def.model
+		answers[roleEffortID("opencode", rs.key)] = def.effort
+	}
+	cfg, err := materialize(answers)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.Hosts.Claude != nil || cfg.Hosts.Codex != nil || cfg.Hosts.OpenCode == nil {
+		t.Fatalf("Hosts = %+v, want OpenCode only", cfg.Hosts)
+	}
+	if got := cfg.Hosts.OpenCode.Roles.Specialist.Model; got != "openai/gpt-5.6-sol" {
+		t.Errorf("specialist model = %q", got)
+	}
+}
+
 func TestMaterializeFreeTextModel(t *testing.T) {
 	answers := fullAnswers()
 	answers[roleModelID("claude", "architect")] = "claude-fable-5"

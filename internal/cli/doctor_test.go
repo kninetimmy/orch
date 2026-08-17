@@ -136,13 +136,14 @@ func TestDoctorConfiguredAdaptersPassCurrentListings(t *testing.T) {
 	}{
 		{"claude", validTOML, "claude"},
 		{"codex", validCodexTOML, "codex"},
+		{"opencode", validOpenCodeTOML, "opencode2"},
 	}
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			env, stdout, _ := testEnv(t)
 			writeConfig(t, env.RepoRoot, tc.config)
-			if tc.executable == "codex" {
+			if tc.executable == "codex" || tc.executable == "opencode2" {
 				if code := Run([]string{"render-agents"}, env); code != ExitOK {
 					t.Fatalf("render-agents exit = %d, want %d\n%s", code, ExitOK, stdout.String())
 				}
@@ -158,7 +159,7 @@ func TestDoctorConfiguredAdaptersPassCurrentListings(t *testing.T) {
 					}
 					probed = true
 					if cmd.Dir != env.RepoRoot {
-						t.Errorf("%s plugin list dir = %q, want %q", tc.executable, cmd.Dir, env.RepoRoot)
+						t.Errorf("%s adapter probe dir = %q, want %q", tc.executable, cmd.Dir, env.RepoRoot)
 					}
 				},
 			}
@@ -296,13 +297,31 @@ func TestDoctorAdapterFailures(t *testing.T) {
 			},
 			wantDetails: []string{"orch@orch version mismatch", fmt.Sprintf(`installed "0.5.0", expected %q`, codexVersion)},
 		},
+		{
+			name:   "opencode runtime mismatch",
+			config: validOpenCodeTOML,
+			spec:   opencodeAdapter,
+			configure: func(r *fakeRunner) {
+				r.opencodeVersion = "opencode2 v0.0.0-beta-newer"
+			},
+			wantDetails: []string{"OpenCode V2 contract drift", pinnedOpenCodeVersion},
+		},
+		{
+			name:   "opencode malformed plugin response",
+			config: validOpenCodeTOML,
+			spec:   opencodeAdapter,
+			configure: func(r *fakeRunner) {
+				r.opencodePlugins = "{}"
+			},
+			wantDetails: []string{"malformed `opencode2 api get /api/plugin` output"},
+		},
 	}
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			env, stdout, _ := testEnv(t)
 			writeConfig(t, env.RepoRoot, tc.config)
-			if tc.spec.host == "codex" {
+			if tc.spec.host == "codex" || tc.spec.host == "opencode" {
 				if code := Run([]string{"render-agents"}, env); code != ExitOK {
 					t.Fatalf("render-agents exit = %d, want %d\n%s", code, ExitOK, stdout.String())
 				}
@@ -355,6 +374,7 @@ func TestDoctorUnconfiguredHostIsNotProbed(t *testing.T) {
 		unconfigured string
 	}{
 		{"claude only", validTOML, "codex"},
+		{"claude only no opencode", validTOML, "opencode2"},
 		{"codex only", validCodexTOML, "claude"},
 	}
 
