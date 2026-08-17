@@ -55,7 +55,7 @@
   <text x="78" y="198" class="sm">describe the change &#183; approve gates</text>
 
   <rect x="64" y="250" width="202" height="70" rx="6" fill="#111111" stroke="#a78bfa" stroke-width="1.5"/>
-  <text x="78" y="274" class="nm" fill="#a78bfa">Claude Code &#183; Codex CLI</text>
+  <text x="78" y="274" class="nm" fill="#a78bfa">Claude &#183; Codex &#183; OpenCode V2</text>
   <text x="78" y="292" class="sm">the CLI you already use;</text>
   <text x="78" y="306" class="sm">its pre-write hook calls orch guard</text>
 
