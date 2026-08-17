@@ -370,7 +370,7 @@ func adapterVersion(manifestJSON string) (string, error) {
 	return manifest.Version, nil
 }
 
-const pinnedOpenCodeVersion = "opencode2 v0.0.0-next-17444"
+const pinnedOpenCodeVersion = "opencode2 v0.0.0-beta-17498"
 
 // checkOpenCodeAdapter pins the beta runtime contract and checks the active
 // plugin ID. V2's plugin API does not currently expose adapter versions.

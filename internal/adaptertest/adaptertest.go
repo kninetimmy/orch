@@ -1,4 +1,4 @@
-// Package adaptertest is the PRD §23 shared parity layer both host
+// Package adaptertest is the PRD §23 shared parity layer all hosts'
 // adapters' plugin tests consume: fixtures (the committed §10 role
 // profiles) and assertion helpers (skill/manifest drift pins) so
 // cross-host invariants — the run-verb allowlist, the four
@@ -10,8 +10,8 @@
 // silently drift apart.
 //
 // This package carries no Test functions and tests nothing of its own;
-// it is test-support only, imported by adapters/claude/plugin_test.go
-// and adapters/codex/plugin_test.go. Every exported Check* helper takes
+// it is test-support only, imported by each adapter's plugin_test.go.
+// Every exported Check* helper takes
 // a *testing.T and calls t.Helper(), and reads files relative to the
 // caller's own working directory — the same assumption each adapter's
 // plugin_test.go already makes, since `go test` runs a package's tests
@@ -49,10 +49,10 @@ type RoleSpec struct {
 	Effort string
 }
 
-// Profile returns the committed §10 profile for host ("claude" or
-// "codex"), keyed by role: "scout", "implementer", "specialist",
+// Profile returns the committed §10 profile for host ("claude", "codex",
+// or "opencode"), keyed by role: "scout", "implementer", "specialist",
 // "reviewer", "reviewer-safe". Every adapter's agent roster is asserted
-// equal to this map so the two hosts' plugin tests and the committed
+// equal to this map so the hosts' plugin tests and the committed
 // §10 table can never silently diverge from one another.
 //
 // An unrecognized host is a programming error in the caller (a typo, or
@@ -76,6 +76,14 @@ func Profile(host string) map[string]RoleSpec {
 			"specialist":    {Model: "gpt-5.6-sol", Effort: "max"},
 			"reviewer":      {Model: "gpt-5.6-sol", Effort: "xhigh"},
 			"reviewer-safe": {Model: "gpt-5.6-sol", Effort: "high"},
+		}
+	case "opencode":
+		return map[string]RoleSpec{
+			"scout":         {Model: "openai/gpt-5.6-luna", Effort: "max"},
+			"implementer":   {Model: "openai/gpt-5.6-terra", Effort: "max"},
+			"specialist":    {Model: "openai/gpt-5.6-sol", Effort: "max"},
+			"reviewer":      {Model: "openai/gpt-5.6-sol", Effort: "xhigh"},
+			"reviewer-safe": {Model: "openai/gpt-5.6-sol", Effort: "high"},
 		}
 	default:
 		panic("adaptertest: unknown host " + host)
@@ -135,11 +143,8 @@ func normalizeWhitespace(s string) string {
 	return strings.Join(strings.Fields(s), " ")
 }
 
-// NormalizeWhitespace exports normalizeWhitespace for the two adapters'
-// own plugin_test.go prose-phrase checks
-// (TestDeliverySkillStatesFrontmatterMatchRule,
-// TestDeliverySkillStatesTOMLMatchRule, and the Codex adapter's
-// TestAgentTOMLs read-only sentinel check), which live outside this
+// NormalizeWhitespace exports normalizeWhitespace for adapters'
+// own plugin_test.go prose-phrase checks, which live outside this
 // package and so cannot call the unexported form directly. It performs
 // no normalization logic of its own beyond delegating to
 // normalizeWhitespace.

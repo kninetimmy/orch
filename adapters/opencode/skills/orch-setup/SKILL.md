@@ -1,40 +1,117 @@
 ---
 name: orch-setup
-description: Drive the orch init, configure, and configure-local stateless interviews with OpenCode's native question tool.
+description: >-
+  Shared step-loop driver for the three Orch setup interviews (`orch
+  init --step`, `orch configure --step`, `orch configure-local --step`).
+  Invoke this skill directly to run any of the three interviews.
+  Presents each interview's Document one question at a time via OpenCode's
+  `question` tool and drives the loop to its terminal form.
 ---
 
 # Orch Setup
 
-Run the requested bare command first so the human sees current detection or
-status. Then maintain one complete answer document:
+This skill drives any of the three `orch <cmd> --step` interviews. All
+three speak the same stateless step-loop protocol (`internal/question`):
+you resubmit everything known so far on every step, and the core tells
+you what to do next.
+
+## State you hold
+
+Maintain one `AnswerSet` across the whole interview:
 
 ```json
-{"schema_version":1,"answers":{}}
+{"schema_version": 1, "answers": {}}
 ```
 
-For each step, write that JSON to an OS temporary file outside the repository,
-pipe it to `orch <command> --step`, and parse the returned document. Resubmit
-the full answer map every time.
+Resubmit it **in full** on every step — the core holds no session of
+its own. Never send a partial or incremental update.
 
-For `kind: "questions"`, ask each question in order using OpenCode's native
-`question` tool. Use the document's header, prompt, preamble, option labels,
-descriptions, recommended marker, and default. Record the selected option's
-`value`, never its display label. When `free_text` is true, OpenCode's automatic
-custom-answer choice is the free-text path; record the typed value verbatim.
-Ask `kind: "text"` as plain text and also record it verbatim.
+## The step loop
 
-For `kind: "summary"`, show the complete configuration, configuration diff,
-every file path/existence/diff or new content, gitignore additions, conflicts,
-and blockers. Ask its approval question with `question`. If blockers are
-non-empty, report all of them and stop.
+1. Write the current `AnswerSet` to a scratch file (as
+   `orch-delivery` does: OS temp, outside the repo).
+2. Pipe the scratch file to `orch <cmd> --step` and parse the
+   `question.Document` on stdout.
+3. Dispatch on `Document.kind`:
 
-For `kind: "aborted"`, stop without writing. For `kind: "complete"`, pass the
-final answer document to the matching terminal form:
+### `kind: "questions"`
 
-| Interview | Terminal form | Result |
-| --- | --- | --- |
-| `orch init` | `orch init --bootstrap` | Opens a PR for human merge. |
-| `orch configure` | `orch configure --deliver` | Opens a PR for human merge. |
-| `orch configure-local` | `orch configure-local --apply` | Writes only the local override. |
+`Document.questions` carries 1–4 independent `Question`s. Present them via
+OpenCode's `question` tool: iterate `Document.questions` **in order**, asking
+each with its own tool call before moving to the next.
 
-An init or configure terminal result is not active until its PR is merged.
+For each question, use its `header` and `prompt` as the tool call's
+header/question, and list its `options[]` with each option's `label` for display
+and `description` for detail. If an option has `recommended: true`, say so in
+words in the description text. If the question has a `default`, likewise
+mention it in words in the description of the matching option.
+
+When the human answers, record `answers[question.id] = option.value`
+— **the option's `value`, never its `label`**. The label is display
+text only; the value is what the core expects back.
+
+If a `select` question has `free_text: true`, present its real options exactly
+as above. OpenCode adds its own custom-answer choice; when the human uses it,
+record what they type verbatim as `answers[question.id]` — do not transform or
+re-validate it yourself; if the core rejects it, its re-ask message says why.
+
+If a question has `kind: "text"`, it carries no options at all: put the
+question's `prompt` (and `preamble`, if present) to the human as free text, and
+mention any `default` in words. Whatever the human types is recorded verbatim
+as `answers[question.id]` — do not transform or re-validate it yourself.
+
+Once every question in this step's batch is answered, return to step 1
+with the updated `AnswerSet`.
+
+### `kind: "summary"`
+
+Show, in full:
+
+- `summary.config_toml` — the resulting configuration.
+- `summary.config_diff` — only present for `orch configure`; the
+  unified diff between the committed `config.toml` and this proposal.
+- Every entry in `summary.files[]`: `path`, whether it `existed`, and
+  its `diff` (or, if no diff was supplied, its `new_content`).
+- `summary.gitignore_lines`, if any.
+- `summary.conflicts`, if any.
+
+The approval question for this summary rides inside `Document.questions`
+(handled the same way as above, one question at a time) **unless**
+`summary.blockers` is non-empty.
+
+### Non-empty `summary.blockers`
+
+Report every blocker to the human and **stop** — do not attempt to
+resolve a blocker yourself, and do not proceed to the terminal form
+while any blocker remains.
+
+### `kind: "complete"`
+
+The interview is answered and approved. Run the terminal form for this
+command (see table below) with the final `AnswerSet` on stdin, and
+report its result.
+
+### `kind: "aborted"`
+
+The human chose not to proceed. Report that and stop; nothing is
+written.
+
+## Terminal forms
+
+| Command | Terminal form | Where it lands |
+|---|---|---|
+| `orch init` | `orch init --bootstrap` | Opens a PR a human merges on GitHub. |
+| `orch configure` | `orch configure --deliver` | Opens a PR a human merges on GitHub. |
+| `orch configure-local` | `orch configure-local --apply` | Writes `config.local.toml` locally — no PR, nothing to merge. |
+
+Say plainly, when reaching a terminal form for `init` or `configure`,
+that the change lands as a PR the human still has to merge on GitHub —
+running the terminal form is not the same as the change taking effect.
+
+## The bare form
+
+`orch init`, `orch configure`, and `orch configure-local`, run with no
+flags, are each a **human report** — a plain-text detection/status
+summary. Run this bare form first, before starting the step loop, so
+the human sees the current state before answering anything. It never
+reads stdin; do not pipe an `AnswerSet` into it.

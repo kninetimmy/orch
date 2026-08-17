@@ -52,9 +52,9 @@ func defaultClaudeHost() *config.Host {
 }
 
 func defaultOpenCodeHost() *config.Host {
-	p := adaptertest.Profile("codex")
+	p := adaptertest.Profile("opencode")
 	rp := func(role string) config.RoleProfile {
-		return config.RoleProfile{Model: "openai/" + p[role].Model, Effort: p[role].Effort}
+		return config.RoleProfile{Model: p[role].Model, Effort: p[role].Effort}
 	}
 	return &config.Host{Roles: config.Roles{
 		Architect: rp("scout"), Scout: rp("scout"), Implementer: rp("implementer"),

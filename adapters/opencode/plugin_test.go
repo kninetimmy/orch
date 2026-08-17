@@ -1,9 +1,13 @@
-package opencode
+package opencode_test
 
 import (
 	"encoding/json"
+	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/kninetimmy/orch/adapters/opencode"
+	"github.com/kninetimmy/orch/internal/adaptertest"
 )
 
 func TestPackagePinsOpenCodeV2Contract(t *testing.T) {
@@ -12,14 +16,14 @@ func TestPackagePinsOpenCodeV2Contract(t *testing.T) {
 		Version      string            `json:"version"`
 		Dependencies map[string]string `json:"dependencies"`
 	}
-	if err := json.Unmarshal([]byte(PackageJSON), &manifest); err != nil {
+	if err := json.Unmarshal([]byte(opencode.PackageJSON), &manifest); err != nil {
 		t.Fatal(err)
 	}
 	if manifest.Name != "@kninetimmy/orch-opencode" || manifest.Version == "" {
 		t.Fatalf("manifest = %#v", manifest)
 	}
-	if got := manifest.Dependencies["@opencode-ai/plugin"]; got != "0.0.0-next-17444" {
-		t.Fatalf("@opencode-ai/plugin = %q, want pinned next-17444", got)
+	if got := manifest.Dependencies["@opencode-ai/plugin"]; got != "0.0.0-beta-17498" {
+		t.Fatalf("@opencode-ai/plugin = %q, want pinned beta-17498", got)
 	}
 	if len(manifest.Dependencies) != 1 {
 		t.Fatalf("dependencies = %v, want only the V2 plugin API", manifest.Dependencies)
@@ -27,13 +31,11 @@ func TestPackagePinsOpenCodeV2Contract(t *testing.T) {
 }
 
 func TestNativeAgents(t *testing.T) {
-	models := map[string]string{
-		"orch-scout": "openai/gpt-5.6-luna#max", "orch-implementer": "openai/gpt-5.6-terra#max",
-		"orch-specialist": "openai/gpt-5.6-sol#max", "orch-reviewer": "openai/gpt-5.6-sol#xhigh",
-		"orch-reviewer-safe": "openai/gpt-5.6-sol#high",
-	}
-	for name, model := range models {
-		data, err := AgentDefinitions.ReadFile("agents/" + name + ".md")
+	profile := adaptertest.Profile("opencode")
+	for role, spec := range profile {
+		name := "orch-" + role
+		model := spec.Model + "#" + spec.Effort
+		data, err := opencode.AgentDefinitions.ReadFile("agents/" + name + ".md")
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -54,9 +56,13 @@ func TestNativeAgents(t *testing.T) {
 }
 
 func TestSkillsUseOnlyOpenCodeV2Surfaces(t *testing.T) {
-	forbidden := []string{"request_user_input", "spawn_agent", "wait_agent", "followup_task", "rollout", "marketplace", "hook-manifest", "agent-TOML"}
+	forbidden := []string{
+		"request_user_input", "spawn_agent", "wait_agent", "followup_task",
+		"CODEX_THREAD_ID", "Codex rollout", "Codex marketplace", "Codex hook",
+		"agent TOML", "agent-TOML",
+	}
 	for _, name := range []string{"orch-architect", "orch-delivery", "orch-setup"} {
-		data, err := Skills.ReadFile("skills/" + name + "/SKILL.md")
+		data, err := opencode.Skills.ReadFile("skills/" + name + "/SKILL.md")
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -64,6 +70,91 @@ func TestSkillsUseOnlyOpenCodeV2Surfaces(t *testing.T) {
 		for _, word := range forbidden {
 			if strings.Contains(text, word) {
 				t.Errorf("%s refers to Codex-only surface %q", name, word)
+			}
+		}
+	}
+}
+
+const skillGlob = "skills/*/SKILL.md"
+const deliverySkillPath = "skills/orch-delivery/SKILL.md"
+const setupSkillPath = "skills/orch-setup/SKILL.md"
+
+func TestSkillOrchRunVerbsAreReal(t *testing.T) {
+	adaptertest.CheckRunVerbTokens(t, skillGlob)
+}
+
+func TestSkillStatementLiteralsPinnedToRunConstants(t *testing.T) {
+	adaptertest.CheckStatementLiterals(t, skillGlob)
+}
+
+func TestDeliverySkillHasPlanGateOptions(t *testing.T) {
+	adaptertest.CheckPlanGateOptions(t, deliverySkillPath)
+}
+
+func TestDeliverySkillHasMergeGateOptions(t *testing.T) {
+	adaptertest.CheckMergeGateOptions(t, deliverySkillPath)
+}
+
+func TestSetupSkillHasTerminalForms(t *testing.T) {
+	adaptertest.CheckSetupTerminalForms(t, setupSkillPath)
+}
+
+func TestDeliverySkillHasRoutedSelectionCue(t *testing.T) {
+	adaptertest.CheckRoutedSelectionCue(t, deliverySkillPath)
+}
+
+func TestDeliverySkillHasBranchScopeVerificationGuidance(t *testing.T) {
+	adaptertest.CheckBranchScopeVerificationGuidance(t, deliverySkillPath)
+}
+
+func TestBlastRadiusCriterionGuidance(t *testing.T) {
+	adaptertest.CheckBlastRadiusCriterionGuidance(t,
+		deliverySkillPath,
+		filepath.Join("agents", "orch-reviewer.md"),
+		filepath.Join("agents", "orch-reviewer-safe.md"),
+	)
+}
+
+func TestDeliverySkillHasReviewJudgmentContract(t *testing.T) {
+	data, err := opencode.Skills.ReadFile(deliverySkillPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	content := adaptertest.NormalizeWhitespace(string(data))
+	for _, phrase := range []string{
+		"An acceptance criterion describes an observable outcome, and never names a function, a control-flow step, or a validity notion the change is expected to introduce",
+		"A criterion requiring evidence the repository cannot produce is not a valid criterion",
+		"`judgments` is required and carries exactly one entry per acceptance criterion the issue holds",
+		"A `verdict` of `approve` is accepted only when every criterion is judged `satisfied`",
+		"A criterion judged `wrong` is the needs-human outcome, and this one `orch run review` call makes it",
+		"do not call `orch run escalate` for it and do not resume the executor",
+		"surface the rejected criterion and reason to the human",
+		"dispatches a fresh implementation subagent through OpenCode's `subagent` tool into the **same worktree** on the same branch",
+	} {
+		if !strings.Contains(content, adaptertest.NormalizeWhitespace(phrase)) {
+			t.Errorf("%s does not contain review-contract guidance %q", deliverySkillPath, phrase)
+		}
+	}
+}
+
+func TestReviewersHaveMatureReviewContract(t *testing.T) {
+	for _, stem := range []string{"orch-reviewer", "orch-reviewer-safe"} {
+		data, err := opencode.AgentDefinitions.ReadFile("agents/" + stem + ".md")
+		if err != nil {
+			t.Fatal(err)
+		}
+		content := adaptertest.NormalizeWhitespace(string(data))
+		for _, phrase := range []string{
+			"You may return `request-changes` on the ground that an acceptance criterion is itself wrong",
+			"Before you request a change that adds code, establish that the added code needs to exist at all",
+			"Mark it `wrong acceptance criterion` and state the rejected criterion and reason in the consolidated report so the Architect can surface the rejected criterion and reason to the human",
+			"A criterion is also wrong when the only evidence available for it is a proxy for what it asked. A criterion requiring a check on how an LLM agent routes, what it decides, or how it behaves is the standing instance",
+			"Judge each acceptance criterion by number, one at a time. For each, state the specific observation that satisfies it",
+			"this stage is about coverage, not filtering",
+			"is not confined to findings that block an acceptance criterion: a required test that fails, a security boundary the change weakens, and any defect of comparable severity are each grounds on their own, even when no acceptance criterion names the area they sit in",
+		} {
+			if !strings.Contains(content, adaptertest.NormalizeWhitespace(phrase)) {
+				t.Errorf("%s: missing reviewer guidance %q", stem, phrase)
 			}
 		}
 	}
