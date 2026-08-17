@@ -37,7 +37,7 @@ var ErrHeld = errors.New("delivery lock is already held")
 type Owner struct {
 	SchemaVersion int       `json:"schema_version"`
 	RunID         string    `json:"run_id"`
-	Host          string    `json:"host"` // "claude" or "codex"
+	Host          string    `json:"host"` // "claude", "codex", or "opencode"
 	Hostname      string    `json:"hostname"`
 	PID           int       `json:"pid"`
 	AcquiredAt    time.Time `json:"acquired_at"`

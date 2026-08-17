@@ -37,8 +37,9 @@ type Deps struct {
 // inside an AnswerSet — an adapter cannot spoof detection by editing
 // the answers map, since Next never reads facts back out of it.
 type Facts struct {
-	ClaudeCLI bool
-	CodexCLI  bool
+	ClaudeCLI   bool
+	CodexCLI    bool
+	OpenCodeCLI bool
 
 	Git     bool
 	GitRoot string
@@ -91,6 +92,7 @@ func Detect(ctx context.Context, deps Deps) Facts {
 	var f Facts
 	f.ClaudeCLI = lookPathOK(deps.LookPath, "claude")
 	f.CodexCLI = lookPathOK(deps.LookPath, "codex")
+	f.OpenCodeCLI = lookPathOK(deps.LookPath, "opencode2")
 	f.Gh = lookPathOK(deps.LookPath, "gh")
 
 	if lookPathOK(deps.LookPath, "git") {
@@ -109,8 +111,9 @@ func Detect(ctx context.Context, deps Deps) Facts {
 		root = deps.RepoRoot
 	}
 	f.Instructions = map[string]InstructionFileState{
-		"claude": classifyInstructionFile(root, InstructionFile("claude")),
-		"codex":  classifyInstructionFile(root, InstructionFile("codex")),
+		"claude":   classifyInstructionFile(root, InstructionFile("claude")),
+		"codex":    classifyInstructionFile(root, InstructionFile("codex")),
+		"opencode": classifyInstructionFile(root, InstructionFile("opencode")),
 	}
 
 	return f

@@ -51,6 +51,36 @@ func defaultClaudeHost() *config.Host {
 	}}
 }
 
+func defaultOpenCodeHost() *config.Host {
+	p := adaptertest.Profile("codex")
+	rp := func(role string) config.RoleProfile {
+		return config.RoleProfile{Model: "openai/" + p[role].Model, Effort: p[role].Effort}
+	}
+	return &config.Host{Roles: config.Roles{
+		Architect: rp("scout"), Scout: rp("scout"), Implementer: rp("implementer"),
+		Specialist: rp("specialist"), Reviewer: rp("reviewer"), ReviewDowngrade: rp("reviewer-safe"),
+	}}
+}
+
+func TestRenderOpenCodeNativeAgents(t *testing.T) {
+	files, err := agents.Render("opencode", defaultOpenCodeHost())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(files) != 5 {
+		t.Fatalf("len(files) = %d, want 5", len(files))
+	}
+	for _, file := range files {
+		text := string(file.Content)
+		if !strings.HasPrefix(file.Path, agents.OpenCodeDir+"/") || !strings.HasSuffix(file.Path, ".md") {
+			t.Errorf("Path = %q", file.Path)
+		}
+		if !strings.Contains(text, "mode: subagent") || !strings.Contains(text, "model: openai/") || !strings.Contains(text, "#") {
+			t.Errorf("%s is not a native V2 model/variant agent", file.Path)
+		}
+	}
+}
+
 func stem(f agents.File) string {
 	return strings.TrimSuffix(filepath.Base(f.Path), filepath.Ext(f.Path))
 }

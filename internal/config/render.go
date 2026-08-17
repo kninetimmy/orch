@@ -84,6 +84,9 @@ func Render(c *Config) ([]byte, error) {
 	if c.Hosts.Codex != nil {
 		renderHost(&b, "codex", c.Hosts.Codex)
 	}
+	if c.Hosts.OpenCode != nil {
+		renderHost(&b, "opencode", c.Hosts.OpenCode)
+	}
 
 	return []byte(b.String()), nil
 }

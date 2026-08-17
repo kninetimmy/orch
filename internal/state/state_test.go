@@ -21,6 +21,17 @@ func stateDir(t *testing.T) string {
 	return root
 }
 
+func TestEnterDeliveryAcceptsOpenCode(t *testing.T) {
+	root := stateDir(t)
+	st, err := EnterDelivery(root, "opencode", testPlanRef(), testIssues())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if st.Run.Host != "opencode" {
+		t.Fatalf("host = %q, want opencode", st.Run.Host)
+	}
+}
+
 func writeState(t *testing.T, root, content string) {
 	t.Helper()
 	if err := os.WriteFile(filepath.Join(root, ".orchestrator", "state.json"), []byte(content), 0o644); err != nil {

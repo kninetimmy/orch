@@ -16,8 +16,9 @@ var memhubModes = map[string]bool{"required": true, "best-effort": true, "off": 
 // enum but are deliberately excluded: no orch role should route below
 // low.
 var effortsByHost = map[string]map[string]bool{
-	"codex":  {"low": true, "medium": true, "high": true, "xhigh": true, "max": true, "ultra": true},
-	"claude": {"low": true, "medium": true, "high": true, "xhigh": true, "max": true},
+	"codex":    {"low": true, "medium": true, "high": true, "xhigh": true, "max": true, "ultra": true},
+	"claude":   {"low": true, "medium": true, "high": true, "xhigh": true, "max": true},
+	"opencode": {"low": true, "medium": true, "high": true, "xhigh": true, "max": true},
 }
 
 // validate collects every violation and reports them together in one
@@ -44,14 +45,17 @@ func (c *Config) validate() error {
 		fail("memhub.mode: %q is not one of required, best-effort, off", c.Memhub.Mode)
 	}
 
-	if c.Hosts.Codex == nil && c.Hosts.Claude == nil {
-		fail("hosts: at least one of hosts.codex or hosts.claude must be configured")
+	if c.Hosts.Codex == nil && c.Hosts.Claude == nil && c.Hosts.OpenCode == nil {
+		fail("hosts: at least one of hosts.codex, hosts.claude, or hosts.opencode must be configured")
 	}
 	if c.Hosts.Codex != nil {
 		validateHost("codex", c.Hosts.Codex, fail)
 	}
 	if c.Hosts.Claude != nil {
 		validateHost("claude", c.Hosts.Claude, fail)
+	}
+	if c.Hosts.OpenCode != nil {
+		validateHost("opencode", c.Hosts.OpenCode, fail)
 	}
 
 	if len(problems) > 0 {
@@ -84,7 +88,7 @@ func validateHost(name string, h *Host, fail func(string, ...any)) {
 }
 
 func effortList(host string) string {
-	if host == "claude" {
+	if host == "claude" || host == "opencode" {
 		return "low, medium, high, xhigh, max"
 	}
 	return "low, medium, high, xhigh, max, ultra"

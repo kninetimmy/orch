@@ -42,6 +42,13 @@ func materialize(answers map[string]string) (*config.Config, error) {
 		}
 		cfg.Hosts.Codex = host
 	}
+	if answers[idHostOpenCodeEnabled] == "yes" {
+		host, err := materializeHost("opencode", answers, nil)
+		if err != nil {
+			return nil, err
+		}
+		cfg.Hosts.OpenCode = host
+	}
 
 	n, err := parseConcurrency(answers[idMaxSubagents])
 	if err != nil {

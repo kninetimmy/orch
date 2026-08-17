@@ -148,11 +148,17 @@ func validateConfigure(dir string, complete *question.Complete, now time.Time) (
 		enabled[h] = true
 	}
 
-	for _, host := range []string{"claude", "codex"} {
-		file := interview.InstructionFile(host)
+	for _, item := range []struct {
+		file string
+		on   bool
+	}{
+		{interview.InstructionFile("claude"), enabled["claude"]},
+		{interview.InstructionFile("codex"), enabled["codex"] || enabled["opencode"]},
+	} {
+		file := item.file
 		name := "instructions:" + file
 		want := instructions.StatusAbsent
-		if enabled[host] {
+		if item.on {
 			want = instructions.StatusCurrent
 		}
 
