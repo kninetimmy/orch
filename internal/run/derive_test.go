@@ -29,8 +29,9 @@ func TestHostProfile(t *testing.T) {
 // prompt cue, and an unrecognized host is an error rather than a guess.
 func TestEffortDelivery(t *testing.T) {
 	cases := map[string]manifest.EffortDelivery{
-		"codex":  manifest.EffortDeliveryParameter,
-		"claude": manifest.EffortDeliveryPromptCue,
+		"codex":    manifest.EffortDeliveryParameter,
+		"claude":   manifest.EffortDeliveryPromptCue,
+		"opencode": manifest.EffortDeliveryParameter,
 	}
 	for host, want := range cases {
 		got, err := effortDelivery(host)

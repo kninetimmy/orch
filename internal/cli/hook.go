@@ -11,7 +11,7 @@ import (
 
 // hookUsage is the one-line usage for the adapter plumbing surface,
 // mirroring guardUsage.
-const hookUsage = "orch hook: usage: orch hook <claude|codex> session-start | orch hook codex subagent-usage (JSON document on stdin)"
+const hookUsage = "orch hook: usage: orch hook <claude|codex|opencode> session-start | orch hook codex subagent-usage (JSON document on stdin)"
 
 // runHook dispatches host adapter-plumbing verbs (PRD §23). Host adapters call
 // it instead of reimplementing their host-specific behavior; it is never
@@ -31,6 +31,10 @@ func runHook(env Env, args []string) error {
 			return hookSessionStart(env, args[0])
 		case "subagent-usage":
 			return runCodexSubagentUsage(env)
+		}
+	case "opencode":
+		if args[1] == "session-start" {
+			return hookSessionStart(env, args[0])
 		}
 	}
 	return usageError(hookUsage)
@@ -79,8 +83,9 @@ var deliveryPhaseOrder = []state.Phase{
 // plugin injects today; codex's points at the Codex adapter's own
 // skill-invocation surface instead of Claude's slash commands.
 var sessionStartClosing = map[string]string{
-	"claude": "Before planning or acting on any request that would change tracked files, load and follow the `orch-architect` skill. Setup interviews: /orch:init, /orch:configure, /orch:configure-local.",
-	"codex":  "Before planning or acting on any request that would change tracked files, load and follow the `orch-architect` skill. Setup interviews: invoke the `orch-setup` skill for init, configure, or configure-local.",
+	"claude":   "Before planning or acting on any request that would change tracked files, load and follow the `orch-architect` skill. Setup interviews: /orch:init, /orch:configure, /orch:configure-local.",
+	"codex":    "Before planning or acting on any request that would change tracked files, load and follow the `orch-architect` skill. Setup interviews: invoke the `orch-setup` skill for init, configure, or configure-local.",
+	"opencode": "Before planning or acting on any request that would change tracked files, load and follow the `orch-architect` skill. Setup interviews: invoke the `orch-setup` skill for init, configure, or configure-local.",
 }
 
 // sessionStartContext renders the compact plain-text context block the

@@ -20,6 +20,13 @@ jobs:
       - uses: actions/setup-go@v6
         with:
           go-version-file: go.mod
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: adapters/opencode/package-lock.json
+      - run: npm ci --prefix adapters/opencode
+      - run: npm test --prefix adapters/opencode
       - run: go build ./...
       - run: go vet ./...
       - run: go test ./...

@@ -70,7 +70,7 @@ func RenderLocal(overrides map[string]string) ([]byte, error) {
 		fmt.Fprintf(&b, "enabled = %t\n", enabled)
 	}
 
-	for _, host := range []string{"claude", "codex"} {
+	for _, host := range []string{"claude", "codex", "opencode"} {
 		if err := renderLocalHost(&b, host, overrides); err != nil {
 			return nil, err
 		}

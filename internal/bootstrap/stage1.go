@@ -232,6 +232,7 @@ func modelNames(cfg *config.Config) []string {
 	}
 	add(cfg.Hosts.Claude)
 	add(cfg.Hosts.Codex)
+	add(cfg.Hosts.OpenCode)
 	names := make([]string, 0, len(seen))
 	for m := range seen {
 		names = append(names, m)

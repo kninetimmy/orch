@@ -35,7 +35,36 @@ func Revision(c *Config) (string, error) {
 	shadow.ConfigRevision = ""
 	shadow.Overrides = nil
 
-	data, err := json.Marshal(shadow)
+	var value any = shadow
+	if c.Hosts.OpenCode == nil {
+		// Preserve the established revision for every pre-OpenCode
+		// configuration. A disabled additive host must not invalidate an
+		// otherwise byte-identical Claude/Codex configuration.
+		value = struct {
+			SchemaVersion  int
+			ConfigRevision string
+			Concurrency    Concurrency
+			Merge          Merge
+			Memhub         Memhub
+			Metrics        Metrics
+			Hosts          struct {
+				Codex  *Host
+				Claude *Host
+			}
+			Overrides []string
+		}{
+			SchemaVersion: shadow.SchemaVersion,
+			Concurrency:   shadow.Concurrency,
+			Merge:         shadow.Merge,
+			Memhub:        shadow.Memhub,
+			Metrics:       shadow.Metrics,
+			Hosts: struct {
+				Codex  *Host
+				Claude *Host
+			}{shadow.Hosts.Codex, shadow.Hosts.Claude},
+		}
+	}
+	data, err := json.Marshal(value)
 	if err != nil {
 		return "", fmt.Errorf("encode configuration for revision: %w", err)
 	}

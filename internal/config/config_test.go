@@ -74,7 +74,7 @@ func TestLoadInvalid(t *testing.T) {
 		{"invalid/bad_effort.toml", `"ultra"`},
 		{"invalid/bad_merge_strategy.toml", `"fast-forward"`},
 		{"invalid/bad_memhub_mode.toml", `"maybe"`},
-		{"invalid/no_hosts.toml", "at least one of hosts.codex or hosts.claude"},
+		{"invalid/no_hosts.toml", "at least one of hosts.codex, hosts.claude, or hosts.opencode"},
 		{"invalid/missing_role.toml", "hosts.claude.roles.reviewer.model"},
 	}
 	for _, tt := range tests {
@@ -100,6 +100,28 @@ func TestLoadMissingConfig(t *testing.T) {
 	}
 	if cfg != nil {
 		t.Error("Load returned a Config for a missing file")
+	}
+}
+
+func TestOpenCodeOnlyConfiguration(t *testing.T) {
+	cfg := bothHostsConfig()
+	openCode := *cfg.Hosts.Codex
+	cfg.Hosts = Hosts{OpenCode: &openCode}
+	revision, err := Revision(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	cfg.ConfigRevision = revision
+	data, err := Render(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err := Parse(data)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if hosts := got.EnabledHosts(); len(hosts) != 1 || hosts[0] != "opencode" {
+		t.Fatalf("EnabledHosts = %v, want [opencode]", hosts)
 	}
 }
 

@@ -95,6 +95,10 @@ type fakeRunner struct {
 	codexPluginExit    int
 	codexPluginStderr  string
 	codexPluginErr     error
+	opencodeVersion    string
+	opencodePlugins    string
+	opencodePluginExit int
+	opencodePluginErr  error
 	// checkIgnoreExit scripts `git check-ignore`: 0 ignored, 1 not
 	// ignored, anything else an error (the guard ignore probe).
 	checkIgnoreExit    int
@@ -185,6 +189,25 @@ func (f fakeRunner) Run(_ context.Context, c execx.Cmd) (execx.Result, error) {
 			}
 		}
 		return execx.Result{Stdout: stdout, Stderr: stderr, ExitCode: exit}, nil
+	case "opencode2":
+		if len(c.Args) == 1 && c.Args[0] == "--version" {
+			version := f.opencodeVersion
+			if version == "" {
+				version = pinnedOpenCodeVersion
+			}
+			return execx.Result{Stdout: version + "\n"}, nil
+		}
+		if len(c.Args) == 3 && c.Args[0] == "api" && c.Args[1] == "get" && c.Args[2] == "/api/plugin" {
+			if f.opencodePluginErr != nil {
+				return execx.Result{}, f.opencodePluginErr
+			}
+			plugins := f.opencodePlugins
+			if plugins == "" {
+				plugins = `{"data":[{"id":"orch.delivery"}]}`
+			}
+			return execx.Result{Stdout: plugins, ExitCode: f.opencodePluginExit}, nil
+		}
+		return execx.Result{}, fmt.Errorf("fakeRunner: unexpected command %s %v", c.Name, c.Args)
 	case "memhub":
 		switch c.Args[0] {
 		case "status":
@@ -208,10 +231,7 @@ func writeConfig(t *testing.T, root, content string) {
 	}
 	var files []agents.File
 	for _, host := range cfg.EnabledHosts() {
-		h := cfg.Hosts.Claude
-		if host == "codex" {
-			h = cfg.Hosts.Codex
-		}
+		h := cfg.Host(host)
 		rendered, err := agents.Render(host, h)
 		if err != nil {
 			t.Fatal(err)

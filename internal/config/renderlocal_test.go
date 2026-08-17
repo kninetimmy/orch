@@ -90,12 +90,14 @@ func TestRenderLocalSelfCheckCatchesMismatch(t *testing.T) {
 // key as an override — proving RenderLocal and the closed
 // classification table agree on the complete preference-key set.
 func TestRenderLocalKeysMatchPreferenceClass(t *testing.T) {
-	wantCount := 2 + 2*6*2 // concurrency + metrics, 2 hosts * 6 roles * (model, effort)
+	wantCount := 2 + 3*6*2 // concurrency + metrics, 3 hosts * 6 roles * (model, effort)
 	if got := len(PreferenceKeys()); got != wantCount {
 		t.Fatalf("len(PreferenceKeys()) = %d, want %d", got, wantCount)
 	}
 
 	committed := bothHostsConfig()
+	openCode := *committed.Hosts.Codex
+	committed.Hosts.OpenCode = &openCode
 	for _, key := range PreferenceKeys() {
 		t.Run(key, func(t *testing.T) {
 			data, err := RenderLocal(map[string]string{key: sampleValueFor(key)})

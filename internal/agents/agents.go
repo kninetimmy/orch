@@ -17,6 +17,7 @@ import (
 
 	"github.com/kninetimmy/orch/adapters/claude"
 	"github.com/kninetimmy/orch/adapters/codex"
+	"github.com/kninetimmy/orch/adapters/opencode"
 	"github.com/kninetimmy/orch/internal/config"
 )
 
@@ -24,8 +25,9 @@ import (
 // configuration add both to .gitignore whether or not both hosts are
 // currently enabled, so enabling the other host later stays safe.
 const (
-	ClaudeDir = ".claude/agents"
-	CodexDir  = ".codex/agents"
+	ClaudeDir   = ".claude/agents"
+	CodexDir    = ".codex/agents"
+	OpenCodeDir = ".opencode/agents"
 )
 
 // roleFile pairs one hosts.<host>.roles key with the canonical file
@@ -61,6 +63,8 @@ func Destination(host string) (string, error) {
 		return ClaudeDir, nil
 	case "codex":
 		return CodexDir, nil
+	case "opencode":
+		return OpenCodeDir, nil
 	default:
 		return "", fmt.Errorf("agents: unsupported host %q", host)
 	}
@@ -114,6 +118,12 @@ func Render(host string, h *config.Host) ([]File, error) {
 			canonical, err = codex.AgentTOMLs.ReadFile("agents/" + rf.stem + ext)
 			if err == nil {
 				content, err = substituteCodex(canonical, profile.Model, profile.Effort)
+			}
+		case "opencode":
+			ext = ".md"
+			canonical, err = opencode.AgentDefinitions.ReadFile("agents/" + rf.stem + ext)
+			if err == nil {
+				content, err = substituteOpenCode(canonical, profile.Model, profile.Effort)
 			}
 		}
 		if err != nil {
@@ -182,6 +192,15 @@ func substituteClaude(canonical []byte, model string) ([]byte, error) {
 		return nil, fmt.Errorf("model: %w", err)
 	}
 	return []byte(header + rest), nil
+}
+
+// substituteOpenCode replaces only model in native V2 frontmatter. OpenCode
+// carries reasoning effort as the model reference's #variant suffix.
+func substituteOpenCode(canonical []byte, model, effort string) ([]byte, error) {
+	if strings.Contains(model, "#") {
+		return nil, fmt.Errorf("model %q already contains an OpenCode variant", model)
+	}
+	return substituteClaude(canonical, model+"#"+effort)
 }
 
 // replaceOneLine replaces pattern's single match in s with replacement,

@@ -47,8 +47,9 @@ type Metrics struct {
 
 // Hosts holds one profile per enabled host. A nil host is not enabled.
 type Hosts struct {
-	Codex  *Host `toml:"codex"`
-	Claude *Host `toml:"claude"`
+	Codex    *Host `toml:"codex"`
+	Claude   *Host `toml:"claude"`
+	OpenCode *Host `toml:"opencode"`
 }
 
 // Host is a per-host model/effort profile (PRD §10).
@@ -82,5 +83,22 @@ func (c *Config) EnabledHosts() []string {
 	if c.Hosts.Codex != nil {
 		names = append(names, "codex")
 	}
+	if c.Hosts.OpenCode != nil {
+		names = append(names, "opencode")
+	}
 	return names
+}
+
+// Host returns the configured profile for name, or nil when it is disabled.
+func (c *Config) Host(name string) *Host {
+	switch name {
+	case "claude":
+		return c.Hosts.Claude
+	case "codex":
+		return c.Hosts.Codex
+	case "opencode":
+		return c.Hosts.OpenCode
+	default:
+		return nil
+	}
 }

@@ -11,13 +11,14 @@ import (
 // (materialize.go), so an adapter's answers map doubles as a preview
 // of the committed configuration's shape.
 const (
-	idHostClaudeEnabled = "host.claude.enabled"
-	idHostCodexEnabled  = "host.codex.enabled"
-	idMaxSubagents      = "concurrency.max_subagents"
-	idMergeStrategy     = "merge.strategy"
-	idMemhubMode        = "memhub.mode"
-	idMetricsEnabled    = "metrics.enabled"
-	idApproval          = "approval"
+	idHostClaudeEnabled   = "host.claude.enabled"
+	idHostCodexEnabled    = "host.codex.enabled"
+	idHostOpenCodeEnabled = "host.opencode.enabled"
+	idMaxSubagents        = "concurrency.max_subagents"
+	idMergeStrategy       = "merge.strategy"
+	idMemhubMode          = "memhub.mode"
+	idMetricsEnabled      = "metrics.enabled"
+	idApproval            = "approval"
 )
 
 // roleModelID and roleEffortID build a role's two question ids.
@@ -84,6 +85,14 @@ var defaultProfiles = map[string]map[string]profile{
 		"reviewer":         {"claude-opus-5", "high"},
 		"review_downgrade": {"claude-opus-5", "medium"},
 	},
+	"opencode": {
+		"architect":        {"openai/gpt-5.6-sol", "xhigh"},
+		"scout":            {"openai/gpt-5.6-luna", "max"},
+		"implementer":      {"openai/gpt-5.6-terra", "max"},
+		"specialist":       {"openai/gpt-5.6-sol", "max"},
+		"reviewer":         {"openai/gpt-5.6-sol", "xhigh"},
+		"review_downgrade": {"openai/gpt-5.6-sol", "high"},
+	},
 }
 
 // defaultProfileFor returns a role-defaults source drawing from the
@@ -103,8 +112,9 @@ func defaultProfileFor(host string) func(string) profile {
 // third Claude model (claude-fable-5, PRD §10): the committed
 // configuration this interview writes never defaults to it.
 var hostModels = map[string][]string{
-	"codex":  {"gpt-5.6-sol", "gpt-5.6-terra", "gpt-5.6-luna"},
-	"claude": {"claude-opus-5", "claude-sonnet-5"},
+	"codex":    {"gpt-5.6-sol", "gpt-5.6-terra", "gpt-5.6-luna"},
+	"claude":   {"claude-opus-5", "claude-sonnet-5"},
+	"opencode": {"openai/gpt-5.6-sol", "openai/gpt-5.6-terra", "openai/gpt-5.6-luna"},
 }
 
 // hostEfforts lists each host's full closed effort enum — every value
@@ -115,8 +125,9 @@ var hostModels = map[string][]string{
 // full list, so it stays the single full-domain source of truth the
 // interview owns.
 var hostEfforts = map[string][]string{
-	"codex":  {"low", "medium", "high", "xhigh", "max", "ultra"},
-	"claude": {"low", "medium", "high", "xhigh", "max"},
+	"codex":    {"low", "medium", "high", "xhigh", "max", "ultra"},
+	"claude":   {"low", "medium", "high", "xhigh", "max"},
+	"opencode": {"low", "medium", "high", "xhigh", "max"},
 }
 
 // maxOfferedEfforts is the largest number of effort levels offered as
@@ -151,8 +162,9 @@ func effortsOffered(host, def string) []string {
 
 // hostLabels is each host key's human-readable display name.
 var hostLabels = map[string]string{
-	"codex":  "Codex CLI",
-	"claude": "Claude Code",
+	"codex":    "Codex CLI",
+	"claude":   "Claude Code",
+	"opencode": "OpenCode V2",
 }
 
 // assistDeliveryExplanation is the §18 step 3 explanation, shown as
@@ -194,14 +206,20 @@ func (d docSpec) allAnswered(answers map[string]string) bool {
 // "no" — the same rule config.validate enforces on the committed file,
 // checked here before any role question is ever asked.
 func buildSequence(facts Facts, answers map[string]string) ([]docSpec, error) {
-	docs := []docSpec{hostToggleDoc(facts, boolValue(facts.ClaudeCLI), boolValue(facts.CodexCLI))}
+	docs := []docSpec{hostToggleDoc(facts, boolValue(facts.ClaudeCLI), boolValue(facts.CodexCLI), boolValue(facts.OpenCodeCLI))}
 
 	claudeVal, claudeKnown := answers[idHostClaudeEnabled]
 	codexVal, codexKnown := answers[idHostCodexEnabled]
 	claudeEnabled := claudeKnown && claudeVal == "yes"
 	codexEnabled := codexKnown && codexVal == "yes"
+	openVal, openKnown := answers[idHostOpenCodeEnabled]
+	if !facts.OpenCodeCLI {
+		openKnown = true
+		openVal = "no"
+	}
+	openEnabled := openKnown && openVal == "yes"
 
-	if claudeKnown && codexKnown && !claudeEnabled && !codexEnabled {
+	if claudeKnown && codexKnown && openKnown && !claudeEnabled && !codexEnabled && !openEnabled {
 		return nil, ErrNoHostEnabled
 	}
 
@@ -211,24 +229,27 @@ func buildSequence(facts Facts, answers map[string]string) ([]docSpec, error) {
 	if codexEnabled {
 		docs = append(docs, roleDocSpecs("codex", !claudeEnabled, defaultProfileFor("codex"))...)
 	}
-	if claudeKnown && codexKnown {
+	if openEnabled {
+		docs = append(docs, roleDocSpecs("opencode", !claudeEnabled && !codexEnabled, defaultProfileFor("opencode"))...)
+	}
+	if claudeKnown && codexKnown && openKnown {
 		docs = append(docs, settingsDoc(initSettingsDefaults(facts)))
-		docs = append(docs, seedDocs(facts, initSeedScope(claudeEnabled, codexEnabled))...)
+		docs = append(docs, seedDocs(facts, initSeedScope(claudeEnabled, codexEnabled || openEnabled))...)
 	}
 	return docs, nil
 }
 
 // hostToggleDoc is doc 1 (init) — or, for `orch configure`, the
 // host-toggle document inserted once pick.hosts is answered "yes" —
-// whether to enable Claude Code and Codex CLI. claudeDefault/
-// codexDefault source each Default independently of the Hint's
+// which detected host CLIs to enable. Each explicit default sources its
+// question independently of the Hint's
 // detection status (still always facts-derived): init passes
 // facts-derived CLI detection (boolValue(facts.ClaudeCLI/CodexCLI));
 // `orch configure` passes the committed configuration's current
 // enablement instead, so re-answering this doc while editing an
 // existing configuration starts from what is already there rather
 // than re-running the first-time detection default.
-func hostToggleDoc(facts Facts, claudeDefault, codexDefault string) docSpec {
+func hostToggleDoc(facts Facts, claudeDefault, codexDefault, openCodeDefault string) docSpec {
 	claudeQ := question.Question{
 		ID:       idHostClaudeEnabled,
 		Header:   "Claude",
@@ -248,16 +269,23 @@ func hostToggleDoc(facts Facts, claudeDefault, codexDefault string) docSpec {
 		Default: codexDefault,
 		Options: yesNoOptions(codexDefault),
 	}
-	return docSpec{questions: []question.Question{claudeQ, codexQ}}
+	questions := []question.Question{claudeQ, codexQ}
+	if facts.OpenCodeCLI || openCodeDefault == "yes" {
+		questions = append(questions, question.Question{
+			ID: idHostOpenCodeEnabled, Header: "OpenCode", Prompt: "Enable OpenCode V2 as a host?",
+			Hint: detectionHint("opencode2 CLI", facts.OpenCodeCLI), Kind: question.KindSelect,
+			Default: openCodeDefault, Options: yesNoOptions(openCodeDefault),
+		})
+	}
+	return docSpec{questions: questions}
 }
 
 // roleDocSpecs builds host's six per-role documents (model + effort,
 // grouped), in roleSpecs order. showExplain controls whether each
 // model question carries its role's §18 step 4 explanation as a
-// Preamble: claude's docs always show it; codex's docs show it only
-// when claude was not enabled (so a solo-Codex interview still walks
-// the role explanations once, and a both-hosts interview does not
-// repeat them). defaults sources each role's starting model/effort:
+// Preamble. The first enabled host shows it, so every interview walks the
+// explanations once without repeating them for additional hosts. defaults
+// sources each role's starting model/effort:
 // init and a freshly-enabled `orch configure` host both pass
 // defaultProfileFor(host) (the PRD §10 defaults); a still-enabled
 // `orch configure` host instead passes committedRoleDefaults(h)

@@ -1,6 +1,7 @@
 orch init: detection report
   claude CLI:  yes
   codex CLI:   yes
+  opencode2:   no
   git:         yes
   git root:    <ROOT>
   gh:          yes

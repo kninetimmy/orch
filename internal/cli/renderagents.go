@@ -24,10 +24,7 @@ func runRenderAgents(env Env) error {
 
 	var files []agents.File
 	for _, host := range cfg.EnabledHosts() {
-		h := cfg.Hosts.Claude
-		if host == "codex" {
-			h = cfg.Hosts.Codex
-		}
+		h := cfg.Host(host)
 		rendered, err := agents.Render(host, h)
 		if err != nil {
 			return err

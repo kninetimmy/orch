@@ -1,15 +1,17 @@
 // Package orch_test validates the root cross-host plugin marketplace
-// manifest (.claude-plugin/marketplace.json). One manifest serves both
-// hosts — Claude Code and Codex CLI each read it and silently filter
-// entries whose source lacks their own host manifest — so these tests
-// pin the invariants that filtering relies on: every adapter directory
-// is listed exactly once, each entry's source carries the right host
-// manifest, and names/descriptions/versions stay consistent with the
-// per-adapter plugin.json files. Ordinary Go tests so `go test ./...`
-// catches drift; host-specific artifact checks live in each adapter's
-// plugin_test.go, and cross-host behavioural invariants live in
-// internal/adaptertest (which this root package deliberately does not
-// import — its scope is the two adapter test files).
+// manifest (.claude-plugin/marketplace.json). One manifest serves Claude
+// Code and Codex CLI, which each read it and silently filter entries whose
+// source lacks their own host manifest. Before the native OpenCode V2 adapter,
+// every adapter directory was marketplace-backed; OpenCode is instead an npm
+// package and must not appear here. These tests pin the remaining marketplace
+// invariants: every marketplace-backed adapter is listed exactly once, each
+// entry's source carries the right host manifest, and names/descriptions/
+// versions stay consistent with the per-adapter plugin.json files.
+// Ordinary Go tests make `go test ./...` catch drift; host-specific
+// artifact checks live in each adapter's plugin_test.go, and cross-host
+// behavioural invariants live in internal/adaptertest (which this root
+// package deliberately does not import — its scope is the two marketplace
+// adapter test files).
 package orch_test
 
 import (
@@ -172,7 +174,7 @@ func TestMarketplaceEntryConsistency(t *testing.T) {
 	}
 }
 
-func TestMarketplaceCoversAllAdapters(t *testing.T) {
+func TestMarketplaceCoversAllMarketplaceAdapters(t *testing.T) {
 	m := loadMarketplace(t)
 	sources := make(map[string]int)
 	for _, e := range m.Plugins {
@@ -187,6 +189,15 @@ func TestMarketplaceCoversAllAdapters(t *testing.T) {
 			continue
 		}
 		dir := filepath.Join("adapters", d.Name())
+		marketplaceBacked := false
+		for _, manifest := range hostManifests {
+			if _, err := os.Stat(filepath.Join(dir, manifest)); err == nil {
+				marketplaceBacked = true
+			}
+		}
+		if !marketplaceBacked {
+			continue
+		}
 		if n := sources[dir]; n != 1 {
 			t.Errorf("adapter %s appears in %d marketplace entries, want 1", dir, n)
 		}

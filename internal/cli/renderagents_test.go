@@ -54,6 +54,8 @@ effort = "high"
 
 var validBothHostsTOML = validTOML + validCodexTOML[strings.Index(validCodexTOML, "[hosts.codex"):]
 
+var validOpenCodeTOML = strings.ReplaceAll(validCodexTOML, "hosts.codex", "hosts.opencode")
+
 const validClaudeDefaultTOML = `
 schema_version  = 1
 config_revision = "r1"

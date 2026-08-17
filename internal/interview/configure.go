@@ -22,9 +22,10 @@ import (
 // exact same materializeHost/parseConcurrency ingestion init already
 // has.
 const (
-	idPickHosts       = "pick.hosts"
-	idPickRolesClaude = "pick.roles.claude"
-	idPickRolesCodex  = "pick.roles.codex"
+	idPickHosts         = "pick.hosts"
+	idPickRolesClaude   = "pick.roles.claude"
+	idPickRolesCodex    = "pick.roles.codex"
+	idPickRolesOpenCode = "pick.roles.opencode"
 )
 
 // NextConfigure derives the next document for the `orch configure`
@@ -84,7 +85,7 @@ func nextAfterSequenceConfigure(facts Facts, committed *config.Config, committed
 	if err != nil {
 		return question.Document{}, err
 	}
-	seeds := seedFiles(facts, configureSeedScope(committed, cfg.Hosts.Claude != nil, cfg.Hosts.Codex != nil), answers)
+	seeds := seedFiles(facts, configureSeedScope(committed, cfg.Hosts.Claude != nil, cfg.Hosts.Codex != nil, cfg.Hosts.OpenCode != nil), answers)
 	summary, err := buildConfigureSummary(cfg, committed, committedRaw, repoRoot, seeds)
 	if err != nil {
 		return question.Document{}, err
@@ -176,21 +177,34 @@ func readCommittedRaw(repoRoot string) ([]byte, error) {
 // doctor` reports and nothing could fix.
 func buildSequenceConfigure(facts Facts, committed *config.Config, answers map[string]string) ([]docSpec, error) {
 	docs := []docSpec{pickerDocConfigure(committed)}
+	if committed.Hosts.OpenCode != nil {
+		docs = append(docs, docSpec{questions: []question.Question{{
+			ID: idPickRolesOpenCode, Header: "OpenCode", Prompt: "Review or change OpenCode V2's role profiles?",
+			Kind: question.KindSelect, Default: "no", Options: yesNoOptions("no"),
+		}}})
+	}
 
 	claudeCommitted := committedHostConfig(committed, "claude") != nil
 	codexCommitted := committedHostConfig(committed, "codex") != nil
+	openCommitted := committedHostConfig(committed, "opencode") != nil
 	claudeEnabled := claudeCommitted
 	codexEnabled := codexCommitted
+	openEnabled := openCommitted
 
 	if answers[idPickHosts] == "yes" {
-		docs = append(docs, hostToggleDoc(facts, boolValue(claudeCommitted), boolValue(codexCommitted)))
+		docs = append(docs, hostToggleDoc(facts, boolValue(claudeCommitted), boolValue(codexCommitted), boolValue(openCommitted)))
 
 		claudeVal, claudeKnown := answers[idHostClaudeEnabled]
 		codexVal, codexKnown := answers[idHostCodexEnabled]
 		claudeEnabled = claudeKnown && claudeVal == "yes"
 		codexEnabled = codexKnown && codexVal == "yes"
+		openVal, openKnown := answers[idHostOpenCodeEnabled]
+		if !facts.OpenCodeCLI && !openCommitted {
+			openKnown, openVal = true, "no"
+		}
+		openEnabled = openKnown && openVal == "yes"
 
-		if claudeKnown && codexKnown && !claudeEnabled && !codexEnabled {
+		if claudeKnown && codexKnown && openKnown && !claudeEnabled && !codexEnabled && !openEnabled {
 			return nil, ErrNoHostEnabled
 		}
 	}
@@ -212,12 +226,21 @@ func buildSequenceConfigure(facts Facts, committed *config.Config, answers map[s
 			docs = append(docs, roleDocSpecs("codex", showExplain, committedRoleDefaults(committedHostConfig(committed, "codex")))...)
 		}
 	}
+	if openEnabled {
+		showExplain := !claudeEnabled && !codexEnabled
+		switch {
+		case !openCommitted:
+			docs = append(docs, roleDocSpecs("opencode", showExplain, defaultProfileFor("opencode"))...)
+		case answers[idPickRolesOpenCode] == "yes":
+			docs = append(docs, roleDocSpecs("opencode", showExplain, committedRoleDefaults(committedHostConfig(committed, "opencode")))...)
+		}
+	}
 
 	if answers[idPickSettings] == "yes" {
 		docs = append(docs, settingsDoc(committedSettingsDefaults(committed)))
 	}
 
-	docs = append(docs, seedDocs(facts, configureSeedScope(committed, claudeEnabled, codexEnabled))...)
+	docs = append(docs, seedDocs(facts, configureSeedScope(committed, claudeEnabled, codexEnabled, openEnabled))...)
 
 	return docs, nil
 }
@@ -232,13 +255,15 @@ func buildSequenceConfigure(facts Facts, committed *config.Config, answers map[s
 // can never disagree about which offers applied — the asymmetry that
 // would otherwise let a seed be planned for a file no question was ever
 // shown for.
-func configureSeedScope(committed *config.Config, claudeEnabled, codexEnabled bool) seedScope {
+func configureSeedScope(committed *config.Config, claudeEnabled, codexEnabled, openEnabled bool) seedScope {
+	agentsEnabled := codexEnabled || openEnabled
+	agentsCommitted := committed.Hosts.Codex != nil || committed.Hosts.OpenCode != nil
 	return seedScope{
 		created: map[string]bool{
 			"claude": claudeEnabled && committedHostConfig(committed, "claude") == nil,
-			"codex":  codexEnabled && committedHostConfig(committed, "codex") == nil,
+			"codex":  agentsEnabled && !agentsCommitted,
 		},
-		repaired: map[string]bool{"claude": claudeEnabled, "codex": codexEnabled},
+		repaired: map[string]bool{"claude": claudeEnabled, "codex": agentsEnabled},
 	}
 }
 
@@ -332,6 +357,8 @@ func hostEnabledID(host string) string {
 		return idHostClaudeEnabled
 	case "codex":
 		return idHostCodexEnabled
+	case "opencode":
+		return idHostOpenCodeEnabled
 	default:
 		return ""
 	}
@@ -345,6 +372,8 @@ func setConfigHost(cfg *config.Config, host string, h *config.Host) {
 		cfg.Hosts.Claude = h
 	case "codex":
 		cfg.Hosts.Codex = h
+	case "opencode":
+		cfg.Hosts.OpenCode = h
 	}
 }
 
@@ -361,6 +390,10 @@ func deepCopyConfig(committed *config.Config) *config.Config {
 	if committed.Hosts.Codex != nil {
 		h := *committed.Hosts.Codex
 		cfg.Hosts.Codex = &h
+	}
+	if committed.Hosts.OpenCode != nil {
+		h := *committed.Hosts.OpenCode
+		cfg.Hosts.OpenCode = &h
 	}
 	return &cfg
 }
@@ -399,7 +432,7 @@ func applyHostConfigure(cfg *config.Config, host string, answers map[string]stri
 func materializeConfigure(committed *config.Config, answers map[string]string) (*config.Config, error) {
 	cfg := deepCopyConfig(committed)
 
-	for _, host := range []string{"claude", "codex"} {
+	for _, host := range []string{"claude", "codex", "opencode"} {
 		if err := applyHostConfigure(cfg, host, answers); err != nil {
 			return nil, err
 		}
@@ -448,7 +481,12 @@ func disabledInstructionFiles(committed, cfg *config.Config) []string {
 		names = append(names, InstructionFile("claude"))
 	}
 	if committed.Hosts.Codex != nil && cfg.Hosts.Codex == nil {
-		names = append(names, InstructionFile("codex"))
+		if cfg.Hosts.OpenCode == nil {
+			names = append(names, InstructionFile("codex"))
+		}
+	}
+	if committed.Hosts.OpenCode != nil && cfg.Hosts.OpenCode == nil && cfg.Hosts.Codex == nil && committed.Hosts.Codex == nil {
+		names = append(names, InstructionFile("opencode"))
 	}
 	return names
 }
@@ -515,7 +553,7 @@ func buildConfigureSummary(cfg, committed *config.Config, committedRaw []byte, r
 		conflictLines = append(conflictLines, fmt.Sprintf("%s: %s", filepath.ToSlash(rel), c.Report.Detail))
 	}
 
-	gitignore, err := gitignoreLines(repoRoot)
+	gitignore, err := gitignoreLines(repoRoot, cfg)
 	if err != nil {
 		return question.Summary{}, err
 	}
