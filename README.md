@@ -46,7 +46,7 @@ The payoff: cheap, fast models handle read-only exploration and mechanical work,
 
 Which role gets an issue is derived from the issue's own facts by a deterministic table, not chosen by the model that will run it. The reviewer is always a separate dispatch — never the session that wrote the code — though under the shipped defaults it is often the same model on both sides. What Orch guarantees is the independent dispatch and the recorded routing, not model diversity; pin different models per role (the Settings table below) if you want that too.
 
-**The guard.** None of the above is an instruction the agent is asked to honor. Both host adapters wire the CLI's pre-write hook to `orch guard`, a subcommand of the same binary, which is consulted before the agent writes a file and answers allow or deny. In Assist it denies every write to a file git does not ignore. In Delivery it allows a write only inside a worktree registered to the running plan, on that worktree's registered branch, in a phase where writing is allowed. Git internals are never writable, and neither is the orchestrator state your session is running against. It fails closed: anything it cannot establish is a denial. What it enforces is containment — it cannot tell which role is writing, and a file written by a shell command never reaches it at all (see [Known issues](#known-issues-and-limitations)).
+**The guard.** None of the above is an instruction the agent is asked to honor. Claude Code and Codex CLI wire their pre-write hooks to `orch guard`; the OpenCode V2 plugin calls the same guard before its `edit`, `write`, and `patch` tools. In Assist it denies every write to a file git does not ignore. In Delivery it allows a write only inside a worktree registered to the running plan, on that worktree's registered branch, in a phase where writing is allowed. Git internals are never writable, and neither is the orchestrator state your session is running against. It fails closed: anything it cannot establish is a denial. What it enforces is containment — it cannot tell which role is writing, and a file written by a shell command never reaches it at all (see [Known issues](#known-issues-and-limitations)).
 
 Concretely, asking for a change goes like this:
 
@@ -108,8 +108,14 @@ on this machine. Work in a scratch directory, not in one of my projects.
       - Codex CLI:
           codex plugin marketplace add kninetimmy/orch
           codex plugin add orch@orch
-      - OpenCode V2: follow the local npm package install in
-        `adapters/opencode/README.md`; it is not a Codex marketplace plugin.
+      - OpenCode V2: it is not a Codex marketplace plugin. Run
+        `git clone https://github.com/kninetimmy/orch.git "$HOME/orch"`
+        and `npm ci --prefix "$HOME/orch/adapters/opencode"`, then add
+        the absolute path to `$HOME/orch/adapters/opencode/src/index.js`
+        to the `plugins` array in `opencode.json`. Restart OpenCode V2,
+        then run `opencode2 --version` and
+        `opencode2 api get /api/plugin`; require exactly one
+        `orch.delivery` plugin entry before relying on enforcement.
 
 4. Codex CLI only. Skip this entire step on Claude Code and OpenCode V2:
    a. Add both of these stanzas to ~/.codex/config.toml, leaving any
@@ -423,16 +429,17 @@ permission and approval prompts on shell commands are the only
 backstop; leave them on.
 
 **The guard cannot tell one role from another.** `orch guard` has a
-`--role` flag that would make a role mechanically read-only. Neither
-adapter passes it: host hooks are plugin-global rather than scoped per
-dispatched agent, so both `hooks.json` files run the bare command.
-Inside a worktree the guard treats as writable, a scout or a
-reviewer is no more restricted than the implementer. On Claude Code
-the `orch-scout` subagent's tool whitelist does close its write
-surface — it carries no `Bash` — but `orch-reviewer` and
-`orch-reviewer-safe` both carry `Bash`, so their read-only discipline
-rests on their instructions. Codex agent definitions carry no tool
-whitelist at all.
+`--role` flag that would make a role mechanically read-only, but no
+adapter passes it. Claude Code and Codex CLI hook manifests run the
+bare command, and the OpenCode V2 plugin is host-global rather than
+attributed to a dispatched role. Inside a worktree the guard treats as
+writable, a scout or a reviewer is no more restricted than the
+implementer. On Claude Code the `orch-scout` subagent's tool whitelist
+does close its write surface — it carries no `Bash` — but
+`orch-reviewer` and `orch-reviewer-safe` both carry `Bash`, so their
+read-only discipline for shell-mediated writes rests on instructions
+there too. Codex agent definitions carry no tool whitelist; OpenCode's
+host-global guard likewise does not enforce read-only roles.
 
 **An `orch run` verb invoked from inside a Delivery worktree reports
 Assist and names the wrong fix.** Every `orch` command resolves
@@ -505,8 +512,8 @@ than something the host applied. The record says so outright, as
 `Effort delivery: prompt-cue`. Codex and OpenCode pin effort in their
 project agent definitions and the host enforces it.
 
-**A model override does not reach a dispatched agent by itself, on
-either host.** No host can override a model per spawn, so the
+**A model override does not reach a dispatched agent by itself.** No
+host can override a model per spawn, so the
 routed selection has to match the active project agent definition.
 `orch render-agents` writes all five dispatched roles for every
 enabled host under `.claude/agents/`, `.codex/agents/`, or
@@ -569,8 +576,8 @@ continue, or `orch abort` to end it.
 Everything here is merged on `main` and shipped in v0.7.0, the latest
 tagged release.
 
-- The wrong-criterion guidance in all four reviewer agent definitions —
-  all hosts, standard reviewer and safe downgrade alike — now names a
+- The wrong-criterion guidance in the standard and safe reviewer
+  definitions for each host now names a
   criterion about "how an LLM agent routes, decides, or behaves" as the
   standing instance of proxy-only evidence, instead of stating it of
   any agent; before, a reviewer applying the sentence literally could
@@ -815,11 +822,13 @@ never the worktree's copy.
 
 What the table decides is containment. The guard is given the write's
 target paths, not the identity of the agent making the write, so it
-cannot make one role read-only and another writable; the `--role`
-narrowing that exists for that purpose is passed by neither adapter.
-Nor does it see writes the host does not route through a guarded tool,
-which is why shell-mediated writes escape it entirely. Both gaps are
-in [Known issues](#known-issues-and-limitations).
+cannot make one role read-only and another writable; no host adapter
+passes the `--role` narrowing that exists for that purpose. Claude
+Code and Codex CLI hook manifests invoke the bare guard command, while
+the OpenCode V2 plugin invokes its host-global guard call. Nor does the
+guard see writes the host does not route through a guarded tool, which
+is why shell-mediated writes escape it entirely. Both gaps are in
+[Known issues](#known-issues-and-limitations).
 
 Delivery is exclusive across hosts and machines: a lock file
 (`.orchestrator/delivery.lock`, created with `O_EXCL`) is the lock,

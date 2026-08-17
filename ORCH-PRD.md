@@ -37,7 +37,7 @@ Orch must:
 - Delegate read-only exploration without polluting the Architect context.
 - Delegate implementation according to difficulty and risk.
 - Support exact model-version and reasoning-effort selection per role.
-- Provide native configuration dialogs inside all supported hosts.
+- Provide native arrow-key configuration dialogs inside Claude Code and Codex CLI, and native configuration dialogs inside OpenCode V2.
 - Require the complete Delivery workflow for every tracked-file mutation.
 - Enforce Assist mode as read-only.
 - Work independently with Claude Code, Codex CLI, OpenCode V2, or any combination.
@@ -351,10 +351,11 @@ Orch fails closed.
 - Writes must remain inside the registered worktree.
 - The active branch must not be `main`.
 - Completion requires a commit, pushed branch, PR, targeted-test evidence, and explicit CI state.
-- Read-only roles are held read-only by per-agent tool whitelists on Claude Code and OpenCode, and by agent
-  instructions on Codex, not by the guard. The Claude whitelist accounts fully only for the Scout,
-  which is granted no shell tool; the Reviewer and its safe review downgrade are granted one, so
-  their read-only discipline for shell-mediated writes rests on instructions there too.
+- The guard does not attribute writes to roles. Claude Code's Scout has no shell tool, but its
+  Reviewer and safe review downgrade do, so their read-only discipline for shell-mediated writes
+  rests on instructions. Codex has no per-agent tool whitelist. OpenCode's plugin guard is
+  host-global, so it likewise cannot prevent a scout or reviewer write inside a Delivery worktree
+  the guard otherwise permits.
 - Neither closes the shell-write gap: the pre-write hook covers only the file-write tools, so a
   shell-mediated write falls to the host's own approval prompts.
 - No agent may merge.
