@@ -11,8 +11,8 @@ test("exports the pinned V2 plugin contract", () => {
 })
 
 test("extracts every built-in mutation target", () => {
-  assert.deepEqual(mutationPaths("edit", { filePath: "a.txt" }), ["a.txt"])
-  assert.deepEqual(mutationPaths("write", { filePath: "b.txt" }), ["b.txt"])
+  assert.deepEqual(mutationPaths("edit", { path: "a.txt" }), ["a.txt"])
+  assert.deepEqual(mutationPaths("write", { path: "b.txt" }), ["b.txt"])
   assert.deepEqual(
     mutationPaths("patch", {
       patchText: "*** Begin Patch\n*** Add File: a.txt\n*** Update File: b.txt\n*** Move to: c.txt\n*** Delete File: d.txt\n*** End Patch",
@@ -23,7 +23,8 @@ test("extracts every built-in mutation target", () => {
 })
 
 test("fails closed on malformed mutation inputs", () => {
-  assert.throws(() => mutationPaths("edit", {}), /no filePath/)
+  assert.throws(() => mutationPaths("edit", {}), /no path/)
+  assert.throws(() => mutationPaths("write", { filePath: "legacy.txt" }), /no path/)
   assert.throws(() => mutationPaths("write", null), /not an object/)
   assert.throws(() => mutationPaths("patch", { patchText: "*** Begin Patch\n*** End Patch" }), /names no files/)
 })
@@ -45,7 +46,7 @@ test("registers pre-execution guard and session context hooks", async () => {
     hooks.map(([domain, name]) => [domain, name]),
     [["tool", "execute.before"], ["session", "context"]],
   )
-  await hooks[0][2]({ sessionID: "session", tool: "write", input: { filePath: "a.txt" } })
+  await hooks[0][2]({ sessionID: "session", agent: "build", tool: "write", input: { path: "a.txt", content: "x" } })
   const event = { sessionID: "session", system: [] }
   await hooks[1][2](event)
   assert.deepEqual(calls, [
@@ -67,5 +68,5 @@ test("a denied guard stops before OpenCode can continue", async () => {
       hook: async () => {},
     },
   })
-  await assert.rejects(hook({ sessionID: "session", tool: "edit", input: { filePath: "tracked.txt" } }), /denied/)
+  await assert.rejects(hook({ sessionID: "session", agent: "build", tool: "edit", input: { path: "tracked.txt", oldString: "a", newString: "b" } }), /denied/)
 })

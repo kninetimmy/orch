@@ -11,10 +11,10 @@ export function mutationPaths(tool, input) {
   if (!mutationTools.has(tool)) return []
   if (!input || typeof input !== "object") throw new Error(`orch: ${tool} input is not an object`)
   if (tool === "edit" || tool === "write") {
-    if (typeof input.filePath !== "string" || input.filePath.length === 0) {
-      throw new Error(`orch: ${tool} input has no filePath`)
+    if (typeof input.path !== "string" || input.path.length === 0) {
+      throw new Error(`orch: ${tool} input has no path`)
     }
-    return [input.filePath]
+    return [input.path]
   }
   if (typeof input.patchText !== "string") throw new Error("orch: patch input has no patchText")
   const paths = []
