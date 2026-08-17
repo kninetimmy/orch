@@ -1,7 +1,7 @@
 # Orch Product Requirements Document
 
 - Status: Draft for future implementation
-- Last updated: 2026-07-10
+- Last updated: 2026-08-17
 - Intended implementation context: A new memhub-enabled repository
 
 ## 1. Product summary
@@ -239,6 +239,17 @@ All entries use exact model versions.
 | Specialist | `gpt-5.6-sol` | `max` |
 | Reviewer | `gpt-5.6-sol` | `xhigh` |
 | Safe review downgrade | `gpt-5.6-sol` | `high` |
+
+### OpenCode V2
+
+| Role | Model | Effort |
+|---|---|---|
+| Architect | `openai/gpt-5.6-sol` | `xhigh` |
+| Scout | `openai/gpt-5.6-luna` | `max` |
+| Implementer | `openai/gpt-5.6-terra` | `max` |
+| Specialist | `openai/gpt-5.6-sol` | `max` |
+| Reviewer | `openai/gpt-5.6-sol` | `xhigh` |
+| Safe review downgrade | `openai/gpt-5.6-sol` | `high` |
 
 ### Claude Code
 
