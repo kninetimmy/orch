@@ -1,12 +1,12 @@
 # Orch Product Requirements Document
 
 - Status: Draft for future implementation
-- Last updated: 2026-07-10
+- Last updated: 2026-08-17
 - Intended implementation context: A new memhub-enabled repository
 
 ## 1. Product summary
 
-Orch is a cross-host development orchestrator for Codex CLI and Claude Code CLI. It keeps a
+Orch is a cross-host development orchestrator for Claude Code, Codex CLI, and OpenCode V2. It keeps a
 frontier model in the Architect role while routing exploration, implementation, specialist work,
 and review to explicitly configured models with appropriate reasoning levels.
 
@@ -23,7 +23,7 @@ is wasteful. Existing orchestration approaches, including the first
 - Models and effort levels are hard-coded.
 - Provider model names are conflated with task roles.
 - Exploration remains in the expensive main context.
-- Codex and Claude implementations duplicate workflow logic.
+- Codex, Claude, and OpenCode implementations must not duplicate workflow logic.
 - GitHub and worktree enforcement is shell- and hook-heavy.
 - Configuration lacks a native per-repository interview.
 - Workflow failure is sometimes fail-open.
@@ -37,10 +37,10 @@ Orch must:
 - Delegate read-only exploration without polluting the Architect context.
 - Delegate implementation according to difficulty and risk.
 - Support exact model-version and reasoning-effort selection per role.
-- Provide native arrow-key configuration dialogs inside both supported hosts.
+- Provide native arrow-key configuration dialogs inside Claude Code and Codex CLI, and native configuration dialogs inside OpenCode V2.
 - Require the complete Delivery workflow for every tracked-file mutation.
 - Enforce Assist mode as read-only.
-- Work independently with Codex CLI, Claude Code CLI, or both.
+- Work independently with Claude Code, Codex CLI, OpenCode V2, or any combination.
 - Maintain behavioral parity through a shared cross-platform core.
 - Integrate with memhub when present.
 - Recover safely from interrupted sessions without losing work.
@@ -56,7 +56,7 @@ Orch must:
 - Moving model aliases as canonical configuration.
 - Outbound telemetry.
 - Recursive worker delegation.
-- Transfer of an active Delivery run between Codex and Claude.
+- Transfer of an active Delivery run between hosts.
 - Automated A/B evaluation of write-producing agents.
 - Choosing the shared core's implementation language in this PRD.
 
@@ -64,6 +64,7 @@ Orch must:
 
 - Codex CLI.
 - Claude Code CLI.
+- OpenCode V2 (beta API, pinned to `opencode2 v0.0.0-beta-17498`).
 - Windows, macOS, and Linux.
 - GitHub through authenticated `gh`.
 - Git repositories with isolated worktree support.
@@ -73,7 +74,7 @@ authentication, repository state, and worktree prerequisites pass validation.
 
 ## 6. Architecture
 
-Orch consists of a shared cross-platform core and two thin host adapters.
+Orch consists of a shared cross-platform core and three thin host adapters.
 
 ### Shared core
 
@@ -93,7 +94,7 @@ The shared core owns:
 
 ### Host adapters
 
-Codex and Claude adapters own:
+Codex, Claude, and OpenCode adapters own:
 
 - Native structured-question dialogs.
 - Session lifecycle integration.
@@ -239,6 +240,17 @@ All entries use exact model versions.
 | Reviewer | `gpt-5.6-sol` | `xhigh` |
 | Safe review downgrade | `gpt-5.6-sol` | `high` |
 
+### OpenCode V2
+
+| Role | Model | Effort |
+|---|---|---|
+| Architect | `openai/gpt-5.6-sol` | `xhigh` |
+| Scout | `openai/gpt-5.6-luna` | `max` |
+| Implementer | `openai/gpt-5.6-terra` | `max` |
+| Specialist | `openai/gpt-5.6-sol` | `max` |
+| Reviewer | `openai/gpt-5.6-sol` | `xhigh` |
+| Safe review downgrade | `openai/gpt-5.6-sol` | `high` |
+
 ### Claude Code
 
 | Role | Model | Effort |
@@ -331,7 +343,7 @@ Models do not become GitHub labels.
 
 ## 14. Concurrency
 
-- One active Delivery coordinator per repository across both hosts.
+- One active Delivery coordinator per repository across all hosts.
 - The active run may contain multiple issues.
 - Default maximum: three concurrent subagents.
 - Initialization may configure another cap.
@@ -350,10 +362,11 @@ Orch fails closed.
 - Writes must remain inside the registered worktree.
 - The active branch must not be `main`.
 - Completion requires a commit, pushed branch, PR, targeted-test evidence, and explicit CI state.
-- Read-only roles are held read-only by per-agent tool whitelists on Claude Code and by agent
-  instructions on Codex, not by the guard. The Claude whitelist accounts fully only for the Scout,
-  which is granted no shell tool; the Reviewer and its safe review downgrade are granted one, so
-  their read-only discipline for shell-mediated writes rests on instructions there too.
+- The guard does not attribute writes to roles. Claude Code's Scout has no shell tool, but its
+  Reviewer and safe review downgrade do, so their read-only discipline for shell-mediated writes
+  rests on instructions. Codex has no per-agent tool whitelist. OpenCode's plugin guard is
+  host-global, so it likewise cannot prevent a scout or reviewer write inside a Delivery worktree
+  the guard otherwise permits.
 - Neither closes the shell-write gap: the pre-write hook covers only the file-write tools, so a
   shell-mediated write falls to the host's own approval prompts.
 - No agent may merge.
@@ -426,7 +439,7 @@ Global host plugins are installed before repository initialization.
 14. Opens and reviews a bootstrap PR.
 15. Waits for human merge approval.
 
-Codex and Claude Code may be enabled independently. Adding another host later uses Delivery.
+Claude Code, Codex CLI, and OpenCode V2 may be enabled independently. Adding another host later uses Delivery.
 
 ## 19. Managed instruction blocks
 
@@ -517,8 +530,9 @@ Assist.
 
 `orch render-agents` generates all five dispatched role definitions for every enabled host from
 the effective `hosts.<host>.roles` configuration. It writes Claude Markdown under
-`.claude/agents/` and Codex TOML under `.codex/agents/`, using each shipped plugin definition as
-the canonical body and changing only routing fields the host supports. Both destinations are
+`.claude/agents/`, Codex TOML under `.codex/agents/`, and OpenCode Markdown under
+`.opencode/agents/`, using each shipped plugin definition as
+the canonical body and changing only routing fields the host supports. All destinations are
 gitignored machine-local output. Doctor checks every enabled host and activation checks the
 selected host; missing, unreadable, or stale definitions fail closed with the affected paths and
 the render command as remediation. Installed-adapter health is checked separately.
@@ -527,7 +541,7 @@ the render command as remediation. Installed-adapter health is checked separatel
 
 V1 is acceptable when:
 
-- Both CLIs can initialize independently using native question dialogs.
+- All three hosts can initialize independently using native question dialogs.
 - Initialization creates a reviewed bootstrap PR without editing the primary checkout.
 - Assist reliably blocks tracked-file changes.
 - Delivery cannot write outside registered worktrees.
@@ -543,7 +557,7 @@ V1 is acceptable when:
 - Disabled metrics create no metrics storage.
 - Successful merge leaves the primary checkout current and no stale worktree behind.
 - Behavior is validated on Windows, macOS, and Linux.
-- Codex and Claude adapters pass shared parity tests.
+- Codex and Claude adapters retain their shared parity tests; OpenCode passes its native adapter tests and pinned-beta smoke check.
 
 ## 24. Deferred implementation decisions
 

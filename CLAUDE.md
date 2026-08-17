@@ -1,6 +1,6 @@
 # Orch
 
-A cross-host development orchestrator for the Codex CLI and Claude Code CLI.
+A cross-host development orchestrator for Claude Code, Codex CLI, and OpenCode V2.
 
 ## Session Continuity
 
@@ -19,7 +19,9 @@ Shared core is Go (module `github.com/kninetimmy/orch`, Go 1.26+).
 - Format: `gofmt -w .` (CI fails on unformatted files)
 - Run:    `go run ./cmd/orch status` (or `doctor`, `help`)
 
-Host adapters under `adapters/` are non-Go artifacts (not implemented yet).
+Host adapters under `adapters/` are non-Go artifacts. Claude Code and Codex
+CLI share the root marketplace manifest; OpenCode V2 uses the local npm package
+at `adapters/opencode/` and the beta `opencode2` runtime.
 
 <!-- orchestrator:managed:start version=1 -->
 This file is partially managed by Orch (see `.orchestrator/config.toml`).

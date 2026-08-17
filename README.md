@@ -8,14 +8,14 @@
   <img src="https://img.shields.io/badge/Release-v0.7.0-24292F?style=flat&logo=github&logoColor=white" alt="Release: v0.7.0"/>
   <br/>
   <img src="https://img.shields.io/badge/Platform-Linux%20%C2%B7%20macOS%20%C2%B7%20Windows-607D8B?style=flat" alt="Platform: Linux, macOS, Windows"/>
-  <img src="https://img.shields.io/badge/Hosts-Claude%20Code%20%C2%B7%20Codex%20CLI-6E56CF?style=flat" alt="Hosts: Claude Code and Codex CLI"/>
+  <img src="https://img.shields.io/badge/Hosts-Claude%20Code%20%C2%B7%20Codex%20CLI%20%C2%B7%20OpenCode%20V2-6E56CF?style=flat" alt="Hosts: Claude Code, Codex CLI, and OpenCode V2"/>
 </p>
 
 ---
 
 Left to itself, a coding agent picks its own model for every task, and it can write to any file it can reach. That's fine until the model is wrong for the job — too expensive for something trivial, or too weak for something that actually matters — or until a change lands somewhere you didn't intend it to.
 
-Orch sits underneath the CLI you already use (Claude Code or Codex CLI) and takes over those two decisions. By default it puts the repository in **Assist**: a mechanical, read-only mode where the agent can look around, search, explain and plan, but a write to a file git does not ignore is refused before it happens. When you approve a plan, Orch enters **Delivery**: each task becomes a GitHub issue with its own isolated git worktree, gets implemented there, is reviewed by a separate agent dispatch, runs CI, and is merged only after you approve it. Which model handles which job is not the agent's call either — you route it, per role, to an exact model version and effort level.
+Orch sits underneath the CLI you already use (Claude Code, Codex CLI, or OpenCode V2) and takes over those two decisions. By default it puts the repository in **Assist**: a mechanical, read-only mode where the agent can look around, search, explain and plan, but a write to a file git does not ignore is refused before it happens. When you approve a plan, Orch enters **Delivery**: each task becomes a GitHub issue with its own isolated git worktree, gets implemented there, is reviewed by a separate agent dispatch, runs CI, and is merged only after you approve it. Which model handles which job is not the agent's call either — you route it, per role, to an exact model version and effort level.
 
 The payoff: cheap, fast models handle read-only exploration and mechanical work, a frontier model gets spent only where the plan calls for it, and every change that lands is auditable and gated by a human at the one step that matters — the merge.
 
@@ -24,7 +24,7 @@ The payoff: cheap, fast models handle read-only exploration and mechanical work,
 <br>
 
 <p align="center">
-  <img src="docs/images/orch-overview.gif" alt="Animated overview of how Orch works: in Assist the guard denies a tracked-file write with its verbatim reason and allows git-ignored scratch; approving a plan enters Delivery, routing pins the exact model, and writes land only inside the registered issue worktree before the run auto-returns to Assist" width="920"/>
+  <img src="docs/images/orch-overview.svg" alt="Animated overview of how Orch works: in Assist the guard denies a tracked-file write with its verbatim reason and allows git-ignored scratch; approving a plan enters Delivery, routing pins the exact model, and writes land only inside the registered issue worktree before the run auto-returns to Assist" width="920"/>
 </p>
 
 ---
@@ -46,7 +46,7 @@ The payoff: cheap, fast models handle read-only exploration and mechanical work,
 
 Which role gets an issue is derived from the issue's own facts by a deterministic table, not chosen by the model that will run it. The reviewer is always a separate dispatch — never the session that wrote the code — though under the shipped defaults it is often the same model on both sides. What Orch guarantees is the independent dispatch and the recorded routing, not model diversity; pin different models per role (the Settings table below) if you want that too.
 
-**The guard.** None of the above is an instruction the agent is asked to honor. Both host adapters wire the CLI's pre-write hook to `orch guard`, a subcommand of the same binary, which is consulted before the agent writes a file and answers allow or deny. In Assist it denies every write to a file git does not ignore. In Delivery it allows a write only inside a worktree registered to the running plan, on that worktree's registered branch, in a phase where writing is allowed. Git internals are never writable, and neither is the orchestrator state your session is running against. It fails closed: anything it cannot establish is a denial. What it enforces is containment — it cannot tell which role is writing, and a file written by a shell command never reaches it at all (see [Known issues](#known-issues-and-limitations)).
+**The guard.** None of the above is an instruction the agent is asked to honor. Claude Code and Codex CLI wire their pre-write hooks to `orch guard`; the OpenCode V2 plugin calls the same guard before its `edit`, `write`, and `patch` tools. In Assist it denies every write to a file git does not ignore. In Delivery it allows a write only inside a worktree registered to the running plan, on that worktree's registered branch, in a phase where writing is allowed. Git internals are never writable, and neither is the orchestrator state your session is running against. It fails closed: anything it cannot establish is a denial. What it enforces is containment — it cannot tell which role is writing, and a file written by a shell command never reaches it at all (see [Known issues](#known-issues-and-limitations)).
 
 Concretely, asking for a change goes like this:
 
@@ -67,9 +67,9 @@ The full product definition lives in [ORCH-PRD.md](ORCH-PRD.md).
 ## Quickstart
 
 <details>
-<summary><b>Have your agent do it</b> — recommended: one prompt, pasted into Claude Code or Codex CLI</summary>
+<summary><b>Have your agent do it</b> — recommended: one prompt, pasted into Claude Code, Codex CLI, or OpenCode V2</summary>
 
-Paste this into a Claude Code or Codex CLI session, started anywhere.
+Paste this into a Claude Code, Codex CLI, or OpenCode V2 session, started anywhere.
 It does not assume you have cloned this repository.
 
 ```text
@@ -105,11 +105,19 @@ on this machine. Work in a scratch directory, not in one of my projects.
      - Claude Code:
          claude plugin marketplace add kninetimmy/orch
          claude plugin install orch-claude@orch
-     - Codex CLI:
-         codex plugin marketplace add kninetimmy/orch
-         codex plugin add orch@orch
+      - Codex CLI:
+          codex plugin marketplace add kninetimmy/orch
+          codex plugin add orch@orch
+      - OpenCode V2: it is not a Codex marketplace plugin. Run
+        `git clone https://github.com/kninetimmy/orch.git "$HOME/orch"`
+        and `npm ci --prefix "$HOME/orch/adapters/opencode"`, then add
+        the absolute path to `$HOME/orch/adapters/opencode/src/index.js`
+        to the `plugins` array in `opencode.json`. Restart OpenCode V2,
+        then run `opencode2 --version` and
+        `opencode2 api get /api/plugin`; require exactly one
+        `orch.delivery` plugin entry before relying on enforcement.
 
-4. Codex CLI only. Skip this entire step on Claude Code:
+4. Codex CLI only. Skip this entire step on Claude Code and OpenCode V2:
    a. Add both of these stanzas to ~/.codex/config.toml, leaving any
       existing content in place:
         [tools.experimental_request_user_input]
@@ -139,7 +147,7 @@ on this machine. Work in a scratch directory, not in one of my projects.
    that PR is merged, `orch render-agents` must be run in the repository;
    it generates project definitions for every enabled host and must be
    rerun after role configuration or Orch changes. This command is the
-   one per-repository workflow for both hosts.
+   one per-repository workflow for all enabled hosts.
 ```
 
 </details>
@@ -164,7 +172,8 @@ repository's remote. Assist works without a remote.
 Each adapter's README carries its host's exact install order and its
 own known limitations, worth reading once for the host you use:
 [Claude Code](adapters/claude/README.md#install-order),
-[Codex CLI](adapters/codex/README.md#install-order).
+[Codex CLI](adapters/codex/README.md#install-order), and
+[OpenCode V2](adapters/opencode/README.md#install-order).
 
 <details>
 <summary><b>Install it yourself</b> — scripts, plugins, manual download, source builds</summary>
@@ -192,8 +201,8 @@ iwr https://raw.githubusercontent.com/kninetimmy/orch/main/install.ps1 -OutFile 
 powershell -ExecutionPolicy Bypass -File .\install.ps1
 ```
 
-**Plugin install (two commands per host).** With the binary on `PATH`,
-each host installs its adapter from this repository's marketplace
+**Adapter install.** With the binary on `PATH`, Claude Code and Codex
+CLI install their adapters from this repository's shared marketplace
 manifest:
 
 ```sh
@@ -206,19 +215,22 @@ codex plugin marketplace add kninetimmy/orch
 codex plugin add orch@orch
 ```
 
-One manifest (`.claude-plugin/marketplace.json`) serves both hosts, and
-the other host's entry may show up in your listing too — install yours
-by its exact name: `orch-claude` on Claude Code, `orch` on Codex CLI.
-Then follow the host-specific steps in the adapter
+One manifest (`.claude-plugin/marketplace.json`) serves those two hosts,
+and the other host's entry may show up in your listing too — install
+yours by its exact name: `orch-claude` on Claude Code, `orch` on Codex
+CLI. OpenCode V2 is npm-native, not a marketplace adapter: install the
+local `adapters/opencode/` package and configure its plugin module as
+documented in its README. Then follow the host-specific steps in the adapter
 READMEs — [Claude Code](adapters/claude/README.md#install-order),
-[Codex CLI](adapters/codex/README.md#install-order). Codex CLI needs
+[Codex CLI](adapters/codex/README.md#install-order),
+[OpenCode V2](adapters/opencode/README.md#install-order). Codex CLI needs
 two more things the plugin install cannot do for you: the one-time hook
 trust approval and the two `request_user_input` stanzas in
-`~/.codex/config.toml`. Every initialized repository, on either host,
+`~/.codex/config.toml`. Every initialized repository, on every enabled host,
 also needs `orch render-agents` after initialization, role-configuration
 changes, and upgrades.
 
-**Plugin upgrade (existing installs).** Do not repeat the first-install
+**Adapter upgrade (existing installs).** Do not repeat the first-install
 commands above. Upgrade the configured host's marketplace and adapter:
 
 ```sh
@@ -230,8 +242,10 @@ claude plugin update orch-claude@orch
 codex plugin marketplace upgrade orch
 ```
 
-Restart Claude Code or Codex CLI after upgrading its adapter so the new
-hooks and skills are loaded.
+For OpenCode V2, update the local checkout and run `npm ci --prefix
+adapters/opencode` again; see its README for the exact commands and
+plugin-ID check. Restart Claude Code, Codex CLI, or the OpenCode V2
+service after upgrading its adapter so the new hooks and skills are loaded.
 
 **Manual download.** Take the static binary for your OS and
 architecture from
@@ -278,7 +292,7 @@ go install github.com/kninetimmy/orch/cmd/orch@latest
 - **A separate dispatch reviews the work.** The pull request is reviewed in a dispatch separate from the one that wrote it — never the same run marking its own homework.
 - **You hold the merge gate.** Nothing lands on your default branch until you approve it, and the merge fails closed if the pull request moved after your approval.
 - **Every issue and PR carries an audit record.** The exact model, the effort, how the host actually delivered that effort, and the routing rationale are recorded on the issue and mirrored onto its pull request.
-- **Works with the CLI you already use.** Orch works with both [Claude Code](adapters/claude/README.md) and [Codex CLI](adapters/codex/README.md), so you keep working in the agent you already have.
+- **Works with the CLI you already use.** Orch works with [Claude Code](adapters/claude/README.md), [Codex CLI](adapters/codex/README.md), and [OpenCode V2](adapters/opencode/README.md), so you keep working in the agent you already have.
 
 ---
 
@@ -326,7 +340,7 @@ local override can never weaken a shared workflow rule.
 
 | Setting | Values (default) | Local override? |
 |---|---|---|
-| `hosts.claude` / `hosts.codex` | enable a host by giving it a role table | no (committed) |
+| `hosts.claude` / `hosts.codex` / `hosts.opencode` | enable a host by giving it a role table | no (committed) |
 | `hosts.<host>.roles.<role>.model` | exact model version string | yes |
 | `hosts.<host>.roles.<role>.effort` | `low` `medium` `high` `xhigh` `max` (+ `ultra` on codex) | yes |
 | `concurrency.max_subagents` | integer ≥ 1 (`3`) | yes |
@@ -344,14 +358,14 @@ than tier aliases, and whatever string is configured is the one that
 lands in the audit record, so the record says what ran instead of what
 tier it belonged to. The defaults `orch init` offers:
 
-| Role | Claude Code | Codex |
-|---|---|---|
-| Architect | `claude-opus-5` / high | `gpt-5.6-sol` / xhigh |
-| Scout | `claude-opus-5` / low | `gpt-5.6-luna` / max |
-| Implementer | `claude-opus-5` / medium | `gpt-5.6-terra` / max |
-| Specialist | `claude-opus-5` / high | `gpt-5.6-sol` / max |
-| Reviewer | `claude-opus-5` / high | `gpt-5.6-sol` / xhigh |
-| Review downgrade | `claude-opus-5` / medium | `gpt-5.6-sol` / high |
+| Role | Claude Code | Codex CLI | OpenCode V2 |
+|---|---|---|---|
+| Architect | `claude-opus-5` / high | `gpt-5.6-sol` / xhigh | `openai/gpt-5.6-sol` / xhigh |
+| Scout | `claude-opus-5` / low | `gpt-5.6-luna` / max | `openai/gpt-5.6-luna` / max |
+| Implementer | `claude-opus-5` / medium | `gpt-5.6-terra` / max | `openai/gpt-5.6-terra` / max |
+| Specialist | `claude-opus-5` / high | `gpt-5.6-sol` / max | `openai/gpt-5.6-sol` / max |
+| Reviewer | `claude-opus-5` / high | `gpt-5.6-sol` / xhigh | `openai/gpt-5.6-sol` / xhigh |
+| Review downgrade | `claude-opus-5` / medium | `gpt-5.6-sol` / high | `openai/gpt-5.6-sol` / high |
 
 Typical tuning: point a role at a bigger or smaller model on one
 machine with `configure-local` (run the Architect on a frontier model
@@ -404,8 +418,9 @@ All of that evidence comes from one repository: this one.
 <summary>What will bite you today — symptom, cause, workaround</summary>
 
 **Writes made through the shell are not guarded.** The pre-write hook
-covers Claude Code's `Write`, `Edit`, `MultiEdit` and `NotebookEdit`
-and Codex CLI's `apply_patch`. A file written by a shell command —
+covers Claude Code's `Write`, `Edit`, `MultiEdit` and `NotebookEdit`,
+Codex CLI's `apply_patch`, and OpenCode V2's `edit`, `write`, and
+`patch`. A file written by a shell command —
 `echo > file`, a script, a `git checkout` — never reaches `orch
 guard`, so neither Assist's read-only rule nor Delivery's worktree
 containment applies to it. Symptom: an agent modifies your working
@@ -414,16 +429,17 @@ permission and approval prompts on shell commands are the only
 backstop; leave them on.
 
 **The guard cannot tell one role from another.** `orch guard` has a
-`--role` flag that would make a role mechanically read-only. Neither
-adapter passes it: host hooks are plugin-global rather than scoped per
-dispatched agent, so both `hooks.json` files run the bare command.
-Inside a worktree the guard treats as writable, a scout or a
-reviewer is no more restricted than the implementer. On Claude Code
-the `orch-scout` subagent's tool whitelist does close its write
-surface — it carries no `Bash` — but `orch-reviewer` and
-`orch-reviewer-safe` both carry `Bash`, so their read-only discipline
-rests on their instructions. Codex agent definitions carry no tool
-whitelist at all.
+`--role` flag that would make a role mechanically read-only, but no
+adapter passes it. Claude Code and Codex CLI hook manifests run the
+bare command, and the OpenCode V2 plugin is host-global rather than
+attributed to a dispatched role. Inside a worktree the guard treats as
+writable, a scout or a reviewer is no more restricted than the
+implementer. On Claude Code the `orch-scout` subagent's tool whitelist
+does close its write surface — it carries no `Bash` — but
+`orch-reviewer` and `orch-reviewer-safe` both carry `Bash`, so their
+read-only discipline for shell-mediated writes rests on instructions
+there too. Codex agent definitions carry no tool whitelist; OpenCode's
+host-global guard likewise does not enforce read-only roles.
 
 **An `orch run` verb invoked from inside a Delivery worktree reports
 Assist and names the wrong fix.** Every `orch` command resolves
@@ -436,11 +452,11 @@ activate` to enter Delivery first``. Activating a second run is exactly
 the wrong move. Workaround: run every `orch run` verb with the primary
 checkout as the working directory.
 
-**A missing binary fails open, not closed.** Both adapters' hooks are
-bare `orch guard <host>` commands. If `orch` does not resolve on
-`PATH`, the hook exits with a shell "command not found", which both
-hook protocols treat as non-blocking: the guard silently stops
-enforcing and the session-start context stops being injected. No
+**A missing binary fails open, not closed.** The Claude Code and Codex
+CLI adapters invoke bare `orch guard <host>` commands; the OpenCode V2
+plugin invokes `orch guard check`. If `orch` does not resolve on
+`PATH`, the host does not receive an Orch denial, so the guard silently
+stops enforcing and the session-start context stops being injected. No
 error, no denial. On Codex CLI the same is true while the plugin's
 one-time hook trust approval is outstanding — until you approve it,
 the bundled hooks do not run at all. Symptom: no denial where you
@@ -466,13 +482,15 @@ expected adapter version when they diverge.
 **`orch doctor` fails on a machine that lacks a configured host's
 command-line tool.** Doctor checks every host the committed
 configuration names, and fails when that host's CLI is missing from
-`PATH`, when its plugin listing cannot be read, or when its adapter is
-in any of six states — absent, listed more than once, disabled,
-reporting no version at all, reporting a different version, or, on
-Codex, marked not installed. Host enablement is a committed-only key
-— the Settings table above marks `hosts.claude` / `hosts.codex` as
+`PATH` or its adapter check fails. Claude and Codex adapter checks also
+report absent, duplicate, disabled, missing-version, and version-
+mismatch states (plus Codex's not-installed state). OpenCode instead
+checks its exact beta runtime and active plugin ID because its beta API
+does not expose adapter versions. Host enablement is a committed-only key
+— the Settings table above marks `hosts.claude` / `hosts.codex` /
+`hosts.opencode` as
 `no (committed)` — so machine-local configuration cannot switch a
-host off for one machine. Symptom: a repository configured for both
+host off for one machine. Symptom: a repository configured for multiple
 hosts reports a failing doctor on every machine that has only one of
 them installed. Workaround: enable only the hosts every machine
 working on the repository will have, or install the missing CLI on
@@ -491,14 +509,15 @@ confirm the sandbox actually works on that machine before setting
 effort reaches a Claude subagent as a cue in its prompt, not as a host
 parameter, so the effort in the audit record is what was routed rather
 than something the host applied. The record says so outright, as
-`Effort delivery: prompt-cue`. Codex pins effort in the project agent
-TOML and the host enforces it.
+`Effort delivery: prompt-cue`. Codex and OpenCode pin effort in their
+project agent definitions and the host enforces it.
 
-**A model override does not reach a dispatched agent by itself, on
-either host.** Neither host can override a model per spawn, so the
+**A model override does not reach a dispatched agent by itself.** No
+host can override a model per spawn, so the
 routed selection has to match the active project agent definition.
 `orch render-agents` writes all five dispatched roles for every
-enabled host under `.claude/agents/` or `.codex/agents/`, using the
+enabled host under `.claude/agents/`, `.codex/agents/`, or
+`.opencode/agents/`, using the
 shipped plugin definition as the canonical body and changing only
 that host's routing fields. Claude Code's [scope priority
 table](https://code.claude.com/docs/en/sub-agents#choose-the-subagent-scope)
@@ -517,6 +536,15 @@ any `*** ` directive line it does not recognize as a malformed
 envelope and denies the write. That is deliberate — an unparsed write
 must never be allowed — but it means a host upgrade can produce
 spurious denials. Workaround: update `orch`.
+
+**OpenCode V2 support is pinned to a beta API.** The live smoke check
+exercises exactly `opencode2 v0.0.0-beta-17498` and
+`@opencode-ai/plugin` `0.0.0-beta-17498`; no other V2 build is a
+supported compatibility floor yet. `orch doctor` checks that exact
+runtime version and that the running service lists plugin ID
+`orch.delivery`, but the V2 API does not expose an adapter version.
+After an OpenCode upgrade, restart the service and rerun that plugin-ID
+check before relying on enforcement.
 
 **The merge gate cannot tell a human's approval from an agent's.** The
 engine requires an approval carrying the exact literal `approve-merge`,
@@ -548,8 +576,8 @@ continue, or `orch abort` to end it.
 Everything here is merged on `main` and shipped in v0.7.0, the latest
 tagged release.
 
-- The wrong-criterion guidance in all four reviewer agent definitions —
-  both hosts, standard reviewer and safe downgrade alike — now names a
+- The wrong-criterion guidance in the standard and safe reviewer
+  definitions for each host now names a
   criterion about "how an LLM agent routes, decides, or behaves" as the
   standing instance of proxy-only evidence, instead of stating it of
   any agent; before, a reviewer applying the sentence literally could
@@ -592,7 +620,7 @@ tagged release.
   gate document, the run state, the audit record and the created issue
   body all carry it, so the human approves it and the existing
   one-judgment-per-criterion rule holds the reviewer to it like any
-  other criterion; both hosts' Delivery skills and every shipped
+  other criterion; all hosts' Delivery skills and every shipped
   reviewer definition — the standard reviewer and the safe review
   downgrade alike — now quote it and say what settles it: an
   enumeration in the pull request body of each element touched with
@@ -653,7 +681,7 @@ tagged release.
   [#166](https://github.com/kninetimmy/orch/pull/166). That Codex-only
   coverage was the before state; after this change the same generated-file
   check covers every enabled host.
-- Every reviewer agent definition on both hosts — the standard
+- Every reviewer agent definition on all hosts — the standard
   reviewer and the safe review downgrade alike — now states that a
   `request-changes` verdict is not confined to findings that block an
   acceptance criterion: a required test that fails, a security boundary
@@ -794,11 +822,13 @@ never the worktree's copy.
 
 What the table decides is containment. The guard is given the write's
 target paths, not the identity of the agent making the write, so it
-cannot make one role read-only and another writable; the `--role`
-narrowing that exists for that purpose is passed by neither adapter.
-Nor does it see writes the host does not route through a guarded tool,
-which is why shell-mediated writes escape it entirely. Both gaps are
-in [Known issues](#known-issues-and-limitations).
+cannot make one role read-only and another writable; no host adapter
+passes the `--role` narrowing that exists for that purpose. Claude
+Code and Codex CLI hook manifests invoke the bare guard command, while
+the OpenCode V2 plugin invokes its host-global guard call. Nor does the
+guard see writes the host does not route through a guarded tool, which
+is why shell-mediated writes escape it entirely. Both gaps are in
+[Known issues](#known-issues-and-limitations).
 
 Delivery is exclusive across hosts and machines: a lock file
 (`.orchestrator/delivery.lock`, created with `O_EXCL`) is the lock,
@@ -899,8 +929,9 @@ its own.
 | `internal/question/` | Host-neutral native question contract (documents out, answer sets back) |
 | `internal/interview/` | Pure question engines for `init`, `configure` and `configure-local` |
 | `internal/bootstrap/` | Mechanical PR-flow executors behind `init --bootstrap` and `configure --deliver` |
-| `internal/adaptertest/` | Shared cross-host parity-test layer consumed by both adapters' plugin tests |
-| `adapters/claude/`, `adapters/codex/` | Host-adapter artifacts: plugin manifest, hooks, skills, agent definitions, plus Claude Code's slash commands — cross-host parity-tested |
+| `internal/adaptertest/` | Shared cross-host parity-test layer consumed by the host adapters' tests |
+| `adapters/claude/`, `adapters/codex/` | Marketplace host-adapter artifacts: plugin manifests, hooks, skills, agent definitions, plus Claude Code's slash commands |
+| `adapters/opencode/` | npm-native OpenCode V2 adapter package (`@kninetimmy/orch-opencode`): plugin module, native agents, skills, tests, and pinned-beta smoke check; not a Codex marketplace artifact |
 | `ORCH-PRD.md` | Product requirements — source of truth for v1 |
 
 ### Design principles
