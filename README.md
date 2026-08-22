@@ -431,15 +431,19 @@ backstop; leave them on.
 **The guard cannot tell one role from another.** `orch guard` has a
 `--role` flag that would make a role mechanically read-only, but no
 adapter passes it. Claude Code and Codex CLI hook manifests run the
-bare command, and the OpenCode V2 plugin is host-global rather than
-attributed to a dispatched role. Inside a worktree the guard treats as
-writable, a scout or a reviewer is no more restricted than the
-implementer. On Claude Code the `orch-scout` subagent's tool whitelist
-does close its write surface — it carries no `Bash` — but
-`orch-reviewer` and `orch-reviewer-safe` both carry `Bash`, so their
-read-only discipline for shell-mediated writes rests on instructions
-there too. Codex agent definitions carry no tool whitelist; OpenCode's
-host-global guard likewise does not enforce read-only roles.
+bare command, and the OpenCode V2 `orch.delivery` guard is host-global
+rather than attributed to a dispatched role. In a worktree the guard
+treats as writable, a scout or reviewer is no more restricted by the
+guard than the implementer. On Claude Code the `orch-scout`
+subagent's tool whitelist does close its write surface — it carries no
+`Bash` — but `orch-reviewer` and `orch-reviewer-safe` both carry
+`Bash`, so their read-only discipline for shell-mediated writes rests
+on instructions there too. Codex agent definitions carry no tool
+whitelist. OpenCode's native `orch-scout`, `orch-reviewer`, and
+`orch-reviewer-safe` definitions mechanically deny `edit`, `shell`,
+and `subagent`; the `edit` denial covers every built-in V2 mutation
+tool. Its read-only role enforcement therefore comes from those
+definitions, not the host-global guard.
 
 **An `orch run` verb invoked from inside a Delivery worktree reports
 Assist and names the wrong fix.** Every `orch` command resolves
