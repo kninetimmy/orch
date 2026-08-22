@@ -364,9 +364,11 @@ Orch fails closed.
 - Completion requires a commit, pushed branch, PR, targeted-test evidence, and explicit CI state.
 - The guard does not attribute writes to roles. Claude Code's Scout has no shell tool, but its
   Reviewer and safe review downgrade do, so their read-only discipline for shell-mediated writes
-  rests on instructions. Codex has no per-agent tool whitelist. OpenCode's plugin guard is
-  host-global, so it likewise cannot prevent a scout or reviewer write inside a Delivery worktree
-  the guard otherwise permits.
+  rests on instructions. Codex has no per-agent tool whitelist. The OpenCode `orch.delivery`
+  guard is host-global and cannot attribute a write to a dispatched role. Its native
+  `orch-scout`, `orch-reviewer`, and `orch-reviewer-safe` definitions mechanically deny `edit`,
+  `shell`, and `subagent`; the `edit` denial covers every built-in V2 mutation tool. OpenCode's
+  read-only role enforcement therefore comes from those definitions, not the guard.
 - Neither closes the shell-write gap: the pre-write hook covers only the file-write tools, so a
   shell-mediated write falls to the host's own approval prompts.
 - No agent may merge.
