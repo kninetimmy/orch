@@ -49,6 +49,25 @@ func writeCommittedConfigLocal(t *testing.T, root string) *config.Config {
 	return cfg
 }
 
+func writeCommittedConfigOpenCodeOnly(t *testing.T, root string) *config.Config {
+	t.Helper()
+	answers := fullAnswers()
+	answers[idHostClaudeEnabled] = "no"
+	answers[idHostCodexEnabled] = "no"
+	answers[idHostOpenCodeEnabled] = "yes"
+	for _, rs := range roleSpecs {
+		def := defaultProfiles["opencode"][rs.key]
+		answers[roleModelID("opencode", rs.key)] = def.model
+		answers[roleEffortID("opencode", rs.key)] = def.effort
+	}
+	cfg, err := materialize(answers)
+	if err != nil {
+		t.Fatal(err)
+	}
+	writeCommittedConfig(t, root, cfg)
+	return cfg
+}
+
 // writeCommittedConfig revisions, renders, and writes cfg to root's
 // committed configuration path — the tail writeCommittedConfigLocal
 // shares with any test that needs the same fixture carrying one edited
@@ -189,6 +208,19 @@ func TestGoldenTranscriptLocalFlagship(t *testing.T) {
 	if change.Diff == "" {
 		t.Error("Diff is empty, want a diff showing the new override")
 	}
+}
+
+func TestGoldenTranscriptLocalOpenCodeRoleModels(t *testing.T) {
+	root := t.TempDir()
+	writeCommittedConfigOpenCodeOnly(t, root)
+	doc, err := NextConfigureLocal(map[string]string{
+		idPickOpenCode: "yes",
+		idPickSettings: "no",
+	}, root)
+	if err != nil {
+		t.Fatalf("NextConfigureLocal: %v", err)
+	}
+	checkGoldenDocument(t, filepath.Join("testdata", "transcript_local", "opencode_role", "step_01.json"), doc)
 }
 
 // TestGoldenTranscriptLocalClearAll answers the only existing override

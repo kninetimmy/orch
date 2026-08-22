@@ -219,6 +219,20 @@ func TestGoldenTranscriptConfigureMergeAndModel(t *testing.T) {
 	}
 }
 
+func TestGoldenTranscriptConfigureOpenCodeRoleModels(t *testing.T) {
+	root := t.TempDir()
+	writeCommittedConfigOpenCodeOnly(t, root)
+	doc, err := NextConfigure(configureFacts(), map[string]string{
+		idPickHosts:         "no",
+		idPickRolesOpenCode: "yes",
+		idPickSettings:      "no",
+	}, root)
+	if err != nil {
+		t.Fatalf("NextConfigure: %v", err)
+	}
+	checkGoldenDocument(t, filepath.Join("testdata", "transcript_configure", "opencode_role", "step_01.json"), doc)
+}
+
 // TestGoldenTranscriptConfigureDisableCodex disables codex from a
 // both-hosts committed configuration and expects AGENTS.md's managed
 // block to be proposed for block-only removal (ActionRemove), never a

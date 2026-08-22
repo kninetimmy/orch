@@ -96,6 +96,18 @@ func TestGoldenTranscriptBothHosts(t *testing.T) {
 	t.Fatal("transcript did not reach a complete document within 100 steps")
 }
 
+func TestGoldenTranscriptOpenCodeRoleModels(t *testing.T) {
+	doc, err := Next(Facts{OpenCodeCLI: true}, map[string]string{
+		idHostClaudeEnabled:   "no",
+		idHostCodexEnabled:    "no",
+		idHostOpenCodeEnabled: "yes",
+	}, t.TempDir())
+	if err != nil {
+		t.Fatalf("Next: %v", err)
+	}
+	checkGoldenDocument(t, filepath.Join("testdata", "transcript", "opencode_role", "step_01.json"), doc)
+}
+
 // TestGoldenTranscriptAbort re-walks the same both-hosts transcript up
 // to the summary document, then aborts instead of approving.
 func TestGoldenTranscriptAbort(t *testing.T) {
