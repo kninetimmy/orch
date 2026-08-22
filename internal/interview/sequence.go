@@ -114,7 +114,7 @@ func defaultProfileFor(host string) func(string) profile {
 var hostModels = map[string][]string{
 	"codex":    {"gpt-5.6-sol", "gpt-5.6-terra", "gpt-5.6-luna"},
 	"claude":   {"claude-opus-5", "claude-sonnet-5"},
-	"opencode": {"openai/gpt-5.6-sol", "openai/gpt-5.6-terra", "openai/gpt-5.6-luna"},
+	"opencode": {"openai/gpt-5.6-sol", "openai/gpt-5.6-terra", "openai/gpt-5.6-luna", "opencode/x-preview-f-free"},
 }
 
 // hostEfforts lists each host's full closed effort enum — every value

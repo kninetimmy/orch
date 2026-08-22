@@ -1,0 +1,65 @@
+{
+  "schema_version": 1,
+  "kind": "questions",
+  "progress": {
+    "index": 3,
+    "total": 8
+  },
+  "questions": [
+    {
+      "id": "host.opencode.role.architect.model",
+      "header": "Architect",
+      "prompt": "Architect model (OpenCode V2)",
+      "preamble": "Architect: requirements discovery, architecture and design, issue decomposition, routing and escalation, the plan gate, and final review judgment. Never edits tracked files directly.",
+      "kind": "select",
+      "options": [
+        {
+          "value": "openai/gpt-5.6-sol",
+          "label": "openai/gpt-5.6-sol",
+          "recommended": true
+        },
+        {
+          "value": "openai/gpt-5.6-terra",
+          "label": "openai/gpt-5.6-terra"
+        },
+        {
+          "value": "openai/gpt-5.6-luna",
+          "label": "openai/gpt-5.6-luna"
+        },
+        {
+          "value": "opencode/x-preview-f-free",
+          "label": "opencode/x-preview-f-free"
+        }
+      ],
+      "free_text": true,
+      "default": "openai/gpt-5.6-sol"
+    },
+    {
+      "id": "host.opencode.role.architect.effort",
+      "header": "Architect",
+      "prompt": "Architect reasoning effort (OpenCode V2)",
+      "kind": "select",
+      "options": [
+        {
+          "value": "low",
+          "label": "low"
+        },
+        {
+          "value": "medium",
+          "label": "medium"
+        },
+        {
+          "value": "high",
+          "label": "high"
+        },
+        {
+          "value": "xhigh",
+          "label": "xhigh",
+          "recommended": true
+        }
+      ],
+      "free_text": true,
+      "default": "xhigh"
+    }
+  ]
+}
