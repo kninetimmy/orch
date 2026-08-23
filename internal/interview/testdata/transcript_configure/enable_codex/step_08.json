@@ -24,6 +24,10 @@
         {
           "value": "gpt-5.6-luna",
           "label": "gpt-5.6-luna"
+        },
+        {
+          "value": "x-preview-f-free",
+          "label": "x-preview-f-free"
         }
       ],
       "free_text": true,

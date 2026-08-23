@@ -112,7 +112,7 @@ func defaultProfileFor(host string) func(string) profile {
 // third Claude model (claude-fable-5, PRD §10): the committed
 // configuration this interview writes never defaults to it.
 var hostModels = map[string][]string{
-	"codex":    {"gpt-5.6-sol", "gpt-5.6-terra", "gpt-5.6-luna"},
+	"codex":    {"gpt-5.6-sol", "gpt-5.6-terra", "gpt-5.6-luna", "x-preview-f-free"},
 	"claude":   {"claude-opus-5", "claude-sonnet-5"},
 	"opencode": {"openai/gpt-5.6-sol", "openai/gpt-5.6-terra", "openai/gpt-5.6-luna", "opencode/x-preview-f-free"},
 }
