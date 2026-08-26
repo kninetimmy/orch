@@ -9,9 +9,10 @@ import { fileURLToPath } from "node:url"
 import { Backend } from "@opencode-ai/protocol/simulation"
 import { pluginID } from "./src/index.js"
 
-const pinned = "opencode2 v0.0.0-beta-17498"
+const pinned = "opencode2 v0.0.0-beta-18314"
 const opencode = "opencode2"
 const serverPassword = "orch-smoke"
+process.env.OPENCODE_SERVER_PASSWORD = serverPassword
 const adapter = path.dirname(fileURLToPath(import.meta.url))
 const repo = path.resolve(adapter, "../..")
 
@@ -48,14 +49,18 @@ async function apiList(baseURL, pathname, ready) {
   return data
 }
 
-async function api(baseURL, pathname, options = {}) {
+async function apiEnvelope(baseURL, pathname, options = {}) {
   const authorization = `Basic ${Buffer.from(`opencode:${serverPassword}`).toString("base64")}`
   const response = await fetch(baseURL + pathname, {
     ...options,
     headers: { authorization, "content-type": "application/json", ...options.headers },
   })
   if (!response.ok) throw new Error(`${response.status} ${await response.text()}`)
-  return response.status === 204 ? undefined : (await response.json()).data
+  return response.status === 204 ? undefined : response.json()
+}
+
+async function api(baseURL, pathname, options = {}) {
+  return (await apiEnvelope(baseURL, pathname, options))?.data
 }
 
 async function within(promise, label) {
@@ -166,7 +171,13 @@ try {
       smoke: {
         package: "aisdk:@ai-sdk/openai-compatible",
         settings: { apiKey: "smoke", baseURL: "https://api.openai.com/v1" },
-        models: { smoke: { name: "Smoke" } },
+        models: {
+          smoke: {
+            name: "Smoke",
+            capabilities: { tools: true, input: ["text"], output: ["text"] },
+            variants: [{ id: "low" }, { id: "high" }],
+          },
+        },
       },
     },
   }))
@@ -194,6 +205,14 @@ try {
   for (const id of agentIDs) {
     assert.equal(agents.find((agent) => agent.id === id)?.mode, "subagent", `${id} was not discovered: ${JSON.stringify(agents)}`)
   }
+  const query = new URLSearchParams({ "location[directory]": temp })
+  const endpoint = `/api/model?${query}`
+  const catalog = JSON.parse(command(opencode, ["api", "get", endpoint, "--server", baseURL], temp))
+  assert.equal(path.resolve(catalog.location.directory), path.resolve(temp), "catalog response location drifted")
+  const smokeModel = catalog.data.find((model) => model.providerID === "smoke" && model.id === "smoke")
+  assert(smokeModel?.enabled, "project model was not enabled in the live catalog")
+  assert(smokeModel.capabilities.tools && smokeModel.capabilities.input.includes("text") && smokeModel.capabilities.output.includes("text"), "project model was not agent-capable")
+  assert.deepEqual(smokeModel.variants.map((variant) => variant.id), ["low", "high"], "live catalog variants drifted")
 
   controller = await simulation(`ws://127.0.0.1:${backendPort}`)
   const tracked = path.join(temp, "tracked.txt")

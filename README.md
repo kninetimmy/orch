@@ -541,14 +541,22 @@ envelope and denies the write. That is deliberate — an unparsed write
 must never be allowed — but it means a host upgrade can produce
 spurious denials. Workaround: update `orch`.
 
-**OpenCode V2 support is pinned to a beta API.** The live smoke check
-exercises exactly `opencode2 v0.0.0-beta-17498` and
-`@opencode-ai/plugin` `0.0.0-beta-17498`; no other V2 build is a
-supported compatibility floor yet. `orch doctor` checks that exact
-runtime version and that the running service lists plugin ID
-`orch.delivery`, but the V2 API does not expose an adapter version.
-After an OpenCode upgrade, restart the service and rerun that plugin-ID
-check before relying on enforcement.
+**OpenCode V2 support is pinned to a beta API.** Before project-scoped
+catalog discovery, the live smoke check exercised exactly `opencode2
+v0.0.0-beta-17498` and `@opencode-ai/plugin`
+`0.0.0-beta-17498`, while doctor checked only that runtime and the active
+plugin ID. That old compatibility behavior no longer holds. The current
+package and live smoke instead exercise exactly `opencode2
+v0.0.0-beta-18314` and `@opencode-ai/plugin`
+`0.0.0-beta-18314`; no other V2 build is a supported compatibility floor.
+`orch doctor` checks that exact runtime, plugin ID `orch.delivery`, and a
+URL-location-scoped model catalog response for the repository. It retains
+only enabled text-input/text-output tool-capable `provider/model` IDs and
+their variant IDs; provider settings, headers, credentials, account IDs,
+and raw API payloads never enter the returned catalog or its diagnostics.
+The V2 API still does not expose an adapter version. After an OpenCode
+upgrade, restart the service and rerun doctor before relying on
+enforcement.
 
 **The merge gate cannot tell a human's approval from an agent's.** The
 engine requires an approval carrying the exact literal `approve-merge`,

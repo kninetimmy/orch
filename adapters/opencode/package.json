@@ -8,6 +8,6 @@
     "smoke": "node smoke.mjs"
   },
   "dependencies": {
-    "@opencode-ai/plugin": "0.0.0-beta-17498"
+    "@opencode-ai/plugin": "0.0.0-beta-18314"
   }
 }
