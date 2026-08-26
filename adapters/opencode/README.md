@@ -7,11 +7,40 @@ ID is `orch.delivery`. It is not the Codex marketplace adapter: that is
 
 ## Compatibility
 
-The OpenCode V2 plugin API is beta. The live smoke check exercises
-exactly `opencode2 v0.0.0-beta-17498` with
-`@opencode-ai/plugin` `0.0.0-beta-17498`; that exact beta is the
-current compatibility floor, not a claim of compatibility with other
-V2 builds.
+The OpenCode V2 plugin API is beta. Before the project-scoped catalog
+contract landed, the live smoke check exercised exactly `opencode2
+v0.0.0-beta-17498` with `@opencode-ai/plugin`
+`0.0.0-beta-17498` and did not check the model or returned-location
+APIs. That old compatibility behavior no longer holds. After the
+catalog change, the package, doctor, documentation, and live smoke pin
+exactly `opencode2 v0.0.0-beta-18314` with `@opencode-ai/plugin`
+`0.0.0-beta-18314`; that exact beta is the current compatibility floor,
+not a claim of compatibility with other V2 builds.
+
+## Catalog safety and blast radius
+
+Orch queries `/api/model` with the repository in the URL-encoded
+`location[directory]` parameter. The response must name that same
+canonical directory. `ReadCatalog` exposes only `Models[].ID` as the
+exact `providerID/id` and every `Models[].Variants[]` ID. Its safe-field
+restriction applies to every returned provider and model, not only to a
+named provider: settings, headers, bodies, credentials, account
+identifiers, and all other raw response fields are discarded for all of
+them and are never copied into diagnostics.
+
+| Touched element | Does its previous behavior still hold? |
+|---|---|
+| OpenCode runtime and npm plugin pins | No. The before-and-after is recorded above: beta 17498 is replaced by beta 18314. |
+| `orch.delivery` plugin ID, setup, guard hooks, and session context | Yes. The same plugin contract remains; unit and live smoke checks still exercise it on the new beta. |
+| Catalog process invocation | New. It is one argument-vector call in the repository directory, with the location URL-encoded rather than shell-interpolated. |
+| Response `location.directory` | New validation. A response for any other directory is rejected. |
+| Response `data[].providerID` and `data[].id` | New projection. They form the exact `provider/id`; neither value is normalized or aliased. |
+| Response `data[].enabled` and `data[].capabilities.{tools,input,output}` | New filtering. Only enabled, tool-capable, text-input/text-output models remain. |
+| Response `data[].variants[].id` | New projection. Every advertised variant ID is preserved in server order, including an empty list. |
+| Provider/model/variant settings, headers, bodies, credentials, account IDs, and raw payload | Previously Orch did not read the catalog; after this change these fields may arrive in command output but are never retained, returned, or included in an error. |
+| Setup detection's existing CLI, git, GitHub, memhub, and instruction facts | Yes. Catalog and catalog-error fields are additive, and a failed read remains explicit data rather than changing Detect's no-error contract. |
+| Doctor's runtime and active-plugin checks | Yes. They still run and the catalog/location check now follows them. |
+| Live smoke's agent discovery, context injection, denied tracked write, and allowed ignored write | Yes. The catalog/location assertions are additive. |
 
 ## Install order
 
@@ -52,12 +81,13 @@ then load its plugin module from an absolute path.
    opencode2 api get /api/plugin | node -e 'let s=""; process.stdin.on("data", d => s += d).on("end", () => { if (JSON.parse(s).data.filter(p => p.id === "orch.delivery").length !== 1) throw new Error("orch.delivery is not active exactly once") })'
    ```
 
-   The first command must print `opencode2 v0.0.0-beta-17498`. The JSON
+   The first command must print `opencode2 v0.0.0-beta-18314`. The JSON
    from the second must contain exactly one `data` entry whose `id` is
    `orch.delivery`; the third command fails otherwise. `orch doctor`
    performs the same runtime and plugin-ID checks for a repository with
-   `hosts.opencode` enabled; it cannot check an OpenCode adapter version
-   because the beta API does not expose one.
+   `hosts.opencode` enabled, then queries that repository's model catalog
+   and verifies its returned location. It cannot check an OpenCode
+   adapter version because the beta API does not expose one.
 
 4. In each repository, run `orch init`, review and merge its bootstrap
    PR, then run `orch render-agents`. It writes the five OpenCode role

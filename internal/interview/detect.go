@@ -11,6 +11,7 @@ import (
 	"github.com/kninetimmy/orch/internal/execx"
 	"github.com/kninetimmy/orch/internal/instructions"
 	"github.com/kninetimmy/orch/internal/memhub"
+	"github.com/kninetimmy/orch/internal/opencode"
 )
 
 // Deps carries Detect's injectable surface: LookPath and Runner are
@@ -23,8 +24,8 @@ type Deps struct {
 	// LookPath resolves an executable name; a nil LookPath makes every
 	// host/git/gh/memhub fact false.
 	LookPath func(string) (string, error)
-	// Runner executes git and memhub. Required whenever LookPath finds
-	// git or memhub — Detect never calls a nil Runner.
+	// Runner executes git, memhub, and the OpenCode catalog query. It is
+	// required whenever LookPath finds one of those commands.
 	Runner execx.Runner
 }
 
@@ -40,6 +41,11 @@ type Facts struct {
 	ClaudeCLI   bool
 	CodexCLI    bool
 	OpenCodeCLI bool
+	// OpenCodeCatalog and OpenCodeCatalogError distinguish a successful
+	// (possibly empty) catalog read from a failed one without making
+	// Detect return an error or dropping the failure.
+	OpenCodeCatalog      opencode.Catalog
+	OpenCodeCatalogError string
 
 	Git     bool
 	GitRoot string
@@ -75,7 +81,8 @@ type InstructionFileState struct {
 }
 
 // Detect probes deps for every Facts field. It never returns an
-// error: an unresolvable tool or an unreachable memhub is data (a
+// error: an unresolvable tool, unreachable memhub, or unreadable
+// OpenCode catalog is data (a
 // false/empty Facts field), not a Detect failure — the interview
 // reports what it found and lets the human decide, rather than fail
 // closed on missing tooling before any question has even been asked.
@@ -109,6 +116,14 @@ func Detect(ctx context.Context, deps Deps) Facts {
 	root := f.GitRoot
 	if root == "" {
 		root = deps.RepoRoot
+	}
+	if f.OpenCodeCLI {
+		catalog, err := opencode.ReadCatalog(ctx, deps.Runner, root)
+		if err != nil {
+			f.OpenCodeCatalogError = err.Error()
+		} else {
+			f.OpenCodeCatalog = catalog
+		}
 	}
 	f.Instructions = map[string]InstructionFileState{
 		"claude":   classifyInstructionFile(root, InstructionFile("claude")),

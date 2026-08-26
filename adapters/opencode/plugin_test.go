@@ -22,8 +22,8 @@ func TestPackagePinsOpenCodeV2Contract(t *testing.T) {
 	if manifest.Name != "@kninetimmy/orch-opencode" || manifest.Version == "" {
 		t.Fatalf("manifest = %#v", manifest)
 	}
-	if got := manifest.Dependencies["@opencode-ai/plugin"]; got != "0.0.0-beta-17498" {
-		t.Fatalf("@opencode-ai/plugin = %q, want pinned beta-17498", got)
+	if got := manifest.Dependencies["@opencode-ai/plugin"]; got != "0.0.0-beta-18314" {
+		t.Fatalf("@opencode-ai/plugin = %q, want pinned beta-18314", got)
 	}
 	if len(manifest.Dependencies) != 1 {
 		t.Fatalf("dependencies = %v, want only the V2 plugin API", manifest.Dependencies)
