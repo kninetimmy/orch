@@ -22,3 +22,4 @@ coverage.html
 # Generated orch render-agents output
 .claude/agents/
 .codex/agents/
+.opencode/agents/
