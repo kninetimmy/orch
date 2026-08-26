@@ -3,9 +3,13 @@ package interview
 import (
 	"context"
 	"errors"
+	"fmt"
+	"net/url"
+	"strings"
 	"testing"
 
 	"github.com/kninetimmy/orch/internal/execx/execxtest"
+	"github.com/kninetimmy/orch/internal/paths"
 )
 
 // fakeLookPath resolves only the names present, returning a stand-in
@@ -24,11 +28,17 @@ func fakeLookPath(present ...string) func(string) (string, error) {
 }
 
 func TestDetectAllPresentAndHealthy(t *testing.T) {
+	repo := t.TempDir()
+	root, err := paths.Canonical(repo)
+	if err != nil {
+		t.Fatal(err)
+	}
 	script := &execxtest.Script{T: t, Calls: []execxtest.Call{
-		{Name: "git", Args: []string{"rev-parse", "--show-toplevel"}, Dir: "/repo", Stdout: "/repo\n", Exit: 0},
-		{Name: "memhub", Args: []string{"status"}, Dir: "/repo", Exit: 0},
+		{Name: "git", Args: []string{"rev-parse", "--show-toplevel"}, Dir: repo, Stdout: repo + "\n", Exit: 0},
+		{Name: "memhub", Args: []string{"status"}, Dir: repo, Exit: 0},
+		{Name: "opencode2", Args: []string{"api", "get", "/api/model?" + url.Values{"location[directory]": {root}}.Encode()}, Dir: repo, Stdout: fmt.Sprintf(`{"location":{"directory":%q},"data":[]}`, root)},
 	}}
-	deps := Deps{RepoRoot: "/repo", LookPath: fakeLookPath("claude", "codex", "opencode2", "git", "gh", "memhub"), Runner: script}
+	deps := Deps{RepoRoot: repo, LookPath: fakeLookPath("claude", "codex", "opencode2", "git", "gh", "memhub"), Runner: script}
 
 	facts := Detect(context.Background(), deps)
 	script.AssertExhausted()
@@ -36,14 +46,38 @@ func TestDetectAllPresentAndHealthy(t *testing.T) {
 	if !facts.ClaudeCLI || !facts.CodexCLI || !facts.OpenCodeCLI || !facts.Gh {
 		t.Fatalf("facts = %+v, want claude/codex/opencode/gh all true", facts)
 	}
-	if !facts.Git || facts.GitRoot != "/repo" {
-		t.Errorf("git facts = %v/%q, want true/\"/repo\"", facts.Git, facts.GitRoot)
+	if !facts.Git || facts.GitRoot != repo {
+		t.Errorf("git facts = %v/%q, want true/%q", facts.Git, facts.GitRoot, repo)
 	}
 	if !facts.MemhubCLI || !facts.MemhubHealthy {
 		t.Errorf("memhub facts = %+v, want cli/healthy both true", facts)
 	}
 	if facts.MemhubDetail != "" {
 		t.Errorf("MemhubDetail = %q, want empty on success", facts.MemhubDetail)
+	}
+	if facts.OpenCodeCatalogError != "" || facts.OpenCodeCatalog.Models == nil {
+		t.Errorf("OpenCode catalog = %+v / %q, want successful empty catalog", facts.OpenCodeCatalog, facts.OpenCodeCatalogError)
+	}
+}
+
+func TestDetectKeepsOpenCodeCatalogFailureAsSafeData(t *testing.T) {
+	root := t.TempDir()
+	canonical, err := paths.Canonical(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	script := &execxtest.Script{T: t, Calls: []execxtest.Call{{
+		Name: "opencode2",
+		Args: []string{"api", "get", "/api/model?" + url.Values{"location[directory]": {canonical}}.Encode()},
+		Dir:  root, Exit: 1, Stderr: "credential-token raw-provider-payload",
+	}}}
+	facts := Detect(context.Background(), Deps{RepoRoot: root, LookPath: fakeLookPath("opencode2"), Runner: script})
+	script.AssertExhausted()
+	if !facts.OpenCodeCLI || !strings.Contains(facts.OpenCodeCatalogError, "exited 1") {
+		t.Fatalf("catalog detection = %+v / %q", facts.OpenCodeCatalog, facts.OpenCodeCatalogError)
+	}
+	if strings.Contains(facts.OpenCodeCatalogError, "credential-token") || strings.Contains(facts.OpenCodeCatalogError, "raw-provider-payload") {
+		t.Fatalf("catalog failure disclosed command output: %s", facts.OpenCodeCatalogError)
 	}
 }
 

@@ -80,25 +80,28 @@ func testEnv(t *testing.T) (Env, *bytes.Buffer, *bytes.Buffer) {
 // fakeRunner answers the doctor probes: git and gh with scripted exits,
 // plus each host's plugin listing (zero values report healthy).
 type fakeRunner struct {
-	toplevel           string
-	gitExit            int
-	gitStderr          string
-	authExit           int
-	repoExit           int
-	repoJSON           string
-	beforeRun          func(execx.Cmd)
-	claudePluginJSON   string
-	claudePluginExit   int
-	claudePluginStderr string
-	claudePluginErr    error
-	codexPluginJSON    string
-	codexPluginExit    int
-	codexPluginStderr  string
-	codexPluginErr     error
-	opencodeVersion    string
-	opencodePlugins    string
-	opencodePluginExit int
-	opencodePluginErr  error
+	toplevel            string
+	gitExit             int
+	gitStderr           string
+	authExit            int
+	repoExit            int
+	repoJSON            string
+	beforeRun           func(execx.Cmd)
+	claudePluginJSON    string
+	claudePluginExit    int
+	claudePluginStderr  string
+	claudePluginErr     error
+	codexPluginJSON     string
+	codexPluginExit     int
+	codexPluginStderr   string
+	codexPluginErr      error
+	opencodeVersion     string
+	opencodePlugins     string
+	opencodePluginExit  int
+	opencodePluginErr   error
+	opencodeCatalog     string
+	opencodeCatalogExit int
+	opencodeCatalogErr  error
 	// checkIgnoreExit scripts `git check-ignore`: 0 ignored, 1 not
 	// ignored, anything else an error (the guard ignore probe).
 	checkIgnoreExit    int
@@ -206,6 +209,16 @@ func (f fakeRunner) Run(_ context.Context, c execx.Cmd) (execx.Result, error) {
 				plugins = `{"data":[{"id":"orch.delivery"}]}`
 			}
 			return execx.Result{Stdout: plugins, ExitCode: f.opencodePluginExit}, nil
+		}
+		if len(c.Args) == 3 && c.Args[0] == "api" && c.Args[1] == "get" && strings.HasPrefix(c.Args[2], "/api/model?") {
+			if f.opencodeCatalogErr != nil {
+				return execx.Result{}, f.opencodeCatalogErr
+			}
+			catalog := f.opencodeCatalog
+			if catalog == "" {
+				catalog = fmt.Sprintf(`{"location":{"directory":%q},"data":[]}`, c.Dir)
+			}
+			return execx.Result{Stdout: catalog, ExitCode: f.opencodeCatalogExit}, nil
 		}
 		return execx.Result{}, fmt.Errorf("fakeRunner: unexpected command %s %v", c.Name, c.Args)
 	case "memhub":

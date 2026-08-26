@@ -64,7 +64,10 @@ Orch must:
 
 - Codex CLI.
 - Claude Code CLI.
-- OpenCode V2 (beta API, pinned to `opencode2 v0.0.0-beta-17498`).
+- OpenCode V2 beta API. Before project-scoped catalog discovery it was pinned to
+  `opencode2 v0.0.0-beta-17498` without a model/location contract; that behavior no longer
+  holds. It is now pinned to `opencode2 v0.0.0-beta-18314`, with project-scoped model and
+  returned-location validation.
 - Windows, macOS, and Linux.
 - GitHub through authenticated `gh`.
 - Git repositories with isolated worktree support.

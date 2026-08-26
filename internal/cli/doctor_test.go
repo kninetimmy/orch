@@ -315,6 +315,15 @@ func TestDoctorAdapterFailures(t *testing.T) {
 			},
 			wantDetails: []string{"malformed `opencode2 api get /api/plugin` output"},
 		},
+		{
+			name:   "opencode malformed catalog response",
+			config: validOpenCodeTOML,
+			spec:   opencodeAdapter,
+			configure: func(r *fakeRunner) {
+				r.opencodeCatalog = "{}"
+			},
+			wantDetails: []string{"OpenCode model catalog", "malformed `opencode2 api get /api/model` response", "location.directory is missing"},
+		},
 	}
 
 	for _, tc := range tests {

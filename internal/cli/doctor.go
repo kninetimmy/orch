@@ -11,7 +11,7 @@ import (
 
 	"github.com/kninetimmy/orch/adapters/claude"
 	"github.com/kninetimmy/orch/adapters/codex"
-	"github.com/kninetimmy/orch/adapters/opencode"
+	opencodeadapter "github.com/kninetimmy/orch/adapters/opencode"
 	"github.com/kninetimmy/orch/internal/agents"
 	"github.com/kninetimmy/orch/internal/config"
 	"github.com/kninetimmy/orch/internal/execx"
@@ -22,6 +22,7 @@ import (
 	"github.com/kninetimmy/orch/internal/lockfile"
 	"github.com/kninetimmy/orch/internal/memhub"
 	"github.com/kninetimmy/orch/internal/metrics"
+	opencodecatalog "github.com/kninetimmy/orch/internal/opencode"
 	"github.com/kninetimmy/orch/internal/state"
 )
 
@@ -50,9 +51,9 @@ var (
 	}
 	opencodeAdapter = adapterSpec{
 		host:         "opencode",
-		executable:   "opencode2",
+		executable:   opencodecatalog.Executable,
 		pluginID:     "orch.delivery",
-		manifestJSON: opencode.PackageJSON,
+		manifestJSON: opencodeadapter.PackageJSON,
 		repair:       "install the pinned Orch OpenCode adapter, then restart the OpenCode V2 service",
 	}
 )
@@ -370,10 +371,11 @@ func adapterVersion(manifestJSON string) (string, error) {
 	return manifest.Version, nil
 }
 
-const pinnedOpenCodeVersion = "opencode2 v0.0.0-beta-17498"
+const pinnedOpenCodeVersion = opencodecatalog.PinnedVersion
 
-// checkOpenCodeAdapter pins the beta runtime contract and checks the active
-// plugin ID. V2's plugin API does not currently expose adapter versions.
+// checkOpenCodeAdapter pins the beta runtime contract, checks the active
+// plugin ID, then verifies the project-scoped catalog and returned location.
+// V2's plugin API does not currently expose adapter versions.
 func checkOpenCodeAdapter(env Env, spec adapterSpec) error {
 	fail := func(detail string) error { return fmt.Errorf("%s; %s", detail, spec.repair) }
 	if _, err := env.LookPath(spec.executable); err != nil {
@@ -421,6 +423,9 @@ func checkOpenCodeAdapter(env Env, spec adapterSpec) error {
 	}
 	if count != 1 {
 		return fail(fmt.Sprintf("%s appears %d times; exactly one active plugin is required", spec.pluginID, count))
+	}
+	if _, err := opencodecatalog.ReadCatalog(context.Background(), env.Runner, env.RepoRoot); err != nil {
+		return fail(err.Error())
 	}
 	return nil
 }
