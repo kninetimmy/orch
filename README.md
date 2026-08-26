@@ -15,7 +15,7 @@
 
 Left to itself, a coding agent picks its own model for every task, and it can write to any file it can reach. That's fine until the model is wrong for the job — too expensive for something trivial, or too weak for something that actually matters — or until a change lands somewhere you didn't intend it to.
 
-Orch sits underneath the CLI you already use (Claude Code, Codex CLI, or OpenCode V2) and takes over those two decisions. By default it puts the repository in **Assist**: a mechanical, read-only mode where the agent can look around, search, explain and plan, but a write to a file git does not ignore is refused before it happens. When you approve a plan, Orch enters **Delivery**: each task becomes a GitHub issue with its own isolated git worktree, gets implemented there, is reviewed by a separate agent dispatch, runs CI, and is merged only after you approve it. Which model handles which job is not the agent's call either — you route it, per role, to an exact model version and effort level.
+Orch sits underneath the CLI you already use (Claude Code, Codex CLI, or OpenCode V2) and takes over those two decisions. By default it puts the repository in **Assist**: a mechanical, read-only mode where the agent can look around, search, explain and plan, but a write to a file git does not ignore is refused before it happens. When you approve a plan, Orch enters **Delivery**: each task becomes a GitHub issue with its own isolated git worktree, gets implemented there, is reviewed by a separate agent dispatch, runs CI, and is merged only after you approve it. Which model handles which job is not the agent's call either — you route it, per role, to an exact model version and host-native execution profile.
 
 The payoff: cheap, fast models handle read-only exploration and mechanical work, a frontier model gets spent only where the plan calls for it, and every change that lands is auditable and gated by a human at the one step that matters — the merge.
 
@@ -33,7 +33,7 @@ The payoff: cheap, fast models handle read-only exploration and mechanical work,
 
 **Two modes.** A repository running Orch is in exactly one of two states. **Assist** is the default and is read-only: the agent can read anything, search, explain and plan, but a write to a file git does not ignore is refused. **Delivery** is entered only for a plan you have read and approved. Each task in that plan becomes a GitHub issue, a branch, and its own git worktree; the work happens there, lands as a pull request, is reviewed by a separate agent, runs CI, and waits for you to approve the merge. When every task is merged or abandoned, the run's last step puts the repository back in Assist.
 
-**Six roles.** Delivery work is split across roles, and you pin each one to an exact model version and reasoning-effort level:
+**Six roles.** Delivery work is split across roles, and you pin each one to an exact model version and host-native execution profile:
 
 | Role | What it does |
 |---|---|
@@ -287,11 +287,11 @@ go install github.com/kninetimmy/orch/cmd/orch@latest
 ## What you actually get
 
 - **Read-only by default.** Assist mode mechanically denies every write to a file git does not ignore — not a convention the agent is asked to honor, but a decision `orch guard` makes before the write happens.
-- **You route the model, not the agent.** Six roles — architect, scout, implementer, specialist, reviewer, and a cheaper review downgrade — each pin an exact model version and effort level you choose, so a cheap model handles read-only work and a frontier model is spent only where the plan calls for it.
+- **You route the model, not the agent.** Six roles — architect, scout, implementer, specialist, reviewer, and a cheaper review downgrade — each pin an exact model version and host-native execution profile you choose, so a cheap model handles read-only work and a frontier model is spent only where the plan calls for it.
 - **Every issue gets its own worktree.** Delivery work happens on its own branch, in its own isolated git worktree, never in your primary checkout.
 - **A separate dispatch reviews the work.** The pull request is reviewed in a dispatch separate from the one that wrote it — never the same run marking its own homework.
 - **You hold the merge gate.** Nothing lands on your default branch until you approve it, and the merge fails closed if the pull request moved after your approval.
-- **Every issue and PR carries an audit record.** The exact model, the effort, how the host actually delivered that effort, and the routing rationale are recorded on the issue and mirrored onto its pull request.
+- **Every issue and PR carries an audit record.** The exact model, its execution profile, how the host delivered that profile, and the routing rationale are recorded on the issue and mirrored onto its pull request.
 - **Works with the CLI you already use.** Orch works with [Claude Code](adapters/claude/README.md), [Codex CLI](adapters/codex/README.md), and [OpenCode V2](adapters/opencode/README.md), so you keep working in the agent you already have.
 
 ---
@@ -342,7 +342,9 @@ local override can never weaken a shared workflow rule.
 |---|---|---|
 | `hosts.claude` / `hosts.codex` / `hosts.opencode` | enable a host by giving it a role table | no (committed) |
 | `hosts.<host>.roles.<role>.model` | exact model version string | yes |
-| `hosts.<host>.roles.<role>.effort` | `low` `medium` `high` `xhigh` `max` (+ `ultra` on codex) | yes |
+| `hosts.claude.roles.<role>.effort` / `hosts.codex.roles.<role>.effort` | `low` `medium` `high` `xhigh` `max` (+ `ultra` on codex) | yes |
+| `hosts.opencode.roles.<role>.variant` | model-specific variant; omit when committed or set `""` locally for bare provider/model | yes |
+| `hosts.opencode.roles.<role>.effort` | v0.8.0 compatibility alias for the same-named variant | existing files continue to load |
 | `concurrency.max_subagents` | integer ≥ 1 (`3`) | yes |
 | `metrics.enabled` | `true` / `false` (`false` when omitted) | yes |
 | `merge.strategy` | `squash` `rebase` `merge-commit` (`squash`) | no (committed) |
@@ -360,12 +362,20 @@ tier it belonged to. The defaults `orch init` offers:
 
 | Role | Claude Code | Codex CLI | OpenCode V2 |
 |---|---|---|---|
-| Architect | `claude-opus-5` / high | `gpt-5.6-sol` / xhigh | `openai/gpt-5.6-sol` / xhigh |
-| Scout | `claude-opus-5` / low | `gpt-5.6-luna` / max | `openai/gpt-5.6-luna` / max |
-| Implementer | `claude-opus-5` / medium | `gpt-5.6-terra` / max | `openai/gpt-5.6-terra` / max |
-| Specialist | `claude-opus-5` / high | `gpt-5.6-sol` / max | `openai/gpt-5.6-sol` / max |
-| Reviewer | `claude-opus-5` / high | `gpt-5.6-sol` / xhigh | `openai/gpt-5.6-sol` / xhigh |
-| Review downgrade | `claude-opus-5` / medium | `gpt-5.6-sol` / high | `openai/gpt-5.6-sol` / high |
+| Architect | `claude-opus-5` / high | `gpt-5.6-sol` / xhigh | `openai/gpt-5.6-sol#xhigh` |
+| Scout | `claude-opus-5` / low | `gpt-5.6-luna` / max | `openai/gpt-5.6-luna#max` |
+| Implementer | `claude-opus-5` / medium | `gpt-5.6-terra` / max | `openai/gpt-5.6-terra#max` |
+| Specialist | `claude-opus-5` / high | `gpt-5.6-sol` / max | `openai/gpt-5.6-sol#max` |
+| Reviewer | `claude-opus-5` / high | `gpt-5.6-sol` / xhigh | `openai/gpt-5.6-sol#xhigh` |
+| Review downgrade | `claude-opus-5` / medium | `gpt-5.6-sol` / high | `openai/gpt-5.6-sol#high` |
+
+Before optional OpenCode variants, OpenCode reused the `effort` key and always
+rendered it as a `#variant` suffix. New OpenCode configuration uses optional
+`variant`, so a model with no variant stays a bare `provider/model` (omitted in
+committed config, or `variant = ""` in a local override); committed and local
+schema-v1 `effort` values from v0.8.0 still load with the same
+effective selection and configuration revision. This exception is OpenCode-only;
+Claude Code and Codex keep their existing model/effort configuration and routing.
 
 Typical tuning: point a role at a bigger or smaller model on one
 machine with `configure-local` (run the Architect on a frontier model
@@ -513,8 +523,10 @@ confirm the sandbox actually works on that machine before setting
 effort reaches a Claude subagent as a cue in its prompt, not as a host
 parameter, so the effort in the audit record is what was routed rather
 than something the host applied. The record says so outright, as
-`Effort delivery: prompt-cue`. Codex and OpenCode pin effort in their
-project agent definitions and the host enforces it.
+`Effort delivery: prompt-cue`. Codex pins effort in project agent definitions.
+OpenCode instead pins its optional model-specific variant in the model reference;
+the audit record says `Profile delivery: model-variant`, including an explicit
+no-variant selection when the reference is bare.
 
 **A model override does not reach a dispatched agent by itself.** No
 host can override a model per spawn, so the
@@ -856,8 +868,8 @@ described above, gated by `memhub.mode`. Activation then creates the
 GitHub label taxonomy, one issue per task carrying a structured
 **audit record** (rendered markdown plus canonical JSON in a managed
 body region: the approved objective, acceptance criteria and required
-tests, plus the exact model, the effort, how the host actually
-delivered that effort, and the routing rationale, mirrored onto the
+tests, plus the exact model, its host-native execution profile, how the host
+delivered that profile, and the routing rationale, mirrored onto the
 pull request), and one branch and isolated worktree per issue under
 `.orchestrator/worktrees/`.
 
@@ -948,8 +960,8 @@ its own.
 - **Humans gate merges.** Orch pins the approved head SHA and refuses
   if the pull request moved after approval; the merge itself happens
   on GitHub.
-- **Everything auditable.** The exact model, the effort, how the host
-  actually delivered that effort, and the routing rationale live in the
+- **Everything auditable.** The exact model, its host-native execution profile,
+  how the host delivered that profile, and the routing rationale live in the
   issue's audit record and are mirrored onto its pull request.
 
 ### Build / test

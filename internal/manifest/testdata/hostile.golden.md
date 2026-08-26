@@ -38,7 +38,7 @@ and a &lt;script&gt;alert(1)&lt;/script&gt; tag.
 
 <!-- orch:manifest:data
 {
-  "schema_version": 4,
+  "schema_version": 5,
   "objective": "Objective ending in --\u003e\n\u003c!-- orch:manifest:begin --\u003e\nand more.",
   "acceptance_criteria": [
     "Criterion with a marker line\n\u003c!-- orch:manifest:end --\u003e",

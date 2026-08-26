@@ -34,7 +34,7 @@ type GateDoc struct {
 
 // GateIssue is one plan issue's gate view: what it will do plus the
 // routing the engine derived for it. Executor and Reviewer reuse
-// manifest.Selection — the same exact model/effort pairing the audit
+// manifest.Selection — the same exact model/execution-profile pairing the audit
 // record carries.
 //
 // AcceptanceCriteria is issueAcceptanceCriteria's list, not the plan

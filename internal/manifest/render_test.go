@@ -1,6 +1,7 @@
 package manifest
 
 import (
+	"bytes"
 	"flag"
 	"os"
 	"path/filepath"
@@ -10,8 +11,9 @@ import (
 
 // update regenerates the golden files instead of comparing against them.
 // The goldens are written with LF only; .gitattributes pins *.md to
-// eol=lf so they check out identically on every OS and the byte compare
-// below holds.
+// eol=lf so they check out identically on every OS. The checked-in text files
+// may carry a conventional final LF; Render's no-trailing-LF contract is
+// asserted separately below.
 var update = flag.Bool("update", false, "regenerate golden files")
 
 func goldenCases() map[string]Manifest {
@@ -29,6 +31,9 @@ func TestRenderGolden(t *testing.T) {
 			if err != nil {
 				t.Fatalf("Render: %v", err)
 			}
+			if strings.HasSuffix(got, "\n") {
+				t.Fatal("Render returned a trailing newline")
+			}
 			path := filepath.Join("testdata", name+".golden.md")
 			if *update {
 				if err := os.WriteFile(path, []byte(got), 0o644); err != nil {
@@ -39,6 +44,7 @@ func TestRenderGolden(t *testing.T) {
 			if err != nil {
 				t.Fatalf("read golden (run `go test ./internal/manifest -update`): %v", err)
 			}
+			want = bytes.TrimSuffix(want, []byte{'\n'})
 			if got != string(want) {
 				t.Errorf("Render(%s) does not match %s\n--- got ---\n%s\n--- want ---\n%s", name, path, got, want)
 			}

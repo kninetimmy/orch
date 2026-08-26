@@ -94,6 +94,27 @@ func TestEscalateImplementerHardExecution(t *testing.T) {
 	}
 }
 
+func TestEscalatePreservesOpenCodeExecutionProfiles(t *testing.T) {
+	p := testProfile()
+	p.Implementer = manifest.OpenCodeSelection("github-copilot/gpt-5-mini", "")
+	p.Specialist = manifest.OpenCodeSelection("openai/gpt-5.6-sol", "xhigh")
+	p.Reviewer = manifest.OpenCodeSelection("anthropic/claude-opus-5", "max")
+	p.ReviewDowngrade = manifest.OpenCodeSelection("anthropic/claude-sonnet-5", "")
+	p.Architect = manifest.OpenCodeSelection("openai/gpt-5.6-sol", "xhigh")
+	p.Scout = manifest.OpenCodeSelection("opencode/x-preview-f-free", "")
+	d := implementerDecision(t, p)
+	out, err := Escalate(p, d, nil, TriggerImplementerHardExecution, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if out.Decision.Executor != p.Specialist || out.Decision.Reviewer != p.Reviewer {
+		t.Errorf("reroute = %+v", out.Decision)
+	}
+	if out.Escalations[0].From != p.Implementer || out.Escalations[0].To != p.Specialist {
+		t.Errorf("escalation = %+v", out.Escalations[0])
+	}
+}
+
 func TestEscalateImplementerHardWithDowngradedReviewer(t *testing.T) {
 	p := testProfile()
 	d := downgradedDecision(t, p)

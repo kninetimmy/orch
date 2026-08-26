@@ -24,8 +24,11 @@ const Path = ".orchestrator/state.json"
 // DependsOn, Wave, LastReviewVerdict) and Run.StoppedReason. There is no
 // migration from earlier versions: Load fails closed on a version
 // mismatch with the `orch abort` remediation, and no real run persists
-// across builds, so an out-of-version file on disk is a test artifact.
-const SchemaVersion = 3
+// across builds, so an out-of-version file on disk is a test artifact. v4
+// preserves OpenCode's model-specific variant or explicit no-variant marker
+// in every persisted Selection. Before v4, state carried only model+effort;
+// after v4, Claude/Codex keep that shape and OpenCode uses the native one.
+const SchemaVersion = 4
 
 // Mode is the operating mode (PRD §7).
 type Mode string

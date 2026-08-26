@@ -124,8 +124,8 @@ func TestParseBadManifest(t *testing.T) {
 		"unterminated data":    BeginMarker + "\n" + dataOpen + "\n{}\n" + EndMarker,
 		"double data comment":  BeginMarker + "\n" + dataOpen + "\n{}\n" + dataClose + "\n" + dataOpen + "\n{}\n" + dataClose + "\n" + EndMarker,
 		"bad json":             BeginMarker + "\n" + dataOpen + "\nthis is not json\n" + dataClose + "\n" + EndMarker,
-		"schema version zero":  tamperJSON(valid, `"schema_version": 4`, `"schema_version": 0`),
-		"schema version five":  tamperJSON(valid, `"schema_version": 4`, `"schema_version": 5`),
+		"schema version zero":  tamperJSON(valid, `"schema_version": 5`, `"schema_version": 0`),
+		"schema version six":   tamperJSON(valid, `"schema_version": 5`, `"schema_version": 6`),
 		"schema absent":        BeginMarker + "\n" + dataOpen + "\n{\"role\":\"implementer\"}\n" + dataClose + "\n" + EndMarker,
 		"invalid record":       tamperJSON(valid, `"role": "implementer"`, `"role": "wizard"`),
 	}
@@ -303,7 +303,7 @@ func TestSchemaTwoRegionIsAGenuineRender(t *testing.T) {
 // exactly the schema_version line. Freezing a copy would assert the same
 // bytes with more of them.
 func TestParseRejectsSchemaThreeRecord(t *testing.T) {
-	body := tamperJSON(mustRender(t, fullManifest()), `"schema_version": 4`, `"schema_version": 3`)
+	body := tamperJSON(mustRender(t, fullManifest()), `"schema_version": 5`, `"schema_version": 3`)
 	_, err := Parse(body)
 	if !errors.Is(err, ErrBadManifest) {
 		t.Fatalf("err = %v, want ErrBadManifest", err)
@@ -316,6 +316,17 @@ func TestParseRejectsSchemaThreeRecord(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "orch abort") {
 		t.Errorf("err %q does not name a remediation that exists", err)
+	}
+}
+
+func TestParseRejectsSchemaFourRecord(t *testing.T) {
+	body := tamperJSON(mustRender(t, fullManifest()), `"schema_version": 5`, `"schema_version": 4`)
+	_, err := Parse(body)
+	if !errors.Is(err, ErrBadManifest) || !strings.Contains(err.Error(), "schema_version 4 is unsupported") {
+		t.Fatalf("err = %v, want unsupported v4 manifest", err)
+	}
+	if errors.Is(err, ErrDrift) {
+		t.Error("a v4 record was reported as drift; the version check must come first")
 	}
 }
 
@@ -352,8 +363,8 @@ func TestParseDrift(t *testing.T) {
 		"blank line inserted":   strings.Replace(base, "### Orch audit record\n", "### Orch audit record\n\n", 1),
 		"sentence inserted":     strings.Replace(base, "**Verification:**", "An extra human sentence.\n\n**Verification:**", 1),
 		"json keys reordered": strings.Replace(base,
-			"{\n  \"schema_version\": 4,\n  \"objective\": \""+fixtureObjective+"\",",
-			"{\n  \"objective\": \""+fixtureObjective+"\",\n  \"schema_version\": 4,", 1),
+			"{\n  \"schema_version\": 5,\n  \"objective\": \""+fixtureObjective+"\",",
+			"{\n  \"objective\": \""+fixtureObjective+"\",\n  \"schema_version\": 5,", 1),
 	}
 	for name, body := range cases {
 		t.Run(name, func(t *testing.T) {

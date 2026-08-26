@@ -36,7 +36,7 @@ Orch must:
 - Keep planning, architecture, routing, and final judgment with a frontier Architect.
 - Delegate read-only exploration without polluting the Architect context.
 - Delegate implementation according to difficulty and risk.
-- Support exact model-version and reasoning-effort selection per role.
+- Support exact model-version and host-native execution-profile selection per role.
 - Provide native arrow-key configuration dialogs inside Claude Code and Codex CLI, and native configuration dialogs inside OpenCode V2.
 - Require the complete Delivery workflow for every tracked-file mutation.
 - Enforce Assist mode as read-only.
@@ -100,7 +100,7 @@ Codex, Claude, and OpenCode adapters own:
 - Session lifecycle integration.
 - Architect instructions.
 - Subagent spawning and monitoring.
-- Host-specific model and effort configuration.
+- Host-specific model and execution-profile configuration.
 - Translation of host events into shared-core transitions.
 
 The detailed state machine must not be independently reimplemented in Markdown skills or
@@ -139,9 +139,9 @@ The plan gate shows, for every proposed issue:
 
 - Objective and acceptance criteria.
 - Executor role.
-- Exact executor model and effort.
+- Exact executor model and execution profile.
 - Routing rationale.
-- Exact reviewer model and effort.
+- Exact reviewer model and execution profile.
 - Dependencies and dispatch wave.
 - Required tests.
 - Risk classification.
@@ -242,7 +242,7 @@ All entries use exact model versions.
 
 ### OpenCode V2
 
-| Role | Model | Effort |
+| Role | Provider/model | Variant |
 |---|---|---|
 | Architect | `openai/gpt-5.6-sol` | `xhigh` |
 | Scout | `openai/gpt-5.6-luna` | `max` |
@@ -250,6 +250,15 @@ All entries use exact model versions.
 | Specialist | `openai/gpt-5.6-sol` | `max` |
 | Reviewer | `openai/gpt-5.6-sol` | `xhigh` |
 | Safe review downgrade | `openai/gpt-5.6-sol` | `high` |
+
+Before optional OpenCode variants, these values were stored in each role's
+`effort` key and every generated model reference appended `#effort`. After the
+change, OpenCode stores a model-specific optional `variant`; an omitted
+committed variant or explicit empty local override generates the bare
+provider/model. Schema-v1 `effort` remains a load-compatible
+alias with the same effective selection and revision meaning. This change is
+restricted to OpenCode roles: every Claude Code and Codex role retains its
+required `model` plus `effort` shape and its existing rendering and routing.
 
 ### Claude Code
 
@@ -332,9 +341,9 @@ Every issue carries:
 Every issue and PR records:
 
 - Selected role.
-- Exact executor model and effort.
+- Exact executor model and execution profile.
 - Routing rationale.
-- Exact reviewer model and effort.
+- Exact reviewer model and execution profile.
 - Escalations or substitutions.
 - Configuration revision.
 - Named verification commands and results.
@@ -431,7 +440,7 @@ Global host plugins are installed before repository initialization.
 2. Detects Git, GitHub, and memhub.
 3. Explains Assist and Delivery.
 4. Explains every role.
-5. Collects exact model and effort choices through native dialogs.
+5. Collects exact model and host-native execution-profile choices through native dialogs.
 6. Collects concurrency, merge, memhub, and metrics settings.
 7. Shows the resulting configuration.
 8. Shows proposed `AGENTS.md` and `CLAUDE.md` changes.
@@ -498,7 +507,7 @@ Metrics are off by default.
 
 When explicitly enabled, local gitignored storage may record:
 
-- Role, model, and effort.
+- Role, model, and host-native execution profile.
 - Routing rationale.
 - Available token and cache counts.
 - Duration.
@@ -536,7 +545,8 @@ Assist.
 the effective `hosts.<host>.roles` configuration. It writes Claude Markdown under
 `.claude/agents/`, Codex TOML under `.codex/agents/`, and OpenCode Markdown under
 `.opencode/agents/`, using each shipped plugin definition as
-the canonical body and changing only routing fields the host supports. All destinations are
+the canonical body and changing only routing fields the host supports. OpenCode writes
+`provider/model#variant` when selected and bare `provider/model` otherwise. All destinations are
 gitignored machine-local output. Doctor checks every enabled host and activation checks the
 selected host; missing, unreadable, or stale definitions fail closed with the affected paths and
 the render command as remediation. Installed-adapter health is checked separately.
@@ -550,7 +560,7 @@ V1 is acceptable when:
 - Assist reliably blocks tracked-file changes.
 - Delivery cannot write outside registered worktrees.
 - Every mutation receives an approved issue and PR.
-- Exact model and effort selections appear in issues and PRs.
+- Exact model and host-native execution-profile selections appear in issues and PRs.
 - Routing and conservative escalation behave as configured.
 - Only one cross-host Delivery run may own a repository.
 - Interrupted runs resume without losing branches or worktrees.

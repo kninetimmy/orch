@@ -329,6 +329,67 @@ func TestMergeLocalRejectsPolicyKey(t *testing.T) {
 	}
 }
 
+func TestMergeLocalOpenCodeVariantAndNoVariant(t *testing.T) {
+	committed, err := Parse([]byte(singleHostTOML("opencode", "high")))
+	if err != nil {
+		t.Fatal(err)
+	}
+	variant, err := MergeLocal(committed, []byte("[hosts.opencode.roles.architect]\nvariant = \"provider-fast\"\n"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	p := variant.Hosts.OpenCode.Roles.Architect
+	if p.Effort != "" || p.Variant != "provider-fast" {
+		t.Errorf("variant override = %+v", p)
+	}
+
+	none, err := MergeLocal(committed, []byte("[hosts.opencode.roles.architect]\nvariant = \"\"\n"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	p = none.Hosts.OpenCode.Roles.Architect
+	if p.Effort != "" || p.Variant != "" {
+		t.Errorf("no-variant override = %+v", p)
+	}
+}
+
+func TestMergeLocalLegacyOpenCodeEffortCompatibility(t *testing.T) {
+	committed, err := Parse([]byte(singleHostTOML("opencode", "high")))
+	if err != nil {
+		t.Fatal(err)
+	}
+	merged, err := MergeLocal(committed, []byte("[hosts.opencode.roles.architect]\neffort = \"max\"\n"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	p := merged.Hosts.OpenCode.Roles.Architect
+	if p.Effort != "max" || p.Variant != "" {
+		t.Errorf("legacy effort override = %+v", p)
+	}
+}
+
+func TestMergeLocalRejectsOpenCodeEffortAndVariantTogether(t *testing.T) {
+	committed, err := Parse([]byte(singleHostTOML("opencode", "high")))
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = MergeLocal(committed, []byte("[hosts.opencode.roles.architect]\neffort = \"high\"\nvariant = \"fast\"\n"))
+	if err == nil || !strings.Contains(err.Error(), "both effort and variant") {
+		t.Fatalf("MergeLocal error = %v", err)
+	}
+}
+
+func TestMergeLocalRejectsVariantForOtherHosts(t *testing.T) {
+	committed, err := Parse([]byte(singleHostTOML("claude", "high")))
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = MergeLocal(committed, []byte("[hosts.claude.roles.architect]\nvariant = \"fast\"\n"))
+	if err == nil || !strings.Contains(err.Error(), "not valid for this host") {
+		t.Fatalf("MergeLocal error = %v", err)
+	}
+}
+
 func equalStrings(got, want []string) bool {
 	if len(got) != len(want) {
 		return false

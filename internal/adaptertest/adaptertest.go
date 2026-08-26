@@ -43,10 +43,11 @@ import (
 )
 
 // RoleSpec is one role's committed host profile: the exact model and
-// effort string a canonical shipped agent definition must carry.
+// host-native execution profile a canonical shipped agent definition carries.
 type RoleSpec struct {
-	Model  string
-	Effort string
+	Model   string
+	Effort  string
+	Variant string
 }
 
 // Profile returns the committed §10 profile for host ("claude", "codex",
@@ -79,11 +80,11 @@ func Profile(host string) map[string]RoleSpec {
 		}
 	case "opencode":
 		return map[string]RoleSpec{
-			"scout":         {Model: "openai/gpt-5.6-luna", Effort: "max"},
-			"implementer":   {Model: "openai/gpt-5.6-terra", Effort: "max"},
-			"specialist":    {Model: "openai/gpt-5.6-sol", Effort: "max"},
-			"reviewer":      {Model: "openai/gpt-5.6-sol", Effort: "xhigh"},
-			"reviewer-safe": {Model: "openai/gpt-5.6-sol", Effort: "high"},
+			"scout":         {Model: "openai/gpt-5.6-luna", Variant: "max"},
+			"implementer":   {Model: "openai/gpt-5.6-terra", Variant: "max"},
+			"specialist":    {Model: "openai/gpt-5.6-sol", Variant: "max"},
+			"reviewer":      {Model: "openai/gpt-5.6-sol", Variant: "xhigh"},
+			"reviewer-safe": {Model: "openai/gpt-5.6-sol", Variant: "high"},
 		}
 	default:
 		panic("adaptertest: unknown host " + host)
@@ -305,6 +306,8 @@ func CheckHookCommandPortability(t *testing.T, commands []string) {
 // statement of fact on Codex, where effort is a real host parameter.
 const routedSelectionCue = "Routed selection: <model> @ <effort>"
 
+const openCodeRoutedSelectionCue = "Routed selection: <provider/model#variant or bare provider/model>"
+
 // CheckRoutedSelectionCue pins skillPath's documented spawn/dispatch
 // prompt against the exact routed-selection opening line every issue's
 // executor (and reviewer) prompt must open with. The comparison runs on
@@ -316,6 +319,16 @@ func CheckRoutedSelectionCue(t *testing.T, skillPath string) {
 	content := normalizeWhitespace(readFile(t, skillPath))
 	if !strings.Contains(content, normalizeWhitespace(routedSelectionCue)) {
 		t.Errorf("%s does not contain the routed-selection prompt cue %q", skillPath, routedSelectionCue)
+	}
+}
+
+// CheckOpenCodeRoutedSelectionCue pins OpenCode's native model-reference cue;
+// Claude and Codex continue using CheckRoutedSelectionCue unchanged.
+func CheckOpenCodeRoutedSelectionCue(t *testing.T, skillPath string) {
+	t.Helper()
+	content := normalizeWhitespace(readFile(t, skillPath))
+	if !strings.Contains(content, normalizeWhitespace(openCodeRoutedSelectionCue)) {
+		t.Errorf("%s does not contain the routed-selection prompt cue %q", skillPath, openCodeRoutedSelectionCue)
 	}
 }
 

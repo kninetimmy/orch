@@ -10,6 +10,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/kninetimmy/orch/internal/config"
+	"github.com/kninetimmy/orch/internal/manifest"
 	"github.com/kninetimmy/orch/internal/state"
 )
 
@@ -161,6 +163,33 @@ func TestPlanGoldenTwoIssue(t *testing.T) {
 	}
 	if len(b.DependsOn) != 1 || b.DependsOn[0] != "a" || b.Wave != 2 {
 		t.Errorf("issue b deps/wave = %v/%d", b.DependsOn, b.Wave)
+	}
+}
+
+func TestPlanGatePreservesOpenCodeVariantAndNoVariant(t *testing.T) {
+	withVariant := config.RoleProfile{Model: "openai/gpt-5.6-sol", Variant: "xhigh"}
+	withoutVariant := config.RoleProfile{Model: "github-copilot/gpt-5-mini"}
+	cfg := testConfig()
+	cfg.Hosts = config.Hosts{OpenCode: &config.Host{Roles: config.Roles{
+		Architect: withVariant, Scout: withVariant, Implementer: withoutVariant,
+		Specialist: withVariant, Reviewer: withVariant, ReviewDowngrade: withoutVariant,
+	}}}
+	data, err := config.Render(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	root := setupRepo(t, string(data))
+	plan := strings.Replace(validPlanJSON(), `"host": "claude"`, `"host": "opencode"`, 1)
+	doc, err := Plan(context.Background(), Env{RepoRoot: root, Now: fixedNow}, []byte(plan))
+	if err != nil {
+		t.Fatal(err)
+	}
+	issue := doc.Issues[0]
+	if issue.Executor != manifest.OpenCodeSelection(withoutVariant.Model, "") {
+		t.Errorf("executor = %+v", issue.Executor)
+	}
+	if issue.Reviewer != manifest.OpenCodeSelection(withVariant.Model, withVariant.Variant) {
+		t.Errorf("reviewer = %+v", issue.Reviewer)
 	}
 }
 

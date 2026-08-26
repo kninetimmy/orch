@@ -42,7 +42,7 @@ faithfully.
 
 Build a `PlanDoc` (`schema_version: 1`) honestly. Routing is derived
 entirely from the facts you declare; there is no field to choose a
-model or effort yourself. "Adjust agent routing" at the gate always
+model or execution profile yourself. "Adjust agent routing" at the gate always
 means: revise the facts that were wrong and resubmit — never hand-edit
 a routed selection.
 
@@ -179,13 +179,14 @@ Call `orch run plan` with the `PlanDoc` on stdin. The result is a
 `config_revision`, `config_overrides`, `merge_strategy`, `memhub`
 (`{mode, probe, recall, detail}`), `ci` (`{workflows_present, statement}`), and
 `issues[]` — each with `id`, `title`, `objective`,
-`acceptance_criteria`, `role`, `executor` (`{model, effort}`),
-`reviewer` (`{model, effort}`), `reviewer_downgraded`,
+`acceptance_criteria`, `role`, `executor` and `reviewer` (each either
+`{model, variant}` or `{model, no_variant: true}`), `reviewer_downgraded`,
 `routing_rationale`, `depends_on`, `wave`, `required_tests`,
 `tests_ci_does_not_run`, `risk`, `usage_class`, `labels`.
 
 Render the gate in full prose before asking anything: every field of
-every issue (name the routed model and effort plainly, and explain a
+every issue (name the exact provider/model#variant or bare provider/model
+plainly, and explain a
 `reviewer_downgraded` via `routing_rationale`), then the run-level
 fields (`plan_title`, `host`, `merge_strategy`, `config_revision` +
 `config_overrides` if any, `memhub`, `ci`).
@@ -254,10 +255,11 @@ parent-session usage.
 2. **Dispatch the executor** — dispatch `orch-implementer` or
    `orch-specialist` (per the routed role) through OpenCode's `subagent` tool.
    The agent that actually runs is whatever its project definition under
-   `.opencode/agents/` pins with `model: provider/model#variant`. Before
+   `.opencode/agents/` pins with `model: provider/model#variant` or bare
+   `model: provider/model`. Before
    dispatching, the selection **currently in force** for the routed role —
-   `DispatchResult`'s `(model, effort)`, superseded by the most recent
-   `EscalateResult`'s `(model, effort)` if the issue has been rerouted since
+   `DispatchResult`'s `{model, variant}` or `{model, no_variant: true}`,
+   superseded by the most recent `EscalateResult` selection if the issue has been rerouted since
    dispatch, never the dispatch-time value once superseded — **must match a
    project `orch-*` agent definition exactly**. The project definitions are the
    authority for what that match requires, not this list: by default they pin
@@ -272,12 +274,16 @@ parent-session usage.
    with:
 
    ```
-   Routed selection: <model> @ <effort>
+   Routed selection: <provider/model#variant or bare provider/model>
    ```
 
-   Effort is a real host parameter on OpenCode: the `#variant` suffix is pinned
-   in the dispatched agent's own project definition and is what actually runs,
-   not layered on afterward. The host enforces whatever definition was
+   A selected model-specific variant is pinned as `#variant` in the dispatched
+   agent's own project definition and is what actually runs, not layered on
+   afterward; a `no_variant: true` selection is pinned as the bare
+   provider/model. Before this representation existed, OpenCode reused
+   the host-wide `effort` field and always appended it. That legacy config key
+   still loads with the same effective variant, but new routed selections never
+   call a variant an effort. The host enforces whatever definition was
    dispatched, not that it matches the routed selection — dispatching the
    definition matching the routed selection above is Architect discipline the
    engine does not verify. The opening line is a statement of fact, not a
@@ -346,10 +352,13 @@ parent-session usage.
    ```json
    {"schema_version": 2, "issue_number": N, "reviewed_head_oid": "...",
     "verdict": "approve|request-changes", "summary": "...",
-    "reviewer": {"model": "...", "effort": "..."},
+    "reviewer": {"model": "...", "variant": "..."},
     "judgments": [{"criterion": 1, "judgment": "satisfied|unsatisfied|wrong", "reason": "..."}],
     "verifications": [{"name": "...", "command": "...", "result": "...", "detail": "..."}]}
    ```
+
+   Use `"no_variant": true` instead of `"variant"` when the routed reviewer
+   selection is the bare provider/model.
 
    `judgments` is required and carries exactly one entry per acceptance
    criterion the issue holds: `criterion` is the criterion's 1-based
@@ -463,7 +472,7 @@ Result `kind`:
   recent `EscalateResult` and the only one describing the routing in
   force, for both roles even if only one changed. Before dispatching
   either through OpenCode's `subagent` tool into the **same worktree** (never a
-  new one), confirm the new selection's `(model, effort)` against a project
+  new one), confirm the new selection's exact model reference against a project
   `orch-*` agent definition under the same match rule as the dispatch steps
   above — **if no project definition matches the new selection, stop and tell
   the human — never dispatch a mismatched agent, and never report the routed

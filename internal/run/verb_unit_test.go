@@ -391,6 +391,22 @@ func TestReviewWrongReviewerIsPure(t *testing.T) {
 	}
 }
 
+func TestReviewDistinguishesOpenCodeNoVariant(t *testing.T) {
+	issue := fixtureIssue("a", 1, state.PhasePROpen)
+	issue.Decision.Reviewer = manifest.OpenCodeSelection("openai/gpt-5.6-sol", "xhigh")
+	root := setupDeliveryRepo(t, "r1", []state.Issue{issue})
+	before := stateBytes(t, root)
+	script := &execxtest.Script{T: t}
+	_, err := Review(context.Background(), ghEnv(root, script), []byte(`{"schema_version":2,"issue_number":1,"reviewed_head_oid":"head","verdict":"approve","summary":"s","reviewer":{"model":"openai/gpt-5.6-sol","no_variant":true},`+fixtureJudgments+`}`))
+	if !errors.Is(err, ErrReviewerMismatch) {
+		t.Fatalf("err = %v, want ErrReviewerMismatch", err)
+	}
+	script.AssertExhausted()
+	if got := stateBytes(t, root); string(got) != string(before) {
+		t.Error("state changed on an OpenCode profile mismatch")
+	}
+}
+
 // TestReviewBadVerificationIsBadRequestBeforeMutation proves a malformed
 // entry in review's optional verifications array is rejected as
 // ErrBadRequest before loadVerb ever runs (the same wire-validation

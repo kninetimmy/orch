@@ -21,9 +21,11 @@ type Attempt struct {
 type History []Attempt
 
 // FailedModel reports whether any recorded attempt on model failed. The
-// match is on the model string only: an effort bump on a model that has
-// already failed is still a retry of that model, never a fresh route,
-// so routing never offers it again (PRD §11).
+// match is on the model string only. Before OpenCode variants, this meant an
+// effort bump was still a retry; after variants, the same rule applies to
+// every Selection profile kind (effort, a different variant, or no variant),
+// not just one host or symbol: a profile change on a failed model never makes
+// it a fresh route (PRD §11).
 func (h History) FailedModel(model string) bool {
 	for _, a := range h {
 		if a.Failed && a.Selection.Model == model {

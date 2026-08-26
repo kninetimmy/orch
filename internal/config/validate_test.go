@@ -17,6 +17,8 @@ func singleHostTOML(host, effort string) string {
 	model := "gpt-5.6-sol"
 	if host == "claude" {
 		model = "claude-opus-5"
+	} else if host == "opencode" {
+		model = "openai/gpt-5.6-sol"
 	}
 	for _, role := range roleOrder {
 		fmt.Fprintf(&b, "\n[hosts.%s.roles.%s]\nmodel  = %q\neffort = %q\n", host, role, model, effort)
@@ -61,6 +63,58 @@ func TestEffortDomainPerHost(t *testing.T) {
 				t.Fatalf("Parse(%s effort=%s): %v", tt.host, tt.effort, err)
 			}
 		})
+	}
+}
+
+func TestOpenCodeAcceptsNativeVariantAndNoVariant(t *testing.T) {
+	withVariant := strings.ReplaceAll(singleHostTOML("opencode", "high"), `effort = "high"`, `variant = "provider-specific"`)
+	cfg, err := Parse([]byte(withVariant))
+	if err != nil {
+		t.Fatalf("Parse variant: %v", err)
+	}
+	if got := cfg.Hosts.OpenCode.Roles.Architect.Variant; got != "provider-specific" {
+		t.Errorf("architect variant = %q", got)
+	}
+
+	withoutVariant := strings.ReplaceAll(singleHostTOML("opencode", "high"), "\neffort = \"high\"", "")
+	cfg, err = Parse([]byte(withoutVariant))
+	if err != nil {
+		t.Fatalf("Parse no variant: %v", err)
+	}
+	if p := cfg.Hosts.OpenCode.Roles.Architect; p.Effort != "" || p.Variant != "" {
+		t.Errorf("architect profile = %+v, want unambiguous no variant", p)
+	}
+}
+
+func TestOpenCodeLegacyEffortCompatibility(t *testing.T) {
+	cfg, err := Parse([]byte(singleHostTOML("opencode", "xhigh")))
+	if err != nil {
+		t.Fatalf("Parse legacy OpenCode effort: %v", err)
+	}
+	p := cfg.Hosts.OpenCode.Roles.Architect
+	if p.Effort != "xhigh" || p.Variant != "" {
+		t.Errorf("legacy profile = %+v, want effort xhigh preserved", p)
+	}
+}
+
+func TestVariantIsOpenCodeOnly(t *testing.T) {
+	data := strings.ReplaceAll(singleHostTOML("claude", "high"), `effort = "high"`, "effort = \"high\"\nvariant = \"fast\"")
+	if _, err := Parse([]byte(data)); err == nil || !strings.Contains(err.Error(), "only OpenCode") {
+		t.Fatalf("Parse Claude variant error = %v", err)
+	}
+}
+
+func TestEmptyVariantKeyIsStillOpenCodeOnly(t *testing.T) {
+	data := strings.ReplaceAll(singleHostTOML("claude", "high"), `effort = "high"`, "effort = \"high\"\nvariant = \"\"")
+	if _, err := Parse([]byte(data)); err == nil || !strings.Contains(err.Error(), "only OpenCode") {
+		t.Fatalf("Parse Claude empty variant error = %v", err)
+	}
+}
+
+func TestOpenCodeRejectsBothProfileKeysEvenWhenOneIsEmpty(t *testing.T) {
+	data := strings.ReplaceAll(singleHostTOML("opencode", "high"), `effort = "high"`, "effort = \"\"\nvariant = \"fast\"")
+	if _, err := Parse([]byte(data)); err == nil || !strings.Contains(err.Error(), "cannot both be set") {
+		t.Fatalf("Parse conflicting profile keys error = %v", err)
 	}
 }
 

@@ -64,6 +64,17 @@ then load its plugin module from an absolute path.
    definitions under `.opencode/agents/`; run it again after changing
    `hosts.opencode.roles` or upgrading Orch.
 
+   Each OpenCode role selects an exact `provider/model` and an optional
+   model-specific `variant`. Generated frontmatter uses
+   `provider/model#variant`, or bare `provider/model` when no variant is
+   selected (omit it in committed configuration; write `variant = ""` to
+   override a committed variant locally). Before optional variants, schema-v1
+   OpenCode roles used `effort`
+   and always appended it; those committed and local v0.8.0 values remain
+   compatible aliases with unchanged effective selections and revisions.
+   Claude Code and Codex configuration are unaffected by this OpenCode-only
+   compatibility rule.
+
 ## Upgrade
 
 Do not reinstall as though this were a first install. In the existing
