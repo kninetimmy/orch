@@ -214,7 +214,7 @@ func buildSequenceConfigure(facts Facts, committed *config.Config, answers map[s
 		case !claudeCommitted:
 			docs = append(docs, roleDocSpecs("claude", true, defaultProfileFor("claude"))...)
 		case answers[idPickRolesClaude] == "yes":
-			docs = append(docs, roleDocSpecs("claude", true, committedRoleDefaults(committedHostConfig(committed, "claude")))...)
+			docs = append(docs, roleDocSpecs("claude", true, committedRoleDefaults("claude", committedHostConfig(committed, "claude")))...)
 		}
 	}
 	if codexEnabled {
@@ -223,7 +223,7 @@ func buildSequenceConfigure(facts Facts, committed *config.Config, answers map[s
 		case !codexCommitted:
 			docs = append(docs, roleDocSpecs("codex", showExplain, defaultProfileFor("codex"))...)
 		case answers[idPickRolesCodex] == "yes":
-			docs = append(docs, roleDocSpecs("codex", showExplain, committedRoleDefaults(committedHostConfig(committed, "codex")))...)
+			docs = append(docs, roleDocSpecs("codex", showExplain, committedRoleDefaults("codex", committedHostConfig(committed, "codex")))...)
 		}
 	}
 	if openEnabled {
@@ -232,7 +232,7 @@ func buildSequenceConfigure(facts Facts, committed *config.Config, answers map[s
 		case !openCommitted:
 			docs = append(docs, roleDocSpecs("opencode", showExplain, defaultProfileFor("opencode"))...)
 		case answers[idPickRolesOpenCode] == "yes":
-			docs = append(docs, roleDocSpecs("opencode", showExplain, committedRoleDefaults(committedHostConfig(committed, "opencode")))...)
+			docs = append(docs, roleDocSpecs("opencode", showExplain, committedRoleDefaults("opencode", committedHostConfig(committed, "opencode")))...)
 		}
 	}
 
@@ -313,15 +313,17 @@ func pickerDocConfigure(committed *config.Config) docSpec {
 	return docSpec{questions: qs}
 }
 
-// committedRoleDefaults returns a role-defaults source drawing from
-// h's current committed profiles — roleDocSpecs' defaults source for a
-// host that was already committed-enabled and stays enabled, so
-// re-editing its role profiles starts from what is already committed
-// rather than the PRD §10 defaults.
-func committedRoleDefaults(h *config.Host) func(string) profile {
+// committedRoleDefaults returns roleDocSpecs' defaults for an existing host.
+// Before native OpenCode profiles it read Effort only, losing Variant and
+// no-variant selections; after, every OpenCode role uses
+// EffectiveOpenCodeVariant while Claude/Codex retain Effort unchanged.
+func committedRoleDefaults(host string, h *config.Host) func(string) profile {
 	return func(role string) profile {
 		p := committedProfile(h, role)
-		return profile{model: p.Model, effort: p.Effort}
+		if host == "opencode" {
+			return profile{model: p.Model, execution: p.EffectiveOpenCodeVariant()}
+		}
+		return profile{model: p.Model, execution: p.Effort}
 	}
 }
 

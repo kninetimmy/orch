@@ -233,6 +233,92 @@ func TestGoldenTranscriptConfigureOpenCodeRoleModels(t *testing.T) {
 	checkGoldenDocument(t, filepath.Join("testdata", "transcript_configure", "opencode_role", "step_01.json"), doc)
 }
 
+func openCodeConfigureSummary(t *testing.T, root string, overrides map[string]string) question.Summary {
+	t.Helper()
+	answers := map[string]string{
+		idPickHosts:         "no",
+		idPickRolesOpenCode: "yes",
+		idPickSettings:      "no",
+	}
+	for i := 0; i < 100; i++ {
+		doc, err := NextConfigure(configureFacts(), answers, root)
+		if err != nil {
+			t.Fatalf("NextConfigure: %v", err)
+		}
+		if doc.Kind == question.DocSummary {
+			return *doc.Summary
+		}
+		if doc.Kind != question.DocQuestions {
+			t.Fatalf("unexpected document kind %q", doc.Kind)
+		}
+		for _, q := range doc.Questions {
+			if value, ok := overrides[q.ID]; ok {
+				answers[q.ID] = value
+			} else {
+				answers[q.ID] = q.Default
+			}
+		}
+	}
+	t.Fatal("NextConfigure did not reach summary")
+	return question.Summary{}
+}
+
+func TestConfigurePreservesAndCreatesNativeOpenCodeProfiles(t *testing.T) {
+	root := t.TempDir()
+	committed := writeCommittedConfigOpenCodeOnly(t, root)
+	committed.Hosts.OpenCode.Roles.Architect.Variant = "committed-custom"
+	committed.Hosts.OpenCode.Roles.Scout.Variant = ""
+	writeCommittedConfig(t, root, committed)
+
+	summary := openCodeConfigureSummary(t, root, map[string]string{
+		roleVariantID("opencode", "implementer"): noVariantAnswer,
+		roleVariantID("opencode", "specialist"):  "configured-custom",
+	})
+	got, err := config.Parse([]byte(summary.ConfigTOML))
+	if err != nil {
+		t.Fatal(err)
+	}
+	roles := got.Hosts.OpenCode.Roles
+	for name, profile := range map[string]config.RoleProfile{
+		"architect":   roles.Architect,
+		"scout":       roles.Scout,
+		"implementer": roles.Implementer,
+		"specialist":  roles.Specialist,
+	} {
+		if profile.Effort != "" {
+			t.Errorf("%s profile = %+v, want native OpenCode shape", name, profile)
+		}
+	}
+	if roles.Architect.Variant != "committed-custom" || roles.Scout.Variant != "" || roles.Implementer.Variant != "" || roles.Specialist.Variant != "configured-custom" {
+		t.Errorf("OpenCode roles were not preserved/created exactly: %+v", roles)
+	}
+}
+
+func TestConfigureMigratesLegacyOpenCodeEffortWithoutChangingSelection(t *testing.T) {
+	root := t.TempDir()
+	committed := writeCommittedConfigOpenCodeOnly(t, root)
+	for _, rs := range roleSpecs {
+		profile := committedProfile(committed.Hosts.OpenCode, rs.key)
+		profile.Effort = profile.Variant
+		profile.Variant = ""
+		setRoleProfile(&committed.Hosts.OpenCode.Roles, rs.key, profile)
+	}
+	writeCommittedConfig(t, root, committed)
+
+	summary := openCodeConfigureSummary(t, root, nil)
+	got, err := config.Parse([]byte(summary.ConfigTOML))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, rs := range roleSpecs {
+		before := committedProfile(committed.Hosts.OpenCode, rs.key)
+		after := committedProfile(got.Hosts.OpenCode, rs.key)
+		if after.Effort != "" || after.Variant != before.EffectiveOpenCodeVariant() {
+			t.Errorf("%s legacy selection changed: before=%+v after=%+v", rs.key, before, after)
+		}
+	}
+}
+
 // TestGoldenTranscriptConfigureDisableCodex disables codex from a
 // both-hosts committed configuration and expects AGENTS.md's managed
 // block to be proposed for block-only removal (ActionRemove), never a

@@ -21,9 +21,14 @@ const (
 	idApproval            = "approval"
 )
 
-// roleModelID and roleEffortID build a role's two question ids.
+// roleModelID, roleEffortID, and roleVariantID build a role's question ids.
 func roleModelID(host, role string) string  { return fmt.Sprintf("host.%s.role.%s.model", host, role) }
 func roleEffortID(host, role string) string { return fmt.Sprintf("host.%s.role.%s.effort", host, role) }
+func roleVariantID(host, role string) string {
+	return fmt.Sprintf("host.%s.role.%s.variant", host, role)
+}
+
+const noVariantAnswer = "<no variant>"
 
 // roleSpec is one PRD §9 role's fixed display and explanatory text.
 type roleSpec struct {
@@ -62,8 +67,9 @@ var roleSpecs = []roleSpec{
 	},
 }
 
-// profile pairs an exact model version with a reasoning effort.
-type profile struct{ model, effort string }
+// profile pairs an exact model version with its host-native execution value:
+// effort for Claude/Codex and an optional variant for OpenCode.
+type profile struct{ model, execution string }
 
 // defaultProfiles hardcodes the PRD §10 default model profiles, keyed
 // by host then role. defaultProfilesTest asserts these against the
@@ -117,7 +123,7 @@ var hostModels = map[string][]string{
 	"opencode": {"openai/gpt-5.6-sol", "openai/gpt-5.6-terra", "openai/gpt-5.6-luna", "opencode/x-preview-f-free"},
 }
 
-// hostEfforts lists each host's full closed effort enum — every value
+// hostEfforts lists Claude and Codex's full closed effort enums — every value
 // internal/config's effortsByHost accepts for that host, in the same
 // order validate.go's effortList documents — not just the window any
 // one question offers as literal select options (effortsOffered).
@@ -125,9 +131,8 @@ var hostModels = map[string][]string{
 // full list, so it stays the single full-domain source of truth the
 // interview owns.
 var hostEfforts = map[string][]string{
-	"codex":    {"low", "medium", "high", "xhigh", "max", "ultra"},
-	"claude":   {"low", "medium", "high", "xhigh", "max"},
-	"opencode": {"low", "medium", "high", "xhigh", "max"},
+	"codex":  {"low", "medium", "high", "xhigh", "max", "ultra"},
+	"claude": {"low", "medium", "high", "xhigh", "max"},
 }
 
 // maxOfferedEfforts is the largest number of effort levels offered as
@@ -280,15 +285,16 @@ func hostToggleDoc(facts Facts, claudeDefault, codexDefault, openCodeDefault str
 	return docSpec{questions: questions}
 }
 
-// roleDocSpecs builds host's six per-role documents (model + effort,
-// grouped), in roleSpecs order. showExplain controls whether each
+// roleDocSpecs builds host's six per-role documents (model plus effort for
+// Claude/Codex, model plus optional variant for OpenCode), in roleSpecs order.
+// showExplain controls whether each
 // model question carries its role's §18 step 4 explanation as a
 // Preamble. The first enabled host shows it, so every interview walks the
 // explanations once without repeating them for additional hosts. defaults
-// sources each role's starting model/effort:
+// sources each role's starting model/execution value:
 // init and a freshly-enabled `orch configure` host both pass
 // defaultProfileFor(host) (the PRD §10 defaults); a still-enabled
-// `orch configure` host instead passes committedRoleDefaults(h)
+// `orch configure` host instead passes committedRoleDefaults(host, h)
 // (configure.go), so re-editing an already-committed host's roles
 // starts from what is already there.
 func roleDocSpecs(host string, showExplain bool, defaults func(string) profile) []docSpec {
@@ -310,19 +316,69 @@ func roleDocSpecs(host string, showExplain bool, defaults func(string) profile) 
 			modelQ.Preamble = rs.explain
 		}
 
-		effortQ := question.Question{
-			ID:       roleEffortID(host, rs.key),
-			Header:   rs.header,
-			Prompt:   fmt.Sprintf("%s reasoning effort (%s)", rs.label, hostLabel),
-			Kind:     question.KindSelect,
-			Options:  effortOptions(host, def.effort),
-			FreeText: true,
-			Default:  def.effort,
-		}
-
-		docs = append(docs, docSpec{questions: []question.Question{modelQ, effortQ}})
+		profileQ := committedProfileQuestion(host, rs, def)
+		docs = append(docs, docSpec{questions: []question.Question{modelQ, profileQ}})
 	}
 	return docs
+}
+
+// committedProfileQuestion is the committed-config writer's host-specific
+// execution question. Before optional OpenCode variants, roleDocSpecs always
+// emitted effort; after, every OpenCode role emits variant while Claude/Codex
+// retain their byte-identical effort questions.
+func committedProfileQuestion(host string, rs roleSpec, def profile) question.Question {
+	if host == "opencode" {
+		return question.Question{
+			ID: roleVariantID(host, rs.key), Header: rs.header,
+			Prompt: fmt.Sprintf("%s model variant (%s)", rs.label, hostLabels[host]),
+			Kind:   question.KindSelect, Options: variantOptions(def.execution), FreeText: true,
+			Default: variantAnswer(def.execution),
+		}
+	}
+	return question.Question{
+		ID: roleEffortID(host, rs.key), Header: rs.header,
+		Prompt: fmt.Sprintf("%s reasoning effort (%s)", rs.label, hostLabels[host]),
+		Kind:   question.KindSelect, Options: effortOptions(host, def.execution), FreeText: true,
+		Default: def.execution,
+	}
+}
+
+func variantAnswer(variant string) string {
+	if variant == "" {
+		return noVariantAnswer
+	}
+	return variant
+}
+
+// variantOptionValues returns at most four distinct choices while retaining
+// both committed/effective values its callers supply. Suggestions fill only
+// remaining slots, so a custom effective override can never evict the
+// committed choice.
+func variantOptionValues(required ...string) []string {
+	values := []string{noVariantAnswer}
+	appendValue := func(value string) {
+		value = variantAnswer(value)
+		if len(values) < 4 && !slices.Contains(values, value) {
+			values = append(values, value)
+		}
+	}
+	for _, value := range required {
+		appendValue(value)
+	}
+	for _, value := range []string{"low", "high", "max"} {
+		appendValue(value)
+	}
+	return values
+}
+
+func variantOptions(def string) []question.Option {
+	values := variantOptionValues(def)
+	want := variantAnswer(def)
+	opts := make([]question.Option, len(values))
+	for i, value := range values {
+		opts[i] = question.Option{Value: value, Label: value, Recommended: value == want}
+	}
+	return opts
 }
 
 // modelOptions lists host's committed-config model choices, marking

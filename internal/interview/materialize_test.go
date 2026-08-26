@@ -22,8 +22,21 @@ func fullAnswers() map[string]string {
 		for _, rs := range roleSpecs {
 			def := defaultProfiles[host][rs.key]
 			answers[roleModelID(host, rs.key)] = def.model
-			answers[roleEffortID(host, rs.key)] = def.effort
+			answers[roleEffortID(host, rs.key)] = def.execution
 		}
+	}
+	return answers
+}
+
+func openCodeOnlyAnswers() map[string]string {
+	answers := fullAnswers()
+	answers[idHostClaudeEnabled] = "no"
+	answers[idHostCodexEnabled] = "no"
+	answers[idHostOpenCodeEnabled] = "yes"
+	for _, rs := range roleSpecs {
+		def := defaultProfiles["opencode"][rs.key]
+		answers[roleModelID("opencode", rs.key)] = def.model
+		answers[roleVariantID("opencode", rs.key)] = variantAnswer(def.execution)
 	}
 	return answers
 }
@@ -66,15 +79,9 @@ func TestMaterializeSingleHost(t *testing.T) {
 }
 
 func TestMaterializeOpenCodeOnly(t *testing.T) {
-	answers := fullAnswers()
-	answers[idHostClaudeEnabled] = "no"
-	answers[idHostCodexEnabled] = "no"
-	answers[idHostOpenCodeEnabled] = "yes"
-	for _, rs := range roleSpecs {
-		def := defaultProfiles["opencode"][rs.key]
-		answers[roleModelID("opencode", rs.key)] = def.model
-		answers[roleEffortID("opencode", rs.key)] = def.effort
-	}
+	answers := openCodeOnlyAnswers()
+	answers[roleVariantID("opencode", "architect")] = "provider-custom"
+	answers[roleVariantID("opencode", "scout")] = noVariantAnswer
 	cfg, err := materialize(answers)
 	if err != nil {
 		t.Fatal(err)
@@ -84,6 +91,12 @@ func TestMaterializeOpenCodeOnly(t *testing.T) {
 	}
 	if got := cfg.Hosts.OpenCode.Roles.Specialist.Model; got != "openai/gpt-5.6-sol" {
 		t.Errorf("specialist model = %q", got)
+	}
+	if p := cfg.Hosts.OpenCode.Roles.Architect; p.Variant != "provider-custom" || p.Effort != "" {
+		t.Errorf("architect profile = %+v, want native provider-custom variant", p)
+	}
+	if p := cfg.Hosts.OpenCode.Roles.Scout; p.Variant != "" || p.Effort != "" {
+		t.Errorf("scout profile = %+v, want native no-variant selection", p)
 	}
 }
 

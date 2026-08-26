@@ -15,9 +15,10 @@ func singleHostTOML(host, effort string) string {
 	b.WriteString(`config_revision = "r1"` + "\n\n")
 	b.WriteString("[memhub]\nmode = \"off\"\n")
 	model := "gpt-5.6-sol"
-	if host == "claude" {
+	switch host {
+	case "claude":
 		model = "claude-opus-5"
-	} else if host == "opencode" {
+	case "opencode":
 		model = "openai/gpt-5.6-sol"
 	}
 	for _, role := range roleOrder {

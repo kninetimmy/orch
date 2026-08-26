@@ -12,7 +12,8 @@ import (
 // table verbatim (plan verification string: codex
 // sol-xhigh/luna-max/terra-max/sol-max/sol-xhigh/sol-high;
 // claude opus-5-high/opus-5-low/opus-5-medium/opus-5-high/
-// opus-5-high/opus-5-medium).
+// opus-5-high/opus-5-medium; OpenCode uses the same native variant values
+// shown in the PRD table).
 func TestDefaultProfilesMatchPRD(t *testing.T) {
 	want := map[string]map[string]profile{
 		"codex": {
@@ -30,6 +31,14 @@ func TestDefaultProfilesMatchPRD(t *testing.T) {
 			"specialist":       {"claude-opus-5", "high"},
 			"reviewer":         {"claude-opus-5", "high"},
 			"review_downgrade": {"claude-opus-5", "medium"},
+		},
+		"opencode": {
+			"architect":        {"openai/gpt-5.6-sol", "xhigh"},
+			"scout":            {"openai/gpt-5.6-luna", "max"},
+			"implementer":      {"openai/gpt-5.6-terra", "max"},
+			"specialist":       {"openai/gpt-5.6-sol", "max"},
+			"reviewer":         {"openai/gpt-5.6-sol", "xhigh"},
+			"review_downgrade": {"openai/gpt-5.6-sol", "high"},
 		},
 	}
 	for host, roles := range want {

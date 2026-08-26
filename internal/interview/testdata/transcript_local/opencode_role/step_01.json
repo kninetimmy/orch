@@ -44,17 +44,17 @@
           "label": "\u003cno variant\u003e"
         },
         {
+          "value": "xhigh",
+          "label": "xhigh (committed)",
+          "recommended": true
+        },
+        {
           "value": "low",
           "label": "low"
         },
         {
           "value": "high",
           "label": "high"
-        },
-        {
-          "value": "xhigh",
-          "label": "xhigh (committed)",
-          "recommended": true
         }
       ],
       "free_text": true,

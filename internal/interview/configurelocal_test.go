@@ -51,16 +51,7 @@ func writeCommittedConfigLocal(t *testing.T, root string) *config.Config {
 
 func writeCommittedConfigOpenCodeOnly(t *testing.T, root string) *config.Config {
 	t.Helper()
-	answers := fullAnswers()
-	answers[idHostClaudeEnabled] = "no"
-	answers[idHostCodexEnabled] = "no"
-	answers[idHostOpenCodeEnabled] = "yes"
-	for _, rs := range roleSpecs {
-		def := defaultProfiles["opencode"][rs.key]
-		answers[roleModelID("opencode", rs.key)] = def.model
-		answers[roleEffortID("opencode", rs.key)] = def.effort
-	}
-	cfg, err := materialize(answers)
+	cfg, err := materialize(openCodeOnlyAnswers())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -537,16 +528,20 @@ func TestConfigureLocalLeafIDsMatchEditablePreferenceKeys(t *testing.T) {
 }
 
 func TestVariantOptionsKeepCommittedAndEffectiveValues(t *testing.T) {
-	opts := variantOptionsLocal("provider-default", "machine-choice")
+	opts := variantOptionsLocal("high", "machine-choice")
 	seen := map[string]bool{}
 	recommended := ""
+	committedLabel := ""
 	for _, opt := range opts {
 		seen[opt.Value] = true
+		if opt.Value == "high" {
+			committedLabel = opt.Label
+		}
 		if opt.Recommended {
 			recommended = opt.Value
 		}
 	}
-	if !seen["provider-default"] || !seen["machine-choice"] || recommended != "machine-choice" {
+	if !seen["high"] || !seen["machine-choice"] || recommended != "machine-choice" || !strings.Contains(committedLabel, "(committed)") {
 		t.Errorf("options = %+v", opts)
 	}
 }

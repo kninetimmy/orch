@@ -6,7 +6,6 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
-	"slices"
 	"strconv"
 	"strings"
 
@@ -46,8 +45,6 @@ func localRoleEffortID(host, role string) string {
 func localRoleVariantID(role string) string {
 	return fmt.Sprintf("hosts.opencode.roles.%s.variant", role)
 }
-
-const noVariantAnswer = "<no variant>"
 
 // hostLocalModels lists each host's local-override-selectable models:
 // hostModels, plus — for claude only — claude-fable-5, the PRD §10
@@ -565,23 +562,10 @@ func localProfileQuestion(host string, rs roleSpec, committed config.RoleProfile
 	}
 }
 
-func variantAnswer(variant string) string {
-	if variant == "" {
-		return noVariantAnswer
-	}
-	return variant
-}
-
 func variantOptionsLocal(committed, effective string) []question.Option {
-	values := []string{noVariantAnswer, "low", "high", "max"}
+	values := variantOptionValues(committed, effective)
 	effective = variantAnswer(effective)
 	committed = variantAnswer(committed)
-	if !slices.Contains(values, committed) {
-		values[len(values)-1] = committed
-	}
-	if !slices.Contains(values, effective) {
-		values[len(values)-2] = effective
-	}
 	opts := make([]question.Option, len(values))
 	for i, value := range values {
 		label := value
