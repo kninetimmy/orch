@@ -76,6 +76,27 @@ func TestReadCatalogRejectsAnotherLocation(t *testing.T) {
 	}
 }
 
+func TestReadCatalogRejectsCaseDifferentLocationOnCaseSensitiveVolume(t *testing.T) {
+	parent := t.TempDir()
+	root := filepath.Join(parent, "Repo")
+	other := filepath.Join(parent, "repo")
+	if err := os.Mkdir(root, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Mkdir(other, 0o755); os.IsExist(err) {
+		t.Skip("test volume is case-insensitive")
+	} else if err != nil {
+		t.Fatal(err)
+	}
+	runner := catalogRunner(func(execx.Cmd) (execx.Result, error) {
+		return execx.Result{Stdout: fmt.Sprintf(`{"location":{"directory":%q},"data":[]}`, other)}, nil
+	})
+	_, err := ReadCatalog(context.Background(), runner, root)
+	if err == nil || !strings.Contains(err.Error(), "different directory") {
+		t.Fatalf("error = %v, want rejection of case-distinct directory", err)
+	}
+}
+
 func TestReadCatalogDiagnosticsDoNotDiscloseCommandOutput(t *testing.T) {
 	const sensitive = "credential-token account-identifier raw-api-payload"
 	tests := []struct {

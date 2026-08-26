@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/url"
+	"os"
 	"slices"
 
 	"github.com/kninetimmy/orch/internal/execx"
@@ -121,12 +122,18 @@ type catalogResponse struct {
 }
 
 func sameDirectory(want, got string) (bool, error) {
-	forward, err := paths.Inside(want, got)
+	wantInfo, err := os.Stat(want)
 	if err != nil {
 		return false, err
 	}
-	back, err := paths.Inside(got, want)
-	return forward && back, err
+	gotInfo, err := os.Stat(got)
+	if err != nil {
+		return false, err
+	}
+	if !wantInfo.IsDir() || !gotInfo.IsDir() {
+		return false, fmt.Errorf("catalog locations must be directories")
+	}
+	return os.SameFile(wantInfo, gotInfo), nil
 }
 
 func malformed(detail string) error {

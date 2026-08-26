@@ -20,8 +20,8 @@ not a claim of compatibility with other V2 builds.
 ## Catalog safety and blast radius
 
 Orch queries `/api/model` with the repository in the URL-encoded
-`location[directory]` parameter. The response must name that same
-canonical directory. `ReadCatalog` exposes only `Models[].ID` as the
+`location[directory]` parameter. The response must resolve to that same
+filesystem directory identity. `ReadCatalog` exposes only `Models[].ID` as the
 exact `providerID/id` and every `Models[].Variants[]` ID. Its safe-field
 restriction applies to every returned provider and model, not only to a
 named provider: settings, headers, bodies, credentials, account
@@ -33,7 +33,7 @@ them and are never copied into diagnostics.
 | OpenCode runtime and npm plugin pins | No. The before-and-after is recorded above: beta 17498 is replaced by beta 18314. |
 | `orch.delivery` plugin ID, setup, guard hooks, and session context | Yes. The same plugin contract remains; unit and live smoke checks still exercise it on the new beta. |
 | Catalog process invocation | New. It is one argument-vector call in the repository directory, with the location URL-encoded rather than shell-interpolated. |
-| Response `location.directory` | New validation. A response for any other directory is rejected. |
+| Response `location.directory` | New validation. The initial implementation inherited platform-wide case folding and could accept distinct case-different directories on a case-sensitive macOS or Windows volume; that behavior no longer holds. Directory identity is now compared by the filesystem, so every different directory is rejected while aliases of the same directory remain valid. |
 | Response `data[].providerID` and `data[].id` | New projection. They form the exact `provider/id`; neither value is normalized or aliased. |
 | Response `data[].enabled` and `data[].capabilities.{tools,input,output}` | New filtering. Only enabled, tool-capable, text-input/text-output models remain. |
 | Response `data[].variants[].id` | New projection. Every advertised variant ID is preserved in server order, including an empty list. |

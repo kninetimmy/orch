@@ -28,16 +28,17 @@ func fakeLookPath(present ...string) func(string) (string, error) {
 }
 
 func TestDetectAllPresentAndHealthy(t *testing.T) {
-	root, err := paths.Canonical("/repo")
+	repo := t.TempDir()
+	root, err := paths.Canonical(repo)
 	if err != nil {
 		t.Fatal(err)
 	}
 	script := &execxtest.Script{T: t, Calls: []execxtest.Call{
-		{Name: "git", Args: []string{"rev-parse", "--show-toplevel"}, Dir: "/repo", Stdout: "/repo\n", Exit: 0},
-		{Name: "memhub", Args: []string{"status"}, Dir: "/repo", Exit: 0},
-		{Name: "opencode2", Args: []string{"api", "get", "/api/model?" + url.Values{"location[directory]": {root}}.Encode()}, Dir: "/repo", Stdout: fmt.Sprintf(`{"location":{"directory":%q},"data":[]}`, root)},
+		{Name: "git", Args: []string{"rev-parse", "--show-toplevel"}, Dir: repo, Stdout: repo + "\n", Exit: 0},
+		{Name: "memhub", Args: []string{"status"}, Dir: repo, Exit: 0},
+		{Name: "opencode2", Args: []string{"api", "get", "/api/model?" + url.Values{"location[directory]": {root}}.Encode()}, Dir: repo, Stdout: fmt.Sprintf(`{"location":{"directory":%q},"data":[]}`, root)},
 	}}
-	deps := Deps{RepoRoot: "/repo", LookPath: fakeLookPath("claude", "codex", "opencode2", "git", "gh", "memhub"), Runner: script}
+	deps := Deps{RepoRoot: repo, LookPath: fakeLookPath("claude", "codex", "opencode2", "git", "gh", "memhub"), Runner: script}
 
 	facts := Detect(context.Background(), deps)
 	script.AssertExhausted()
@@ -45,8 +46,8 @@ func TestDetectAllPresentAndHealthy(t *testing.T) {
 	if !facts.ClaudeCLI || !facts.CodexCLI || !facts.OpenCodeCLI || !facts.Gh {
 		t.Fatalf("facts = %+v, want claude/codex/opencode/gh all true", facts)
 	}
-	if !facts.Git || facts.GitRoot != "/repo" {
-		t.Errorf("git facts = %v/%q, want true/\"/repo\"", facts.Git, facts.GitRoot)
+	if !facts.Git || facts.GitRoot != repo {
+		t.Errorf("git facts = %v/%q, want true/%q", facts.Git, facts.GitRoot, repo)
 	}
 	if !facts.MemhubCLI || !facts.MemhubHealthy {
 		t.Errorf("memhub facts = %+v, want cli/healthy both true", facts)
