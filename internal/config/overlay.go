@@ -160,8 +160,17 @@ func MergeLocal(committed *Config, localTOML []byte) (*Config, error) {
 	}
 	for _, role := range roleNames {
 		prefix := "hosts.opencode.roles." + role
-		if md.IsDefined(strings.Split(prefix+".effort", ".")...) && md.IsDefined(strings.Split(prefix+".variant", ".")...) {
+		effort := md.IsDefined(strings.Split(prefix+".effort", ".")...)
+		variant := md.IsDefined(strings.Split(prefix+".variant", ".")...)
+		switch {
+		case effort && variant:
 			fail("%s cannot set both effort and variant; effort is only the v0.8.0 compatibility spelling", prefix)
+		case effort && roleProfileOf(local.Hosts.OpenCode.Roles, role).Effort == "":
+			// Before this guard, an explicitly empty legacy effort cleared a
+			// committed variant and silently selected the bare model. Every
+			// OpenCode role now rejects that spelling; variant = "" is the one
+			// explicit local no-variant form.
+			fail("%s.effort must not be empty; use variant = \"\" to select no variant", prefix)
 		}
 	}
 

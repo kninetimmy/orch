@@ -368,6 +368,18 @@ func TestMergeLocalLegacyOpenCodeEffortCompatibility(t *testing.T) {
 	}
 }
 
+func TestMergeLocalRejectsEmptyLegacyOpenCodeEffort(t *testing.T) {
+	native := strings.ReplaceAll(singleHostTOML("opencode", "high"), `effort = "high"`, `variant = "high"`)
+	committed, err := Parse([]byte(native))
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = MergeLocal(committed, []byte("[hosts.opencode.roles.architect]\neffort = \"\"\n"))
+	if err == nil || !strings.Contains(err.Error(), "effort must not be empty") || !strings.Contains(err.Error(), `variant = ""`) {
+		t.Fatalf("MergeLocal error = %v", err)
+	}
+}
+
 func TestMergeLocalRejectsOpenCodeEffortAndVariantTogether(t *testing.T) {
 	committed, err := Parse([]byte(singleHostTOML("opencode", "high")))
 	if err != nil {
