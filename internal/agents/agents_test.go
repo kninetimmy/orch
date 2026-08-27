@@ -5,6 +5,7 @@ package agents_test
 import (
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -115,6 +116,41 @@ func TestRenderOpenCodeNativeAgents(t *testing.T) {
 		}
 		if !strings.Contains(text, "mode: subagent") || !strings.Contains(text, "model: openai/") || !strings.Contains(text, "#") {
 			t.Errorf("%s is not a native V2 model/variant agent", file.Path)
+		}
+	}
+}
+
+func TestRenderOpenCodeMixedProviderFixture(t *testing.T) {
+	data, err := os.ReadFile("testdata/opencode-mixed-provider.toml")
+	if err != nil {
+		t.Fatal(err)
+	}
+	cfg, err := config.Parse(data)
+	if err != nil {
+		t.Fatal(err)
+	}
+	files, err := agents.Render("opencode", cfg.Hosts.OpenCode)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := map[string]string{
+		"orch-scout":         "smoke-alpha/scout#fast",
+		"orch-implementer":   "smoke-beta/implementer",
+		"orch-specialist":    "smoke-alpha/team/specialist#deep",
+		"orch-reviewer":      "smoke-beta/reviewer",
+		"orch-reviewer-safe": "smoke-beta/reviewer-safe#careful",
+	}
+	if len(files) != len(want) {
+		t.Fatalf("Render returned %d files, want %d", len(files), len(want))
+	}
+	for _, file := range files {
+		model, ok := want[stem(file)]
+		if !ok {
+			t.Errorf("unexpected rendered agent %s", file.Path)
+			continue
+		}
+		if line := "model: " + strconv.Quote(model) + "\n"; !strings.Contains(string(file.Content), line) {
+			t.Errorf("%s does not pin exact model reference %q", file.Path, model)
 		}
 	}
 }

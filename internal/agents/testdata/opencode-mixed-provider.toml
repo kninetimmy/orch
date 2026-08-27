@@ -1,0 +1,27 @@
+schema_version  = 1
+config_revision = "mixed-provider-fixture"
+
+[memhub]
+mode = "off"
+
+[hosts.opencode.roles.architect]
+model   = "smoke-alpha/architect"
+variant = "steady"
+
+[hosts.opencode.roles.scout]
+model   = "smoke-alpha/scout"
+variant = "fast"
+
+[hosts.opencode.roles.implementer]
+model = "smoke-beta/implementer"
+
+[hosts.opencode.roles.specialist]
+model   = "smoke-alpha/team/specialist"
+variant = "deep"
+
+[hosts.opencode.roles.reviewer]
+model = "smoke-beta/reviewer"
+
+[hosts.opencode.roles.review_downgrade]
+model   = "smoke-beta/reviewer-safe"
+variant = "careful"
