@@ -792,8 +792,17 @@ func applyRoleAnswers(committed *config.Config, host string, answers, overrides 
 			variantKey := localRoleVariantID(rs.key)
 			variant, answered := answers[variantKey]
 			if !answered {
-				if _, advertised := openCodeCatalogModel(catalog, modelVal); !advertised && modelVal == current {
-					continue
+				if _, advertised := openCodeCatalogModel(catalog, modelVal); !advertised {
+					switch modelVal {
+					case current:
+						continue
+					case cp.Model:
+						// Clearing a different stale model override inherits the
+						// committed profile exactly, including legacy Effort.
+						delete(overrides, effortKey)
+						delete(overrides, variantKey)
+						continue
+					}
 				}
 			}
 			if variant == noVariantAnswer {

@@ -340,3 +340,59 @@ model = "opencode/x-preview-f-free"
 		t.Errorf("local question offered stale non-committed model: %+v", q)
 	}
 }
+
+func TestConfigureLocalClearsStaleModelToUnavailableCommittedProfile(t *testing.T) {
+	profiles := map[string]config.RoleProfile{
+		"native variant": {Model: "retired-provider/model-a", Variant: "provider-variant"},
+		"legacy effort":  {Model: "retired-provider/model-a", Effort: "xhigh"},
+	}
+	for name, want := range profiles {
+		t.Run(name, func(t *testing.T) {
+			root := t.TempDir()
+			committed := writeCommittedConfigOpenCodeOnly(t, root)
+			committed.Hosts.OpenCode.Roles.Architect = want
+			writeCommittedConfig(t, root, committed)
+			writeLocalOverrideFile(t, root, `[hosts.opencode.roles.architect]
+model = "retired-provider/model-b"
+`)
+
+			facts := withOpenCodeTestCatalog(Facts{})
+			answers := map[string]string{idPickOpenCode: "yes", idPickSettings: "no"}
+			for i := 0; i < 100; i++ {
+				doc, err := NextConfigureLocalWithFacts(facts, answers, root)
+				if err != nil {
+					t.Fatal(err)
+				}
+				if doc.Kind == question.DocSummary {
+					change := doc.Summary.Files[0]
+					effective := committed
+					if !change.Delete {
+						effective, err = config.MergeLocal(committed, []byte(change.NewContent))
+						if err != nil {
+							t.Fatal(err)
+						}
+					}
+					if got := effective.Hosts.OpenCode.Roles.Architect; got != want {
+						t.Errorf("effective architect = %+v, want exact committed profile %+v", got, want)
+					}
+					if !change.Delete || change.NewContent != "" {
+						t.Fatalf("stale override repair = %+v, want local file deletion inheriting %+v", change, want)
+					}
+					return
+				}
+				if doc.Kind != question.DocQuestions {
+					t.Fatalf("unexpected document kind %q", doc.Kind)
+				}
+				for _, q := range doc.Questions {
+					if q.ID == localRoleModelID("opencode", "architect") {
+						if q.Default != want.Model || slices.Contains(optionValuesOf(q), "retired-provider/model-b") {
+							t.Errorf("architect model question = %+v", q)
+						}
+					}
+					answers[q.ID] = q.Default
+				}
+			}
+			t.Fatal("configure-local did not reach summary")
+		})
+	}
+}
