@@ -5,6 +5,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/kninetimmy/orch/internal/config"
 	"github.com/kninetimmy/orch/internal/ghops"
 	"github.com/kninetimmy/orch/internal/manifest"
 	"github.com/kninetimmy/orch/internal/routing"
@@ -24,14 +25,35 @@ func TestHostProfile(t *testing.T) {
 	}
 }
 
+func TestHostProfileNormalizesOpenCodeVariants(t *testing.T) {
+	cfg := testConfig()
+	legacy := config.RoleProfile{Model: "openai/gpt-5.6-sol", Effort: "xhigh"}
+	none := config.RoleProfile{Model: "github-copilot/gpt-5-mini"}
+	cfg.Hosts.OpenCode = &config.Host{Roles: config.Roles{
+		Architect: legacy, Scout: legacy, Implementer: none,
+		Specialist: legacy, Reviewer: none, ReviewDowngrade: legacy,
+	}}
+	p, err := hostProfile(cfg, "opencode")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if p.Architect != manifest.OpenCodeSelection(legacy.Model, "xhigh") {
+		t.Errorf("legacy architect = %+v", p.Architect)
+	}
+	if p.Implementer != manifest.OpenCodeSelection(none.Model, "") {
+		t.Errorf("no-variant implementer = %+v", p.Implementer)
+	}
+}
+
 // TestEffortDelivery pins the per-host mechanism the audit record names:
 // Codex applies the routed effort as a real parameter, Claude only as a
-// prompt cue, and an unrecognized host is an error rather than a guess.
+// prompt cue, OpenCode uses a model variant, and an unrecognized host is an
+// error rather than a guess.
 func TestEffortDelivery(t *testing.T) {
 	cases := map[string]manifest.EffortDelivery{
 		"codex":    manifest.EffortDeliveryParameter,
 		"claude":   manifest.EffortDeliveryPromptCue,
-		"opencode": manifest.EffortDeliveryParameter,
+		"opencode": manifest.EffortDeliveryModelVariant,
 	}
 	for host, want := range cases {
 		got, err := effortDelivery(host)

@@ -54,12 +54,50 @@ func defaultClaudeHost() *config.Host {
 func defaultOpenCodeHost() *config.Host {
 	p := adaptertest.Profile("opencode")
 	rp := func(role string) config.RoleProfile {
-		return config.RoleProfile{Model: p[role].Model, Effort: p[role].Effort}
+		return config.RoleProfile{Model: p[role].Model, Variant: p[role].Variant}
 	}
 	return &config.Host{Roles: config.Roles{
 		Architect: rp("scout"), Scout: rp("scout"), Implementer: rp("implementer"),
 		Specialist: rp("specialist"), Reviewer: rp("reviewer"), ReviewDowngrade: rp("reviewer-safe"),
 	}}
+}
+
+func TestRenderOpenCodeWithoutVariantUsesBareModel(t *testing.T) {
+	h := defaultOpenCodeHost()
+	h.Roles.Scout.Model = "lmstudio/google/gemma-4-26b-a4b"
+	h.Roles.Scout.Variant = ""
+	files, err := agents.Render("opencode", h)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(files[0].Content), "model: \"lmstudio/google/gemma-4-26b-a4b\"\n") {
+		t.Errorf("scout does not use the bare no-variant model:\n%s", files[0].Content)
+	}
+}
+
+func TestRenderOpenCodeVariantWithMultiSegmentModel(t *testing.T) {
+	h := defaultOpenCodeHost()
+	h.Roles.Scout.Model = "lmstudio/google/gemma-4-26b-a4b"
+	h.Roles.Scout.Variant = "fast"
+	files, err := agents.Render("opencode", h)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(files[0].Content), "model: \"lmstudio/google/gemma-4-26b-a4b#fast\"\n") {
+		t.Errorf("scout does not preserve the multi-segment model and variant:\n%s", files[0].Content)
+	}
+}
+
+func TestRenderLegacyOpenCodeEffortAsVariant(t *testing.T) {
+	h := defaultOpenCodeHost()
+	h.Roles.Scout = config.RoleProfile{Model: "openai/gpt-5.6-luna", Effort: "max"}
+	files, err := agents.Render("opencode", h)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(files[0].Content), "model: openai/gpt-5.6-luna#max\n") {
+		t.Errorf("legacy effort did not retain its effective variant:\n%s", files[0].Content)
+	}
 }
 
 func TestRenderOpenCodeNativeAgents(t *testing.T) {

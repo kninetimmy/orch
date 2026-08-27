@@ -23,8 +23,10 @@ import (
 // the hole this schema closes. Raising the constant is what makes the
 // version check fire first, so a build-behind adapter is told which
 // version this build supports instead of being handed a confusing
-// complaint about a missing field.
-const ReviewSchemaVersion = 2
+// complaint about a missing field. v3 versions Selection's OpenCode
+// variant/no_variant request shape; v2 is rejected before routing comparison so
+// a stale adapter cannot submit an effort-only approximation.
+const ReviewSchemaVersion = 3
 
 // The two review verdicts (PRD §12 step 11).
 const (
@@ -174,7 +176,7 @@ func Review(ctx context.Context, env Env, reqJSON []byte) (*ReviewResult, error)
 		return nil, fmt.Errorf("issue #%d has no routing decision; run `orch abort`", issue.Number)
 	}
 	if req.Reviewer != issue.Decision.Reviewer {
-		return nil, fmt.Errorf("%w: reviewer %s@%s is not the routed reviewer %s@%s; review with the routed selection, or run `orch run escalate` to reroute first", ErrReviewerMismatch, req.Reviewer.Model, req.Reviewer.Effort, issue.Decision.Reviewer.Model, issue.Decision.Reviewer.Effort)
+		return nil, fmt.Errorf("%w: reviewer %s is not the routed reviewer %s; review with the routed selection, or run `orch run escalate` to reroute first", ErrReviewerMismatch, req.Reviewer, issue.Decision.Reviewer)
 	}
 	// The criteria the judgments must cover are read from state, never
 	// counted from the request, so a review cannot decide for itself how

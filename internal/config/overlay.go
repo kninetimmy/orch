@@ -6,21 +6,21 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strings"
 
 	"github.com/BurntSushi/toml"
 )
 
-// leafClass classifies a single dotted schema key as either
-// policy-bearing (fixed by the committed configuration; may never be
-// set in config.local.toml) or preference (safe for a machine-local
-// override), per PRD §17.
+// leafClass classifies a single dotted decoded key as policy-bearing,
+// preference, or structurally invalid for that host, per PRD §17.
 type leafClass int
 
 const (
 	classPolicy leafClass = iota
 	classPreference
+	classInvalid
 )
 
 // roleNames lists the PRD §9 roles, plus the safe review downgrade,
@@ -31,8 +31,8 @@ var roleNames = []string{"architect", "scout", "implementer", "specialist", "rev
 // in the schema. A dotted key absent from this map is a table header
 // (an intermediate key group, e.g. "hosts.claude.roles.architect"),
 // not a leaf; since Load already rejects unknown keys before this
-// table is consulted, everything else defined in a TOML file must be
-// one or the other.
+// table is consulted, everything else defined in a TOML file must have
+// one of these closed classifications.
 var leafClasses = newLeafClasses()
 
 func newLeafClasses() map[string]leafClass {
@@ -49,6 +49,11 @@ func newLeafClasses() map[string]leafClass {
 			prefix := "hosts." + host + ".roles." + role
 			m[prefix+".model"] = classPreference
 			m[prefix+".effort"] = classPreference
+			if host == "opencode" {
+				m[prefix+".variant"] = classPreference
+			} else {
+				m[prefix+".variant"] = classInvalid
+			}
 		}
 	}
 	return m
@@ -56,9 +61,9 @@ func newLeafClasses() map[string]leafClass {
 
 // PreferenceKeys returns every dotted leaf key classified
 // classPreference in leafClasses, sorted — the exact key set
-// config.local.toml may set. interview.NextConfigureLocal's
-// configure-local question IDs are drift-pinned against this list
-// (the closed 30-leaf policy/preference table, decision 18).
+// config.local.toml may set, including compatibility aliases.
+// interview.NextConfigureLocal's current writer keys are
+// EditablePreferenceKeys (decision 18).
 func PreferenceKeys() []string {
 	keys := make([]string, 0, len(leafClasses))
 	for key, class := range leafClasses {
@@ -68,6 +73,17 @@ func PreferenceKeys() []string {
 	}
 	sort.Strings(keys)
 	return keys
+}
+
+// EditablePreferenceKeys returns the preference leaves current writers expose.
+// It excludes OpenCode's legacy effort alias while PreferenceKeys continues to
+// include that alias so every v0.8.0 local override remains recognized and
+// loadable. New OpenCode edits use variant.
+func EditablePreferenceKeys() []string {
+	keys := PreferenceKeys()
+	return slices.DeleteFunc(keys, func(key string) bool {
+		return strings.HasPrefix(key, "hosts.opencode.roles.") && strings.HasSuffix(key, ".effort")
+	})
 }
 
 // applyLocalOverride reads the machine-local override file under
@@ -129,6 +145,10 @@ func MergeLocal(committed *Config, localTOML []byte) (*Config, error) {
 			fail("%s is policy-bearing and cannot be set in %s; committed %s changes go through a Delivery PR", key, LocalOverridePath, Path)
 			continue
 		}
+		if class == classInvalid {
+			fail("%s is not valid for this host", key)
+			continue
+		}
 		if host, isHostLeaf := hostOfLeaf(key); isHostLeaf && hostPtr(committed, host) == nil {
 			if !flaggedHosts[host] {
 				flaggedHosts[host] = true
@@ -137,6 +157,21 @@ func MergeLocal(committed *Config, localTOML []byte) (*Config, error) {
 			continue
 		}
 		toApply = append(toApply, key)
+	}
+	for _, role := range roleNames {
+		prefix := "hosts.opencode.roles." + role
+		effort := md.IsDefined(strings.Split(prefix+".effort", ".")...)
+		variant := md.IsDefined(strings.Split(prefix+".variant", ".")...)
+		switch {
+		case effort && variant:
+			fail("%s cannot set both effort and variant; effort is only the v0.8.0 compatibility spelling", prefix)
+		case effort && roleProfileOf(local.Hosts.OpenCode.Roles, role).Effort == "":
+			// Before this guard, an explicitly empty legacy effort cleared a
+			// committed variant and silently selected the bare model. Every
+			// OpenCode role now rejects that spelling; variant = "" is the one
+			// explicit local no-variant form.
+			fail("%s.effort must not be empty; use variant = \"\" to select no variant", prefix)
+		}
 	}
 
 	if len(problems) > 0 {
@@ -208,6 +243,10 @@ func applyOverrideLeaf(merged, local *Config, key string, clonedHosts map[string
 		mp.Model = lp.Model
 	case "effort":
 		mp.Effort = lp.Effort
+		mp.Variant = ""
+	case "variant":
+		mp.Effort = ""
+		mp.Variant = lp.Variant
 	}
 }
 
@@ -239,7 +278,7 @@ func setHostPtr(cfg *Config, name string, h *Host) {
 }
 
 // roleProfilePtr returns a pointer to the named role's RoleProfile
-// within r, so its Model/Effort fields can be read or written in
+// within r, so its Model/Effort/Variant fields can be read or written in
 // place.
 func roleProfilePtr(r *Roles, role string) *RoleProfile {
 	switch role {

@@ -54,9 +54,13 @@ func writeHuman(b *strings.Builder, m Manifest) {
 	b.WriteString("| Field | Value |\n")
 	b.WriteString("| --- | --- |\n")
 	fmt.Fprintf(b, "| Role | %s |\n", mdCodeCell(string(m.Role)))
-	fmt.Fprintf(b, "| Executor | %s — effort %s |\n", mdCodeCell(m.Executor.Model), mdCodeCell(m.Executor.Effort))
-	fmt.Fprintf(b, "| Reviewer | %s — effort %s |\n", mdCodeCell(m.Reviewer.Model), mdCodeCell(m.Reviewer.Effort))
-	fmt.Fprintf(b, "| Effort delivery | %s — %s |\n", mdCodeCell(string(m.EffortDelivery)), effortDeliveryNote(m.EffortDelivery))
+	fmt.Fprintf(b, "| Executor | %s |\n", selectionCell(m.Executor))
+	fmt.Fprintf(b, "| Reviewer | %s |\n", selectionCell(m.Reviewer))
+	deliveryLabel := "Effort delivery"
+	if m.EffortDelivery == EffortDeliveryModelVariant {
+		deliveryLabel = "Profile delivery"
+	}
+	fmt.Fprintf(b, "| %s | %s — %s |\n", deliveryLabel, mdCodeCell(string(m.EffortDelivery)), effortDeliveryNote(m.EffortDelivery))
 	fmt.Fprintf(b, "| Config revision | %s |\n", mdCodeCell(m.ConfigRevision))
 	b.WriteByte('\n')
 	fmt.Fprintf(b, "**Routing rationale:** %s\n", mdText(m.RoutingRationale))
@@ -103,19 +107,30 @@ func writeWork(b *strings.Builder, m Manifest) {
 	b.WriteByte('\n')
 }
 
-// effortDeliveryNote is the clause rendered beside an EffortDelivery
-// value in the summary table. Without it the table names an exact effort
-// next to nothing that says whether the host enforced it, which reads as
-// a guarantee the host may not have made.
+// effortDeliveryNote is the clause rendered beside an EffortDelivery value in
+// the summary table. Without it the table does not say what the host enforced.
 func effortDeliveryNote(d EffortDelivery) string {
 	switch d {
 	case EffortDeliveryParameter:
 		return "the host applied the routed effort as a real model parameter"
 	case EffortDeliveryPromptCue:
 		return "this host has no effort parameter; the routed effort reached the executor as a prompt cue only"
+	case EffortDeliveryModelVariant:
+		return "OpenCode applies a selected variant as #variant and leaves a no-variant model reference bare"
 	default:
 		// Unreachable: validate rejects any other value before Render.
 		return "unrecognized effort delivery"
+	}
+}
+
+func selectionCell(s Selection) string {
+	switch {
+	case s.Effort != "":
+		return fmt.Sprintf("%s — effort %s", mdCodeCell(s.Model), mdCodeCell(s.Effort))
+	case s.Variant != "":
+		return fmt.Sprintf("%s — variant %s", mdCodeCell(s.Reference()), mdCodeCell(s.Variant))
+	default:
+		return fmt.Sprintf("%s — no variant", mdCodeCell(s.Model))
 	}
 }
 
@@ -133,7 +148,7 @@ func writeEscalations(b *strings.Builder, es []Escalation) {
 
 // escalationBullet renders one escalation as a single list line:
 //
-//   - <At> — <kind> (<role>): `from` (effort `e`) → `to` (effort `e`) — <reason>
+//   - <At> — <kind> (<role>): <from selection> → <to selection> — <reason>
 //
 // The "<At> — " prefix and the "(<role>)" segment are omitted when their
 // fields are empty.
@@ -148,11 +163,19 @@ func escalationBullet(e Escalation) string {
 	if e.Role != "" {
 		fmt.Fprintf(&b, " (%s)", e.Role)
 	}
-	fmt.Fprintf(&b, ": %s (effort %s) → %s (effort %s) — %s",
-		mdCode(e.From.Model), mdCode(e.From.Effort),
-		mdCode(e.To.Model), mdCode(e.To.Effort),
-		mdText(e.Reason))
+	fmt.Fprintf(&b, ": %s → %s — %s", selectionInline(e.From), selectionInline(e.To), mdText(e.Reason))
 	return b.String()
+}
+
+func selectionInline(s Selection) string {
+	switch {
+	case s.Effort != "":
+		return fmt.Sprintf("%s (effort %s)", mdCode(s.Model), mdCode(s.Effort))
+	case s.Variant != "":
+		return fmt.Sprintf("%s (variant %s)", mdCode(s.Reference()), mdCode(s.Variant))
+	default:
+		return mdCode(s.Model) + " (no variant)"
+	}
 }
 
 func writeVerifications(b *strings.Builder, vs []Verification) {

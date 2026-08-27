@@ -34,7 +34,10 @@ func TestNativeAgents(t *testing.T) {
 	profile := adaptertest.Profile("opencode")
 	for role, spec := range profile {
 		name := "orch-" + role
-		model := spec.Model + "#" + spec.Effort
+		model := spec.Model
+		if spec.Variant != "" {
+			model += "#" + spec.Variant
+		}
 		data, err := opencode.AgentDefinitions.ReadFile("agents/" + name + ".md")
 		if err != nil {
 			t.Fatal(err)
@@ -76,6 +79,7 @@ func TestSkillsUseOnlyOpenCodeV2Surfaces(t *testing.T) {
 }
 
 const skillGlob = "skills/*/SKILL.md"
+const architectSkillPath = "skills/orch-architect/SKILL.md"
 const deliverySkillPath = "skills/orch-delivery/SKILL.md"
 const setupSkillPath = "skills/orch-setup/SKILL.md"
 
@@ -100,7 +104,11 @@ func TestSetupSkillHasTerminalForms(t *testing.T) {
 }
 
 func TestDeliverySkillHasRoutedSelectionCue(t *testing.T) {
-	adaptertest.CheckRoutedSelectionCue(t, deliverySkillPath)
+	adaptertest.CheckOpenCodeRoutedSelectionCue(t, deliverySkillPath)
+}
+
+func TestSelectionWireVersionsMatchEngine(t *testing.T) {
+	adaptertest.CheckSelectionWireVersions(t, deliverySkillPath, architectSkillPath)
 }
 
 func TestDeliverySkillHasBranchScopeVerificationGuidance(t *testing.T) {

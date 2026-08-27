@@ -51,16 +51,7 @@ func writeCommittedConfigLocal(t *testing.T, root string) *config.Config {
 
 func writeCommittedConfigOpenCodeOnly(t *testing.T, root string) *config.Config {
 	t.Helper()
-	answers := fullAnswers()
-	answers[idHostClaudeEnabled] = "no"
-	answers[idHostCodexEnabled] = "no"
-	answers[idHostOpenCodeEnabled] = "yes"
-	for _, rs := range roleSpecs {
-		def := defaultProfiles["opencode"][rs.key]
-		answers[roleModelID("opencode", rs.key)] = def.model
-		answers[roleEffortID("opencode", rs.key)] = def.effort
-	}
-	cfg, err := materialize(answers)
+	cfg, err := materialize(openCodeOnlyAnswers())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -468,11 +459,11 @@ effort = "ultra"
 	}
 }
 
-// TestConfigureLocalLeafIDsMatchPreferenceKeys walks the full
+// TestConfigureLocalLeafIDsMatchEditablePreferenceKeys walks the full
 // both-hosts-and-settings-picked sequence and collects every role/
 // settings question id — the drift guard pinning configure-local's
-// question IDs to config.PreferenceKeys' closed set exactly.
-func TestConfigureLocalLeafIDsMatchPreferenceKeys(t *testing.T) {
+// question IDs to config.EditablePreferenceKeys' closed set exactly.
+func TestConfigureLocalLeafIDsMatchEditablePreferenceKeys(t *testing.T) {
 	root := t.TempDir()
 	writeCommittedConfigLocal(t, root)
 	raw, err := os.ReadFile(filepath.Join(root, filepath.FromSlash(config.Path)))
@@ -525,7 +516,7 @@ func TestConfigureLocalLeafIDsMatchPreferenceKeys(t *testing.T) {
 		got = append(got, id)
 	}
 	sort.Strings(got)
-	want := config.PreferenceKeys()
+	want := config.EditablePreferenceKeys()
 	if len(got) != len(want) {
 		t.Fatalf("saw %d distinct leaf question ids, want %d\ngot:  %v\nwant: %v", len(got), len(want), got, want)
 	}
@@ -533,6 +524,25 @@ func TestConfigureLocalLeafIDsMatchPreferenceKeys(t *testing.T) {
 		if got[i] != want[i] {
 			t.Errorf("leaf ids[%d] = %q, want %q", i, got[i], want[i])
 		}
+	}
+}
+
+func TestVariantOptionsKeepCommittedAndEffectiveValues(t *testing.T) {
+	opts := variantOptionsLocal("high", "machine-choice")
+	seen := map[string]bool{}
+	recommended := ""
+	committedLabel := ""
+	for _, opt := range opts {
+		seen[opt.Value] = true
+		if opt.Value == "high" {
+			committedLabel = opt.Label
+		}
+		if opt.Recommended {
+			recommended = opt.Value
+		}
+	}
+	if !seen["high"] || !seen["machine-choice"] || recommended != "machine-choice" || !strings.Contains(committedLabel, "(committed)") {
+		t.Errorf("options = %+v", opts)
 	}
 }
 

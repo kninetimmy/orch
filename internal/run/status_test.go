@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/kninetimmy/orch/internal/lockfile"
+	"github.com/kninetimmy/orch/internal/manifest"
 	"github.com/kninetimmy/orch/internal/state"
 )
 
@@ -15,6 +16,9 @@ func TestStatusAssist(t *testing.T) {
 	doc, err := Status(context.Background(), Env{RepoRoot: root})
 	if err != nil {
 		t.Fatalf("Status: %v", err)
+	}
+	if doc.SchemaVersion != StatusSchemaVersion {
+		t.Errorf("SchemaVersion = %d, want %d", doc.SchemaVersion, StatusSchemaVersion)
 	}
 	if doc.Mode != state.ModeAssist || !doc.Consistent || doc.Warning != "" {
 		t.Errorf("doc = %+v, want clean assist", doc)
@@ -48,6 +52,35 @@ func TestStatusDelivery(t *testing.T) {
 	}
 	if len(doc.Run.Issues) != 1 || doc.Run.Issues[0].PlanID != "a" {
 		t.Errorf("Run.Issues = %+v", doc.Run.Issues)
+	}
+}
+
+func TestStatusPreservesOpenCodeSelectionProfiles(t *testing.T) {
+	root := setupRepo(t, testConfigTOML)
+	issues := []state.Issue{{PlanID: "a", Title: "A", Phase: state.PhasePlanned}}
+	st, err := state.EnterDelivery(root, "opencode", state.PlanRef{Digest: "sha256:x", ConfigRevision: "r1"}, issues)
+	if err != nil {
+		t.Fatal(err)
+	}
+	issue := &st.Run.Issues[0]
+	issue.Phase = state.PhaseDispatched
+	issue.Number = 1
+	issue.Branch = "branch"
+	issue.Worktree = "worktree"
+	issue.Decision = &state.Decision{
+		Role: manifest.RoleImplementer, Executor: manifest.OpenCodeSelection("lmstudio/google/gemma-4-26b-a4b", "fast"),
+		Reviewer: manifest.OpenCodeSelection("github-copilot/gpt-5-mini", ""), Rationale: "exact",
+	}
+	if err := state.Save(root, st); err != nil {
+		t.Fatal(err)
+	}
+	doc, err := Status(context.Background(), Env{RepoRoot: root})
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := doc.Run.Issues[0].Decision
+	if got.Executor != issue.Decision.Executor || got.Reviewer != issue.Decision.Reviewer {
+		t.Errorf("status selections = %+v, want %+v", got, issue.Decision)
 	}
 }
 

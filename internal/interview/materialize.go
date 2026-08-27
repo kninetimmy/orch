@@ -76,7 +76,10 @@ func materialize(answers map[string]string) (*config.Config, error) {
 	return cfg, nil
 }
 
-// materializeHost builds host's six-role config.Host from answers.
+// materializeHost builds host's six-role config.Host from answers. Before
+// optional OpenCode variants it wrote Effort for every host; after, every
+// OpenCode role writes Variant (empty for noVariantAnswer), while Claude/Codex
+// retain the same Effort path.
 // current is host's committed profile set, so an answer left at a
 // committed near-miss model still round-trips (validateModelAnswer);
 // it is nil for init and for any host a session newly enables, neither
@@ -89,7 +92,15 @@ func materializeHost(host string, answers map[string]string, current *config.Hos
 		if err := validateModelAnswer(modelID, model, currentModel(current, rs.key)); err != nil {
 			return nil, err
 		}
-		profile := config.RoleProfile{Model: model, Effort: answers[roleEffortID(host, rs.key)]}
+		profile := config.RoleProfile{Model: model}
+		if host == "opencode" {
+			profile.Variant = answers[roleVariantID(host, rs.key)]
+			if profile.Variant == noVariantAnswer {
+				profile.Variant = ""
+			}
+		} else {
+			profile.Effort = answers[roleEffortID(host, rs.key)]
+		}
 		setRoleProfile(&roles, rs.key, profile)
 	}
 	return &config.Host{Roles: roles}, nil

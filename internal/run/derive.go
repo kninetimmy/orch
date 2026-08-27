@@ -13,13 +13,17 @@ import (
 
 // hostProfile maps cfg's per-host RoleProfile set (PRD §10) to the
 // routing.Profile the pure routing package consumes. config owns the
-// model/effort vocabulary; routing never sees a config.Host directly.
+// model/execution-profile vocabulary; routing never sees a config.Host
+// directly.
 func hostProfile(cfg *config.Config, host string) (routing.Profile, error) {
 	h := cfg.Host(host)
 	if h == nil {
 		return routing.Profile{}, fmt.Errorf("host %q is not enabled in configuration", host)
 	}
 	sel := func(rp config.RoleProfile) manifest.Selection {
+		if host == "opencode" {
+			return manifest.OpenCodeSelection(rp.Model, rp.EffectiveOpenCodeVariant())
+		}
 		return manifest.Selection{Model: rp.Model, Effort: rp.Effort}
 	}
 	return routing.Profile{
@@ -32,20 +36,22 @@ func hostProfile(cfg *config.Config, host string) (routing.Profile, error) {
 	}, nil
 }
 
-// effortDelivery reports how host actually applies a routed reasoning
-// effort to a spawned executor, for the audit record. Codex pins
+// effortDelivery reports how host actually applies a routed execution
+// profile to a spawned executor, for the audit record. Codex pins
 // model_reasoning_effort in the dispatched agent's own TOML, so the
 // routed effort is a real parameter there; Claude Code subagent spawns
 // take no effort knob, so it reaches the executor only as a prompt cue.
-// An unknown host is an error rather than a guess: recording an effort
+// An unknown host is an error rather than a guess: recording a profile
 // without saying how it was delivered is the claim this field exists to
 // stop making.
 func effortDelivery(host string) (manifest.EffortDelivery, error) {
 	switch host {
-	case "codex", "opencode":
+	case "codex":
 		return manifest.EffortDeliveryParameter, nil
 	case "claude":
 		return manifest.EffortDeliveryPromptCue, nil
+	case "opencode":
+		return manifest.EffortDeliveryModelVariant, nil
 	default:
 		return "", fmt.Errorf("host %q has no recorded effort-delivery mechanism", host)
 	}

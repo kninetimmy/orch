@@ -80,6 +80,23 @@ func TestAppendThenLoadAllRoundTrip(t *testing.T) {
 	}
 }
 
+func TestOpenCodeSelectionsRoundTrip(t *testing.T) {
+	root := t.TempDir()
+	executor := manifest.OpenCodeSelection("openai/gpt-5.6-sol", "xhigh")
+	reviewer := manifest.OpenCodeSelection("github-copilot/gpt-5-mini", "")
+	if err := Append(root, "run-opencode", Event{At: "now", Verb: "dispatch", Executor: &executor, Reviewer: &reviewer}); err != nil {
+		t.Fatal(err)
+	}
+	docs, err := LoadAll(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := docs[0].Events[0]
+	if got.Executor == nil || *got.Executor != executor || got.Reviewer == nil || *got.Reviewer != reviewer {
+		t.Errorf("selections = %+v / %+v", got.Executor, got.Reviewer)
+	}
+}
+
 func TestAppendTwiceAppendsToOneDocument(t *testing.T) {
 	root := t.TempDir()
 	if err := Append(root, "run-1", Event{At: "t1", Verb: "dispatch"}); err != nil {

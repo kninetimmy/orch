@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/kninetimmy/orch/internal/lockfile"
+	"github.com/kninetimmy/orch/internal/manifest"
 )
 
 // stateDir returns a temp repo root containing .orchestrator/.
@@ -67,31 +68,32 @@ func TestLoadRejectsBadState(t *testing.T) {
 		"corrupt json":    {"{broken", "parse"},
 		"wrong schema":    {`{"schema_version": 99, "mode": "assist"}`, "schema_version 99"},
 		"v1 rejected":     {`{"schema_version": 1, "mode": "assist"}`, "schema_version 1"},
-		"unknown mode":    {`{"schema_version": 3, "mode": "turbo"}`, `unknown mode "turbo"`},
-		"delivery no run": {`{"schema_version": 3, "mode": "delivery"}`, "without a recorded run"},
-		"assist with run": {`{"schema_version": 3, "mode": "assist", "run": {"id": "r", "host": "claude", "started_at": "2026-07-10T12:00:00Z", "plan": {}, "issues": null}}`, "assist mode with a recorded run"},
+		"v3 rejected":     {`{"schema_version": 3, "mode": "assist"}`, "schema_version 3"},
+		"unknown mode":    {`{"schema_version": 4, "mode": "turbo"}`, `unknown mode "turbo"`},
+		"delivery no run": {`{"schema_version": 4, "mode": "delivery"}`, "without a recorded run"},
+		"assist with run": {`{"schema_version": 4, "mode": "assist", "run": {"id": "r", "host": "claude", "started_at": "2026-07-10T12:00:00Z", "plan": {}, "issues": null}}`, "assist mode with a recorded run"},
 		"invalid phase": {
-			`{"schema_version": 3, "mode": "delivery", "run": {"id": "r", "host": "claude", "started_at": "2026-07-10T12:00:00Z", "plan": {"digest": "sha256:x"}, "issues": [{"plan_id": "a", "phase": "bogus"}]}}`,
+			`{"schema_version": 4, "mode": "delivery", "run": {"id": "r", "host": "claude", "started_at": "2026-07-10T12:00:00Z", "plan": {"digest": "sha256:x"}, "issues": [{"plan_id": "a", "phase": "bogus"}]}}`,
 			`invalid phase "bogus"`,
 		},
 		"issue-created without number": {
-			`{"schema_version": 3, "mode": "delivery", "run": {"id": "r", "host": "claude", "started_at": "2026-07-10T12:00:00Z", "plan": {"digest": "sha256:x"}, "issues": [{"plan_id": "a", "phase": "issue-created"}]}}`,
+			`{"schema_version": 4, "mode": "delivery", "run": {"id": "r", "host": "claude", "started_at": "2026-07-10T12:00:00Z", "plan": {"digest": "sha256:x"}, "issues": [{"plan_id": "a", "phase": "issue-created"}]}}`,
 			"requires a positive issue number",
 		},
 		"worktree-ready without branch": {
-			`{"schema_version": 3, "mode": "delivery", "run": {"id": "r", "host": "claude", "started_at": "2026-07-10T12:00:00Z", "plan": {"digest": "sha256:x"}, "issues": [{"plan_id": "a", "phase": "worktree-ready", "number": 4}]}}`,
+			`{"schema_version": 4, "mode": "delivery", "run": {"id": "r", "host": "claude", "started_at": "2026-07-10T12:00:00Z", "plan": {"digest": "sha256:x"}, "issues": [{"plan_id": "a", "phase": "worktree-ready", "number": 4}]}}`,
 			"requires branch and worktree",
 		},
 		"dispatched without decision": {
-			`{"schema_version": 3, "mode": "delivery", "run": {"id": "r", "host": "claude", "started_at": "2026-07-10T12:00:00Z", "plan": {"digest": "sha256:x"}, "issues": [{"plan_id": "a", "phase": "dispatched", "number": 4, "branch": "b", "worktree": "w"}]}}`,
+			`{"schema_version": 4, "mode": "delivery", "run": {"id": "r", "host": "claude", "started_at": "2026-07-10T12:00:00Z", "plan": {"digest": "sha256:x"}, "issues": [{"plan_id": "a", "phase": "dispatched", "number": 4, "branch": "b", "worktree": "w"}]}}`,
 			"requires a routing decision",
 		},
 		"blocked without reason": {
-			`{"schema_version": 3, "mode": "delivery", "run": {"id": "r", "host": "claude", "started_at": "2026-07-10T12:00:00Z", "plan": {"digest": "sha256:x"}, "issues": [{"plan_id": "a", "phase": "blocked", "number": 4, "branch": "b", "worktree": "w", "decision": {"role": "implementer", "executor": {"model": "m", "effort": "e"}, "reviewer": {"model": "m", "effort": "e"}, "rationale": "r"}}]}}`,
+			`{"schema_version": 4, "mode": "delivery", "run": {"id": "r", "host": "claude", "started_at": "2026-07-10T12:00:00Z", "plan": {"digest": "sha256:x"}, "issues": [{"plan_id": "a", "phase": "blocked", "number": 4, "branch": "b", "worktree": "w", "decision": {"role": "implementer", "executor": {"model": "m", "effort": "e"}, "reviewer": {"model": "m", "effort": "e"}, "rationale": "r"}}]}}`,
 			"blocked phase requires a blocked reason",
 		},
 		"awaiting-merge without approved head": {
-			`{"schema_version": 3, "mode": "delivery", "run": {"id": "r", "host": "claude", "started_at": "2026-07-10T12:00:00Z", "plan": {"digest": "sha256:x"}, "issues": [{"plan_id": "a", "phase": "awaiting-merge", "number": 4, "branch": "b", "worktree": "w", "pr_number": 5, "decision": {"role": "implementer", "executor": {"model": "m", "effort": "e"}, "reviewer": {"model": "m", "effort": "e"}, "rationale": "r"}}]}}`,
+			`{"schema_version": 4, "mode": "delivery", "run": {"id": "r", "host": "claude", "started_at": "2026-07-10T12:00:00Z", "plan": {"digest": "sha256:x"}, "issues": [{"plan_id": "a", "phase": "awaiting-merge", "number": 4, "branch": "b", "worktree": "w", "pr_number": 5, "decision": {"role": "implementer", "executor": {"model": "m", "effort": "e"}, "reviewer": {"model": "m", "effort": "e"}, "rationale": "r"}}]}}`,
 			"requires an approved head OID",
 		},
 	}
@@ -128,6 +130,33 @@ func TestLoadAcceptsRoundTrip(t *testing.T) {
 	}
 	if len(got.Run.Issues) != 1 || got.Run.Issues[0].PlanID != "iss-a" {
 		t.Errorf("Issues = %+v, want one planned issue", got.Run.Issues)
+	}
+}
+
+func TestOpenCodeSelectionRoundTrip(t *testing.T) {
+	root := stateDir(t)
+	st, err := EnterDelivery(root, "opencode", testPlanRef(), testIssues())
+	if err != nil {
+		t.Fatal(err)
+	}
+	issue := &st.Run.Issues[0]
+	issue.Phase = PhaseDispatched
+	issue.Number = 1
+	issue.Branch = "branch"
+	issue.Worktree = "worktree"
+	issue.Decision = &Decision{
+		Role: manifest.RoleImplementer, Executor: manifest.OpenCodeSelection("openai/gpt-5.6-sol", "xhigh"),
+		Reviewer: manifest.OpenCodeSelection("github-copilot/gpt-5-mini", ""), Rationale: "exact",
+	}
+	if err := Save(root, st); err != nil {
+		t.Fatal(err)
+	}
+	got, err := Load(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if *got.Run.Issues[0].Decision != *issue.Decision {
+		t.Errorf("decision = %+v", got.Run.Issues[0].Decision)
 	}
 }
 

@@ -67,6 +67,7 @@ actually true about this repository, do the following, in order:
    its id, host, and every issue's phase. Never infer mode or run state
    from `orch status`'s human-readable text — that command is for a
    person reading a terminal, not for you to parse.
+   `orch run status --json` returns `StatusDoc` schema_version `2`; reject any other before reading its Selection-bearing run state.
 2. Read the rendered `PROJECT.md` once, at the start of the session
    (memhub's own convention), for prior context.
 3. Recall relevant memhub history before planning new work, so you are

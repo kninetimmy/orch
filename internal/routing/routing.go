@@ -24,8 +24,8 @@ import (
 	"github.com/kninetimmy/orch/internal/manifest"
 )
 
-// Profile is the per-host model/effort assignment routing consumes. Its
-// six selections mirror config.Roles (PRD §10) one-for-one, but routing
+// Profile is the per-host model/execution-profile assignment routing consumes.
+// Its six selections mirror config.Roles (PRD §10) one-for-one, but routing
 // does not import config: the run engine maps each config.RoleProfile
 // to a manifest.Selection and hands the result here, keeping this
 // package off the TOML chain.
@@ -43,8 +43,9 @@ type Profile struct {
 // rather than replace them.
 var (
 	// ErrBadProfile reports a Profile with an incomplete selection: some
-	// role is missing its model or effort. Routing cannot emit a valid
-	// audit record from it, so it refuses rather than guess a default.
+	// role is missing its model or host-native execution profile. Routing
+	// cannot emit a valid audit record from it, so it refuses rather than
+	// guess.
 	ErrBadProfile = errors.New("routing profile is incomplete")
 	// ErrBadTask reports a Task carrying an unknown risk domain — a value
 	// outside the closed PRD §11 set (see Domains).
@@ -82,8 +83,8 @@ func (p Profile) validate() error {
 		if f.sel.Model == "" {
 			return fmt.Errorf("%w: %s.model is empty", ErrBadProfile, f.name)
 		}
-		if f.sel.Effort == "" {
-			return fmt.Errorf("%w: %s.effort is empty", ErrBadProfile, f.name)
+		if !f.sel.HasExecutionProfile() {
+			return fmt.Errorf("%w: %s must carry exactly one of effort, variant, or no_variant", ErrBadProfile, f.name)
 		}
 	}
 	return nil

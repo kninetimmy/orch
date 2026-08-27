@@ -84,38 +84,56 @@ func RenderLocal(overrides map[string]string) ([]byte, error) {
 }
 
 // renderLocalHost appends host's [hosts.host.roles.*] tables to b for
-// every role that overrides carries a model or effort value for, in
-// roleOrder. Unlike renderHost, a role's table may carry only one of
-// the two fields (a sparse override commonly changes just one).
+// every role that overrides carries a model, effort, or OpenCode variant
+// value for, in roleOrder. Unlike renderHost, a role's table may be sparse.
 func renderLocalHost(b *strings.Builder, host string, overrides map[string]string) error {
 	for _, role := range roleOrder {
 		prefix := "hosts." + host + ".roles." + role
 		model, hasModel := overrides[prefix+".model"]
 		effort, hasEffort := overrides[prefix+".effort"]
-		if !hasModel && !hasEffort {
+		variant, hasVariant := overrides[prefix+".variant"]
+		if !hasModel && !hasEffort && !hasVariant {
 			continue
+		}
+		if hasEffort && hasVariant {
+			return fmt.Errorf("RenderLocal: %s cannot set both effort and variant", prefix)
 		}
 		if hasModel {
 			if err := validateLocalModel(prefix+".model", model); err != nil {
 				return err
 			}
 		}
-		if hasEffort && !effortsByHost[host][effort] {
-			return fmt.Errorf("RenderLocal: %s.effort: %q is not one of %s", prefix, effort, effortList(host))
+		if hasEffort {
+			accepted := effortsByHost[host]
+			list := effortList(host)
+			if host == "opencode" {
+				accepted = legacyOpenCodeEfforts
+				list = legacyOpenCodeEffortList()
+			}
+			if !accepted[effort] {
+				return fmt.Errorf("RenderLocal: %s.effort: %q is not one of %s", prefix, effort, list)
+			}
+		}
+		if hasVariant && strings.ContainsAny(variant, "# \t\r\n") {
+			return fmt.Errorf("RenderLocal: %s.variant: %q must be one model-specific variant token or empty for no variant", prefix, variant)
 		}
 
 		b.WriteByte('\n')
 		fmt.Fprintf(b, "[hosts.%s.roles.%s]\n", host, role)
-		// Align the "=" the way render.go's renderHost does only when
-		// both fields are present together; a sparse single-field
-		// override has nothing to align against.
-		if hasModel && hasEffort {
-			fmt.Fprintf(b, "model  = %q\n", model)
-			fmt.Fprintf(b, "effort = %q\n", effort)
+		if hasModel && (hasEffort || hasVariant) {
+			if hasEffort {
+				fmt.Fprintf(b, "model  = %q\n", model)
+				fmt.Fprintf(b, "effort = %q\n", effort)
+			} else {
+				fmt.Fprintf(b, "model   = %q\n", model)
+				fmt.Fprintf(b, "variant = %q\n", variant)
+			}
 		} else if hasModel {
 			fmt.Fprintf(b, "model = %q\n", model)
-		} else {
+		} else if hasEffort {
 			fmt.Fprintf(b, "effort = %q\n", effort)
+		} else {
+			fmt.Fprintf(b, "variant = %q\n", variant)
 		}
 	}
 	return nil

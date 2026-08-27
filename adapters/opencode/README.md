@@ -41,6 +41,19 @@ them and are never copied into diagnostics.
 | Setup detection's existing CLI, git, GitHub, memhub, and instruction facts | Yes. Catalog and catalog-error fields are additive, and a failed read remains explicit data rather than changing Detect's no-error contract. |
 | Doctor's runtime and active-plugin checks | Yes. They still run and the catalog/location check now follows them. |
 | Live smoke's agent discovery, context injection, denied tracked write, and allowed ignored write | Yes. The catalog/location assertions are additive. |
+| Interview `profile`, `roleVariantID`, and `variantOptionValues` | Before, committed interviews represented every execution value as host-wide effort. After, the shared profile carries a host-native execution value, OpenCode has a variant question ID plus an explicit no-variant option, and the option builder retains every committed/effective value before adding suggestions. This applies to every OpenCode role; Claude/Codex keep effort IDs and options. |
+| Committed question writer `roleDocSpecs` / `committedProfileQuestion` | Before, all six OpenCode role documents asked for effort. After, all six ask for model-specific variant or no variant. Claude/Codex role documents retain their prior model+effort shape. |
+| Committed config writer `materializeHost` | Before, every host answer was written to `RoleProfile.Effort`. After, every OpenCode role writes `Variant` (empty for no variant), while every Claude/Codex role still writes `Effort`. |
+| Existing-value reader `committedRoleDefaults` | Before, it read only `Effort`, so editing a native OpenCode profile could erase its variant or no-variant meaning. After, every OpenCode role reads `EffectiveOpenCodeVariant`, preserving native and legacy-effective selections; Claude/Codex still read `Effort`. |
+| Local writer `localProfileQuestion` / `variantOptionsLocal` | Before, inserting a custom effective override could evict a committed variant such as `high` from the four arrow-key choices. After, both committed and effective values are retained and labelled before suggestions fill remaining slots. |
+| OpenCode model-reference grammar | Before, native profiles allowed exactly `provider/model` and rejected another slash. After, only the first slash separates the provider; the non-empty model ID remains opaque and may contain slashes, so catalog references such as `lmstudio/google/gemma-4-26b-a4b` round-trip exactly. This grammar applies to every native OpenCode role, with or without a variant; Claude/Codex grammar and legacy v0.8.0 loading are unchanged. |
+| Plan `GateDoc` wire | Before, it remained schema v1 even after its selections could carry variant/no-variant fields, so a stale adapter could silently drop them. After, schema v2 carries all three selection shapes and adapters reject any other result version before reading a selection. |
+| `Dispatch` wire | Before, request/result stayed at v3 while executor/reviewer gained the new Selection shape. After, v4 preserves all three shapes, and a v3 request is rejected before dispatch mutation. |
+| `Escalate` wire | Before, request/result stayed at v1 while reroutes gained the new Selection shape. After, v2 preserves all three shapes, and a v1 request is rejected before escalation mutation. |
+| `Review` wire | Before, request/result stayed at v2, allowing a stale adapter to submit an effort-only approximation that failed later as a reviewer mismatch. After, v3 accepts exact effort/variant/no-variant selections, and v2 is rejected before reviewer comparison. |
+| `StatusDoc` wire | Before, it remained schema v1 while transitive state decisions gained the new Selection shape. After, schema v2 exposes all three exact shapes and adapters reject any other result version before reading run state. |
+| Adapter protocol pins | The Claude, Codex, and OpenCode Architect/Delivery skills now state the same closed versions. Shared `adaptertest.CheckSelectionWireVersions` derives every expected literal from the engine constants, so no host keeps an unpinned hand-synced Selection schema. |
+| Legacy local `effort` validation | Before, raw `effort = ""` bypassed the named legacy-effort domain and silently cleared a committed variant into a bare-model selection. After, every OpenCode role rejects an explicitly empty legacy effort with `variant = ""` as the remediation. Named v0.8.0 efforts remain compatible; only native `variant = ""` selects no variant. Claude/Codex effort behavior is unchanged. |
 
 ## Install order
 
@@ -93,6 +106,17 @@ then load its plugin module from an absolute path.
    PR, then run `orch render-agents`. It writes the five OpenCode role
    definitions under `.opencode/agents/`; run it again after changing
    `hosts.opencode.roles` or upgrading Orch.
+
+   Each OpenCode role selects an exact `provider/model` and an optional
+   model-specific `variant`. Generated frontmatter uses
+   `provider/model#variant`, or bare `provider/model` when no variant is
+   selected (omit it in committed configuration; write `variant = ""` to
+   override a committed variant locally). Before optional variants,
+   schema-v1 OpenCode roles used `effort` and always appended it; those
+   committed and local v0.8.0 values remain
+   compatible aliases with unchanged effective selections and revisions.
+   Claude Code and Codex configuration are unaffected by this OpenCode-only
+   compatibility rule.
 
 ## Upgrade
 

@@ -32,7 +32,7 @@
 
 <!-- orch:manifest:data
 {
-  "schema_version": 4,
+  "schema_version": 5,
   "objective": "Ship the manifest round trip.",
   "acceptance_criteria": [
     "Render and Parse agree on every field.",

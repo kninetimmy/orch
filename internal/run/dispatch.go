@@ -17,7 +17,8 @@ import (
 // criteria, and required tests to the result, so an adapter's spawn
 // prompt is a transcription of what a human approved rather than the
 // Architect's recollection of it. v3 adds which of those required tests
-// the plan declared the repository's CI does not run.
+// the plan declared the repository's CI does not run. v4 adds Selection's
+// OpenCode variant/no_variant shapes to executor and reviewer.
 //
 // The version rises for a result-only field because the request's
 // version is the one thing that can refuse an adapter predating it. An
@@ -25,10 +26,10 @@ import (
 // named; handed a v3 result it would drop the declaration silently, and
 // the executor would never learn that a test the human approved as
 // local-only is local-only — the same nobody-runs-it failure the
-// declaration exists to surface. Before v3, a request carrying
-// schema_version 2 was accepted; this build rejects it with the message
-// below, and the remedy is to update the host adapter.
-const DispatchSchemaVersion = 3
+// declaration exists to surface. Before this bump, schema_version 3 remained
+// accepted even after Selection gained new fields; v4 rejects it so an old
+// adapter cannot silently drop an OpenCode execution profile.
+const DispatchSchemaVersion = 4
 
 // DispatchRequest asks to hand one worktree-ready issue to its executor.
 type DispatchRequest struct {

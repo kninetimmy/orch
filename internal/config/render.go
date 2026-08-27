@@ -98,6 +98,15 @@ func renderHost(b *strings.Builder, name string, h *Host) {
 		p := roleProfileOf(h.Roles, role)
 		b.WriteByte('\n')
 		fmt.Fprintf(b, "[hosts.%s.roles.%s]\n", name, role)
+		if name == "opencode" && p.Effort == "" {
+			if p.Variant == "" {
+				fmt.Fprintf(b, "model = %q\n", p.Model)
+			} else {
+				fmt.Fprintf(b, "model   = %q\n", p.Model)
+				fmt.Fprintf(b, "variant = %q\n", p.Variant)
+			}
+			continue
+		}
 		fmt.Fprintf(b, "model  = %q\n", p.Model)
 		fmt.Fprintf(b, "effort = %q\n", p.Effort)
 	}

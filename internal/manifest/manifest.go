@@ -2,8 +2,8 @@
 // every Orch issue and PR body carries: the approved objective,
 // acceptance criteria, and required tests, including which of those
 // tests the plan declared the repository's CI does not run; the selected
-// role, the exact executor/reviewer model+effort and how the host
-// actually delivered that effort; the routing rationale, escalations and
+// role, the exact executor/reviewer model+execution profile and how the
+// host actually delivered that profile; the routing rationale, escalations and
 // substitutions, the config revision, and named verification commands
 // and results with the commit each was gathered at. Resume/recovery (PRD
 // §23: interrupted runs resume) rebuilds run state from these posted
@@ -12,11 +12,11 @@
 //
 // Like gitops and ghops the package is policy-free: it owns the schema,
 // the managed region, and drift detection, while the run engine decides
-// content. It imports no config — model and effort vocabulary is
-// config's job, not this package's.
+// content. It imports no config — model and execution-profile vocabulary
+// is config's job, not this package's.
 //
 // The managed region wraps two views of one canonical record: rendered
-// human-readable markdown (PRD §23 requires the model and effort be
+// human-readable markdown (PRD §23 requires the exact selection to be
 // visible in bodies) and, inside an HTML comment, the canonical JSON
 // that Parse reads. Bytes outside the region are human-owned and
 // preserved verbatim by Upsert. Parse fails closed on any drift: it
@@ -42,7 +42,8 @@ import (
 // required tests) and the effort-delivery mechanism. v3 added the commit
 // OID each verification was gathered at (Verification.CommitOID). v4
 // adds the plan's declaration that the repository's CI does not run a
-// given required test (Manifest.TestsCIDoesNotRun).
+// given required test (Manifest.TestsCIDoesNotRun). v5 adds OpenCode's
+// model-specific variant and explicit no-variant selection shapes.
 //
 // There is no migration, in either direction. Reading down: a v1 record
 // is missing the approved work, which would silently decode as empty,
@@ -59,8 +60,10 @@ import (
 // it does not know on decode, re-render without it, and fail the drift
 // compare with ErrDrift, accusing a human of a hand edit nobody made.
 // Raising this constant is what makes the version check fire first and
-// say the true thing, so it must rise with every rendered field.
-const SchemaVersion = 4
+// say the true thing, so it must rise with every rendered field. Before
+// v5, every selection required effort; after v5, that remains true for
+// Claude/Codex while OpenCode carries either variant or no_variant.
+const SchemaVersion = 5
 
 // BeginMarker and EndMarker delimit the managed region. A line is a
 // marker only if, after stripping at most one trailing "\r", it equals
@@ -82,7 +85,7 @@ const (
 
 // Role is the routed agent role recorded in the audit record. The five
 // values mirror config's role set; membership is validated here, but
-// the model and effort chosen for a role are config's vocabulary.
+// the model and execution profile chosen for a role are config's vocabulary.
 type Role string
 
 const (
@@ -93,18 +96,71 @@ const (
 	RoleReviewer    Role = "reviewer"
 )
 
-// Selection is an exact model and effort pairing (PRD §13).
+// Selection is an exact model and host-native execution profile (PRD §13).
+// Exactly one profile shape is valid: Effort for Claude/Codex, Variant for an
+// OpenCode model variant, or NoVariant for a bare OpenCode provider/model.
 type Selection struct {
-	Model  string `json:"model"`
-	Effort string `json:"effort"`
+	Model     string `json:"model"`
+	Effort    string `json:"effort,omitempty"`
+	Variant   string `json:"variant,omitempty"`
+	NoVariant bool   `json:"no_variant,omitempty"`
 }
 
-// EffortDelivery records how the host actually applied the routed
-// reasoning effort to the executor it spawned. An effort is a real host
-// parameter on one host and only a sentence in a prompt on another, and
-// a record that names an effort without saying which implies an
-// enforcement the host may not provide. The set is closed; which value a
-// host warrants is the run engine's call, not this package's.
+// OpenCodeSelection builds the one unambiguous OpenCode selection shape. An
+// empty variant is represented by NoVariant rather than by omitted data.
+func OpenCodeSelection(model, variant string) Selection {
+	if variant == "" {
+		return Selection{Model: model, NoVariant: true}
+	}
+	return Selection{Model: model, Variant: variant}
+}
+
+// Reference returns the exact host-facing model reference. For OpenCode this
+// is provider/model#variant or bare provider/model; effort-based hosts retain
+// their separate model and effort parameters.
+func (s Selection) Reference() string {
+	if s.Variant != "" {
+		return s.Model + "#" + s.Variant
+	}
+	return s.Model
+}
+
+// String renders the selection compactly for diagnostics without losing its
+// execution profile.
+func (s Selection) String() string {
+	switch {
+	case s.Effort != "":
+		return s.Model + "@" + s.Effort
+	case s.Variant != "":
+		return s.Reference()
+	case s.NoVariant:
+		return s.Model + " (no variant)"
+	default:
+		return s.Model + " (missing execution profile)"
+	}
+}
+
+// HasExecutionProfile reports whether s carries exactly one profile shape.
+// The rule applies to every Selection, not just executor or reviewer fields.
+func (s Selection) HasExecutionProfile() bool {
+	profiles := 0
+	if s.Effort != "" {
+		profiles++
+	}
+	if s.Variant != "" {
+		profiles++
+	}
+	if s.NoVariant {
+		profiles++
+	}
+	return profiles == 1
+}
+
+// EffortDelivery records how the host applied the routed execution profile.
+// Before OpenCode variants it described effort only; after them the existing
+// type and JSON field retain their names for compatibility while the closed set
+// also describes model-variant delivery. The run engine decides which value a
+// host warrants; this package only validates and renders it.
 type EffortDelivery string
 
 const (
@@ -117,6 +173,10 @@ const (
 	// prompt (Claude Code subagents). The recorded effort is then the
 	// routing decision, not an enforced setting.
 	EffortDeliveryPromptCue EffortDelivery = "prompt-cue"
+	// EffortDeliveryModelVariant keeps the existing audit field compatible
+	// while recording OpenCode's actual mechanism: its optional execution
+	// profile is part of the model reference, not a host-wide effort value.
+	EffortDeliveryModelVariant EffortDelivery = "model-variant"
 )
 
 // Escalation records a routing change: an escalation to a stronger
@@ -232,6 +292,9 @@ func (m Manifest) validate() error {
 	if !validEffortDelivery(m.EffortDelivery) {
 		return fmt.Errorf("effort_delivery %q is not one of %s", m.EffortDelivery, strings.Join(effortDeliveryNames(), ", "))
 	}
+	if err := validateDeliveryProfiles(m.EffortDelivery, m.Executor, m.Reviewer); err != nil {
+		return err
+	}
 	if m.RoutingRationale == "" {
 		return errors.New("routing_rationale is empty")
 	}
@@ -297,8 +360,24 @@ func validateSelection(field string, s Selection) error {
 	if s.Model == "" {
 		return fmt.Errorf("%s.model is empty", field)
 	}
-	if s.Effort == "" {
-		return fmt.Errorf("%s.effort is empty", field)
+	if !s.HasExecutionProfile() {
+		return fmt.Errorf("%s must carry exactly one of effort, variant, or no_variant", field)
+	}
+	return nil
+}
+
+func validateDeliveryProfiles(delivery EffortDelivery, selections ...Selection) error {
+	for _, s := range selections {
+		switch delivery {
+		case EffortDeliveryParameter, EffortDeliveryPromptCue:
+			if s.Effort == "" {
+				return fmt.Errorf("effort_delivery %q requires effort-based selections", delivery)
+			}
+		case EffortDeliveryModelVariant:
+			if s.Variant == "" && !s.NoVariant {
+				return fmt.Errorf("effort_delivery %q requires OpenCode variant or no_variant selections", delivery)
+			}
+		}
 	}
 	return nil
 }
@@ -349,7 +428,7 @@ func roleNames() []string {
 
 func validEffortDelivery(d EffortDelivery) bool {
 	switch d {
-	case EffortDeliveryParameter, EffortDeliveryPromptCue:
+	case EffortDeliveryParameter, EffortDeliveryPromptCue, EffortDeliveryModelVariant:
 		return true
 	default:
 		return false
@@ -357,5 +436,5 @@ func validEffortDelivery(d EffortDelivery) bool {
 }
 
 func effortDeliveryNames() []string {
-	return []string{string(EffortDeliveryParameter), string(EffortDeliveryPromptCue)}
+	return []string{string(EffortDeliveryParameter), string(EffortDeliveryPromptCue), string(EffortDeliveryModelVariant)}
 }

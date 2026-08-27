@@ -30,6 +30,16 @@ func TestRenderLocalGoldenOneKey(t *testing.T) {
 	checkGolden(t, filepath.Join("renderlocal", "one_key.golden.toml"), got)
 }
 
+func TestRenderLocalOpenCodeNoVariant(t *testing.T) {
+	got, err := RenderLocal(map[string]string{"hosts.opencode.roles.architect.variant": ""})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(got), "variant = \"\"\n") {
+		t.Errorf("no-variant override is not explicit:\n%s", got)
+	}
+}
+
 func TestRenderLocalEmptyMapIsError(t *testing.T) {
 	_, err := RenderLocal(map[string]string{})
 	if err == nil {
@@ -90,13 +100,17 @@ func TestRenderLocalSelfCheckCatchesMismatch(t *testing.T) {
 // key as an override — proving RenderLocal and the closed
 // classification table agree on the complete preference-key set.
 func TestRenderLocalKeysMatchPreferenceClass(t *testing.T) {
-	wantCount := 2 + 3*6*2 // concurrency + metrics, 3 hosts * 6 roles * (model, effort)
+	wantCount := 2 + 3*6*2 + 6 // base preferences plus OpenCode's six variants
 	if got := len(PreferenceKeys()); got != wantCount {
 		t.Fatalf("len(PreferenceKeys()) = %d, want %d", got, wantCount)
 	}
 
 	committed := bothHostsConfig()
 	openCode := *committed.Hosts.Codex
+	for _, role := range roleOrder {
+		p := roleProfilePtr(&openCode.Roles, role)
+		p.Model = "openai/" + p.Model
+	}
 	committed.Hosts.OpenCode = &openCode
 	for _, key := range PreferenceKeys() {
 		t.Run(key, func(t *testing.T) {
@@ -126,6 +140,9 @@ func sampleValueFor(key string) string {
 	}
 	if strings.HasSuffix(key, ".effort") {
 		return "high" // valid in both codex's and claude's effort domains
+	}
+	if strings.HasSuffix(key, ".variant") {
+		return "fast"
 	}
 	return "claude-fable-5" // any non-whitespace string is a legal free-text model
 }

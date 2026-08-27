@@ -19,7 +19,7 @@ import (
 
 // Question IDs for the picker document. Every other configure-local
 // question ID is the exact overlay dotted key it materializes onto
-// (localRoleModelID/localRoleEffortID below, and idMaxSubagents/
+// (localRoleModelID plus the host-native profile ID below, and idMaxSubagents/
 // idMetricsEnabled reused verbatim from sequence.go — those two already
 // equal their own overlay keys) — deliberately unlike init's
 // host.<host>.role.<role>.* ids, so an adapter's answers map doubles as
@@ -32,15 +32,18 @@ const (
 	idPickSettings = "pick.settings"
 )
 
-// localRoleModelID and localRoleEffortID build a role's two
+// localRoleModelID, localRoleEffortID, and localRoleVariantID build a role's
 // configure-local question ids, identical in shape to the dotted keys
-// config's leafClasses table classifies (TestConfigureLocalLeafIDsMatchPreferenceKeys
+// config's leafClasses table classifies (TestConfigureLocalLeafIDsMatchEditablePreferenceKeys
 // pins this).
 func localRoleModelID(host, role string) string {
 	return fmt.Sprintf("hosts.%s.roles.%s.model", host, role)
 }
 func localRoleEffortID(host, role string) string {
 	return fmt.Sprintf("hosts.%s.roles.%s.effort", host, role)
+}
+func localRoleVariantID(role string) string {
+	return fmt.Sprintf("hosts.opencode.roles.%s.variant", role)
 }
 
 // hostLocalModels lists each host's local-override-selectable models:
@@ -83,7 +86,7 @@ func buildPreferenceKeySet() map[string]bool {
 // sequence completes the way Next's own repoRoot use is scoped
 // (documented deviation from the init precedent).
 //
-// Question IDs equal the exact overlay dotted keys config.PreferenceKeys
+// Question IDs equal the exact current writer keys config.EditablePreferenceKeys
 // enumerates (the picker's own pick.* ids aside), so an adapter's
 // answers map is itself a preview of the resulting config.local.toml.
 //
@@ -312,7 +315,16 @@ func stringifyLeafValue(key string, val any) (string, bool) {
 			return s, true
 		case strings.HasSuffix(key, ".effort"):
 			host, _ := hostOfPreferenceKey(key)
-			if !validEffort(host, s) {
+			if host == "opencode" {
+				if !legacyOpenCodeEffort(s) {
+					return "", false
+				}
+			} else if !validEffort(host, s) {
+				return "", false
+			}
+			return s, true
+		case strings.HasSuffix(key, ".variant"):
+			if strings.ContainsAny(s, "# \t\r\n") {
 				return "", false
 			}
 			return s, true
@@ -320,6 +332,15 @@ func stringifyLeafValue(key string, val any) (string, bool) {
 			return "", false
 		}
 	}
+}
+
+func legacyOpenCodeEffort(value string) bool {
+	for _, effort := range []string{"low", "medium", "high", "xhigh", "max"} {
+		if effort == value {
+			return true
+		}
+	}
+	return false
 }
 
 // validEffort reports whether value is one of host's closed effort
@@ -485,8 +506,9 @@ func effectiveValue(seeded map[string]string, key, committedValue string) string
 	return committedValue
 }
 
-// localRoleDocSpecs builds host's six per-role documents (model+effort
-// paired, roleSpecs order) for the configure-local interview: question
+// localRoleDocSpecs builds host's six per-role documents (model plus effort
+// for Claude/Codex, or model plus optional variant for OpenCode), paired in
+// roleSpecs order for the configure-local interview. Question
 // IDs are the true overlay dotted keys, options mark the committed
 // value's option "(committed)" in its Label and the effective-current
 // value Recommended, and Default is always the effective-current value
@@ -499,9 +521,7 @@ func localRoleDocSpecs(host string, committed *config.Config, seeded map[string]
 	for _, rs := range roleSpecs {
 		cp := committedProfile(h, rs.key)
 		modelKey := localRoleModelID(host, rs.key)
-		effortKey := localRoleEffortID(host, rs.key)
 		effectiveModel := effectiveValue(seeded, modelKey, cp.Model)
-		effectiveEffort := effectiveValue(seeded, effortKey, cp.Effort)
 
 		modelQ := question.Question{
 			ID:       modelKey,
@@ -512,18 +532,49 @@ func localRoleDocSpecs(host string, committed *config.Config, seeded map[string]
 			FreeText: true,
 			Default:  effectiveModel,
 		}
-		effortQ := question.Question{
-			ID:       effortKey,
-			Header:   rs.header,
-			Prompt:   fmt.Sprintf("%s reasoning effort (%s)", rs.label, hostLabel),
-			Kind:     question.KindSelect,
-			Options:  effortOptionsLocal(host, cp.Effort, effectiveEffort),
-			FreeText: true,
-			Default:  effectiveEffort,
-		}
-		docs = append(docs, docSpec{questions: []question.Question{modelQ, effortQ}})
+		profileQ := localProfileQuestion(host, rs, cp, seeded)
+		docs = append(docs, docSpec{questions: []question.Question{modelQ, profileQ}})
 	}
 	return docs
+}
+
+func localProfileQuestion(host string, rs roleSpec, committed config.RoleProfile, seeded map[string]string) question.Question {
+	if host != "opencode" {
+		key := localRoleEffortID(host, rs.key)
+		effective := effectiveValue(seeded, key, committed.Effort)
+		return question.Question{
+			ID: key, Header: rs.header, Prompt: fmt.Sprintf("%s reasoning effort (%s)", rs.label, hostLabels[host]),
+			Kind: question.KindSelect, Options: effortOptionsLocal(host, committed.Effort, effective), FreeText: true, Default: effective,
+		}
+	}
+	key := localRoleVariantID(rs.key)
+	committedVariant := committed.EffectiveOpenCodeVariant()
+	effective := committedVariant
+	if legacy, ok := seeded[localRoleEffortID(host, rs.key)]; ok {
+		effective = legacy
+	}
+	if variant, ok := seeded[key]; ok {
+		effective = variant
+	}
+	return question.Question{
+		ID: key, Header: rs.header, Prompt: fmt.Sprintf("%s model variant (%s)", rs.label, hostLabels[host]),
+		Kind: question.KindSelect, Options: variantOptionsLocal(committedVariant, effective), FreeText: true, Default: variantAnswer(effective),
+	}
+}
+
+func variantOptionsLocal(committed, effective string) []question.Option {
+	values := variantOptionValues(committed, effective)
+	effective = variantAnswer(effective)
+	committed = variantAnswer(committed)
+	opts := make([]question.Option, len(values))
+	for i, value := range values {
+		label := value
+		if value == committed {
+			label += " (committed)"
+		}
+		opts[i] = question.Option{Value: value, Label: label, Recommended: value == effective}
+	}
+	return opts
 }
 
 // modelOptionsLocal lists host's local-override-selectable models,
@@ -638,8 +689,9 @@ func yesNoLabelLocal(label, value, committedVal string) string {
 // — an unpicked area's valid overrides are preserved untouched — then
 // applies every picked host's role answers and, if picked, the settings
 // answers, clearing an override whenever the answer equals the
-// committed value (contract call 5: "no sentinel option"; clearing is
-// answering the committed value back). Once assembled, a non-empty
+// committed value. Before optional variants this needed no sentinel;
+// after, OpenCode alone uses noVariantAnswer because the question wire
+// rejects empty option values, then maps it back to variant = "". Once assembled, a non-empty
 // result round-trips through config.RenderLocal and config.MergeLocal
 // as a fail-closed self-check — the same anti-forgery discipline
 // materialize's Render/Parse round trip applies to init.
@@ -687,9 +739,7 @@ func applyRoleAnswers(committed *config.Config, host string, answers, overrides 
 	h := committedHostConfig(committed, host)
 	for _, rs := range roleSpecs {
 		modelKey := localRoleModelID(host, rs.key)
-		effortKey := localRoleEffortID(host, rs.key)
 		modelVal := answers[modelKey]
-		effortVal := answers[effortKey]
 		cp := committedProfile(h, rs.key)
 		current := cp.Model
 		if seeded, ok := overrides[modelKey]; ok {
@@ -699,7 +749,19 @@ func applyRoleAnswers(committed *config.Config, host string, answers, overrides 
 			return err
 		}
 		setOrClear(overrides, modelKey, modelVal, cp.Model)
-		setOrClear(overrides, effortKey, effortVal, cp.Effort)
+		if host == "opencode" {
+			effortKey := localRoleEffortID(host, rs.key)
+			variantKey := localRoleVariantID(rs.key)
+			variant := answers[variantKey]
+			if variant == noVariantAnswer {
+				variant = ""
+			}
+			delete(overrides, effortKey)
+			setOrClear(overrides, variantKey, variant, cp.EffectiveOpenCodeVariant())
+		} else {
+			effortKey := localRoleEffortID(host, rs.key)
+			setOrClear(overrides, effortKey, answers[effortKey], cp.Effort)
+		}
 	}
 	return nil
 }

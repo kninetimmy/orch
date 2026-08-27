@@ -27,6 +27,29 @@ func minimalManifest() Manifest {
 	}
 }
 
+func TestOpenCodeVariantAndNoVariantRoundTrip(t *testing.T) {
+	m := minimalManifest()
+	m.Executor = OpenCodeSelection("openai/gpt-5.6-sol", "xhigh")
+	m.Reviewer = OpenCodeSelection("github-copilot/gpt-5-mini", "")
+	m.EffortDelivery = EffortDeliveryModelVariant
+	rendered, err := Render(m)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{"openai/gpt-5.6-sol#xhigh", "variant `xhigh`", "github-copilot/gpt-5-mini", "no variant", `"no_variant": true`} {
+		if !strings.Contains(rendered, want) {
+			t.Errorf("rendered manifest missing %q:\n%s", want, rendered)
+		}
+	}
+	got, err := Parse(rendered)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Executor != m.Executor || got.Reviewer != m.Reviewer {
+		t.Errorf("round trip selections = %+v / %+v", got.Executor, got.Reviewer)
+	}
+}
+
 // fixtureCommitOID is the head the fixture's stamped verifications were
 // gathered at, and fixtureFixOID a later head one of them was re-run on,
 // so a golden shows two entries that disagree about which commit they
@@ -142,7 +165,8 @@ func TestValidateRejects(t *testing.T) {
 		"original schema version":   {func(m *Manifest) { m.SchemaVersion = 1 }, "schema_version 1 is unsupported"},
 		"superseded schema version": {func(m *Manifest) { m.SchemaVersion = 2 }, "schema_version 2 is unsupported"},
 		"prior schema version":      {func(m *Manifest) { m.SchemaVersion = 3 }, "schema_version 3 is unsupported"},
-		"future schema version":     {func(m *Manifest) { m.SchemaVersion = 5 }, "schema_version 5 is unsupported"},
+		"v4 schema version":         {func(m *Manifest) { m.SchemaVersion = 4 }, "schema_version 4 is unsupported"},
+		"future schema version":     {func(m *Manifest) { m.SchemaVersion = 6 }, "schema_version 6 is unsupported"},
 		"absent schema version":     {func(m *Manifest) { m.SchemaVersion = 0 }, "schema_version 0 is unsupported"},
 		"empty objective":           {func(m *Manifest) { m.Objective = "" }, "objective is empty"},
 		"no acceptance criteria":    {func(m *Manifest) { m.AcceptanceCriteria = nil }, "acceptance_criteria is empty"},
@@ -155,16 +179,16 @@ func TestValidateRejects(t *testing.T) {
 			`tests_ci_does_not_run[0] "go test -tags golden ./..." does not name one of required_tests`},
 		"unknown role":              {func(m *Manifest) { m.Role = "wizard" }, `role "wizard" is not one of`},
 		"empty executor model":      {func(m *Manifest) { m.Executor.Model = "" }, "executor.model is empty"},
-		"empty executor effort":     {func(m *Manifest) { m.Executor.Effort = "" }, "executor.effort is empty"},
+		"empty executor effort":     {func(m *Manifest) { m.Executor.Effort = "" }, "executor must carry exactly one of"},
 		"empty reviewer model":      {func(m *Manifest) { m.Reviewer.Model = "" }, "reviewer.model is empty"},
-		"empty reviewer effort":     {func(m *Manifest) { m.Reviewer.Effort = "" }, "reviewer.effort is empty"},
+		"empty reviewer effort":     {func(m *Manifest) { m.Reviewer.Effort = "" }, "reviewer must carry exactly one of"},
 		"absent effort delivery":    {func(m *Manifest) { m.EffortDelivery = "" }, `effort_delivery "" is not one of`},
 		"unknown effort delivery":   {func(m *Manifest) { m.EffortDelivery = "telepathy" }, `effort_delivery "telepathy" is not one of`},
 		"empty rationale":           {func(m *Manifest) { m.RoutingRationale = "" }, "routing_rationale is empty"},
 		"empty config revision":     {func(m *Manifest) { m.ConfigRevision = "" }, "config_revision is empty"},
 		"bad escalation kind":       {func(m *Manifest) { m.Escalations[0].Kind = "demotion" }, `escalations[0]: kind "demotion" is not one of`},
 		"escalation empty from":     {func(m *Manifest) { m.Escalations[0].From.Model = "" }, "escalations[0]: from.model is empty"},
-		"escalation empty to":       {func(m *Manifest) { m.Escalations[1].To.Effort = "" }, "escalations[1]: to.effort is empty"},
+		"escalation empty to":       {func(m *Manifest) { m.Escalations[1].To.Effort = "" }, "escalations[1]: to must carry exactly one of"},
 		"escalation empty reason":   {func(m *Manifest) { m.Escalations[0].Reason = "" }, "escalations[0]: reason is empty"},
 		"verification empty name":   {func(m *Manifest) { m.Verifications[2].Name = "" }, "verifications[2]: name is empty"},
 		"verification empty result": {func(m *Manifest) { m.Verifications[0].Result = "" }, "verifications[0]: result is empty"},

@@ -33,6 +33,9 @@ func Parse(data []byte) (*Config, error) {
 	}
 
 	applyDefaults(&cfg, md)
+	if err := validateHostSpecificKeys(&cfg, md); err != nil {
+		return nil, err
+	}
 	if err := cfg.validate(); err != nil {
 		return nil, err
 	}

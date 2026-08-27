@@ -18,7 +18,7 @@ type Config struct {
 
 	// Overrides lists, sorted, the dotted keys applied from
 	// config.local.toml. It is the audit surface for PRD §23: which
-	// exact model/effort values are in effect must always be visible.
+	// exact model/execution-profile values are in effect must always be visible.
 	// Empty (nil) when no local override file exists or it sets
 	// nothing. Never itself read from either TOML file.
 	Overrides []string `toml:"-"`
@@ -52,13 +52,13 @@ type Hosts struct {
 	OpenCode *Host `toml:"opencode"`
 }
 
-// Host is a per-host model/effort profile (PRD §10).
+// Host is a per-host role profile (PRD §10).
 type Host struct {
 	Roles Roles `toml:"roles"`
 }
 
 // Roles maps every PRD §9 role, plus the safe review downgrade, to an
-// exact model and effort. All six are required for an enabled host.
+// exact model and execution profile. All six are required for an enabled host.
 type Roles struct {
 	Architect       RoleProfile `toml:"architect"`
 	Scout           RoleProfile `toml:"scout"`
@@ -68,10 +68,25 @@ type Roles struct {
 	ReviewDowngrade RoleProfile `toml:"review_downgrade"`
 }
 
-// RoleProfile pins an exact model version and reasoning effort.
+// RoleProfile pins an exact model version and its host-native execution
+// profile. Claude and Codex require Effort and never accept Variant. OpenCode
+// uses optional Variant; an empty Variant means the bare provider/model. Effort
+// remains accepted for OpenCode solely as the v0.8.0 compatibility spelling
+// and has the same effective meaning as Variant.
 type RoleProfile struct {
-	Model  string `toml:"model"`
-	Effort string `toml:"effort"`
+	Model   string `toml:"model"`
+	Effort  string `toml:"effort"`
+	Variant string `toml:"variant" json:",omitempty"`
+}
+
+// EffectiveOpenCodeVariant returns the variant an OpenCode role selects,
+// interpreting v0.8.0 Effort as the compatibility spelling. This rule applies
+// to every RoleProfile used under hosts.opencode and to no Claude/Codex role.
+func (p RoleProfile) EffectiveOpenCodeVariant() string {
+	if p.Effort != "" {
+		return p.Effort
+	}
+	return p.Variant
 }
 
 // EnabledHosts returns the names of the configured hosts in stable order.

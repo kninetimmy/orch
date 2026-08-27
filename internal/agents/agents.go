@@ -123,7 +123,7 @@ func Render(host string, h *config.Host) ([]File, error) {
 			ext = ".md"
 			canonical, err = opencode.AgentDefinitions.ReadFile("agents/" + rf.stem + ext)
 			if err == nil {
-				content, err = substituteOpenCode(canonical, profile.Model, profile.Effort)
+				content, err = substituteOpenCode(canonical, profile.Model, profile.EffectiveOpenCodeVariant())
 			}
 		}
 		if err != nil {
@@ -195,12 +195,16 @@ func substituteClaude(canonical []byte, model string) ([]byte, error) {
 }
 
 // substituteOpenCode replaces only model in native V2 frontmatter. OpenCode
-// carries reasoning effort as the model reference's #variant suffix.
-func substituteOpenCode(canonical []byte, model, effort string) ([]byte, error) {
+// carries a selected model-specific variant as #variant and leaves a
+// no-variant provider/model reference bare.
+func substituteOpenCode(canonical []byte, model, variant string) ([]byte, error) {
 	if strings.Contains(model, "#") {
 		return nil, fmt.Errorf("model %q already contains an OpenCode variant", model)
 	}
-	return substituteClaude(canonical, model+"#"+effort)
+	if variant != "" {
+		model += "#" + variant
+	}
+	return substituteClaude(canonical, model)
 }
 
 // replaceOneLine replaces pattern's single match in s with replacement,
