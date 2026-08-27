@@ -287,7 +287,7 @@ func TestCIDeclarationReachesTheExecutorAndReviewer(t *testing.T) {
 	}
 
 	// The dispatch result: the adapter's whole spawn brief.
-	dispatched := runVerb(t, root, Dispatch, `{"schema_version":3,"issue_number":1}`,
+	dispatched := runVerb(t, root, Dispatch, `{"schema_version":4,"issue_number":1}`,
 		ghAuth(), ghRepoViewCall("main"), ghSetStatusCall(1, ghops.StatusInProgress))
 	if len(dispatched.RequiredTests) != 2 {
 		t.Fatalf("dispatch required tests = %q, want the plan's two", dispatched.RequiredTests)
@@ -326,7 +326,7 @@ func TestLifecycleWalk(t *testing.T) {
 
 	// dispatch. The result is the adapter's whole spawn brief, so it must
 	// carry the approved work verbatim alongside the routed selection.
-	dispatched := runVerb(t, root, Dispatch, `{"schema_version":3,"issue_number":1}`,
+	dispatched := runVerb(t, root, Dispatch, `{"schema_version":4,"issue_number":1}`,
 		ghAuth(), ghRepoViewCall("main"), ghSetStatusCall(1, ghops.StatusInProgress))
 	wantPhase(t, root, 1, state.PhaseDispatched)
 	if dispatched.Objective != "Make status reporting race-free" {
@@ -367,14 +367,14 @@ func TestLifecycleWalk(t *testing.T) {
 	}
 
 	// review: request-changes.
-	runVerb(t, root, Review, `{"schema_version":2,"issue_number":1,"reviewed_head_oid":"head-oid-1","verdict":"request-changes","summary":"fix things","reviewer":{"model":"claude-opus-4-8","effort":"high"},`+fixtureJudgments+`}`,
+	runVerb(t, root, Review, `{"schema_version":3,"issue_number":1,"reviewed_head_oid":"head-oid-1","verdict":"request-changes","summary":"fix things","reviewer":{"model":"claude-opus-4-8","effort":"high"},`+fixtureJudgments+`}`,
 		ghAuth(), ghPRViewCall(10, "OPEN", "head-oid-1"),
 		ghIssueViewCall(t, 1, "OPEN", body), ghSetIssueBodyCall(1), ghSetPRBodyCall(10),
 		ghSetStatusCall(1, ghops.StatusInProgress))
 	wantPhase(t, root, 1, state.PhaseInReview)
 
 	// review: approve (PR moved to a new head).
-	runVerb(t, root, Review, `{"schema_version":2,"issue_number":1,"reviewed_head_oid":"head-oid-2","verdict":"approve","summary":"looks good","reviewer":{"model":"claude-opus-4-8","effort":"high"},`+fixtureJudgments+`}`,
+	runVerb(t, root, Review, `{"schema_version":3,"issue_number":1,"reviewed_head_oid":"head-oid-2","verdict":"approve","summary":"looks good","reviewer":{"model":"claude-opus-4-8","effort":"high"},`+fixtureJudgments+`}`,
 		ghAuth(), ghPRViewCall(10, "OPEN", "head-oid-2"),
 		ghIssueViewCall(t, 1, "OPEN", body), ghSetIssueBodyCall(1), ghSetPRBodyCall(10))
 	wantPhase(t, root, 1, state.PhaseInReview)

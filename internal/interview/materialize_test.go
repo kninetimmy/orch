@@ -80,6 +80,7 @@ func TestMaterializeSingleHost(t *testing.T) {
 
 func TestMaterializeOpenCodeOnly(t *testing.T) {
 	answers := openCodeOnlyAnswers()
+	answers[roleModelID("opencode", "architect")] = "lmstudio/google/gemma-4-26b-a4b"
 	answers[roleVariantID("opencode", "architect")] = "provider-custom"
 	answers[roleVariantID("opencode", "scout")] = noVariantAnswer
 	cfg, err := materialize(answers)
@@ -92,7 +93,7 @@ func TestMaterializeOpenCodeOnly(t *testing.T) {
 	if got := cfg.Hosts.OpenCode.Roles.Specialist.Model; got != "openai/gpt-5.6-sol" {
 		t.Errorf("specialist model = %q", got)
 	}
-	if p := cfg.Hosts.OpenCode.Roles.Architect; p.Variant != "provider-custom" || p.Effort != "" {
+	if p := cfg.Hosts.OpenCode.Roles.Architect; p.Model != "lmstudio/google/gemma-4-26b-a4b" || p.Variant != "provider-custom" || p.Effort != "" {
 		t.Errorf("architect profile = %+v, want native provider-custom variant", p)
 	}
 	if p := cfg.Hosts.OpenCode.Roles.Scout; p.Variant != "" || p.Effort != "" {

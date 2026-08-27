@@ -132,6 +132,10 @@ func validateHost(name string, h *Host, fail func(string, ...any)) {
 	}
 }
 
+// validateOpenCodeProfile treats only the first slash as the provider/model
+// separator; the remaining non-empty model ID is opaque and may contain more
+// slashes, matching catalog.Model.ID. This grammar applies to every OpenCode
+// role and never to Claude/Codex profiles.
 func validateOpenCodeProfile(prefix string, p RoleProfile, fail func(string, ...any)) {
 	if p.Effort != "" {
 		if p.Variant != "" {
@@ -149,7 +153,7 @@ func validateOpenCodeProfile(prefix string, p RoleProfile, fail func(string, ...
 		fail("%s.model: %q must not contain whitespace", prefix, p.Model)
 	}
 	provider, model, ok := strings.Cut(p.Model, "/")
-	if !ok || provider == "" || model == "" || strings.Contains(model, "/") {
+	if !ok || provider == "" || model == "" {
 		fail("%s.model: %q must be an exact provider/model", prefix, p.Model)
 	}
 	if strings.ContainsAny(p.Variant, "# \t\r\n") {

@@ -266,6 +266,7 @@ func openCodeConfigureSummary(t *testing.T, root string, overrides map[string]st
 func TestConfigurePreservesAndCreatesNativeOpenCodeProfiles(t *testing.T) {
 	root := t.TempDir()
 	committed := writeCommittedConfigOpenCodeOnly(t, root)
+	committed.Hosts.OpenCode.Roles.Architect.Model = "lmstudio/google/gemma-4-26b-a4b"
 	committed.Hosts.OpenCode.Roles.Architect.Variant = "committed-custom"
 	committed.Hosts.OpenCode.Roles.Scout.Variant = ""
 	writeCommittedConfig(t, root, committed)
@@ -289,7 +290,7 @@ func TestConfigurePreservesAndCreatesNativeOpenCodeProfiles(t *testing.T) {
 			t.Errorf("%s profile = %+v, want native OpenCode shape", name, profile)
 		}
 	}
-	if roles.Architect.Variant != "committed-custom" || roles.Scout.Variant != "" || roles.Implementer.Variant != "" || roles.Specialist.Variant != "configured-custom" {
+	if roles.Architect.Model != "lmstudio/google/gemma-4-26b-a4b" || roles.Architect.Variant != "committed-custom" || roles.Scout.Variant != "" || roles.Implementer.Variant != "" || roles.Specialist.Variant != "configured-custom" {
 		t.Errorf("OpenCode roles were not preserved/created exactly: %+v", roles)
 	}
 }

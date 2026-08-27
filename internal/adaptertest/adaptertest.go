@@ -32,6 +32,7 @@
 package adaptertest
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -329,6 +330,33 @@ func CheckOpenCodeRoutedSelectionCue(t *testing.T, skillPath string) {
 	content := normalizeWhitespace(readFile(t, skillPath))
 	if !strings.Contains(content, normalizeWhitespace(openCodeRoutedSelectionCue)) {
 		t.Errorf("%s does not contain the routed-selection prompt cue %q", skillPath, openCodeRoutedSelectionCue)
+	}
+}
+
+// CheckSelectionWireVersions pins every Selection-bearing run protocol to the
+// engine constants. The skills must reject drift before reading or submitting a
+// Selection; hand-synced numeric literals cannot change without this test.
+func CheckSelectionWireVersions(t *testing.T, deliverySkillPath, architectSkillPath string) {
+	t.Helper()
+	versions := fmt.Sprintf("Selection-bearing wire versions are closed: StatusDoc `%d`, GateDoc `%d`, Dispatch `%d`, Escalate `%d`, Review `%d`.",
+		run.StatusSchemaVersion, run.GateSchemaVersion, run.DispatchSchemaVersion, run.EscalateSchemaVersion, run.ReviewSchemaVersion)
+	delivery := normalizeWhitespace(readFile(t, deliverySkillPath))
+	phrases := []string{
+		versions,
+		"Reject any other `schema_version` before reading or submitting a `Selection`.",
+		fmt.Sprintf("`GateDoc` (`schema_version: %d`)", run.GateSchemaVersion),
+		fmt.Sprintf("`{\"schema_version\": %d, \"issue_number\": N}`. Result (`DispatchResult`)", run.DispatchSchemaVersion),
+		fmt.Sprintf("{\"schema_version\": %d, \"issue_number\": N, \"reviewed_head_oid\": \"...\"", run.ReviewSchemaVersion),
+		fmt.Sprintf("{\"schema_version\": %d, \"issue_number\": N, \"trigger\": \"...\", \"detail\": \"...\"}", run.EscalateSchemaVersion),
+	}
+	for _, phrase := range phrases {
+		if !strings.Contains(delivery, normalizeWhitespace(phrase)) {
+			t.Errorf("%s does not contain Selection wire contract %q", deliverySkillPath, phrase)
+		}
+	}
+	status := fmt.Sprintf("`orch run status --json` returns `StatusDoc` schema_version `%d`; reject any other before reading its Selection-bearing run state.", run.StatusSchemaVersion)
+	if content := normalizeWhitespace(readFile(t, architectSkillPath)); !strings.Contains(content, normalizeWhitespace(status)) {
+		t.Errorf("%s does not contain status wire contract %q", architectSkillPath, status)
 	}
 }
 

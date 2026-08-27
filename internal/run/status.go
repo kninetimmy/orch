@@ -8,8 +8,11 @@ import (
 	"github.com/kninetimmy/orch/internal/state"
 )
 
-// StatusSchemaVersion is the status-document schema this build emits.
-const StatusSchemaVersion = 1
+// StatusSchemaVersion is the status-document schema this build emits. v2
+// versions Selection's OpenCode variant/no_variant shapes transitively through
+// RunView.Issues[].Decision; retaining v1 would let stale adapters misread run
+// state.
+const StatusSchemaVersion = 2
 
 // StatusDoc is the run-state document `orch run status --json`
 // reports. It never loads config, and it never fails on an

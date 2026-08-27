@@ -12,8 +12,9 @@ import (
 )
 
 // EscalateSchemaVersion is the escalate request/result schema this build
-// accepts and emits.
-const EscalateSchemaVersion = 1
+// accepts and emits. v2 versions Selection's OpenCode variant/no_variant
+// shapes; retaining v1 would let stale adapters discard the new profile.
+const EscalateSchemaVersion = 2
 
 // EscalateRequest raises a PRD §11 escalation on an in-flight issue.
 // Trigger is the closed routing.Trigger set; the engine passes it

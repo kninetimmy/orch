@@ -334,21 +334,21 @@ func TestMergeLocalOpenCodeVariantAndNoVariant(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	variant, err := MergeLocal(committed, []byte("[hosts.opencode.roles.architect]\nvariant = \"provider-fast\"\n"))
+	variant, err := MergeLocal(committed, []byte("[hosts.opencode.roles.architect]\nmodel = \"lmstudio/google/gemma-4-26b-a4b\"\nvariant = \"provider-fast\"\n"))
 	if err != nil {
 		t.Fatal(err)
 	}
 	p := variant.Hosts.OpenCode.Roles.Architect
-	if p.Effort != "" || p.Variant != "provider-fast" {
+	if p.Model != "lmstudio/google/gemma-4-26b-a4b" || p.Effort != "" || p.Variant != "provider-fast" {
 		t.Errorf("variant override = %+v", p)
 	}
 
-	none, err := MergeLocal(committed, []byte("[hosts.opencode.roles.architect]\nvariant = \"\"\n"))
+	none, err := MergeLocal(committed, []byte("[hosts.opencode.roles.architect]\nmodel = \"lmstudio/google/gemma-4-26b-a4b\"\nvariant = \"\"\n"))
 	if err != nil {
 		t.Fatal(err)
 	}
 	p = none.Hosts.OpenCode.Roles.Architect
-	if p.Effort != "" || p.Variant != "" {
+	if p.Model != "lmstudio/google/gemma-4-26b-a4b" || p.Effort != "" || p.Variant != "" {
 		t.Errorf("no-variant override = %+v", p)
 	}
 }

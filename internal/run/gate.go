@@ -12,8 +12,10 @@ import (
 	"github.com/kninetimmy/orch/internal/state"
 )
 
-// GateSchemaVersion is the gate-document schema this build emits.
-const GateSchemaVersion = 1
+// GateSchemaVersion is the gate-document schema this build emits. v2 versions
+// Selection's OpenCode variant/no_variant shapes; retaining v1 would let a
+// stale adapter silently drop the execution profile.
+const GateSchemaVersion = 2
 
 // GateDoc is the human decision gate for a plan (PRD §8, covering
 // every §8 bullet): the adapter renders it natively and owns the four

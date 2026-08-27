@@ -79,6 +79,7 @@ func TestSkillsUseOnlyOpenCodeV2Surfaces(t *testing.T) {
 }
 
 const skillGlob = "skills/*/SKILL.md"
+const architectSkillPath = "skills/orch-architect/SKILL.md"
 const deliverySkillPath = "skills/orch-delivery/SKILL.md"
 const setupSkillPath = "skills/orch-setup/SKILL.md"
 
@@ -104,6 +105,10 @@ func TestSetupSkillHasTerminalForms(t *testing.T) {
 
 func TestDeliverySkillHasRoutedSelectionCue(t *testing.T) {
 	adaptertest.CheckOpenCodeRoutedSelectionCue(t, deliverySkillPath)
+}
+
+func TestSelectionWireVersionsMatchEngine(t *testing.T) {
+	adaptertest.CheckSelectionWireVersions(t, deliverySkillPath, architectSkillPath)
 }
 
 func TestDeliverySkillHasBranchScopeVerificationGuidance(t *testing.T) {

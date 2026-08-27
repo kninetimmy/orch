@@ -68,7 +68,9 @@ func TestEffortDomainPerHost(t *testing.T) {
 }
 
 func TestOpenCodeAcceptsNativeVariantAndNoVariant(t *testing.T) {
-	withVariant := strings.ReplaceAll(singleHostTOML("opencode", "high"), `effort = "high"`, `variant = "provider-specific"`)
+	const model = "lmstudio/google/gemma-4-26b-a4b"
+	native := strings.ReplaceAll(singleHostTOML("opencode", "high"), "openai/gpt-5.6-sol", model)
+	withVariant := strings.ReplaceAll(native, `effort = "high"`, `variant = "provider-specific"`)
 	cfg, err := Parse([]byte(withVariant))
 	if err != nil {
 		t.Fatalf("Parse variant: %v", err)
@@ -76,14 +78,24 @@ func TestOpenCodeAcceptsNativeVariantAndNoVariant(t *testing.T) {
 	if got := cfg.Hosts.OpenCode.Roles.Architect.Variant; got != "provider-specific" {
 		t.Errorf("architect variant = %q", got)
 	}
+	if got := cfg.Hosts.OpenCode.Roles.Architect.Model; got != model {
+		t.Errorf("architect model = %q, want %q", got, model)
+	}
 
-	withoutVariant := strings.ReplaceAll(singleHostTOML("opencode", "high"), "\neffort = \"high\"", "")
+	withoutVariant := strings.ReplaceAll(native, "\neffort = \"high\"", "")
 	cfg, err = Parse([]byte(withoutVariant))
 	if err != nil {
 		t.Fatalf("Parse no variant: %v", err)
 	}
 	if p := cfg.Hosts.OpenCode.Roles.Architect; p.Effort != "" || p.Variant != "" {
 		t.Errorf("architect profile = %+v, want unambiguous no variant", p)
+	}
+	rendered, err := Render(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Parse(rendered); err != nil {
+		t.Fatalf("multi-segment model did not round-trip: %v", err)
 	}
 }
 

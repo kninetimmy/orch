@@ -38,6 +38,9 @@ faithfully.
 
 `orch run status --json` never reads stdin — call it bare.
 
+Selection-bearing wire versions are closed: StatusDoc `2`, GateDoc `2`, Dispatch `4`, Escalate `2`, Review `3`.
+Reject any other `schema_version` before reading or submitting a `Selection`.
+
 ## PlanDoc construction
 
 Build a `PlanDoc` (`schema_version: 1`) honestly. Routing is derived
@@ -175,7 +178,7 @@ inherit.
 ## Plan gate
 
 Call `orch run plan` with the `PlanDoc` on stdin. The result is a
-`GateDoc` (`schema_version: 1`): `plan_digest`, `plan_title`, `host`,
+`GateDoc` (`schema_version: 2`): `plan_digest`, `plan_title`, `host`,
 `config_revision`, `config_overrides`, `merge_strategy`, `memhub`
 (`{mode, probe, recall, detail}`), `ci` (`{workflows_present, statement}`), and
 `issues[]` — each with `id`, `title`, `objective`,
@@ -247,7 +250,7 @@ engine value. Omit all optional usage fields; never estimate or substitute
 parent-session usage.
 
 1. **Dispatch** — `orch run dispatch` with
-   `{"schema_version": 3, "issue_number": N}`. Result
+   `{"schema_version": 4, "issue_number": N}`. Result
    (`DispatchResult`): `branch`, `worktree`, `executor`, `reviewer`,
    `rationale`, `objective`, `acceptance_criteria`, `required_tests`,
    `tests_ci_does_not_run`.
@@ -350,7 +353,7 @@ parent-session usage.
    already left, so you must track whichever value is current yourself:
 
    ```json
-   {"schema_version": 2, "issue_number": N, "reviewed_head_oid": "...",
+   {"schema_version": 3, "issue_number": N, "reviewed_head_oid": "...",
     "verdict": "approve|request-changes", "summary": "...",
     "reviewer": {"model": "...", "variant": "..."},
     "judgments": [{"criterion": 1, "judgment": "satisfied|unsatisfied|wrong", "reason": "..."}],
@@ -459,7 +462,7 @@ On unusual difficulty, reviewer uncertainty, or repeated weak-model
 failure, call `orch run escalate`:
 
 ```json
-{"schema_version": 1, "issue_number": N, "trigger": "...", "detail": "..."}
+{"schema_version": 2, "issue_number": N, "trigger": "...", "detail": "..."}
 ```
 
 `trigger` ∈ `scout-uncertainty`, `implementer-hard-execution`,

@@ -64,13 +64,27 @@ func defaultOpenCodeHost() *config.Host {
 
 func TestRenderOpenCodeWithoutVariantUsesBareModel(t *testing.T) {
 	h := defaultOpenCodeHost()
+	h.Roles.Scout.Model = "lmstudio/google/gemma-4-26b-a4b"
 	h.Roles.Scout.Variant = ""
 	files, err := agents.Render("opencode", h)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(string(files[0].Content), "model: \"openai/gpt-5.6-luna\"\n") {
+	if !strings.Contains(string(files[0].Content), "model: \"lmstudio/google/gemma-4-26b-a4b\"\n") {
 		t.Errorf("scout does not use the bare no-variant model:\n%s", files[0].Content)
+	}
+}
+
+func TestRenderOpenCodeVariantWithMultiSegmentModel(t *testing.T) {
+	h := defaultOpenCodeHost()
+	h.Roles.Scout.Model = "lmstudio/google/gemma-4-26b-a4b"
+	h.Roles.Scout.Variant = "fast"
+	files, err := agents.Render("opencode", h)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(files[0].Content), "model: \"lmstudio/google/gemma-4-26b-a4b#fast\"\n") {
+		t.Errorf("scout does not preserve the multi-segment model and variant:\n%s", files[0].Content)
 	}
 }
 

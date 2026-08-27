@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 
@@ -125,7 +126,7 @@ func TestDispatchDependencyEnforcement(t *testing.T) {
 
 	// Unmet: a is not merged/cleaned.
 	script := &execxtest.Script{T: t}
-	_, err := Dispatch(context.Background(), ghEnv(root, script), []byte(`{"schema_version":3,"issue_number":2}`))
+	_, err := Dispatch(context.Background(), ghEnv(root, script), []byte(`{"schema_version":4,"issue_number":2}`))
 	if !errors.Is(err, ErrDependencyUnmet) {
 		t.Fatalf("err = %v, want ErrDependencyUnmet", err)
 	}
@@ -138,7 +139,7 @@ func TestDispatchDependencyEnforcement(t *testing.T) {
 		t.Fatal(err)
 	}
 	script = &execxtest.Script{T: t}
-	_, err = Dispatch(context.Background(), ghEnv(root, script), []byte(`{"schema_version":3,"issue_number":2}`))
+	_, err = Dispatch(context.Background(), ghEnv(root, script), []byte(`{"schema_version":4,"issue_number":2}`))
 	if !errors.Is(err, ErrDependencyAbandoned) {
 		t.Fatalf("err = %v, want ErrDependencyAbandoned", err)
 	}
@@ -166,7 +167,7 @@ func TestDispatchWithoutApprovedWorkFailsClosed(t *testing.T) {
 			before := stateBytes(t, root)
 
 			script := &execxtest.Script{T: t}
-			_, err := Dispatch(context.Background(), ghEnv(root, script), []byte(`{"schema_version":3,"issue_number":1}`))
+			_, err := Dispatch(context.Background(), ghEnv(root, script), []byte(`{"schema_version":4,"issue_number":1}`))
 			if err == nil {
 				t.Fatal("Dispatch accepted an issue with no approved work")
 			}
@@ -189,7 +190,7 @@ func TestDispatchWithoutApprovedWorkFailsClosed(t *testing.T) {
 func TestConfigDriftFailsClosed(t *testing.T) {
 	root := setupDeliveryRepo(t, "r2", []state.Issue{fixtureIssue("a", 1, state.PhaseWorktreeReady)})
 	script := &execxtest.Script{T: t}
-	_, err := Dispatch(context.Background(), ghEnv(root, script), []byte(`{"schema_version":3,"issue_number":1}`))
+	_, err := Dispatch(context.Background(), ghEnv(root, script), []byte(`{"schema_version":4,"issue_number":1}`))
 	if !errors.Is(err, ErrConfigDrift) {
 		t.Fatalf("err = %v, want ErrConfigDrift", err)
 	}
@@ -249,7 +250,7 @@ func TestEscalateReroute(t *testing.T) {
 		ghIssueViewCall(t, 1, "OPEN", body),
 		ghSetIssueBodyCall(1),
 	}}
-	res, err := Escalate(context.Background(), ghEnv(root, script), []byte(`{"schema_version":1,"issue_number":1,"trigger":"implementer-hard-execution","detail":"stuck"}`))
+	res, err := Escalate(context.Background(), ghEnv(root, script), []byte(`{"schema_version":2,"issue_number":1,"trigger":"implementer-hard-execution","detail":"stuck"}`))
 	if err != nil {
 		t.Fatalf("Escalate: %v", err)
 	}
@@ -275,7 +276,7 @@ func TestEscalateReturnToArchitect(t *testing.T) {
 	iss.Decision = specialistDecision()
 	root := setupDeliveryRepo(t, "r1", []state.Issue{iss})
 	script := &execxtest.Script{T: t, Calls: []execxtest.Call{ghAuth(), ghSetStatusCall(1, ghops.StatusNeedsHuman)}}
-	res, err := Escalate(context.Background(), ghEnv(root, script), []byte(`{"schema_version":1,"issue_number":1,"trigger":"weak-model-failure","detail":"exhausted"}`))
+	res, err := Escalate(context.Background(), ghEnv(root, script), []byte(`{"schema_version":2,"issue_number":1,"trigger":"weak-model-failure","detail":"exhausted"}`))
 	if err != nil {
 		t.Fatalf("Escalate: %v", err)
 	}
@@ -300,7 +301,7 @@ func TestEscalateRestoresDowngradedReviewer(t *testing.T) {
 		ghIssueViewCall(t, 1, "OPEN", body),
 		ghSetIssueBodyCall(1),
 	}}
-	if _, err := Escalate(context.Background(), ghEnv(root, script), []byte(`{"schema_version":1,"issue_number":1,"trigger":"implementer-hard-execution","detail":"stuck"}`)); err != nil {
+	if _, err := Escalate(context.Background(), ghEnv(root, script), []byte(`{"schema_version":2,"issue_number":1,"trigger":"implementer-hard-execution","detail":"stuck"}`)); err != nil {
 		t.Fatalf("Escalate: %v", err)
 	}
 	script.AssertExhausted()
@@ -314,7 +315,7 @@ func TestEscalateBadTrigger(t *testing.T) {
 	root := setupDeliveryRepo(t, "r1", []state.Issue{fixtureIssue("a", 1, state.PhaseDispatched)})
 	before := stateBytes(t, root)
 	script := &execxtest.Script{T: t, Calls: []execxtest.Call{ghAuth()}}
-	_, err := Escalate(context.Background(), ghEnv(root, script), []byte(`{"schema_version":1,"issue_number":1,"trigger":"reviewer-uncertainty","detail":"x"}`))
+	_, err := Escalate(context.Background(), ghEnv(root, script), []byte(`{"schema_version":2,"issue_number":1,"trigger":"reviewer-uncertainty","detail":"x"}`))
 	if err == nil {
 		t.Fatal("Escalate accepted a mismatched trigger")
 	}
@@ -367,7 +368,7 @@ func TestReviewStaleHeadIsPure(t *testing.T) {
 	root := setupDeliveryRepo(t, "r1", []state.Issue{fixtureIssue("a", 1, state.PhasePROpen)})
 	before := stateBytes(t, root)
 	script := &execxtest.Script{T: t, Calls: []execxtest.Call{ghAuth(), ghPRViewCall(10, "OPEN", "real-head")}}
-	_, err := Review(context.Background(), ghEnv(root, script), []byte(`{"schema_version":2,"issue_number":1,"reviewed_head_oid":"stale-head","verdict":"approve","summary":"s","reviewer":{"model":"claude-opus-4-8","effort":"high"},`+fixtureJudgments+`}`))
+	_, err := Review(context.Background(), ghEnv(root, script), []byte(`{"schema_version":3,"issue_number":1,"reviewed_head_oid":"stale-head","verdict":"approve","summary":"s","reviewer":{"model":"claude-opus-4-8","effort":"high"},`+fixtureJudgments+`}`))
 	if !errors.Is(err, ErrReviewStale) {
 		t.Fatalf("err = %v, want ErrReviewStale", err)
 	}
@@ -381,7 +382,7 @@ func TestReviewWrongReviewerIsPure(t *testing.T) {
 	root := setupDeliveryRepo(t, "r1", []state.Issue{fixtureIssue("a", 1, state.PhasePROpen)})
 	before := stateBytes(t, root)
 	script := &execxtest.Script{T: t} // fails before any gh call
-	_, err := Review(context.Background(), ghEnv(root, script), []byte(`{"schema_version":2,"issue_number":1,"reviewed_head_oid":"head","verdict":"approve","summary":"s","reviewer":{"model":"claude-haiku-4-5","effort":"low"},`+fixtureJudgments+`}`))
+	_, err := Review(context.Background(), ghEnv(root, script), []byte(`{"schema_version":3,"issue_number":1,"reviewed_head_oid":"head","verdict":"approve","summary":"s","reviewer":{"model":"claude-haiku-4-5","effort":"low"},`+fixtureJudgments+`}`))
 	if !errors.Is(err, ErrReviewerMismatch) {
 		t.Fatalf("err = %v, want ErrReviewerMismatch", err)
 	}
@@ -397,7 +398,7 @@ func TestReviewDistinguishesOpenCodeNoVariant(t *testing.T) {
 	root := setupDeliveryRepo(t, "r1", []state.Issue{issue})
 	before := stateBytes(t, root)
 	script := &execxtest.Script{T: t}
-	_, err := Review(context.Background(), ghEnv(root, script), []byte(`{"schema_version":2,"issue_number":1,"reviewed_head_oid":"head","verdict":"approve","summary":"s","reviewer":{"model":"openai/gpt-5.6-sol","no_variant":true},`+fixtureJudgments+`}`))
+	_, err := Review(context.Background(), ghEnv(root, script), []byte(`{"schema_version":3,"issue_number":1,"reviewed_head_oid":"head","verdict":"approve","summary":"s","reviewer":{"model":"openai/gpt-5.6-sol","no_variant":true},`+fixtureJudgments+`}`))
 	if !errors.Is(err, ErrReviewerMismatch) {
 		t.Fatalf("err = %v, want ErrReviewerMismatch", err)
 	}
@@ -415,7 +416,7 @@ func TestReviewBadVerificationIsBadRequestBeforeMutation(t *testing.T) {
 	root := setupDeliveryRepo(t, "r1", []state.Issue{fixtureIssue("a", 1, state.PhasePROpen)})
 	before := stateBytes(t, root)
 	script := &execxtest.Script{T: t}
-	req := `{"schema_version":2,"issue_number":1,"reviewed_head_oid":"head","verdict":"approve","summary":"s","reviewer":{"model":"claude-opus-4-8","effort":"high"},` + fixtureJudgments + `,"verifications":[{"name":"","result":"pass"}]}`
+	req := `{"schema_version":3,"issue_number":1,"reviewed_head_oid":"head","verdict":"approve","summary":"s","reviewer":{"model":"claude-opus-4-8","effort":"high"},` + fixtureJudgments + `,"verifications":[{"name":"","result":"pass"}]}`
 	_, err := Review(context.Background(), ghEnv(root, script), []byte(req))
 	if !errors.Is(err, ErrBadRequest) {
 		t.Fatalf("err = %v, want ErrBadRequest", err)
@@ -577,7 +578,7 @@ func TestReviewWritesSuppliedVerifications(t *testing.T) {
 		ghAuth(), ghPRViewCall(10, "OPEN", "head-oid-1"),
 		ghIssueViewCall(t, 1, "OPEN", body), ghSetIssueBodyCall(1), ghSetPRBodyCall(10),
 	}}
-	req := `{"schema_version":2,"issue_number":1,"reviewed_head_oid":"head-oid-1","verdict":"approve","summary":"looks good","reviewer":{"model":"claude-opus-4-8","effort":"high"},` + fixtureJudgments + `,"verifications":[{"name":"go test ./...","result":"pass","detail":"22 packages ok"}]}`
+	req := `{"schema_version":3,"issue_number":1,"reviewed_head_oid":"head-oid-1","verdict":"approve","summary":"looks good","reviewer":{"model":"claude-opus-4-8","effort":"high"},` + fixtureJudgments + `,"verifications":[{"name":"go test ./...","result":"pass","detail":"22 packages ok"}]}`
 	res, err := Review(context.Background(), ghEnv(root, script), []byte(req))
 	if err != nil {
 		t.Fatalf("Review: %v", err)
@@ -624,7 +625,7 @@ func TestReviewVerificationReplacesByName(t *testing.T) {
 		ghAuth(), ghPRViewCall(10, "OPEN", "head-oid-1"),
 		ghIssueViewCall(t, 1, "OPEN", body), ghSetIssueBodyCall(1), ghSetPRBodyCall(10),
 	}}
-	req := `{"schema_version":2,"issue_number":1,"reviewed_head_oid":"head-oid-1","verdict":"approve","summary":"looks good","reviewer":{"model":"claude-opus-4-8","effort":"high"},` + fixtureJudgments + `,"verifications":[{"name":"go test ./...","result":"pass","detail":"all green"}]}`
+	req := `{"schema_version":3,"issue_number":1,"reviewed_head_oid":"head-oid-1","verdict":"approve","summary":"looks good","reviewer":{"model":"claude-opus-4-8","effort":"high"},` + fixtureJudgments + `,"verifications":[{"name":"go test ./...","result":"pass","detail":"all green"}]}`
 	if _, err := Review(context.Background(), ghEnv(root, script), []byte(req)); err != nil {
 		t.Fatalf("Review: %v", err)
 	}
@@ -663,7 +664,7 @@ func TestReviewSummaryRoundTripsUnderReviewDetailCap(t *testing.T) {
 	if len(summary) >= reviewDetailCap {
 		t.Fatalf("fixture summary length %d must stay under reviewDetailCap %d", len(summary), reviewDetailCap)
 	}
-	req := fmt.Sprintf(`{"schema_version":2,"issue_number":1,"reviewed_head_oid":"head-oid-1","verdict":"approve","summary":%q,"reviewer":{"model":"claude-opus-4-8","effort":"high"},`+fixtureJudgments+`}`, summary)
+	req := fmt.Sprintf(`{"schema_version":3,"issue_number":1,"reviewed_head_oid":"head-oid-1","verdict":"approve","summary":%q,"reviewer":{"model":"claude-opus-4-8","effort":"high"},`+fixtureJudgments+`}`, summary)
 	if _, err := Review(context.Background(), ghEnv(root, script), []byte(req)); err != nil {
 		t.Fatalf("Review: %v", err)
 	}
@@ -703,7 +704,7 @@ func TestReviewSuppliedVerificationStillCappedAtVerificationDetailCap(t *testing
 		ghIssueViewCall(t, 1, "OPEN", body), ghSetIssueBodyCall(1), ghSetPRBodyCall(10),
 	}}
 	long := strings.Repeat("x", verificationDetailCap+500)
-	req := fmt.Sprintf(`{"schema_version":2,"issue_number":1,"reviewed_head_oid":"head-oid-1","verdict":"approve","summary":"looks good","reviewer":{"model":"claude-opus-4-8","effort":"high"},`+fixtureJudgments+`,"verifications":[{"name":"go test","result":"pass","detail":%q}]}`, long)
+	req := fmt.Sprintf(`{"schema_version":3,"issue_number":1,"reviewed_head_oid":"head-oid-1","verdict":"approve","summary":"looks good","reviewer":{"model":"claude-opus-4-8","effort":"high"},`+fixtureJudgments+`,"verifications":[{"name":"go test","result":"pass","detail":%q}]}`, long)
 	if _, err := Review(context.Background(), ghEnv(root, script), []byte(req)); err != nil {
 		t.Fatalf("Review: %v", err)
 	}
@@ -748,7 +749,7 @@ func TestReviewRejectsEngineOwnedVerificationNames(t *testing.T) {
 			root := setupDeliveryRepo(t, "r1", []state.Issue{fixtureIssue("a", 1, state.PhasePROpen)})
 			before := stateBytes(t, root)
 			script := &execxtest.Script{T: t}
-			req := fmt.Sprintf(`{"schema_version":2,"issue_number":1,"reviewed_head_oid":"head","verdict":"approve","summary":"s","reviewer":{"model":"claude-opus-4-8","effort":"high"},`+fixtureJudgments+`,"verifications":[{"name":%q,"result":"pass"}]}`, name)
+			req := fmt.Sprintf(`{"schema_version":3,"issue_number":1,"reviewed_head_oid":"head","verdict":"approve","summary":"s","reviewer":{"model":"claude-opus-4-8","effort":"high"},`+fixtureJudgments+`,"verifications":[{"name":%q,"result":"pass"}]}`, name)
 			_, err := Review(context.Background(), ghEnv(root, script), []byte(req))
 			if !errors.Is(err, ErrBadRequest) {
 				t.Fatalf("err = %v, want ErrBadRequest", err)
@@ -810,7 +811,7 @@ func TestReviewStampsTheReviewedHead(t *testing.T) {
 		ghAuth(), ghPRViewCall(10, "OPEN", "head-oid-2"),
 		ghIssueViewCall(t, 1, "OPEN", body), ghSetIssueBodyCall(1), ghSetPRBodyCall(10),
 	}}
-	req := `{"schema_version":2,"issue_number":1,"reviewed_head_oid":"head-oid-2","verdict":"approve","summary":"looks good","reviewer":{"model":"claude-opus-4-8","effort":"high"},` + fixtureJudgments + `,"verifications":[{"name":"go test ./...","result":"pass"}]}`
+	req := `{"schema_version":3,"issue_number":1,"reviewed_head_oid":"head-oid-2","verdict":"approve","summary":"looks good","reviewer":{"model":"claude-opus-4-8","effort":"high"},` + fixtureJudgments + `,"verifications":[{"name":"go test ./...","result":"pass"}]}`
 	if _, err := Review(context.Background(), ghEnv(root, script), []byte(req)); err != nil {
 		t.Fatalf("Review: %v", err)
 	}
@@ -930,7 +931,7 @@ func TestVerificationInputRejectsACallerSuppliedCommitOID(t *testing.T) {
 		"review": {
 			fn:    func(ctx context.Context, e Env, b []byte) error { _, err := Review(ctx, e, b); return err },
 			phase: state.PhaseInReview,
-			req:   `{"schema_version":2,"issue_number":1,"reviewed_head_oid":"h","verdict":"approve","summary":"s","reviewer":{"model":"claude-opus-4-8","effort":"high"},` + fixtureJudgments + `,"verifications":[{"name":"go test","result":"pass","commit_oid":"claimed-head"}]}`,
+			req:   `{"schema_version":3,"issue_number":1,"reviewed_head_oid":"h","verdict":"approve","summary":"s","reviewer":{"model":"claude-opus-4-8","effort":"high"},` + fixtureJudgments + `,"verifications":[{"name":"go test","result":"pass","commit_oid":"claimed-head"}]}`,
 		},
 		"pr-open": {
 			fn:    func(ctx context.Context, e Env, b []byte) error { _, err := PROpen(ctx, e, b); return err },
@@ -1189,16 +1190,14 @@ func TestReviewRecordsEachJudgmentAndItsReason(t *testing.T) {
 	}
 }
 
-// TestReviewRefusesThePreviousSchemaVersion proves an adapter still
-// sending the v1 request — well-formed under v1, and silent about every
-// individual acceptance criterion — is refused naming the version this
-// build supports, rather than being told a field it has never heard of
-// is missing.
+// TestReviewRefusesThePreviousSchemaVersion proves an adapter still sending
+// v2's effort-only Selection shape is refused naming the current version
+// before routing comparison.
 func TestReviewRefusesThePreviousSchemaVersion(t *testing.T) {
 	root := setupDeliveryRepo(t, "r1", []state.Issue{fixtureIssue("a", 1, state.PhaseInReview)})
 	before := stateBytes(t, root)
 	script := &execxtest.Script{T: t}
-	req := `{"schema_version":1,"issue_number":1,"reviewed_head_oid":"head-oid-1","verdict":"approve","summary":"looks good","reviewer":{"model":"claude-opus-4-8","effort":"high"}}`
+	req := `{"schema_version":2,"issue_number":1,"reviewed_head_oid":"head-oid-1","verdict":"approve","summary":"looks good","reviewer":{"model":"claude-opus-4-8","effort":"high"},` + fixtureJudgments + `}`
 	_, err := Review(context.Background(), ghEnv(root, script), []byte(req))
 	if !errors.Is(err, ErrBadRequest) {
 		t.Fatalf("err = %v, want ErrBadRequest", err)
@@ -1209,6 +1208,54 @@ func TestReviewRefusesThePreviousSchemaVersion(t *testing.T) {
 	script.AssertExhausted()
 	if got := stateBytes(t, root); string(got) != string(before) {
 		t.Error("state changed on a review request at the previous schema version")
+	}
+}
+
+func TestSelectionWireRequestVersionsRejectPrevious(t *testing.T) {
+	env := Env{RepoRoot: t.TempDir()}
+	tests := []struct {
+		name    string
+		old     int
+		current int
+		call    func([]byte) error
+		request string
+	}{
+		{
+			name: "dispatch", old: 3, current: DispatchSchemaVersion,
+			request: `{"schema_version":3,"issue_number":1}`,
+			call:    func(data []byte) error { _, err := Dispatch(context.Background(), env, data); return err },
+		},
+		{
+			name: "escalate", old: 1, current: EscalateSchemaVersion,
+			request: `{"schema_version":1,"issue_number":1,"trigger":"weak-model-failure","detail":"x"}`,
+			call:    func(data []byte) error { _, err := Escalate(context.Background(), env, data); return err },
+		},
+		{
+			name: "review", old: 2, current: ReviewSchemaVersion,
+			request: `{"schema_version":2,"issue_number":1,"reviewed_head_oid":"h","verdict":"approve","summary":"s","reviewer":{"model":"m","effort":"high"},"judgments":[{"criterion":1,"judgment":"satisfied","reason":"r"}]}`,
+			call:    func(data []byte) error { _, err := Review(context.Background(), env, data); return err },
+		},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			err := tc.call([]byte(tc.request))
+			if !errors.Is(err, ErrBadRequest) {
+				t.Fatalf("err = %v, want ErrBadRequest", err)
+			}
+			for _, want := range []string{fmt.Sprintf("schema_version %d is unsupported", tc.old), fmt.Sprintf("this build supports %d", tc.current)} {
+				if !strings.Contains(err.Error(), want) {
+					t.Errorf("err = %v, missing %q", err, want)
+				}
+			}
+		})
+	}
+}
+
+func TestSelectionWireSchemaVersions(t *testing.T) {
+	got := []int{StatusSchemaVersion, GateSchemaVersion, DispatchSchemaVersion, EscalateSchemaVersion, ReviewSchemaVersion}
+	want := []int{2, 2, 4, 2, 3}
+	if !slices.Equal(got, want) {
+		t.Errorf("Selection wire versions = %v, want %v", got, want)
 	}
 }
 

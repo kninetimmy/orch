@@ -23,8 +23,10 @@ import (
 // the hole this schema closes. Raising the constant is what makes the
 // version check fire first, so a build-behind adapter is told which
 // version this build supports instead of being handed a confusing
-// complaint about a missing field.
-const ReviewSchemaVersion = 2
+// complaint about a missing field. v3 versions Selection's OpenCode
+// variant/no_variant request shape; v2 is rejected before routing comparison so
+// a stale adapter cannot submit an effort-only approximation.
+const ReviewSchemaVersion = 3
 
 // The two review verdicts (PRD §12 step 11).
 const (
