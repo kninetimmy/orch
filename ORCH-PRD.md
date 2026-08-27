@@ -263,6 +263,24 @@ alias with the same effective selection and revision meaning. This change is
 restricted to OpenCode roles: every Claude Code and Codex role retains its
 required `model` plus `effort` shape and its existing rendering and routing.
 
+On the pinned `opencode2 v0.0.0-beta-18314` contract, initialization,
+configuration, and local configuration derive each OpenCode role's choices from
+the repository's live, returned-location-validated catalog. Every role may select
+a different enabled, tool-capable text `provider/model`; only that model's
+advertised variants are offered, and a model with none uses the bare reference.
+Catalog model and variant domains are emitted as deterministic native pages of
+two or three mutually exclusive choices with explicit previous/next navigation,
+each answer appearing exactly once; a one-answer domain adds cancel. Discovery
+failure or an empty agent-capable catalog blocks initialization and OpenCode role
+edits while unrelated configuration edits preserve existing role values.
+Activation re-discovers the catalog and fails before mutation if any of the six
+configured provider, model, or variant selections is unavailable.
+
+The OpenCode session-context hook compares the selected model only for a root
+main session against `hosts.opencode.roles.architect`, including its optional
+variant. It reports a mismatch in context but never changes the session model;
+child sessions are not compared to the Architect selection.
+
 ### Claude Code
 
 | Role | Model | Effort |

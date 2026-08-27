@@ -40,7 +40,7 @@ them and are never copied into diagnostics.
 | Provider/model/variant settings, headers, bodies, credentials, account IDs, and raw payload | Previously Orch did not read the catalog; after this change these fields may arrive in command output but are never retained, returned, or included in an error. |
 | Setup detection's existing CLI, git, GitHub, memhub, and instruction facts | Yes. Catalog and catalog-error fields are additive, and a failed read remains explicit data rather than changing Detect's no-error contract. |
 | Doctor's runtime and active-plugin checks | Yes. They still run and the catalog/location check now follows them. |
-| Live smoke's agent discovery, context injection, denied tracked write, and allowed ignored write | Yes. The catalog/location assertions are additive. |
+| Live smoke's agent discovery, context injection, denied tracked write, and allowed ignored write | Yes. The catalog/location assertions are additive, and the smoke now renders a mixed-provider fixture and checks every discovered dispatched agent's exact model reference. |
 | Interview `profile`, `roleVariantID`, and `openCodeVariantQuestion` | Before, committed interviews represented every execution value as host-wide effort and suggested host-wide variant names. After, the shared profile carries a host-native execution value and each OpenCode variant question contains only no-variant plus the selected catalog model's advertised variants. This applies to every OpenCode role; Claude/Codex keep effort IDs and options. |
 | Committed question writer `openCodeRoleDocSpecs` | Before, OpenCode shared the static `roleDocSpecs` model/effort path. After, all six roles ask a catalog-backed model question followed, only when applicable, by that model's dependent variant question. Claude/Codex retain their model+effort documents. |
 | Committed config writer `materializeHost` | Before, every host answer was written to `RoleProfile.Effort`. After, a selected available/new OpenCode model writes `Variant` (empty for no variant). The preservation exception is an unchanged committed model absent from the live catalog: it keeps its prior `Effort`/`Variant` fields exactly so legacy configuration remains loadable. Every Claude/Codex role still writes `Effort`. |
@@ -56,6 +56,36 @@ them and are never copied into diagnostics.
 | `StatusDoc` wire | Before, it remained schema v1 while transitive state decisions gained the new Selection shape. After, schema v2 exposes all three exact shapes and adapters reject any other result version before reading run state. |
 | Adapter protocol pins | The Claude, Codex, and OpenCode Architect/Delivery skills now state the same closed versions. Shared `adaptertest.CheckSelectionWireVersions` derives every expected literal from the engine constants, so no host keeps an unpinned hand-synced Selection schema. |
 | Legacy local `effort` validation | Before, raw `effort = ""` bypassed the named legacy-effort domain and silently cleared a committed variant into a bare-model selection. After, every OpenCode role rejects an explicitly empty legacy effort with `variant = ""` as the remediation. Named v0.8.0 efforts remain compatible; only native `variant = ""` selects no variant. Claude/Codex effort behavior is unchanged. |
+
+## Role selection and sessions
+
+`orch init`, `orch configure`, and `orch configure-local` discover models from
+the current repository's live catalog on the pinned
+`opencode2 v0.0.0-beta-18314` runtime. All six role selections are independent:
+one profile can mix providers and models, and model IDs after the first slash are
+opaque. After each model choice, setup offers only that model's advertised
+variants; a model with no variants produces a bare `provider/model` selection.
+
+Model and variant choices use the shared deterministic setup pagination contract.
+Every native page contains two or three mutually exclusive choices, every answer
+appears on exactly one page, larger domains use explicit previous/next actions,
+and a one-answer domain adds cancel. Setup does not accept a free-text model that
+the project catalog did not report.
+
+Catalog discovery failure or an empty agent-capable catalog blocks initialization
+and OpenCode role edits with an actionable error. Unrelated configuration edits
+remain available and preserve existing OpenCode selections. Delivery activation
+re-discovers the catalog and fails before mutation if any configured role names an
+unavailable provider, model, or variant. It also fails if generated agent files do
+not match the effective configuration, with `orch render-agents` as remediation.
+
+The plugin passes the selected model of a root main session to Orch's context
+hook. When it differs from the configured Architect model and optional variant,
+Orch adds a warning but does not switch models; child sessions skip this Architect
+comparison. `npm run smoke` renders the shared mixed-provider fixture, starts the
+pinned runtime, and checks `/api/agent` for every dispatched role's exact
+provider/model/variant reference. Its later tool-path generation uses the runtime's
+simulation backend, so the smoke never requires a paid model request.
 
 ## Install order
 

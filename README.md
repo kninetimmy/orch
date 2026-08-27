@@ -377,6 +377,23 @@ schema-v1 `effort` values from v0.8.0 still load with the same
 effective selection and configuration revision. This exception is OpenCode-only;
 Claude Code and Codex keep their existing model/effort configuration and routing.
 
+On the supported `opencode2 v0.0.0-beta-18314` contract, OpenCode setup reads the
+repository's live, location-validated catalog. Each of the six roles independently
+chooses any enabled, tool-capable text model, so one profile may mix providers and
+models. A second question offers only the selected model's advertised variants;
+models with none remain bare. Catalog choices use deterministic two- or
+three-choice native pages with explicit previous/next navigation, and every model
+appears exactly once. A one-model page adds cancel rather than emitting a
+host-invalid one-choice dialog.
+
+If catalog discovery fails or returns no agent-capable model, initialization and
+OpenCode role edits stop with the discovery error; unrelated configuration edits
+preserve the existing OpenCode roles. Delivery activation rechecks all six exact
+selections and fails before mutation when a provider, model, or variant is no
+longer available. The plugin compares only the main session's selected model to
+the configured Architect reference: a mismatch adds a warning but never switches
+the session automatically, and child sessions are not compared to the Architect.
+
 Typical tuning: point a role at a bigger or smaller model on one
 machine with `configure-local` (run the Architect on a frontier model
 only where you have the subscription), raise `max_subagents` on a

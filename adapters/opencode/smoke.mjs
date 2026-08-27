@@ -15,6 +15,13 @@ const serverPassword = "orch-smoke"
 process.env.OPENCODE_SERVER_PASSWORD = serverPassword
 const adapter = path.dirname(fileURLToPath(import.meta.url))
 const repo = path.resolve(adapter, "../..")
+const agentModels = {
+  "orch-scout": { providerID: "smoke-alpha", id: "scout", variant: "fast" },
+  "orch-implementer": { providerID: "smoke-beta", id: "implementer" },
+  "orch-specialist": { providerID: "smoke-alpha", id: "team/specialist", variant: "deep" },
+  "orch-reviewer": { providerID: "smoke-beta", id: "reviewer" },
+  "orch-reviewer-safe": { providerID: "smoke-beta", id: "reviewer-safe", variant: "careful" },
+}
 
 function command(name, args, cwd) {
   const result = spawnSync(name, args, {
@@ -145,15 +152,14 @@ try {
   const orchBinary = path.join(temp, process.platform === "win32" ? "orch.exe" : "orch")
   command("go", ["build", "-o", orchBinary, "./cmd/orch"], repo)
   process.env.PATH = `${temp}${delimiter}${process.env.PATH}`
-  await mkdir(path.join(temp, ".opencode", "agents"), { recursive: true })
   await mkdir(path.join(temp, ".orchestrator"), { recursive: true })
-  await cp(path.join(adapter, "agents"), path.join(temp, ".opencode", "agents"), { recursive: true })
-  await cp(path.join(repo, ".orchestrator", "config.toml"), path.join(temp, ".orchestrator", "config.toml"))
-  await writeFile(path.join(temp, ".gitignore"), ".scratch/\n")
+  await cp(path.join(repo, "internal", "agents", "testdata", "opencode-mixed-provider.toml"), path.join(temp, ".orchestrator", "config.toml"))
+  await writeFile(path.join(temp, ".gitignore"), ".opencode/agents/\n.scratch/\n")
   await writeFile(path.join(temp, "tracked.txt"), "before\n")
   command("git", ["init"], temp)
   command("git", ["add", ".gitignore", "tracked.txt", ".orchestrator/config.toml"], temp)
   command("git", ["-c", "user.name=Orch Smoke", "-c", "user.email=orch-smoke@example.invalid", "commit", "-m", "smoke fixture"], temp)
+  command(orchBinary, ["render-agents"], temp)
   const backendPort = await availablePort()
   const uiPort = await availablePort()
   const state = path.join(temp, "state")
@@ -163,19 +169,48 @@ try {
     endpoints: { ui: `ws://127.0.0.1:${uiPort}`, backend: `ws://127.0.0.1:${backendPort}` },
   }))
   await writeFile(path.join(temp, "opencode.json"), JSON.stringify({
-    model: "smoke/smoke",
+    model: "smoke-alpha/architect#steady",
     permissions: [{ action: "write", resource: "*", effect: "allow" }],
     plugins: [path.join(adapter, "src", "index.js")],
     snapshots: false,
     providers: {
-      smoke: {
+      "smoke-alpha": {
         package: "aisdk:@ai-sdk/openai-compatible",
         settings: { apiKey: "smoke", baseURL: "https://api.openai.com/v1" },
         models: {
-          smoke: {
-            name: "Smoke",
+          architect: {
+            name: "Architect",
             capabilities: { tools: true, input: ["text"], output: ["text"] },
-            variants: [{ id: "low" }, { id: "high" }],
+            variants: [{ id: "steady" }],
+          },
+          scout: {
+            name: "Scout",
+            capabilities: { tools: true, input: ["text"], output: ["text"] },
+            variants: [{ id: "fast" }],
+          },
+          "team/specialist": {
+            name: "Specialist",
+            capabilities: { tools: true, input: ["text"], output: ["text"] },
+            variants: [{ id: "deep" }],
+          },
+        },
+      },
+      "smoke-beta": {
+        package: "aisdk:@ai-sdk/openai-compatible",
+        settings: { apiKey: "smoke", baseURL: "https://api.openai.com/v1" },
+        models: {
+          implementer: {
+            name: "Implementer",
+            capabilities: { tools: true, input: ["text"], output: ["text"] },
+          },
+          reviewer: {
+            name: "Reviewer",
+            capabilities: { tools: true, input: ["text"], output: ["text"] },
+          },
+          "reviewer-safe": {
+            name: "Safe reviewer",
+            capabilities: { tools: true, input: ["text"], output: ["text"] },
+            variants: [{ id: "careful" }],
           },
         },
       },
@@ -200,19 +235,23 @@ try {
   })
   const plugins = await apiList(baseURL, "/api/plugin", (entries) => entries.some((entry) => entry.id === pluginID))
   assert.equal(plugins.filter((entry) => entry.id === pluginID).length, 1, `native plugin was not discovered exactly once: ${JSON.stringify(plugins)}`)
-  const agentIDs = ["orch-scout", "orch-implementer", "orch-specialist", "orch-reviewer", "orch-reviewer-safe"]
+  const agentIDs = Object.keys(agentModels)
   const agents = await apiList(baseURL, "/api/agent", (entries) => agentIDs.every((id) => entries.some((entry) => entry.id === id)))
   for (const id of agentIDs) {
-    assert.equal(agents.find((agent) => agent.id === id)?.mode, "subagent", `${id} was not discovered: ${JSON.stringify(agents)}`)
+    const agent = agents.find((entry) => entry.id === id)
+    assert.equal(agent?.mode, "subagent", `${id} was not discovered: ${JSON.stringify(agents)}`)
+    assert.deepEqual(agent.model, agentModels[id], `${id} model reference drifted`)
   }
   const query = new URLSearchParams({ "location[directory]": temp })
   const endpoint = `/api/model?${query}`
   const catalog = JSON.parse(command(opencode, ["api", "get", endpoint, "--server", baseURL], temp))
   assert.equal(path.resolve(catalog.location.directory), path.resolve(temp), "catalog response location drifted")
-  const smokeModel = catalog.data.find((model) => model.providerID === "smoke" && model.id === "smoke")
-  assert(smokeModel?.enabled, "project model was not enabled in the live catalog")
-  assert(smokeModel.capabilities.tools && smokeModel.capabilities.input.includes("text") && smokeModel.capabilities.output.includes("text"), "project model was not agent-capable")
-  assert.deepEqual(smokeModel.variants.map((variant) => variant.id), ["low", "high"], "live catalog variants drifted")
+  for (const expected of [{ providerID: "smoke-alpha", id: "architect", variant: "steady" }, ...Object.values(agentModels)]) {
+    const model = catalog.data.find((entry) => entry.providerID === expected.providerID && entry.id === expected.id)
+    assert(model?.enabled, `${expected.providerID}/${expected.id} was not enabled in the live catalog`)
+    assert(model.capabilities.tools && model.capabilities.input.includes("text") && model.capabilities.output.includes("text"), `${expected.providerID}/${expected.id} was not agent-capable`)
+    if (expected.variant) assert(model.variants.some((variant) => variant.id === expected.variant), `${expected.providerID}/${expected.id} omitted variant ${expected.variant}`)
+  }
 
   controller = await simulation(`ws://127.0.0.1:${backendPort}`)
   const tracked = path.join(temp, "tracked.txt")
@@ -220,7 +259,7 @@ try {
   const scratch = path.join(temp, ".scratch", "opencode-smoke.tmp")
   const session = await api(baseURL, "/api/session", {
     method: "POST",
-    body: JSON.stringify({ location: { directory: temp }, model: { providerID: "smoke", id: "smoke" } }),
+    body: JSON.stringify({ location: { directory: temp }, model: { providerID: "smoke-alpha", id: "architect", variant: "steady" } }),
   })
   await api(baseURL, `/api/session/${session.id}/prompt`, {
     method: "POST",
