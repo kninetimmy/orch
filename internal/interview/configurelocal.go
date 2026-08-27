@@ -6,6 +6,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"slices"
 	"strconv"
 	"strings"
 
@@ -14,6 +15,7 @@ import (
 	"github.com/kninetimmy/orch/internal/config"
 	"github.com/kninetimmy/orch/internal/instructions"
 	"github.com/kninetimmy/orch/internal/metrics"
+	"github.com/kninetimmy/orch/internal/opencode"
 	"github.com/kninetimmy/orch/internal/question"
 )
 
@@ -78,13 +80,11 @@ func buildPreferenceKeySet() map[string]bool {
 	return set
 }
 
-// NextConfigureLocal derives the next document for the `orch
-// configure-local` interview (PRD §17). Unlike Next it carries no
-// Facts: every default comes from the committed configuration and the
-// current config.local.toml on disk, never the environment, so both
-// are read up front — before any question is asked, not only once the
-// sequence completes the way Next's own repoRoot use is scoped
-// (documented deviation from the init precedent).
+// NextConfigureLocal derives the next document without detected host facts. It
+// remains the compatibility entry point for non-OpenCode tests and callers;
+// OpenCode role edits fail with the same actionable catalog error as a real
+// detection failure. The CLI never uses this shortcut: every step and apply
+// reruns initDetect, then calls NextConfigureLocalWithFacts.
 //
 // Question IDs equal the exact current writer keys config.EditablePreferenceKeys
 // enumerates (the picker's own pick.* ids aside), so an adapter's
@@ -94,6 +94,13 @@ func buildPreferenceKeySet() map[string]bool {
 // committed configuration exists yet — configure-local overlays onto
 // it and has nothing to seed from otherwise.
 func NextConfigureLocal(answers map[string]string, repoRoot string) (question.Document, error) {
+	return NextConfigureLocalWithFacts(Facts{}, answers, repoRoot)
+}
+
+// NextConfigureLocalWithFacts derives the configure-local document using the
+// live OpenCode catalog while keeping all ordinary defaults sourced from the
+// committed configuration and config.local.toml.
+func NextConfigureLocalWithFacts(facts Facts, answers map[string]string, repoRoot string) (question.Document, error) {
 	if answers == nil {
 		answers = map[string]string{}
 	}
@@ -108,7 +115,10 @@ func NextConfigureLocal(answers map[string]string, repoRoot string) (question.Do
 	}
 	seeded := seedOverrides(committed, localRaw)
 
-	seq := buildSequenceLocal(committed, seeded, answers)
+	seq, err := buildSequenceLocal(facts, committed, seeded, answers)
+	if err != nil {
+		return question.Document{}, err
+	}
 	complete := allDocsAnswered(seq, answers)
 
 	applicable := applicableQuestions(seq, complete)
@@ -127,13 +137,13 @@ func NextConfigureLocal(answers map[string]string, repoRoot string) (question.Do
 		}
 	}
 
-	return nextAfterSequenceLocal(committed, seeded, answers, repoRoot)
+	return nextAfterSequenceLocal(committed, seeded, answers, repoRoot, facts.OpenCodeCatalog)
 }
 
 // nextAfterSequenceLocal handles NextConfigureLocal's tail, mirroring
 // nextAfterSequence's approval/summary/complete shape.
-func nextAfterSequenceLocal(committed *config.Config, seeded map[string]string, answers map[string]string, repoRoot string) (question.Document, error) {
-	overrides, err := materializeLocal(committed, seeded, answers)
+func nextAfterSequenceLocal(committed *config.Config, seeded map[string]string, answers map[string]string, repoRoot string, catalog opencode.Catalog) (question.Document, error) {
+	overrides, err := materializeLocal(committed, seeded, answers, catalog)
 	if err != nil {
 		return question.Document{}, err
 	}
@@ -409,10 +419,10 @@ func pickIDForHost(host string) string {
 // buildSequenceLocal derives the ordered list of "questions"-kind
 // documents for the current answers: the picker (doc 1, always
 // present), then each picked host's six role docs (roleSpecs order),
-// then the settings doc when picked. Unlike buildSequence there is no
-// error case here — configure-local never disables a host, so no
-// "at least one host enabled" rule is ever at risk.
-func buildSequenceLocal(committed *config.Config, seeded map[string]string, answers map[string]string) []docSpec {
+// then the settings doc when picked. It can fail only when an OpenCode role
+// edit needs an unavailable catalog; configure-local never disables a host, so
+// no "at least one host enabled" rule is at risk.
+func buildSequenceLocal(facts Facts, committed *config.Config, seeded map[string]string, answers map[string]string) ([]docSpec, error) {
 	docs := []docSpec{pickerDocLocal(committed, seeded)}
 
 	if committed.Hosts.Claude != nil && answers[idPickClaude] == "yes" {
@@ -422,12 +432,16 @@ func buildSequenceLocal(committed *config.Config, seeded map[string]string, answ
 		docs = append(docs, localRoleDocSpecs("codex", committed, seeded)...)
 	}
 	if committed.Hosts.OpenCode != nil && answers[idPickOpenCode] == "yes" {
-		docs = append(docs, localRoleDocSpecs("opencode", committed, seeded)...)
+		openDocs, err := localOpenCodeRoleDocSpecs(facts, committed, seeded, answers)
+		if err != nil {
+			return nil, err
+		}
+		docs = append(docs, openDocs...)
 	}
 	if answers[idPickSettings] == "yes" {
 		docs = append(docs, localSettingsDoc(committed, seeded))
 	}
-	return docs
+	return docs, nil
 }
 
 // pickerDocLocal is doc 1: whether to review/change each
@@ -506,9 +520,10 @@ func effectiveValue(seeded map[string]string, key, committedValue string) string
 	return committedValue
 }
 
-// localRoleDocSpecs builds host's six per-role documents (model plus effort
-// for Claude/Codex, or model plus optional variant for OpenCode), paired in
-// roleSpecs order for the configure-local interview. Question
+// localRoleDocSpecs builds Claude or Codex's six per-role model-plus-effort
+// documents, paired in roleSpecs order for the configure-local interview.
+// OpenCode uses localOpenCodeRoleDocSpecs so variants follow the selected
+// catalog model. Question
 // IDs are the true overlay dotted keys, options mark the committed
 // value's option "(committed)" in its Label and the effective-current
 // value Recommended, and Default is always the effective-current value
@@ -532,49 +547,72 @@ func localRoleDocSpecs(host string, committed *config.Config, seeded map[string]
 			FreeText: true,
 			Default:  effectiveModel,
 		}
-		profileQ := localProfileQuestion(host, rs, cp, seeded)
+		effortKey := localRoleEffortID(host, rs.key)
+		effectiveEffort := effectiveValue(seeded, effortKey, cp.Effort)
+		profileQ := question.Question{
+			ID: effortKey, Header: rs.header, Prompt: fmt.Sprintf("%s reasoning effort (%s)", rs.label, hostLabels[host]),
+			Kind: question.KindSelect, Options: effortOptionsLocal(host, cp.Effort, effectiveEffort), FreeText: true, Default: effectiveEffort,
+		}
 		docs = append(docs, docSpec{questions: []question.Question{modelQ, profileQ}})
 	}
 	return docs
 }
 
-func localProfileQuestion(host string, rs roleSpec, committed config.RoleProfile, seeded map[string]string) question.Question {
-	if host != "opencode" {
-		key := localRoleEffortID(host, rs.key)
-		effective := effectiveValue(seeded, key, committed.Effort)
-		return question.Question{
-			ID: key, Header: rs.header, Prompt: fmt.Sprintf("%s reasoning effort (%s)", rs.label, hostLabels[host]),
-			Kind: question.KindSelect, Options: effortOptionsLocal(host, committed.Effort, effective), FreeText: true, Default: effective,
+func localOpenCodeRoleDocSpecs(facts Facts, committed *config.Config, seeded, answers map[string]string) ([]docSpec, error) {
+	if err := requireOpenCodeCatalog(facts); err != nil {
+		return nil, err
+	}
+	h := committed.Hosts.OpenCode
+	docs := make([]docSpec, 0, len(roleSpecs)*2)
+	for _, rs := range roleSpecs {
+		cp := committedProfile(h, rs.key)
+		modelKey := localRoleModelID("opencode", rs.key)
+		effectiveModel := effectiveValue(seeded, modelKey, cp.Model)
+		defModel := effectiveModel
+		if _, advertised := openCodeCatalogModel(facts.OpenCodeCatalog, defModel); !advertised && defModel != cp.Model {
+			defModel = cp.Model
 		}
-	}
-	key := localRoleVariantID(rs.key)
-	committedVariant := committed.EffectiveOpenCodeVariant()
-	effective := committedVariant
-	if legacy, ok := seeded[localRoleEffortID(host, rs.key)]; ok {
-		effective = legacy
-	}
-	if variant, ok := seeded[key]; ok {
-		effective = variant
-	}
-	return question.Question{
-		ID: key, Header: rs.header, Prompt: fmt.Sprintf("%s model variant (%s)", rs.label, hostLabels[host]),
-		Kind: question.KindSelect, Options: variantOptionsLocal(committedVariant, effective), FreeText: true, Default: variantAnswer(effective),
-	}
-}
+		modelOpts := openCodeModelOptions(facts.OpenCodeCatalog, defModel, cp.Model)
+		for i := range modelOpts {
+			if modelOpts[i].Value == cp.Model {
+				modelOpts[i].Label += " (committed)"
+			}
+		}
+		modelQ := question.Question{
+			ID: modelKey, Header: rs.header, Prompt: fmt.Sprintf("%s model (%s)", rs.label, hostLabels["opencode"]),
+			Kind: question.KindSelect, Options: modelOpts, Default: defModel,
+		}
+		modelQ.Pagination = question.PaginateOptions(modelQ.Options)
+		docs = append(docs, docSpec{questions: []question.Question{modelQ}})
 
-func variantOptionsLocal(committed, effective string) []question.Option {
-	values := variantOptionValues(committed, effective)
-	effective = variantAnswer(effective)
-	committed = variantAnswer(committed)
-	opts := make([]question.Option, len(values))
-	for i, value := range values {
-		label := value
-		if value == committed {
-			label += " (committed)"
+		selected, answered := answers[modelKey]
+		model, advertised := openCodeCatalogModel(facts.OpenCodeCatalog, selected)
+		if !answered || !advertised || len(model.Variants) == 0 {
+			continue
 		}
-		opts[i] = question.Option{Value: value, Label: label, Recommended: value == effective}
+		effectiveVariant := cp.EffectiveOpenCodeVariant()
+		if legacy, ok := seeded[localRoleEffortID("opencode", rs.key)]; ok {
+			effectiveVariant = legacy
+		}
+		if variant, ok := seeded[localRoleVariantID(rs.key)]; ok {
+			effectiveVariant = variant
+		}
+		preferredVariant := cp.EffectiveOpenCodeVariant()
+		if defModel == effectiveModel {
+			preferredVariant = effectiveVariant
+		}
+		defVariant := ""
+		if selected == defModel && slices.Contains(model.Variants, preferredVariant) {
+			defVariant = preferredVariant
+		}
+		committedVariant := ""
+		if selected == cp.Model && slices.Contains(model.Variants, cp.EffectiveOpenCodeVariant()) {
+			committedVariant = cp.EffectiveOpenCodeVariant()
+		}
+		variantQ := openCodeVariantQuestion(localRoleVariantID(rs.key), rs, model.Variants, defVariant, committedVariant)
+		docs = append(docs, docSpec{questions: []question.Question{variantQ}})
 	}
-	return opts
+	return docs, nil
 }
 
 // modelOptionsLocal lists host's local-override-selectable models,
@@ -695,7 +733,7 @@ func yesNoLabelLocal(label, value, committedVal string) string {
 // result round-trips through config.RenderLocal and config.MergeLocal
 // as a fail-closed self-check — the same anti-forgery discipline
 // materialize's Render/Parse round trip applies to init.
-func materializeLocal(committed *config.Config, seeded map[string]string, answers map[string]string) (map[string]string, error) {
+func materializeLocal(committed *config.Config, seeded map[string]string, answers map[string]string, catalog opencode.Catalog) (map[string]string, error) {
 	overrides := make(map[string]string, len(seeded))
 	for k, v := range seeded {
 		overrides[k] = v
@@ -705,7 +743,7 @@ func materializeLocal(committed *config.Config, seeded map[string]string, answer
 		if answers[pickIDForHost(host)] != "yes" {
 			continue
 		}
-		if err := applyRoleAnswers(committed, host, answers, overrides); err != nil {
+		if err := applyRoleAnswers(committed, host, answers, overrides, catalog); err != nil {
 			return nil, err
 		}
 	}
@@ -735,7 +773,7 @@ func materializeLocal(committed *config.Config, seeded map[string]string, answer
 // question defaulted to — the override overrides already carries for
 // that key, or the committed value when it carries none — so leaving a
 // near-miss default alone is not treated as newly typing it.
-func applyRoleAnswers(committed *config.Config, host string, answers, overrides map[string]string) error {
+func applyRoleAnswers(committed *config.Config, host string, answers, overrides map[string]string, catalog opencode.Catalog) error {
 	h := committedHostConfig(committed, host)
 	for _, rs := range roleSpecs {
 		modelKey := localRoleModelID(host, rs.key)
@@ -752,7 +790,21 @@ func applyRoleAnswers(committed *config.Config, host string, answers, overrides 
 		if host == "opencode" {
 			effortKey := localRoleEffortID(host, rs.key)
 			variantKey := localRoleVariantID(rs.key)
-			variant := answers[variantKey]
+			variant, answered := answers[variantKey]
+			if !answered {
+				if _, advertised := openCodeCatalogModel(catalog, modelVal); !advertised {
+					switch modelVal {
+					case current:
+						continue
+					case cp.Model:
+						// Clearing a different stale model override inherits the
+						// committed profile exactly, including legacy Effort.
+						delete(overrides, effortKey)
+						delete(overrides, variantKey)
+						continue
+					}
+				}
+			}
 			if variant == noVariantAnswer {
 				variant = ""
 			}
@@ -868,11 +920,11 @@ func approvalQuestionLocal() question.Question {
 	return q
 }
 
-// buildCompleteLocal assembles configure-local's terminal Complete
-// document. Detection is nil (configure-local reads no environment
-// facts) and BootstrapReady is always true: unlike init's bootstrap
-// handoff, nothing external (git, gh) is load-bearing for the apply
-// step, which is a plain local file write (documented deviation).
+// buildCompleteLocal assembles configure-local's terminal Complete document.
+// Detection remains nil because catalog and environment facts are re-read on
+// every step/apply rather than serialized into the local-write handoff.
+// BootstrapReady is always true: unlike init's bootstrap handoff, git and gh
+// are not load-bearing for the plain local file write.
 func buildCompleteLocal(summary question.Summary) *question.Complete {
 	return &question.Complete{
 		Summary:        summary,

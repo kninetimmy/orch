@@ -99,6 +99,19 @@ func TestInitStepMalformedStdinExitsError(t *testing.T) {
 	}
 }
 
+func TestInitStepRejectsPreviousQuestionSchema(t *testing.T) {
+	env, _, stderr := initEnv(t)
+	env.Stdin = bytes.NewReader([]byte(`{"schema_version":1,"answers":{}}`))
+	if code := Run([]string{"init", "--step"}, env); code != ExitError {
+		t.Fatalf("exit = %d, want %d", code, ExitError)
+	}
+	for _, want := range []string{"schema_version 1", fmt.Sprintf("supports %d", question.SchemaVersion)} {
+		if !strings.Contains(stderr.String(), want) {
+			t.Errorf("stderr = %q, want %q", stderr.String(), want)
+		}
+	}
+}
+
 func TestInitStepUnknownAnswerExitsErrorWithMessage(t *testing.T) {
 	env, _, stderr := initEnv(t)
 	req := question.AnswerSet{SchemaVersion: question.SchemaVersion, Answers: map[string]string{"bogus.key": "x"}}

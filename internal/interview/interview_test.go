@@ -97,7 +97,7 @@ func TestGoldenTranscriptBothHosts(t *testing.T) {
 }
 
 func TestGoldenTranscriptOpenCodeRoleModels(t *testing.T) {
-	doc, err := Next(Facts{OpenCodeCLI: true}, map[string]string{
+	doc, err := Next(withOpenCodeTestCatalog(Facts{}), map[string]string{
 		idHostClaudeEnabled:   "no",
 		idHostCodexEnabled:    "no",
 		idHostOpenCodeEnabled: "yes",

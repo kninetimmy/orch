@@ -103,6 +103,10 @@ func TestSetupSkillHasTerminalForms(t *testing.T) {
 	adaptertest.CheckSetupTerminalForms(t, setupSkillPath)
 }
 
+func TestSetupSkillPagesLargeOptionSets(t *testing.T) {
+	adaptertest.CheckSetupOptionPagination(t, setupSkillPath)
+}
+
 func TestDeliverySkillHasRoutedSelectionCue(t *testing.T) {
 	adaptertest.CheckOpenCodeRoutedSelectionCue(t, deliverySkillPath)
 }

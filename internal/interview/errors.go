@@ -26,4 +26,8 @@ var (
 	// containing whitespace or shortening a known model id, or a
 	// concurrency value that is not an integer >= 1.
 	ErrBadAnswer = errors.New("answer fails its semantic validation")
+	// ErrOpenCodeCatalogUnavailable reports an attempt to edit OpenCode role
+	// selections without a usable project-scoped model catalog. Unrelated
+	// configuration areas remain editable because they never need the catalog.
+	ErrOpenCodeCatalogUnavailable = errors.New("OpenCode model catalog is unavailable")
 )

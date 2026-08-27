@@ -24,11 +24,10 @@
 // line break still counts as present — the pins track whether the
 // words are there, not how the file happens to be line-wrapped.
 //
-// It may import internal/run (the four statement constants) and
-// internal/guard (a caller may pass guard.ClaudeTools()/CodexTools()
-// into CheckMatcherEqualsGuardTools) and nothing else in this module —
-// it is a leaf test-support package, not a place for adapter-specific
-// or engine policy code.
+// It imports internal/run and internal/question only to derive protocol
+// literals from engine constants. A caller may also pass internal/guard tool
+// lists into CheckMatcherEqualsGuardTools. It remains a leaf test-support
+// package, not a place for adapter-specific or engine policy code.
 package adaptertest
 
 import (
@@ -40,6 +39,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/kninetimmy/orch/internal/question"
 	"github.com/kninetimmy/orch/internal/run"
 )
 
@@ -280,6 +280,39 @@ func CheckSetupTerminalForms(t *testing.T, setupSkillPath string) {
 	for _, form := range setupTerminalForms {
 		if !strings.Contains(content, normalizeWhitespace(form)) {
 			t.Errorf("%s does not contain terminal form %q", setupSkillPath, form)
+		}
+	}
+}
+
+// CheckSetupOptionPagination pins each setup skill to the deterministic paging
+// document emitted by internal/question. Behavioral page invariants are tested
+// in that package; this check keeps adapter consumption instructions aligned.
+func CheckSetupOptionPagination(t *testing.T, setupSkillPath string) {
+	t.Helper()
+	raw := readFile(t, setupSkillPath)
+	parts := strings.SplitN(raw, "---", 3)
+	if len(parts) != 3 || !strings.Contains(normalizeWhitespace(parts[1]), "pagination page") {
+		t.Errorf("%s metadata does not describe pagination-page calls", setupSkillPath)
+	}
+	if strings.Contains(normalizeWhitespace(parts[1]), "one batched AskUserQuestion per step") {
+		t.Errorf("%s metadata still promises one batched call per step", setupSkillPath)
+	}
+	content := normalizeWhitespace(raw)
+	answerSet := fmt.Sprintf(`{"schema_version": %d, "answers": {}}`, question.SchemaVersion)
+	wireVersion := fmt.Sprintf("Question wire `schema_version` is closed at `%d` for both `AnswerSet` and `Document`", question.SchemaVersion)
+	for _, phrase := range []string{
+		answerSet,
+		wireVersion,
+		"reject any other Document before reading `kind`, `questions`, or `pagination`",
+		"pagination.hosts",
+		"pagination.pages[0]",
+		"2–3 options exactly as emitted",
+		"mention the page's `index`/`total` in the prompt",
+		"Never synthesize, split, merge, reorder, or replace pages with a request to type an identifier",
+		"Never submit an action as `answers[question.id]`",
+	} {
+		if !strings.Contains(content, normalizeWhitespace(phrase)) {
+			t.Errorf("%s does not contain setup option-pagination guidance %q", setupSkillPath, phrase)
 		}
 	}
 }

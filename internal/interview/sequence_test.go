@@ -5,8 +5,26 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/kninetimmy/orch/internal/opencode"
 	"github.com/kninetimmy/orch/internal/question"
 )
+
+func openCodeTestCatalog() opencode.Catalog {
+	return opencode.Catalog{Models: []opencode.Model{
+		{ID: "openai/gpt-5.6-sol", Variants: []string{"low", "high", "xhigh", "max", "configured-custom"}},
+		{ID: "openai/gpt-5.6-luna", Variants: []string{"max"}},
+		{ID: "openai/gpt-5.6-terra", Variants: []string{"max"}},
+		{ID: "github-copilot/gpt-5-mini"},
+		{ID: "lmstudio/google/gemma-4-26b-a4b", Variants: []string{"committed-custom", "provider-custom"}},
+		{ID: "anthropic/claude-sonnet-5", Variants: []string{"fast", "max"}},
+	}}
+}
+
+func withOpenCodeTestCatalog(f Facts) Facts {
+	f.OpenCodeCLI = true
+	f.OpenCodeCatalog = openCodeTestCatalog()
+	return f
+}
 
 // TestDefaultProfilesMatchPRD pins defaultProfiles against the PRD §10
 // table verbatim (plan verification string: codex
@@ -143,7 +161,7 @@ func TestHostEffortsAcceptedByConfig(t *testing.T) {
 }
 
 // TestEffortsOfferedIsSubsetOfHostEfforts proves effortsOffered stays
-// within question.SpecCheck's 2-4-option cap and never offers a value
+// within the native-dialog effort window and never offers a value
 // hostEfforts does not itself list for that host — combined with
 // TestHostEffortsAcceptedByConfig, this closes issue #124 criterion 5
 // for every interview-offered effort option too. It also proves the

@@ -87,6 +87,36 @@ func TestConfigureLocalStepFirstDoc(t *testing.T) {
 	}
 }
 
+func TestConfigureLocalStepReadsOpenCodeCatalogAndEmitsPages(t *testing.T) {
+	env, _, _ := testEnv(t)
+	writeConfig(t, env.RepoRoot, mixedOpenCodeTOML)
+	env.Runner = fakeRunner{
+		toplevel: env.RepoRoot,
+		opencodeCatalog: openCodeCatalogResponse(env.RepoRoot,
+			`{"id":"architect","providerID":"openai","enabled":true,"capabilities":{"tools":true,"input":["text"],"output":["text"]},"variants":[]}`),
+	}
+	req := question.AnswerSet{SchemaVersion: question.SchemaVersion, Answers: map[string]string{
+		"pick.opencode": "yes", "pick.settings": "no",
+	}}
+	doc := configureLocalStepOnce(t, env, req)
+	var model question.Question
+	for _, q := range doc.Questions {
+		if q.ID == "hosts.opencode.roles.architect.model" {
+			model = q
+		}
+	}
+	if len(model.Options) != 1 || model.Options[0].Value != "openai/architect" {
+		t.Fatalf("model options = %+v, want the one detected catalog model", model.Options)
+	}
+	if model.Pagination == nil || len(model.Pagination.Pages) != 1 || len(model.Pagination.Pages[0].Options) != 2 {
+		t.Fatalf("pagination = %+v, want one host-valid two-option page", model.Pagination)
+	}
+	page := model.Pagination.Pages[0].Options
+	if page[0].Value != "openai/architect" || page[1].Action != question.PageCancel {
+		t.Errorf("page options = %+v, want model plus cancel", page)
+	}
+}
+
 func TestConfigureLocalStepMalformedStdinExitsError(t *testing.T) {
 	env, _, stderr := testEnv(t)
 	writeConfig(t, env.RepoRoot, validTOML)
