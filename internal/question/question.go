@@ -90,8 +90,9 @@ const (
 )
 
 // Question is one independent ask within a Document. Select Options are the
-// complete answer domain. Pagination, when present, is the emit-only native
-// presentation contract; adding it does not change AnswerSet's schema.
+// complete answer domain. Pagination is the schema-v2 native presentation
+// contract: the core rejects schema-v1 AnswerSets and setup adapters reject
+// schema-v1 Documents before consuming it.
 // Header is a short display label (≤12 characters — SpecCheck enforces this) for
 // hosts that group several simultaneously displayed questions;
 // Preamble is optional explanatory prose shown once above the
@@ -163,9 +164,10 @@ type Summary struct {
 // Delete is emit-only: configure-local sets it when clearing the last
 // machine-local override deletes config.local.toml outright rather than
 // writing an empty file (an empty override file would make
-// config.HasLocalOverride and `orch status` misleading). It carries no
-// meaning on an incoming AnswerSet — the wire schema stays 1; strict
-// decoding governs AnswerSet only, not this emit-only Document field.
+// config.HasLocalOverride and `orch status` misleading). Delete carries no
+// meaning on an incoming AnswerSet and remains emit-only; Pagination's required
+// presentation semantics, not Delete, drove the shared schema-v2 bump and
+// schema-v1 rejection.
 type FileChange struct {
 	Path       string `json:"path"`
 	Existed    bool   `json:"existed"`
