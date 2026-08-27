@@ -320,3 +320,35 @@ func TestHookSessionStartSharedLinesAcrossHosts(t *testing.T) {
 		t.Errorf("shared lines differ:\nclaude: %q\nopencode: %q", claudeShared, openCodeShared)
 	}
 }
+
+func TestHookOpenCodeWarnsOnArchitectModelMismatch(t *testing.T) {
+	env, stdout, stderr := testEnv(t)
+	writeConfig(t, env.RepoRoot, validOpenCodeTOML)
+	args := []string{"hook", "opencode", "session-start", "--model", "github-copilot/gpt-5-mini"}
+	if code := Run(args, env); code != ExitOK {
+		t.Fatalf("exit = %d, want %d (stderr %q)", code, ExitOK, stderr.String())
+	}
+	out := stdout.String()
+	for _, want := range []string{
+		`Warning: this main session selected "github-copilot/gpt-5-mini"`,
+		`hosts.opencode.roles.architect configures "openai/gpt-5.6-sol#xhigh"`,
+		"will not switch the session model automatically",
+		"select the configured Architect manually",
+	} {
+		if !strings.Contains(out, want) {
+			t.Errorf("stdout missing %q:\n%s", want, out)
+		}
+	}
+}
+
+func TestHookOpenCodeMatchingArchitectHasNoWarning(t *testing.T) {
+	env, stdout, stderr := testEnv(t)
+	writeConfig(t, env.RepoRoot, validOpenCodeTOML)
+	args := []string{"hook", "opencode", "session-start", "--model", "openai/gpt-5.6-sol#xhigh"}
+	if code := Run(args, env); code != ExitOK {
+		t.Fatalf("exit = %d, want %d (stderr %q)", code, ExitOK, stderr.String())
+	}
+	if strings.Contains(stdout.String(), "Warning:") {
+		t.Errorf("matching model received warning:\n%s", stdout.String())
+	}
+}

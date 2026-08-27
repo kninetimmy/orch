@@ -28,6 +28,9 @@ var (
 	// project-local agent definitions absent, unreadable, or different
 	// from the current build and effective role configuration.
 	ErrAgentsStale = errors.New("rendered agent files are absent or out of date")
+	// ErrOpenCodeSelectionUnavailable reports one or more configured OpenCode
+	// role selections missing from the project-scoped live catalog.
+	ErrOpenCodeSelectionUnavailable = errors.New("configured OpenCode role selection is unavailable")
 	// ErrMemhubRequired reports that config.Memhub.Mode is "required"
 	// and the memhub probe failed or could not run (PRD §20: fail
 	// closed rather than proceed without memory).
