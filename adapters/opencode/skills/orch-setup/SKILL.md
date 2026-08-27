@@ -50,6 +50,15 @@ When the human answers, record `answers[question.id] = option.value`
 — **the option's `value`, never its `label`**. The label is display
 text only; the value is what the core expects back.
 
+For a question with more than four options, keep every option selectable through
+the `question` tool: show up to three real options plus `Next choices` on the
+first page; on middle pages show `Previous choices`, up to two real options, and
+`Next choices`; on the final page show `Previous choices` plus up to three real
+options. Navigation choices only move between pages — never record a navigation
+choice in the `AnswerSet`. Record an answer only when the human picks a real
+option, using its original `value`. Never replace catalog options with an
+instruction to type or copy an identifier manually.
+
 If a `select` question has `free_text: true`, present its real options exactly
 as above. OpenCode adds its own custom-answer choice; when the human uses it,
 record what they type verbatim as `answers[question.id]` — do not transform or

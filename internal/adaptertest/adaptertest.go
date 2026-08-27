@@ -284,6 +284,24 @@ func CheckSetupTerminalForms(t *testing.T, setupSkillPath string) {
 	}
 }
 
+// CheckSetupOptionPagination pins the native-dialog paging contract that keeps
+// catalog-backed questions with more than four options fully selectable.
+func CheckSetupOptionPagination(t *testing.T, setupSkillPath string) {
+	t.Helper()
+	content := normalizeWhitespace(readFile(t, setupSkillPath))
+	for _, phrase := range []string{
+		"more than four options",
+		"Next choices",
+		"Previous choices",
+		"never record a navigation choice",
+		"Never replace catalog options with an instruction to type or copy an identifier manually",
+	} {
+		if !strings.Contains(content, normalizeWhitespace(phrase)) {
+			t.Errorf("%s does not contain setup option-pagination guidance %q", setupSkillPath, phrase)
+		}
+	}
+}
+
 // portabilityForbidden are shell metacharacters a bare-argv hook command
 // must never contain: hook commands run directly as argv on every OS,
 // no shell interposed, so a shell-syntax command would work nowhere.

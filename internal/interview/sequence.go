@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"slices"
 
+	"github.com/kninetimmy/orch/internal/opencode"
 	"github.com/kninetimmy/orch/internal/question"
 )
 
@@ -112,15 +113,14 @@ func defaultProfileFor(host string) func(string) profile {
 	return func(role string) profile { return defaultProfiles[host][role] }
 }
 
-// hostModels lists each host's distinct committed-config model
+// hostModels lists Claude and Codex's distinct committed-config model
 // choices, in a fixed display order, so model select options are
-// deterministic. This is deliberately not the local-override-only
-// third Claude model (claude-fable-5, PRD §10): the committed
-// configuration this interview writes never defaults to it.
+// deterministic. OpenCode is catalog-driven. This is deliberately not the
+// local-override-only third Claude model (claude-fable-5, PRD §10): the
+// committed configuration this interview writes never defaults to it.
 var hostModels = map[string][]string{
-	"codex":    {"gpt-5.6-sol", "gpt-5.6-terra", "gpt-5.6-luna", "x-preview-f-free"},
-	"claude":   {"claude-opus-5", "claude-sonnet-5"},
-	"opencode": {"openai/gpt-5.6-sol", "openai/gpt-5.6-terra", "openai/gpt-5.6-luna", "opencode/x-preview-f-free"},
+	"codex":  {"gpt-5.6-sol", "gpt-5.6-terra", "gpt-5.6-luna", "x-preview-f-free"},
+	"claude": {"claude-opus-5", "claude-sonnet-5"},
 }
 
 // hostEfforts lists Claude and Codex's full closed effort enums — every value
@@ -135,10 +135,10 @@ var hostEfforts = map[string][]string{
 	"claude": {"low", "medium", "high", "xhigh", "max"},
 }
 
-// maxOfferedEfforts is the largest number of effort levels offered as
-// literal select options — question.SpecCheck's 2-4-option cap (a hard
-// ceiling mirroring the hosts' native dialog limits) leaves headroom
-// for the FreeText escape hatch to cover the rest.
+// maxOfferedEfforts is the largest number of effort levels offered as literal
+// select options. Keeping existing effort questions within one native dialog
+// preserves their established FreeText escape hatch; catalog questions use
+// adapter-side pagination instead.
 const maxOfferedEfforts = 4
 
 // effortsOffered returns the contiguous window of host's full effort
@@ -235,7 +235,11 @@ func buildSequence(facts Facts, answers map[string]string) ([]docSpec, error) {
 		docs = append(docs, roleDocSpecs("codex", !claudeEnabled, defaultProfileFor("codex"))...)
 	}
 	if openEnabled {
-		docs = append(docs, roleDocSpecs("opencode", !claudeEnabled && !codexEnabled, defaultProfileFor("opencode"))...)
+		openDocs, err := openCodeRoleDocSpecs(facts, !claudeEnabled && !codexEnabled, defaultProfileFor("opencode"), answers, false)
+		if err != nil {
+			return nil, err
+		}
+		docs = append(docs, openDocs...)
 	}
 	if claudeKnown && codexKnown && openKnown {
 		docs = append(docs, settingsDoc(initSettingsDefaults(facts)))
@@ -285,8 +289,9 @@ func hostToggleDoc(facts Facts, claudeDefault, codexDefault, openCodeDefault str
 	return docSpec{questions: questions}
 }
 
-// roleDocSpecs builds host's six per-role documents (model plus effort for
-// Claude/Codex, model plus optional variant for OpenCode), in roleSpecs order.
+// roleDocSpecs builds Claude or Codex's six per-role model-plus-effort
+// documents in roleSpecs order. OpenCode uses openCodeRoleDocSpecs because its
+// variant question depends on the selected catalog model.
 // showExplain controls whether each
 // model question carries its role's §18 step 4 explanation as a
 // Preamble. The first enabled host shows it, so every interview walks the
@@ -316,31 +321,15 @@ func roleDocSpecs(host string, showExplain bool, defaults func(string) profile) 
 			modelQ.Preamble = rs.explain
 		}
 
-		profileQ := committedProfileQuestion(host, rs, def)
+		profileQ := question.Question{
+			ID: roleEffortID(host, rs.key), Header: rs.header,
+			Prompt: fmt.Sprintf("%s reasoning effort (%s)", rs.label, hostLabels[host]),
+			Kind:   question.KindSelect, Options: effortOptions(host, def.execution), FreeText: true,
+			Default: def.execution,
+		}
 		docs = append(docs, docSpec{questions: []question.Question{modelQ, profileQ}})
 	}
 	return docs
-}
-
-// committedProfileQuestion is the committed-config writer's host-specific
-// execution question. Before optional OpenCode variants, roleDocSpecs always
-// emitted effort; after, every OpenCode role emits variant while Claude/Codex
-// retain their byte-identical effort questions.
-func committedProfileQuestion(host string, rs roleSpec, def profile) question.Question {
-	if host == "opencode" {
-		return question.Question{
-			ID: roleVariantID(host, rs.key), Header: rs.header,
-			Prompt: fmt.Sprintf("%s model variant (%s)", rs.label, hostLabels[host]),
-			Kind:   question.KindSelect, Options: variantOptions(def.execution), FreeText: true,
-			Default: variantAnswer(def.execution),
-		}
-	}
-	return question.Question{
-		ID: roleEffortID(host, rs.key), Header: rs.header,
-		Prompt: fmt.Sprintf("%s reasoning effort (%s)", rs.label, hostLabels[host]),
-		Kind:   question.KindSelect, Options: effortOptions(host, def.execution), FreeText: true,
-		Default: def.execution,
-	}
 }
 
 func variantAnswer(variant string) string {
@@ -350,35 +339,116 @@ func variantAnswer(variant string) string {
 	return variant
 }
 
-// variantOptionValues returns at most four distinct choices while retaining
-// both committed/effective values its callers supply. Suggestions fill only
-// remaining slots, so a custom effective override can never evict the
-// committed choice.
-func variantOptionValues(required ...string) []string {
-	values := []string{noVariantAnswer}
-	appendValue := func(value string) {
-		value = variantAnswer(value)
-		if len(values) < 4 && !slices.Contains(values, value) {
-			values = append(values, value)
+// openCodeRoleDocSpecs builds model questions from the detected project catalog
+// and adds a separate variant question only after that role's model is known.
+// Existing committed models may be retained as defaults; a newly configured
+// role never gains a stale hard-coded option that the catalog did not report.
+func openCodeRoleDocSpecs(facts Facts, showExplain bool, defaults func(string) profile, answers map[string]string, retainDefaults bool) ([]docSpec, error) {
+	if err := requireOpenCodeCatalog(facts); err != nil {
+		return nil, err
+	}
+
+	docs := make([]docSpec, 0, len(roleSpecs)*2)
+	for _, rs := range roleSpecs {
+		preferred := defaults(rs.key)
+		defModel := preferred.model
+		var retained []string
+		if retainDefaults {
+			retained = append(retained, defModel)
+		} else if _, ok := openCodeCatalogModel(facts.OpenCodeCatalog, defModel); !ok {
+			defModel = facts.OpenCodeCatalog.Models[0].ID
 		}
+
+		modelQ := question.Question{
+			ID: roleModelID("opencode", rs.key), Header: rs.header,
+			Prompt: fmt.Sprintf("%s model (%s)", rs.label, hostLabels["opencode"]),
+			Kind:   question.KindSelect, Options: openCodeModelOptions(facts.OpenCodeCatalog, defModel, retained...), Default: defModel,
+		}
+		if showExplain {
+			modelQ.Preamble = rs.explain
+		}
+		docs = append(docs, docSpec{questions: []question.Question{modelQ}})
+
+		selected, answered := answers[modelQ.ID]
+		model, advertised := openCodeCatalogModel(facts.OpenCodeCatalog, selected)
+		if !answered || !advertised || len(model.Variants) == 0 {
+			continue
+		}
+		defVariant := ""
+		if selected == preferred.model && slices.Contains(model.Variants, preferred.execution) {
+			defVariant = preferred.execution
+		}
+		docs = append(docs, docSpec{questions: []question.Question{openCodeVariantQuestion(roleVariantID("opencode", rs.key), rs, model.Variants, defVariant, "")}})
 	}
-	for _, value := range required {
-		appendValue(value)
-	}
-	for _, value := range []string{"low", "high", "max"} {
-		appendValue(value)
-	}
-	return values
+	return docs, nil
 }
 
-func variantOptions(def string) []question.Option {
-	values := variantOptionValues(def)
-	want := variantAnswer(def)
+func requireOpenCodeCatalog(facts Facts) error {
+	if len(facts.OpenCodeCatalog.Models) > 0 {
+		return nil
+	}
+	detail := "catalog discovery returned no data"
+	switch {
+	case !facts.OpenCodeCLI:
+		detail = "`opencode2` was not detected on PATH"
+	case facts.OpenCodeCatalogError != "":
+		detail = facts.OpenCodeCatalogError
+	case facts.OpenCodeCatalog.Models != nil:
+		detail = "the live catalog contains no agent-capable models"
+	}
+	return fmt.Errorf("%w: %s; OpenCode role selections cannot be edited until project catalog discovery succeeds", ErrOpenCodeCatalogUnavailable, detail)
+}
+
+func openCodeCatalogModel(catalog opencode.Catalog, id string) (opencode.Model, bool) {
+	for _, model := range catalog.Models {
+		if model.ID == id {
+			return model, true
+		}
+	}
+	return opencode.Model{}, false
+}
+
+func openCodeModelOptions(catalog opencode.Catalog, def string, retained ...string) []question.Option {
+	values := make([]string, 0, len(catalog.Models)+len(retained))
+	for _, model := range catalog.Models {
+		if !slices.Contains(values, model.ID) {
+			values = append(values, model.ID)
+		}
+	}
+	for _, id := range retained {
+		if id != "" && !slices.Contains(values, id) {
+			values = append(values, id)
+		}
+	}
 	opts := make([]question.Option, len(values))
-	for i, value := range values {
-		opts[i] = question.Option{Value: value, Label: value, Recommended: value == want}
+	for i, id := range values {
+		opts[i] = question.Option{Value: id, Label: id, Recommended: id == def}
 	}
 	return opts
+}
+
+func openCodeVariantQuestion(id string, rs roleSpec, variants []string, def, committed string) question.Question {
+	values := []string{noVariantAnswer}
+	for _, variant := range variants {
+		if !slices.Contains(values, variant) {
+			values = append(values, variant)
+		}
+	}
+	want := variantAnswer(def)
+	committed = variantAnswer(committed)
+	opts := make([]question.Option, len(values))
+	for i, value := range values {
+		label := value
+		if committed != noVariantAnswer && value == committed {
+			label += " (committed)"
+		}
+		opts[i] = question.Option{Value: value, Label: label, Recommended: value == want}
+	}
+	return question.Question{
+		ID: id, Header: rs.header,
+		Prompt: fmt.Sprintf("%s model variant (%s)", rs.label, hostLabels["opencode"]),
+		Kind:   question.KindSelect, Options: opts, Default: want,
+	}
 }
 
 // modelOptions lists host's committed-config model choices, marking

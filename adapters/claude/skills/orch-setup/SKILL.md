@@ -37,9 +37,10 @@ its own. Never send a partial or incremental update.
 
 ### `kind: "questions"`
 
-`Document.questions` carries 1–4 independent `Question`s. Present them
-as **one** batched `AskUserQuestion` call — the schema guarantees at
-most 4, so a single call always fits.
+`Document.questions` carries 1–4 independent `Question`s. When every question
+has at most four options, present them as **one** batched `AskUserQuestion`
+call. If any question has more than four options, handle the document in order
+with one-question calls and page that oversized question as described below.
 
 For each question, use its `header` and `prompt` as the
 `AskUserQuestion` header/prompt, and list its `options[]` with each
@@ -52,6 +53,15 @@ of the matching option too.
 When the human answers, record `answers[question.id] = option.value`
 — **the option's `value`, never its `label`**. The label is display
 text only; the value is what the core expects back.
+
+For a question with more than four options, keep every option selectable through
+`AskUserQuestion`: show up to three real options plus `Next choices` on the first
+page; on middle pages show `Previous choices`, up to two real options, and `Next
+choices`; on the final page show `Previous choices` plus up to three real
+options. Navigation choices only move between pages — never record a navigation
+choice in the `AnswerSet`. Record an answer only when the human picks a real
+option, using its original `value`. Never replace catalog options with an
+instruction to type or copy an identifier manually.
 
 If a question has `kind: "text"`, or `free_text: true` on a `select`
 question, it never carries meaningful options for that path:

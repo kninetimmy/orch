@@ -15,10 +15,11 @@
 // present them one at a time while a batching host (Claude Code's
 // AskUserQuestion) may present an entire document's questions
 // together — batching is always permitted, never required.
-// Question.FreeText admits an answer outside the question's listed
-// Options: a Claude adapter gets this "for free" through
-// AskUserQuestion's automatic "Other" entry, while a Codex adapter
-// falls back to a plain text prompt.
+// A select may carry more options than one native dialog page; adapters page
+// those options without changing their values. Question.FreeText admits an
+// answer outside the question's listed Options: a Claude adapter gets this
+// "for free" through AskUserQuestion's automatic "Other" entry, while a Codex
+// adapter falls back to a plain text prompt.
 //
 // This package never imports internal/interview. Complete.Detection is
 // a flat string map specifically so the dependency arrow stays
@@ -88,8 +89,9 @@ const (
 	KindText QuestionKind = "text"
 )
 
-// Question is one independent ask within a Document. Header is a
-// short display label (≤12 characters — SpecCheck enforces this) for
+// Question is one independent ask within a Document. Select Options are the
+// complete domain and may require adapter-side native-dialog pagination.
+// Header is a short display label (≤12 characters — SpecCheck enforces this) for
 // hosts that group several simultaneously displayed questions;
 // Preamble is optional explanatory prose shown once above the
 // question itself.

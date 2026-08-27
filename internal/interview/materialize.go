@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/kninetimmy/orch/internal/config"
+	"github.com/kninetimmy/orch/internal/opencode"
 )
 
 // materialize turns a complete answer set into a validated, revisioned
@@ -26,24 +27,28 @@ import (
 // config deliberately does not export) are enforced this way rather
 // than duplicated here.
 func materialize(answers map[string]string) (*config.Config, error) {
+	return materializeWithCatalog(answers, opencode.Catalog{})
+}
+
+func materializeWithCatalog(answers map[string]string, catalog opencode.Catalog) (*config.Config, error) {
 	cfg := &config.Config{SchemaVersion: 1}
 
 	if answers[idHostClaudeEnabled] == "yes" {
-		host, err := materializeHost("claude", answers, nil)
+		host, err := materializeHost("claude", answers, nil, catalog)
 		if err != nil {
 			return nil, err
 		}
 		cfg.Hosts.Claude = host
 	}
 	if answers[idHostCodexEnabled] == "yes" {
-		host, err := materializeHost("codex", answers, nil)
+		host, err := materializeHost("codex", answers, nil, catalog)
 		if err != nil {
 			return nil, err
 		}
 		cfg.Hosts.Codex = host
 	}
 	if answers[idHostOpenCodeEnabled] == "yes" {
-		host, err := materializeHost("opencode", answers, nil)
+		host, err := materializeHost("opencode", answers, nil, catalog)
 		if err != nil {
 			return nil, err
 		}
@@ -84,7 +89,7 @@ func materialize(answers map[string]string) (*config.Config, error) {
 // committed near-miss model still round-trips (validateModelAnswer);
 // it is nil for init and for any host a session newly enables, neither
 // of which has a committed profile to leave alone.
-func materializeHost(host string, answers map[string]string, current *config.Host) (*config.Host, error) {
+func materializeHost(host string, answers map[string]string, current *config.Host, catalog opencode.Catalog) (*config.Host, error) {
 	var roles config.Roles
 	for _, rs := range roleSpecs {
 		modelID := roleModelID(host, rs.key)
@@ -94,9 +99,21 @@ func materializeHost(host string, answers map[string]string, current *config.Hos
 		}
 		profile := config.RoleProfile{Model: model}
 		if host == "opencode" {
-			profile.Variant = answers[roleVariantID(host, rs.key)]
-			if profile.Variant == noVariantAnswer {
-				profile.Variant = ""
+			variant, answered := answers[roleVariantID(host, rs.key)]
+			switch {
+			case answered:
+				profile.Variant = variant
+				if profile.Variant == noVariantAnswer {
+					profile.Variant = ""
+				}
+			case current != nil:
+				previous := committedProfile(current, rs.key)
+				if previous.Model == model {
+					if _, advertised := openCodeCatalogModel(catalog, model); !advertised {
+						profile.Effort = previous.Effort
+						profile.Variant = previous.Variant
+					}
+				}
 			}
 		} else {
 			profile.Effort = answers[roleEffortID(host, rs.key)]

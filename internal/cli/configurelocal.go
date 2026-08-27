@@ -142,7 +142,8 @@ func runConfigureLocalStep(env Env) error {
 		return err
 	}
 
-	doc, err := interview.NextConfigureLocal(answers.Answers, env.RepoRoot)
+	facts := initDetect(env)
+	doc, err := interview.NextConfigureLocalWithFacts(facts, answers.Answers, env.RepoRoot)
 	if err != nil {
 		return err
 	}
@@ -177,7 +178,8 @@ func runConfigureLocalApply(env Env) error {
 		return err
 	}
 
-	doc, err := interview.NextConfigureLocal(answers.Answers, env.RepoRoot)
+	facts := initDetect(env)
+	doc, err := interview.NextConfigureLocalWithFacts(facts, answers.Answers, env.RepoRoot)
 	if err != nil {
 		return err
 	}

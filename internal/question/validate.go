@@ -11,7 +11,7 @@ const maxHeaderLen = 12
 
 // SpecCheck validates a Question the engine is about to emit for
 // well-formedness: id/prompt present, header within maxHeaderLen,
-// select questions carry 2-4 options with unique values, text
+// select questions carry at least one option with unique values, text
 // questions carry none, and a non-empty Default names one of the
 // options unless FreeText admits values outside them. A Question that
 // fails SpecCheck is a bug in the engine itself, not bad user input,
@@ -43,8 +43,8 @@ func SpecCheck(q Question) error {
 
 // specCheckSelect is SpecCheck's KindSelect branch.
 func specCheckSelect(q Question) error {
-	if len(q.Options) < 2 || len(q.Options) > 4 {
-		return fmt.Errorf("question %s: select needs 2-4 options, got %d", q.ID, len(q.Options))
+	if len(q.Options) == 0 {
+		return fmt.Errorf("question %s: select needs at least one option", q.ID)
 	}
 	seen := map[string]bool{}
 	for _, o := range q.Options {
