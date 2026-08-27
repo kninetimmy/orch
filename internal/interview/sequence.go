@@ -137,8 +137,8 @@ var hostEfforts = map[string][]string{
 
 // maxOfferedEfforts is the largest number of effort levels offered as literal
 // select options. Keeping existing effort questions within one native dialog
-// preserves their established FreeText escape hatch; catalog questions use
-// adapter-side pagination instead.
+// preserves their established FreeText escape hatch; catalog questions carry
+// deterministic pagination emitted by internal/question instead.
 const maxOfferedEfforts = 4
 
 // effortsOffered returns the contiguous window of host's full effort
@@ -364,6 +364,7 @@ func openCodeRoleDocSpecs(facts Facts, showExplain bool, defaults func(string) p
 			Prompt: fmt.Sprintf("%s model (%s)", rs.label, hostLabels["opencode"]),
 			Kind:   question.KindSelect, Options: openCodeModelOptions(facts.OpenCodeCatalog, defModel, retained...), Default: defModel,
 		}
+		modelQ.Pagination = question.PaginateOptions(modelQ.Options)
 		if showExplain {
 			modelQ.Preamble = rs.explain
 		}
@@ -444,11 +445,13 @@ func openCodeVariantQuestion(id string, rs roleSpec, variants []string, def, com
 		}
 		opts[i] = question.Option{Value: value, Label: label, Recommended: value == want}
 	}
-	return question.Question{
+	q := question.Question{
 		ID: id, Header: rs.header,
 		Prompt: fmt.Sprintf("%s model variant (%s)", rs.label, hostLabels["opencode"]),
 		Kind:   question.KindSelect, Options: opts, Default: want,
 	}
+	q.Pagination = question.PaginateOptions(q.Options)
+	return q
 }
 
 // modelOptions lists host's committed-config model choices, marking

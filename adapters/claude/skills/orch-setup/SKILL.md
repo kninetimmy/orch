@@ -4,9 +4,8 @@ description: >-
   Shared step-loop driver for the three Orch setup interviews (`orch
   init --step`, `orch configure --step`, `orch configure-local --step`).
   Load this when following /orch:init, /orch:configure, or
-  /orch:configure-local. Presents each interview's Document via one
-  batched AskUserQuestion per step and drives the loop to its terminal
-  form.
+  /orch:configure-local. Batches ordinary questions and presents each
+  emitted pagination page through its own AskUserQuestion call.
 ---
 
 # Orch Setup
@@ -37,12 +36,12 @@ its own. Never send a partial or incremental update.
 
 ### `kind: "questions"`
 
-`Document.questions` carries 1–4 independent `Question`s. When every question
-has at most four options, present them as **one** batched `AskUserQuestion`
-call. If any question has more than four options, handle the document in order
-with one-question calls and page that oversized question as described below.
+`Document.questions` carries 1–4 independent `Question`s. If none carries
+`pagination`, present them as **one** batched `AskUserQuestion` call. If any
+question carries `pagination`, handle the document in order: ordinary questions
+use one-question calls and each pagination page uses one call.
 
-For each question, use its `header` and `prompt` as the
+For a question without `pagination`, use its `header` and `prompt` as the
 `AskUserQuestion` header/prompt, and list its `options[]` with each
 option's `label` for display and `description` for detail. If an
 option has `recommended: true`, say so in the description text (there
@@ -50,20 +49,21 @@ is no separate "recommended" UI affordance to rely on — put it in
 words). If the question has a `default`, mention it in the description
 of the matching option too.
 
-When the human answers, record `answers[question.id] = option.value`
+When the human answers that ordinary question, record `answers[question.id] = option.value`
 — **the option's `value`, never its `label`**. The label is display
 text only; the value is what the core expects back.
 
-For a question with more than four options, keep every option selectable through
-`AskUserQuestion`: show up to three real options plus `Next choices` on the first
-page; on middle pages show `Previous choices`, up to two real options, and `Next
-choices`; on the final page show `Previous choices` plus up to three real
-options. Navigation choices only move between pages — never record a navigation
-choice in the `AnswerSet`. Record an answer only when the human picks a real
-option, using its original `value`. Never replace catalog options with an
-instruction to type or copy an identifier manually.
+When `pagination` is present, require `pagination.hosts` to contain `claude`,
+start at `pagination.pages[0]`, and present that page's 2–3 options exactly as
+emitted. Use the parent question's header/prompt and mention the page's
+`index`/`total` in the prompt. Never synthesize, split, merge, reorder, or
+replace pages with a request to type an identifier. A page option with `value`
+is a real answer: record it and finish the question. An option with `action` is
+navigation only: `next` and `previous` move one page, while `cancel` stops the
+interview without recording an answer. Never submit an action as
+`answers[question.id]`.
 
-If a question has `kind: "text"`, or `free_text: true` on a `select`
+If a non-paginated question has `kind: "text"`, or `free_text: true` on a `select`
 question, it never carries meaningful options for that path:
 `AskUserQuestion`'s built-in "Other" entry is how the human supplies
 free text. Whatever the human types into "Other" is recorded verbatim

@@ -181,7 +181,7 @@ func TestGoldenTranscriptLocalFlagship(t *testing.T) {
 		t.Error("BootstrapReady = false, want true (documented: nothing external is load-bearing)")
 	}
 	if doc.Complete.Detection != nil {
-		t.Errorf("Detection = %v, want nil (configure-local reads no environment facts)", doc.Complete.Detection)
+		t.Errorf("Detection = %v, want nil (configure-local re-detects rather than serializing environment facts)", doc.Complete.Detection)
 	}
 	if len(doc.Complete.Summary.Files) != 1 {
 		t.Fatalf("Files = %v, want exactly one", doc.Complete.Summary.Files)

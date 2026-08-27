@@ -2,6 +2,7 @@ package question
 
 import (
 	"fmt"
+	"reflect"
 	"strings"
 )
 
@@ -33,6 +34,9 @@ func SpecCheck(q Question) error {
 		if len(q.Options) > 0 {
 			return fmt.Errorf("question %s: kind text must not carry options", q.ID)
 		}
+		if q.Pagination != nil {
+			return fmt.Errorf("question %s: kind text must not carry pagination", q.ID)
+		}
 		return nil
 	case KindSelect:
 		return specCheckSelect(q)
@@ -46,6 +50,9 @@ func specCheckSelect(q Question) error {
 	if len(q.Options) == 0 {
 		return fmt.Errorf("question %s: select needs at least one option", q.ID)
 	}
+	if len(q.Options) == 1 && q.Pagination == nil {
+		return fmt.Errorf("question %s: a one-answer select needs native pagination", q.ID)
+	}
 	seen := map[string]bool{}
 	for _, o := range q.Options {
 		if o.Value == "" {
@@ -58,6 +65,9 @@ func specCheckSelect(q Question) error {
 	}
 	if q.Default != "" && !q.FreeText && !seen[q.Default] {
 		return fmt.Errorf("question %s: default %q is not one of the options", q.ID, q.Default)
+	}
+	if q.Pagination != nil && !reflect.DeepEqual(q.Pagination, PaginateOptions(q.Options)) {
+		return fmt.Errorf("question %s: pagination is not the deterministic native-page contract", q.ID)
 	}
 	return nil
 }

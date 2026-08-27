@@ -8,18 +8,17 @@
 // any field it does not recognize, rather than silently ignore drift
 // (the run-verb precedent: internal/run/plandoc.go's DecodePlan).
 //
-// Design goes to the lowest common denominator between the two
-// supported hosts' native dialogs. There is no multi-select kind: a
+// Design goes to the lowest common denominator across the three supported
+// setup hosts' native dialogs. There is no multi-select kind: a
 // multi-valued ask decomposes into several independent yes/no selects
-// sharing one Document, so a single-question host (Codex's `ask`) can
+// sharing one Document, so a single-question host can
 // present them one at a time while a batching host (Claude Code's
 // AskUserQuestion) may present an entire document's questions
 // together — batching is always permitted, never required.
-// A select may carry more options than one native dialog page; adapters page
-// those options without changing their values. Question.FreeText admits an
-// answer outside the question's listed Options: a Claude adapter gets this
-// "for free" through AskUserQuestion's automatic "Other" entry, while a Codex
-// adapter falls back to a plain text prompt.
+// A select may carry a Pagination contract whose deterministic 2-3-option
+// pages fit every supported setup host. Options remains the complete answer
+// domain; pagination navigation is never an answer. Question.FreeText admits
+// an answer outside Options for ordinary non-paginated questions.
 //
 // This package never imports internal/interview. Complete.Detection is
 // a flat string map specifically so the dependency arrow stays
@@ -90,21 +89,23 @@ const (
 )
 
 // Question is one independent ask within a Document. Select Options are the
-// complete domain and may require adapter-side native-dialog pagination.
+// complete answer domain. Pagination, when present, is the emit-only native
+// presentation contract; adding it does not change AnswerSet's schema.
 // Header is a short display label (≤12 characters — SpecCheck enforces this) for
 // hosts that group several simultaneously displayed questions;
 // Preamble is optional explanatory prose shown once above the
 // question itself.
 type Question struct {
-	ID       string       `json:"id"`
-	Header   string       `json:"header"`
-	Prompt   string       `json:"prompt"`
-	Preamble string       `json:"preamble,omitempty"`
-	Kind     QuestionKind `json:"kind"`
-	Options  []Option     `json:"options,omitempty"`
-	FreeText bool         `json:"free_text,omitempty"`
-	Default  string       `json:"default,omitempty"`
-	Hint     string       `json:"hint,omitempty"`
+	ID         string       `json:"id"`
+	Header     string       `json:"header"`
+	Prompt     string       `json:"prompt"`
+	Preamble   string       `json:"preamble,omitempty"`
+	Kind       QuestionKind `json:"kind"`
+	Options    []Option     `json:"options,omitempty"`
+	Pagination *Pagination  `json:"pagination,omitempty"`
+	FreeText   bool         `json:"free_text,omitempty"`
+	Default    string       `json:"default,omitempty"`
+	Hint       string       `json:"hint,omitempty"`
 }
 
 // Option is one choice of a KindSelect Question. Recommended marks

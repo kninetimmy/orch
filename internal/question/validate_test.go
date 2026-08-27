@@ -31,8 +31,17 @@ func TestSpecCheckSelect(t *testing.T) {
 			}(),
 		},
 		{
-			name: "one option",
-			q:    selectQuestion(Option{Value: "a", Label: "A"}),
+			name: "one option with pagination",
+			q: func() Question {
+				q := selectQuestion(Option{Value: "a", Label: "A"})
+				q.Pagination = PaginateOptions(q.Options)
+				return q
+			}(),
+		},
+		{
+			name:    "one option without pagination",
+			q:       selectQuestion(Option{Value: "a", Label: "A"}),
+			wantErr: true,
 		},
 		{
 			name: "five options",

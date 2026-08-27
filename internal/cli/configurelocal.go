@@ -33,9 +33,10 @@ type configureLocalReport struct {
 // runConfigureLocal dispatches the three `orch configure-local` forms
 // (PRD §17/§22). --step and --apply are mutually exclusive and any
 // other argument is a usage mistake, both exit 2. Unlike `orch init`,
-// there is no facts-based root resolution: configure-local only ever
-// runs post-init, so env.RepoRoot is already the directory holding
-// .orchestrator/ (Env's own contract).
+// configure-local always uses env.RepoRoot because it runs post-init. Its step
+// and apply forms still call initDetect on every request: OpenCode role editing
+// needs the current project catalog, and the resulting Facts snapshot includes
+// the same local environment probes as the other setup interviews.
 func runConfigureLocal(env Env, args []string) error {
 	var step, apply bool
 	for _, a := range args {

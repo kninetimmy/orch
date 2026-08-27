@@ -80,10 +80,11 @@ func buildPreferenceKeySet() map[string]bool {
 	return set
 }
 
-// NextConfigureLocal derives the next document without detected host facts.
-// It remains the compatibility entry point for callers that edit only
-// non-OpenCode areas; OpenCode role edits fail with the same actionable catalog
-// error as a real detection failure. CLI callers use NextConfigureLocalWithFacts.
+// NextConfigureLocal derives the next document without detected host facts. It
+// remains the compatibility entry point for non-OpenCode tests and callers;
+// OpenCode role edits fail with the same actionable catalog error as a real
+// detection failure. The CLI never uses this shortcut: every step and apply
+// reruns initDetect, then calls NextConfigureLocalWithFacts.
 //
 // Question IDs equal the exact current writer keys config.EditablePreferenceKeys
 // enumerates (the picker's own pick.* ids aside), so an adapter's
@@ -581,6 +582,7 @@ func localOpenCodeRoleDocSpecs(facts Facts, committed *config.Config, seeded, an
 			ID: modelKey, Header: rs.header, Prompt: fmt.Sprintf("%s model (%s)", rs.label, hostLabels["opencode"]),
 			Kind: question.KindSelect, Options: modelOpts, Default: defModel,
 		}
+		modelQ.Pagination = question.PaginateOptions(modelQ.Options)
 		docs = append(docs, docSpec{questions: []question.Question{modelQ}})
 
 		selected, answered := answers[modelKey]
@@ -909,11 +911,11 @@ func approvalQuestionLocal() question.Question {
 	return q
 }
 
-// buildCompleteLocal assembles configure-local's terminal Complete
-// document. Detection is nil (configure-local reads no environment
-// facts) and BootstrapReady is always true: unlike init's bootstrap
-// handoff, nothing external (git, gh) is load-bearing for the apply
-// step, which is a plain local file write (documented deviation).
+// buildCompleteLocal assembles configure-local's terminal Complete document.
+// Detection remains nil because catalog and environment facts are re-read on
+// every step/apply rather than serialized into the local-write handoff.
+// BootstrapReady is always true: unlike init's bootstrap handoff, git and gh
+// are not load-bearing for the plain local file write.
 func buildCompleteLocal(summary question.Summary) *question.Complete {
 	return &question.Complete{
 		Summary:        summary,

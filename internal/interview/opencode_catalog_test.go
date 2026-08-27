@@ -29,6 +29,38 @@ func optionValuesOf(q question.Question) []string {
 	return values
 }
 
+func assertCatalogPagination(t *testing.T, q question.Question, want []string) {
+	t.Helper()
+	if q.FreeText {
+		t.Errorf("%s requires free text", q.ID)
+	}
+	if q.Pagination == nil {
+		t.Fatalf("%s has no pagination", q.ID)
+	}
+	for _, host := range []string{"claude", "codex", "opencode"} {
+		if !slices.Contains(q.Pagination.Hosts, host) {
+			t.Errorf("%s pagination hosts = %v, missing %s", q.ID, q.Pagination.Hosts, host)
+		}
+	}
+	var got []string
+	for _, page := range q.Pagination.Pages {
+		if len(page.Options) < 2 || len(page.Options) > 3 {
+			t.Errorf("%s page %d has %d options, want 2-3", q.ID, page.Index, len(page.Options))
+		}
+		for _, option := range page.Options {
+			if option.Value != "" {
+				got = append(got, option.Value)
+			}
+		}
+	}
+	if !slices.Equal(got, want) {
+		t.Errorf("%s paginated models = %v, want each exactly once in order %v", q.ID, got, want)
+	}
+	if err := question.SpecCheck(q); err != nil {
+		t.Errorf("SpecCheck(%s): %v", q.ID, err)
+	}
+}
+
 func TestOpenCodeInitOffersEveryCatalogModelWithoutStaticFallbacks(t *testing.T) {
 	facts := withOpenCodeTestCatalog(Facts{})
 	doc, err := Next(facts, map[string]string{
@@ -53,9 +85,37 @@ func TestOpenCodeInitOffersEveryCatalogModelWithoutStaticFallbacks(t *testing.T)
 	if len(q.Options) <= 4 {
 		t.Fatalf("fixture has %d options, want a catalog large enough to exercise native pagination", len(q.Options))
 	}
-	if err := question.SpecCheck(q); err != nil {
-		t.Fatalf("large catalog question failed SpecCheck: %v", err)
+	assertCatalogPagination(t, q, got)
+}
+
+func TestOpenCodeOneModelCatalogIsHostValidInEverySetupPath(t *testing.T) {
+	facts := withOpenCodeTestCatalog(Facts{})
+	facts.OpenCodeCatalog.Models = facts.OpenCodeCatalog.Models[:1]
+	want := []string{facts.OpenCodeCatalog.Models[0].ID}
+
+	initDoc, err := Next(facts, map[string]string{
+		idHostClaudeEnabled: "no", idHostCodexEnabled: "no", idHostOpenCodeEnabled: "yes",
+	}, t.TempDir())
+	if err != nil {
+		t.Fatal(err)
 	}
+	assertCatalogPagination(t, questionByID(t, initDoc, roleModelID("opencode", "architect")), want)
+
+	root := t.TempDir()
+	writeCommittedConfigOpenCodeOnly(t, root)
+	configureDoc, err := NextConfigure(facts, map[string]string{
+		idPickHosts: "no", idPickRolesOpenCode: "yes", idPickSettings: "no",
+	}, root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertCatalogPagination(t, questionByID(t, configureDoc, roleModelID("opencode", "architect")), want)
+
+	localDoc, err := NextConfigureLocalWithFacts(facts, map[string]string{idPickOpenCode: "yes", idPickSettings: "no"}, root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertCatalogPagination(t, questionByID(t, localDoc, localRoleModelID("opencode", "architect")), want)
 }
 
 func TestOpenCodeVariantsFollowTheSelectedModel(t *testing.T) {
@@ -75,6 +135,7 @@ func TestOpenCodeVariantsFollowTheSelectedModel(t *testing.T) {
 	if q.FreeText {
 		t.Error("variant question admits an unadvertised free-text value")
 	}
+	assertCatalogPagination(t, q, []string{noVariantAnswer, "fast", "max"})
 
 	answers[q.ID] = "xhigh"
 	if _, err := Next(facts, answers, t.TempDir()); err == nil || !strings.Contains(err.Error(), "not one of") {

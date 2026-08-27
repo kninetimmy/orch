@@ -284,17 +284,27 @@ func CheckSetupTerminalForms(t *testing.T, setupSkillPath string) {
 	}
 }
 
-// CheckSetupOptionPagination pins the native-dialog paging contract that keeps
-// catalog-backed questions with more than four options fully selectable.
+// CheckSetupOptionPagination pins each setup skill to the deterministic paging
+// document emitted by internal/question. Behavioral page invariants are tested
+// in that package; this check keeps adapter consumption instructions aligned.
 func CheckSetupOptionPagination(t *testing.T, setupSkillPath string) {
 	t.Helper()
-	content := normalizeWhitespace(readFile(t, setupSkillPath))
+	raw := readFile(t, setupSkillPath)
+	parts := strings.SplitN(raw, "---", 3)
+	if len(parts) != 3 || !strings.Contains(normalizeWhitespace(parts[1]), "pagination page") {
+		t.Errorf("%s metadata does not describe pagination-page calls", setupSkillPath)
+	}
+	if strings.Contains(normalizeWhitespace(parts[1]), "one batched AskUserQuestion per step") {
+		t.Errorf("%s metadata still promises one batched call per step", setupSkillPath)
+	}
+	content := normalizeWhitespace(raw)
 	for _, phrase := range []string{
-		"more than four options",
-		"Next choices",
-		"Previous choices",
-		"never record a navigation choice",
-		"Never replace catalog options with an instruction to type or copy an identifier manually",
+		"pagination.hosts",
+		"pagination.pages[0]",
+		"2–3 options exactly as emitted",
+		"mention the page's `index`/`total` in the prompt",
+		"Never synthesize, split, merge, reorder, or replace pages with a request to type an identifier",
+		"Never submit an action as `answers[question.id]`",
 	} {
 		if !strings.Contains(content, normalizeWhitespace(phrase)) {
 			t.Errorf("%s does not contain setup option-pagination guidance %q", setupSkillPath, phrase)

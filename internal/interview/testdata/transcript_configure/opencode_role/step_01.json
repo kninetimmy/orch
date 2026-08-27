@@ -39,6 +39,88 @@
           "label": "anthropic/claude-sonnet-5"
         }
       ],
+      "pagination": {
+        "hosts": [
+          "claude",
+          "codex",
+          "opencode"
+        ],
+        "pages": [
+          {
+            "index": 1,
+            "total": 4,
+            "options": [
+              {
+                "value": "openai/gpt-5.6-sol",
+                "label": "openai/gpt-5.6-sol",
+                "recommended": true
+              },
+              {
+                "value": "openai/gpt-5.6-luna",
+                "label": "openai/gpt-5.6-luna"
+              },
+              {
+                "action": "next",
+                "label": "Next choices"
+              }
+            ]
+          },
+          {
+            "index": 2,
+            "total": 4,
+            "options": [
+              {
+                "action": "previous",
+                "label": "Previous choices"
+              },
+              {
+                "value": "openai/gpt-5.6-terra",
+                "label": "openai/gpt-5.6-terra"
+              },
+              {
+                "action": "next",
+                "label": "Next choices"
+              }
+            ]
+          },
+          {
+            "index": 3,
+            "total": 4,
+            "options": [
+              {
+                "action": "previous",
+                "label": "Previous choices"
+              },
+              {
+                "value": "github-copilot/gpt-5-mini",
+                "label": "github-copilot/gpt-5-mini"
+              },
+              {
+                "action": "next",
+                "label": "Next choices"
+              }
+            ]
+          },
+          {
+            "index": 4,
+            "total": 4,
+            "options": [
+              {
+                "action": "previous",
+                "label": "Previous choices"
+              },
+              {
+                "value": "lmstudio/google/gemma-4-26b-a4b",
+                "label": "lmstudio/google/gemma-4-26b-a4b"
+              },
+              {
+                "value": "anthropic/claude-sonnet-5",
+                "label": "anthropic/claude-sonnet-5"
+              }
+            ]
+          }
+        ]
+      },
       "default": "openai/gpt-5.6-sol"
     }
   ]
