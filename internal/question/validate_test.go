@@ -31,9 +31,8 @@ func TestSpecCheckSelect(t *testing.T) {
 			}(),
 		},
 		{
-			name:    "one option",
-			q:       selectQuestion(Option{Value: "a", Label: "A"}),
-			wantErr: true,
+			name: "one option",
+			q:    selectQuestion(Option{Value: "a", Label: "A"}),
 		},
 		{
 			name: "five options",
@@ -42,6 +41,10 @@ func TestSpecCheckSelect(t *testing.T) {
 				Option{Value: "c", Label: "C"}, Option{Value: "d", Label: "D"},
 				Option{Value: "e", Label: "E"},
 			),
+		},
+		{
+			name:    "no options",
+			q:       selectQuestion(),
 			wantErr: true,
 		},
 		{

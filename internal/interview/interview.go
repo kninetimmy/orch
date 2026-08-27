@@ -98,7 +98,7 @@ func Next(facts Facts, answers map[string]string, repoRoot string) (question.Doc
 // (seedFiles over initSeedScope, seed.go) are the same ones
 // buildSequence derived from the host toggles.
 func nextAfterSequence(facts Facts, answers map[string]string, repoRoot string) (question.Document, error) {
-	cfg, err := materialize(answers)
+	cfg, err := materializeWithCatalog(answers, facts.OpenCodeCatalog)
 	if err != nil {
 		return question.Document{}, err
 	}

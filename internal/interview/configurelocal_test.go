@@ -204,7 +204,7 @@ func TestGoldenTranscriptLocalFlagship(t *testing.T) {
 func TestGoldenTranscriptLocalOpenCodeRoleModels(t *testing.T) {
 	root := t.TempDir()
 	writeCommittedConfigOpenCodeOnly(t, root)
-	doc, err := NextConfigureLocal(map[string]string{
+	doc, err := NextConfigureLocalWithFacts(withOpenCodeTestCatalog(Facts{}), map[string]string{
 		idPickOpenCode: "yes",
 		idPickSettings: "no",
 	}, root)
@@ -474,8 +474,11 @@ func TestConfigureLocalLeafIDsMatchEditablePreferenceKeys(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	openCode := *committed.Hosts.Codex
-	committed.Hosts.OpenCode = &openCode
+	openCode, err := materialize(openCodeOnlyAnswers())
+	if err != nil {
+		t.Fatal(err)
+	}
+	committed.Hosts.OpenCode = openCode.Hosts.OpenCode
 	committed.ConfigRevision, err = config.Revision(committed)
 	if err != nil {
 		t.Fatal(err)
@@ -491,7 +494,7 @@ func TestConfigureLocalLeafIDsMatchEditablePreferenceKeys(t *testing.T) {
 	answers := map[string]string{}
 	seen := map[string]bool{}
 	for i := 0; i < 100; i++ {
-		doc, err := NextConfigureLocal(answers, root)
+		doc, err := NextConfigureLocalWithFacts(withOpenCodeTestCatalog(Facts{}), answers, root)
 		if err != nil {
 			t.Fatalf("NextConfigureLocal: %v", err)
 		}
@@ -528,7 +531,7 @@ func TestConfigureLocalLeafIDsMatchEditablePreferenceKeys(t *testing.T) {
 }
 
 func TestVariantOptionsKeepCommittedAndEffectiveValues(t *testing.T) {
-	opts := variantOptionsLocal("high", "machine-choice")
+	opts := openCodeVariantQuestion(localRoleVariantID("architect"), roleSpecs[0], []string{"high", "machine-choice"}, "machine-choice", "high").Options
 	seen := map[string]bool{}
 	recommended := ""
 	committedLabel := ""

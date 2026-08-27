@@ -222,7 +222,7 @@ func TestGoldenTranscriptConfigureMergeAndModel(t *testing.T) {
 func TestGoldenTranscriptConfigureOpenCodeRoleModels(t *testing.T) {
 	root := t.TempDir()
 	writeCommittedConfigOpenCodeOnly(t, root)
-	doc, err := NextConfigure(configureFacts(), map[string]string{
+	doc, err := NextConfigure(withOpenCodeTestCatalog(configureFacts()), map[string]string{
 		idPickHosts:         "no",
 		idPickRolesOpenCode: "yes",
 		idPickSettings:      "no",
@@ -241,7 +241,7 @@ func openCodeConfigureSummary(t *testing.T, root string, overrides map[string]st
 		idPickSettings:      "no",
 	}
 	for i := 0; i < 100; i++ {
-		doc, err := NextConfigure(configureFacts(), answers, root)
+		doc, err := NextConfigure(withOpenCodeTestCatalog(configureFacts()), answers, root)
 		if err != nil {
 			t.Fatalf("NextConfigure: %v", err)
 		}

@@ -11,6 +11,7 @@ import (
 
 	"github.com/kninetimmy/orch/internal/config"
 	"github.com/kninetimmy/orch/internal/instructions"
+	"github.com/kninetimmy/orch/internal/opencode"
 	"github.com/kninetimmy/orch/internal/question"
 )
 
@@ -81,7 +82,7 @@ func NextConfigure(facts Facts, answers map[string]string, repoRoot string) (que
 // nextAfterSequenceConfigure handles NextConfigure's tail, mirroring
 // nextAfterSequence's approval/summary/complete shape.
 func nextAfterSequenceConfigure(facts Facts, committed *config.Config, committedRaw []byte, answers map[string]string, repoRoot string) (question.Document, error) {
-	cfg, err := materializeConfigure(committed, answers)
+	cfg, err := materializeConfigure(committed, answers, facts.OpenCodeCatalog)
 	if err != nil {
 		return question.Document{}, err
 	}
@@ -230,9 +231,17 @@ func buildSequenceConfigure(facts Facts, committed *config.Config, answers map[s
 		showExplain := !claudeEnabled && !codexEnabled
 		switch {
 		case !openCommitted:
-			docs = append(docs, roleDocSpecs("opencode", showExplain, defaultProfileFor("opencode"))...)
+			openDocs, err := openCodeRoleDocSpecs(facts, showExplain, defaultProfileFor("opencode"), answers, false)
+			if err != nil {
+				return nil, err
+			}
+			docs = append(docs, openDocs...)
 		case answers[idPickRolesOpenCode] == "yes":
-			docs = append(docs, roleDocSpecs("opencode", showExplain, committedRoleDefaults("opencode", committedHostConfig(committed, "opencode")))...)
+			openDocs, err := openCodeRoleDocSpecs(facts, showExplain, committedRoleDefaults("opencode", committedHostConfig(committed, "opencode")), answers, true)
+			if err != nil {
+				return nil, err
+			}
+			docs = append(docs, openDocs...)
 		}
 	}
 
@@ -408,7 +417,7 @@ func deepCopyConfig(committed *config.Config) *config.Config {
 // (setRoleProfile/validateModelFreeText) init's own materializeHost
 // already owns; otherwise host's already-deep-copied value (nil or the
 // committed profile) is left untouched.
-func applyHostConfigure(cfg *config.Config, host string, answers map[string]string) error {
+func applyHostConfigure(cfg *config.Config, host string, answers map[string]string, catalog opencode.Catalog) error {
 	toggleVal, toggleKnown := answers[hostEnabledID(host)]
 	_, hasRoleAnswers := answers[roleModelID(host, "architect")]
 
@@ -416,7 +425,7 @@ func applyHostConfigure(cfg *config.Config, host string, answers map[string]stri
 	case toggleKnown && toggleVal == "no":
 		setConfigHost(cfg, host, nil)
 	case hasRoleAnswers:
-		h, err := materializeHost(host, answers, committedHostConfig(cfg, host))
+		h, err := materializeHost(host, answers, committedHostConfig(cfg, host), catalog)
 		if err != nil {
 			return err
 		}
@@ -431,11 +440,11 @@ func applyHostConfigure(cfg *config.Config, host string, answers map[string]stri
 // settings), a recomputed Revision, and a Render/Parse round-trip
 // self-check — the same discipline materialize applies to a fresh
 // init configuration.
-func materializeConfigure(committed *config.Config, answers map[string]string) (*config.Config, error) {
+func materializeConfigure(committed *config.Config, answers map[string]string, catalog opencode.Catalog) (*config.Config, error) {
 	cfg := deepCopyConfig(committed)
 
 	for _, host := range []string{"claude", "codex", "opencode"} {
-		if err := applyHostConfigure(cfg, host, answers); err != nil {
+		if err := applyHostConfigure(cfg, host, answers, catalog); err != nil {
 			return nil, err
 		}
 	}
