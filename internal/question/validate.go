@@ -50,8 +50,8 @@ func specCheckSelect(q Question) error {
 	if len(q.Options) == 0 {
 		return fmt.Errorf("question %s: select needs at least one option", q.ID)
 	}
-	if len(q.Options) == 1 && q.Pagination == nil {
-		return fmt.Errorf("question %s: a one-answer select needs native pagination", q.ID)
+	if q.Pagination == nil && (len(q.Options) < 2 || len(q.Options) > 4) {
+		return fmt.Errorf("question %s: unpaginated select needs 2-4 options, got %d", q.ID, len(q.Options))
 	}
 	seen := map[string]bool{}
 	for _, o := range q.Options {
