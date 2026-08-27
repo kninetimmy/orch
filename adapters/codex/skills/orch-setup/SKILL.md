@@ -20,8 +20,13 @@ step, and the core tells you what to do next.
 Maintain one `AnswerSet` across the whole interview:
 
 ```json
-{"schema_version": 1, "answers": {}}
+{"schema_version": 2, "answers": {}}
 ```
+
+Question wire `schema_version` is closed at `2` for both `AnswerSet` and
+`Document`; reject any other Document before reading `kind`, `questions`, or
+`pagination`. A rejected AnswerSet means the setup skill and `orch` binary are
+out of date with each other; update the older side before retrying.
 
 Resubmit it **in full** on every step — the core holds no session of
 its own. Never send a partial or incremental update.

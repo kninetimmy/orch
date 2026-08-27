@@ -1,12 +1,13 @@
 package question
 
 import (
+	"fmt"
 	"strings"
 	"testing"
 )
 
 func TestDecodeAnswersValid(t *testing.T) {
-	a, err := DecodeAnswers([]byte(`{"schema_version":1,"answers":{"a":"1"}}`))
+	a, err := DecodeAnswers([]byte(fmt.Sprintf(`{"schema_version":%d,"answers":{"a":"1"}}`, SchemaVersion)))
 	if err != nil {
 		t.Fatalf("DecodeAnswers: %v", err)
 	}
@@ -16,7 +17,7 @@ func TestDecodeAnswersValid(t *testing.T) {
 }
 
 func TestDecodeAnswersNormalizesNilMap(t *testing.T) {
-	a, err := DecodeAnswers([]byte(`{"schema_version":1}`))
+	a, err := DecodeAnswers([]byte(fmt.Sprintf(`{"schema_version":%d}`, SchemaVersion)))
 	if err != nil {
 		t.Fatalf("DecodeAnswers: %v", err)
 	}
@@ -29,7 +30,7 @@ func TestDecodeAnswersNormalizesNilMap(t *testing.T) {
 }
 
 func TestDecodeAnswersRejectsUnknownFields(t *testing.T) {
-	_, err := DecodeAnswers([]byte(`{"schema_version":1,"answers":{},"bogus":true}`))
+	_, err := DecodeAnswers([]byte(fmt.Sprintf(`{"schema_version":%d,"answers":{},"bogus":true}`, SchemaVersion)))
 	if err == nil {
 		t.Fatal("DecodeAnswers succeeded, want error")
 	}
@@ -38,18 +39,20 @@ func TestDecodeAnswersRejectsUnknownFields(t *testing.T) {
 	}
 }
 
-func TestDecodeAnswersRejectsWrongSchemaVersion(t *testing.T) {
-	_, err := DecodeAnswers([]byte(`{"schema_version":2,"answers":{}}`))
+func TestDecodeAnswersRejectsPreviousSchemaVersion(t *testing.T) {
+	_, err := DecodeAnswers([]byte(`{"schema_version":1,"answers":{}}`))
 	if err == nil {
 		t.Fatal("DecodeAnswers succeeded, want error")
 	}
-	if !strings.Contains(err.Error(), "schema_version") {
-		t.Errorf("err = %v, want mention of schema_version", err)
+	for _, want := range []string{"schema_version 1", fmt.Sprintf("supports %d", SchemaVersion)} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("err = %v, want mention of %q", err, want)
+		}
 	}
 }
 
 func TestDecodeAnswersRejectsTrailingData(t *testing.T) {
-	_, err := DecodeAnswers([]byte(`{"schema_version":1,"answers":{}}{}`))
+	_, err := DecodeAnswers([]byte(fmt.Sprintf(`{"schema_version":%d,"answers":{}}{}`, SchemaVersion)))
 	if err == nil {
 		t.Fatal("DecodeAnswers succeeded, want error")
 	}

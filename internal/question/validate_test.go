@@ -94,6 +94,16 @@ func TestSpecCheckSelect(t *testing.T) {
 			wantErr: false,
 		},
 		{
+			name: "pagination with free text",
+			q: func() Question {
+				q := selectQuestion(Option{Value: "a", Label: "A"}, Option{Value: "b", Label: "B"})
+				q.Pagination = PaginateOptions(q.Options)
+				q.FreeText = true
+				return q
+			}(),
+			wantErr: true,
+		},
+		{
 			name: "header too long",
 			q: func() Question {
 				q := selectQuestion(Option{Value: "a", Label: "A"}, Option{Value: "b", Label: "B"})

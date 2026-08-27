@@ -12,9 +12,11 @@ const maxHeaderLen = 12
 
 // SpecCheck validates a Question the engine is about to emit for
 // well-formedness: id/prompt present, header within maxHeaderLen,
-// select questions carry at least one option with unique values, text
-// questions carry none, and a non-empty Default names one of the
-// options unless FreeText admits values outside them. A Question that
+// unpaginated selects carry 2-4 unique options, paginated selects carry at
+// least one unique option plus exactly PaginateOptions' deterministic contract
+// and no FreeText, text questions carry neither options nor pagination, and a
+// non-empty Default names one of the options unless ordinary FreeText admits
+// values outside them. A Question that
 // fails SpecCheck is a bug in the engine itself, not bad user input,
 // so — unlike run.PlanDoc.Validate's "collect every problem" style —
 // SpecCheck reports the first problem found and stops.
@@ -65,6 +67,9 @@ func specCheckSelect(q Question) error {
 	}
 	if q.Default != "" && !q.FreeText && !seen[q.Default] {
 		return fmt.Errorf("question %s: default %q is not one of the options", q.ID, q.Default)
+	}
+	if q.Pagination != nil && q.FreeText {
+		return fmt.Errorf("question %s: paginated select must not allow free text", q.ID)
 	}
 	if q.Pagination != nil && !reflect.DeepEqual(q.Pagination, PaginateOptions(q.Options)) {
 		return fmt.Errorf("question %s: pagination is not the deterministic native-page contract", q.ID)

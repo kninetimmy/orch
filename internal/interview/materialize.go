@@ -82,9 +82,11 @@ func materializeWithCatalog(answers map[string]string, catalog opencode.Catalog)
 }
 
 // materializeHost builds host's six-role config.Host from answers. Before
-// optional OpenCode variants it wrote Effort for every host; after, every
-// OpenCode role writes Variant (empty for noVariantAnswer), while Claude/Codex
-// retain the same Effort path.
+// optional OpenCode variants it wrote Effort for every host; after, a selected
+// available/new OpenCode model writes Variant (empty for noVariantAnswer).
+// Exception: an unchanged committed model absent from the live catalog keeps
+// its prior Effort/Variant fields exactly so legacy configuration remains
+// loadable. Claude/Codex retain the same Effort path.
 // current is host's committed profile set, so an answer left at a
 // committed near-miss model still round-trips (validateModelAnswer);
 // it is nil for init and for any host a session newly enables, neither

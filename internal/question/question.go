@@ -25,9 +25,10 @@
 // interview -> question, never the reverse.
 package question
 
-// SchemaVersion is the AnswerSet/Document wire schema this build
-// emits and accepts. DecodeAnswers rejects any other value.
-const SchemaVersion = 1
+// SchemaVersion is the AnswerSet/Document wire schema this build emits and
+// accepts. v2 adds Question.Pagination's required presentation semantics;
+// DecodeAnswers rejects v1 before a stale adapter can consume those documents.
+const SchemaVersion = 2
 
 // DocKind classifies a Document. It is a closed enumeration matched
 // exactly against the wire strings shown.

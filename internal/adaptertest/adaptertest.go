@@ -24,11 +24,10 @@
 // line break still counts as present — the pins track whether the
 // words are there, not how the file happens to be line-wrapped.
 //
-// It may import internal/run (the four statement constants) and
-// internal/guard (a caller may pass guard.ClaudeTools()/CodexTools()
-// into CheckMatcherEqualsGuardTools) and nothing else in this module —
-// it is a leaf test-support package, not a place for adapter-specific
-// or engine policy code.
+// It imports internal/run and internal/question only to derive protocol
+// literals from engine constants. A caller may also pass internal/guard tool
+// lists into CheckMatcherEqualsGuardTools. It remains a leaf test-support
+// package, not a place for adapter-specific or engine policy code.
 package adaptertest
 
 import (
@@ -40,6 +39,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/kninetimmy/orch/internal/question"
 	"github.com/kninetimmy/orch/internal/run"
 )
 
@@ -298,7 +298,12 @@ func CheckSetupOptionPagination(t *testing.T, setupSkillPath string) {
 		t.Errorf("%s metadata still promises one batched call per step", setupSkillPath)
 	}
 	content := normalizeWhitespace(raw)
+	answerSet := fmt.Sprintf(`{"schema_version": %d, "answers": {}}`, question.SchemaVersion)
+	wireVersion := fmt.Sprintf("Question wire `schema_version` is closed at `%d` for both `AnswerSet` and `Document`", question.SchemaVersion)
 	for _, phrase := range []string{
+		answerSet,
+		wireVersion,
+		"reject any other Document before reading `kind`, `questions`, or `pagination`",
 		"pagination.hosts",
 		"pagination.pages[0]",
 		"2–3 options exactly as emitted",

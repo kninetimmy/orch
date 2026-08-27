@@ -25,7 +25,7 @@
 //   - `orch init --step` (adapter plumbing): reads one question.AnswerSet
 //     JSON document from stdin and writes one question.Document
 //     (json.MarshalIndent) to stdout. The very first call sends
-//     `{"schema_version":1,"answers":{}}`. An invalid answer makes Next
+//     `{"schema_version":2,"answers":{}}`. An invalid answer makes Next
 //     return an error; the CLI exits 1 with that error's message
 //     (ValidateAnswer's message, when the failure is a bad answer) on
 //     stderr, and the adapter re-asks the same question. Malformed
