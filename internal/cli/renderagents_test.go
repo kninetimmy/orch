@@ -54,7 +54,37 @@ effort = "high"
 
 var validBothHostsTOML = validTOML + validCodexTOML[strings.Index(validCodexTOML, "[hosts.codex"):]
 
-var validOpenCodeTOML = strings.ReplaceAll(validCodexTOML, "hosts.codex", "hosts.opencode")
+const validOpenCodeTOML = `
+schema_version  = 1
+config_revision = "r1"
+
+[memhub]
+mode = "off"
+
+[hosts.opencode.roles.architect]
+model   = "openai/gpt-5.6-sol"
+variant = "xhigh"
+
+[hosts.opencode.roles.scout]
+model   = "openai/gpt-5.6-luna"
+variant = "max"
+
+[hosts.opencode.roles.implementer]
+model   = "openai/gpt-5.6-terra"
+variant = "max"
+
+[hosts.opencode.roles.specialist]
+model   = "openai/gpt-5.6-sol"
+variant = "max"
+
+[hosts.opencode.roles.reviewer]
+model   = "openai/gpt-5.6-sol"
+variant = "xhigh"
+
+[hosts.opencode.roles.review_downgrade]
+model   = "openai/gpt-5.6-sol"
+variant = "high"
+`
 
 const validClaudeDefaultTOML = `
 schema_version  = 1

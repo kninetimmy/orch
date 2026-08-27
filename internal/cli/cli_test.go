@@ -216,7 +216,11 @@ func (f fakeRunner) Run(_ context.Context, c execx.Cmd) (execx.Result, error) {
 			}
 			catalog := f.opencodeCatalog
 			if catalog == "" {
-				catalog = fmt.Sprintf(`{"location":{"directory":%q},"data":[]}`, c.Dir)
+				catalog = fmt.Sprintf(`{"location":{"directory":%q},"data":[
+					{"id":"gpt-5.6-sol","providerID":"openai","enabled":true,"capabilities":{"tools":true,"input":["text"],"output":["text"]},"variants":[{"id":"high"},{"id":"xhigh"},{"id":"max"}]},
+					{"id":"gpt-5.6-luna","providerID":"openai","enabled":true,"capabilities":{"tools":true,"input":["text"],"output":["text"]},"variants":[{"id":"max"}]},
+					{"id":"gpt-5.6-terra","providerID":"openai","enabled":true,"capabilities":{"tools":true,"input":["text"],"output":["text"]},"variants":[{"id":"max"}]}
+				]}`, c.Dir)
 			}
 			return execx.Result{Stdout: catalog, ExitCode: f.opencodeCatalogExit}, nil
 		}

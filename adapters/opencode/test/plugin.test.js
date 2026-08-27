@@ -32,6 +32,7 @@ test("fails closed on malformed mutation inputs", () => {
 test("registers pre-execution guard and session context hooks", async () => {
   const hooks = []
   const calls = []
+  let switched = false
   await definePlugin((args, cwd) => {
     calls.push([args, cwd])
     return args[0] === "hook" ? "context" : ""
@@ -40,6 +41,7 @@ test("registers pre-execution guard and session context hooks", async () => {
     session: {
       get: async () => ({ location: { directory: "/repo" } }),
       hook: async (name, callback) => hooks.push(["session", name, callback]),
+      switchModel: async () => (switched = true),
     },
   })
   assert.deepEqual(
@@ -47,13 +49,32 @@ test("registers pre-execution guard and session context hooks", async () => {
     [["tool", "execute.before"], ["session", "context"]],
   )
   await hooks[0][2]({ sessionID: "session", agent: "build", tool: "write", input: { path: "a.txt", content: "x" } })
-  const event = { sessionID: "session", system: [] }
+  const event = { sessionID: "session", model: { providerID: "openai", id: "gpt", variant: "high" }, system: [] }
   await hooks[1][2](event)
   assert.deepEqual(calls, [
     [["guard", "check", "--", "a.txt"], "/repo"],
-    [["hook", "opencode", "session-start"], "/repo"],
+    [["hook", "opencode", "session-start", "--model", "openai/gpt#high"], "/repo"],
   ])
   assert.deepEqual(event.system, [{ type: "text", text: "context" }])
+  assert.equal(switched, false)
+})
+
+test("does not compare a child session model to the Architect", async () => {
+  let hook
+  let call
+  await definePlugin((args, cwd) => {
+    call = [args, cwd]
+    return "context"
+  }).setup({
+    tool: { hook: async () => {} },
+    session: {
+      get: async () => ({ parentID: "parent", location: { directory: "/repo" } }),
+      hook: async (_, callback) => (hook = callback),
+    },
+  })
+  const event = { sessionID: "child", model: { providerID: "other", id: "model" }, system: [] }
+  await hook(event)
+  assert.deepEqual(call, [["hook", "opencode", "session-start"], "/repo"])
 })
 
 test("a denied guard stops before OpenCode can continue", async () => {

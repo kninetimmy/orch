@@ -137,7 +137,13 @@ func runDoctor(env Env) error {
 			check("codex adapter", checkAdapter(env, codexAdapter))
 		}
 		if cfg.Hosts.OpenCode != nil {
-			check("opencode adapter", checkOpenCodeAdapter(env, opencodeAdapter))
+			catalog, err := checkOpenCodeAdapter(env, opencodeAdapter)
+			check("opencode adapter", err)
+			if err == nil {
+				for _, selection := range opencodecatalog.CheckSelections(cfg.Hosts.OpenCode.Roles, catalog) {
+					check("opencode "+selection.Role+" selection", selection.Err)
+				}
+			}
 		}
 	}
 
@@ -374,10 +380,12 @@ func adapterVersion(manifestJSON string) (string, error) {
 const pinnedOpenCodeVersion = opencodecatalog.PinnedVersion
 
 // checkOpenCodeAdapter pins the beta runtime contract, checks the active
-// plugin ID, then verifies the project-scoped catalog and returned location.
-// V2's plugin API does not currently expose adapter versions.
-func checkOpenCodeAdapter(env Env, spec adapterSpec) error {
-	fail := func(detail string) error { return fmt.Errorf("%s; %s", detail, spec.repair) }
+// plugin ID, then returns the verified project-scoped catalog for role
+// selection checks. V2's plugin API does not currently expose adapter versions.
+func checkOpenCodeAdapter(env Env, spec adapterSpec) (opencodecatalog.Catalog, error) {
+	fail := func(detail string) (opencodecatalog.Catalog, error) {
+		return opencodecatalog.Catalog{}, fmt.Errorf("%s; %s", detail, spec.repair)
+	}
 	if _, err := env.LookPath(spec.executable); err != nil {
 		return fail(fmt.Sprintf("%s not found on PATH: %v", spec.executable, err))
 	}
@@ -424,10 +432,11 @@ func checkOpenCodeAdapter(env Env, spec adapterSpec) error {
 	if count != 1 {
 		return fail(fmt.Sprintf("%s appears %d times; exactly one active plugin is required", spec.pluginID, count))
 	}
-	if _, err := opencodecatalog.ReadCatalog(context.Background(), env.Runner, env.RepoRoot); err != nil {
+	catalog, err := opencodecatalog.ReadCatalog(context.Background(), env.Runner, env.RepoRoot)
+	if err != nil {
 		return fail(err.Error())
 	}
-	return nil
+	return catalog, nil
 }
 
 func decodeAdapterPlugins(host string, data []byte) ([]adapterPlugin, error) {

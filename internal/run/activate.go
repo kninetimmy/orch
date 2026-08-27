@@ -17,6 +17,7 @@ import (
 	"github.com/kninetimmy/orch/internal/manifest"
 	"github.com/kninetimmy/orch/internal/memhub"
 	"github.com/kninetimmy/orch/internal/metrics"
+	opencodecatalog "github.com/kninetimmy/orch/internal/opencode"
 	"github.com/kninetimmy/orch/internal/routing"
 	"github.com/kninetimmy/orch/internal/state"
 )
@@ -116,7 +117,8 @@ func wrapAfterEnter(err error) error {
 //
 //   - Phase 1 (pure validation): decode/validate the plan and its
 //     approval, derive routing and labels for every issue.
-//   - Phase 2 (read-only preflights): Assist+no-lock, current rendered
+//   - Phase 2 (read-only preflights): Assist+no-lock, configured OpenCode
+//     selections present in the project-scoped live catalog, current rendered
 //     project agent files for the plan's host, clean primary
 //     checkout, authenticated GitHub remote, primary on the default
 //     branch (F4), every plan-declared area label existing in the
@@ -183,6 +185,21 @@ func Activate(ctx context.Context, env Env, reqJSON []byte) (*ActivationResult, 
 	// Phase 2: read-only preflights.
 	if err := requireAssistNoLock(env.RepoRoot); err != nil {
 		return nil, err
+	}
+	if plan.Host == "opencode" {
+		catalog, err := opencodecatalog.ReadCatalog(ctx, env.Runner, env.RepoRoot)
+		if err != nil {
+			return nil, err
+		}
+		var unavailable []string
+		for _, check := range opencodecatalog.CheckSelections(cfg.Hosts.OpenCode.Roles, catalog) {
+			if check.Err != nil {
+				unavailable = append(unavailable, check.Err.Error())
+			}
+		}
+		if len(unavailable) > 0 {
+			return nil, fmt.Errorf("%w:\n  - %s", ErrOpenCodeSelectionUnavailable, strings.Join(unavailable, "\n  - "))
+		}
 	}
 	agentHost := cfg.Host(plan.Host)
 	stale, staleErr := agents.Stale(env.RepoRoot, plan.Host, agentHost)

@@ -11,31 +11,23 @@ import (
 
 // hookUsage is the one-line usage for the adapter plumbing surface,
 // mirroring guardUsage.
-const hookUsage = "orch hook: usage: orch hook <claude|codex|opencode> session-start | orch hook codex subagent-usage (JSON document on stdin)"
+const hookUsage = "orch hook: usage: orch hook <claude|codex> session-start | orch hook opencode session-start [--model provider/model[#variant]] | orch hook codex subagent-usage (JSON document on stdin)"
 
 // runHook dispatches host adapter-plumbing verbs (PRD §23). Host adapters call
 // it instead of reimplementing their host-specific behavior; it is never
 // invoked by a human directly.
 func runHook(env Env, args []string) error {
-	if len(args) != 2 {
-		return usageError(hookUsage)
-	}
-	switch args[0] {
-	case "claude":
-		if args[1] == "session-start" {
-			return hookSessionStart(env, args[0])
-		}
-	case "codex":
-		switch args[1] {
-		case "session-start":
-			return hookSessionStart(env, args[0])
-		case "subagent-usage":
-			return runCodexSubagentUsage(env)
-		}
-	case "opencode":
-		if args[1] == "session-start" {
-			return hookSessionStart(env, args[0])
-		}
+	switch {
+	case len(args) == 2 && args[0] == "claude" && args[1] == "session-start":
+		return hookSessionStart(env, args[0], "")
+	case len(args) == 2 && args[0] == "codex" && args[1] == "session-start":
+		return hookSessionStart(env, args[0], "")
+	case len(args) == 2 && args[0] == "codex" && args[1] == "subagent-usage":
+		return runCodexSubagentUsage(env)
+	case len(args) == 2 && args[0] == "opencode" && args[1] == "session-start":
+		return hookSessionStart(env, args[0], "")
+	case len(args) == 4 && args[0] == "opencode" && args[1] == "session-start" && args[2] == "--model" && args[3] != "":
+		return hookSessionStart(env, args[0], args[3])
 	}
 	return usageError(hookUsage)
 }
@@ -49,7 +41,7 @@ func runHook(env Env, args []string) error {
 // discovery, config, or state failure degrades to silent output, not an
 // error. The architect skill's own `orch run status --json` call surfaces
 // a broken repo loudly later, once a session is actually underway.
-func hookSessionStart(env Env, host string) error {
+func hookSessionStart(env Env, host, selectedModel string) error {
 	root, err := paths.FindOutermostRoot(env.RepoRoot)
 	if err != nil {
 		return nil // no .orchestrator ancestor (or an unwalkable one): silent
@@ -62,7 +54,7 @@ func hookSessionStart(env Env, host string) error {
 	if err != nil {
 		return nil // unreadable/invalid state: silent
 	}
-	fmt.Fprint(env.Stdout, sessionStartContext(cfg, st, host))
+	fmt.Fprint(env.Stdout, sessionStartContext(cfg, st, host, selectedModel))
 	return nil
 }
 
@@ -89,10 +81,10 @@ var sessionStartClosing = map[string]string{
 }
 
 // sessionStartContext renders the compact plain-text context block the
-// SessionStart hook injects: both hosts take a hook's raw stdout as
+// SessionStart hook injects: all hosts take a hook's raw stdout as
 // context text, not a JSON envelope, so this is deliberately prose, not a
 // document.
-func sessionStartContext(cfg *config.Config, st *state.State, host string) string {
+func sessionStartContext(cfg *config.Config, st *state.State, host, selectedModel string) string {
 	var b strings.Builder
 	if st.Mode == state.ModeDelivery {
 		fmt.Fprintln(&b, "This repository is managed by Orch (mode: delivery).")
@@ -101,6 +93,15 @@ func sessionStartContext(cfg *config.Config, st *state.State, host string) strin
 		fmt.Fprintln(&b, "This repository is managed by Orch (mode: assist).")
 	}
 	fmt.Fprintf(&b, "Memhub mode: %s.\n", cfg.Memhub.Mode)
+	if host == "opencode" && selectedModel != "" && cfg.Hosts.OpenCode != nil {
+		architect := cfg.Hosts.OpenCode.Roles.Architect.Model
+		if variant := cfg.Hosts.OpenCode.Roles.Architect.EffectiveOpenCodeVariant(); variant != "" {
+			architect += "#" + variant
+		}
+		if selectedModel != architect {
+			fmt.Fprintf(&b, "Warning: this main session selected %q, but hosts.opencode.roles.architect configures %q. Orch will not switch the session model automatically; select the configured Architect manually if you want them to match.\n", selectedModel, architect)
+		}
+	}
 	fmt.Fprintln(&b, sessionStartClosing[host])
 	return b.String()
 }

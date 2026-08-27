@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net/url"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -20,6 +21,7 @@ import (
 	"github.com/kninetimmy/orch/internal/lockfile"
 	"github.com/kninetimmy/orch/internal/manifest"
 	"github.com/kninetimmy/orch/internal/metrics"
+	opencodecatalog "github.com/kninetimmy/orch/internal/opencode"
 	"github.com/kninetimmy/orch/internal/paths"
 	"github.com/kninetimmy/orch/internal/state"
 )
@@ -69,7 +71,7 @@ func newActivateRepoWithConfigAndIgnore(t *testing.T, tomlContent, gitignore str
 	if err := os.WriteFile(filepath.Join(root, "README.md"), []byte("hi\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	gitignore += ".claude/agents/\n.codex/agents/\n"
+	gitignore += ".claude/agents/\n.codex/agents/\n.opencode/agents/\n"
 	if err := os.WriteFile(filepath.Join(root, ".gitignore"), []byte(gitignore), 0o644); err != nil {
 		t.Fatal(err)
 	}
@@ -87,10 +89,7 @@ func newActivateRepoWithConfigAndIgnore(t *testing.T, tomlContent, gitignore str
 	}
 	var files []agents.File
 	for _, host := range cfg.EnabledHosts() {
-		h := cfg.Hosts.Claude
-		if host == "codex" {
-			h = cfg.Hosts.Codex
-		}
+		h := cfg.Host(host)
 		rendered, err := agents.Render(host, h)
 		if err != nil {
 			t.Fatal(err)
@@ -890,4 +889,105 @@ func TestActivateClaudeAbsentAgentsLeavesNothing(t *testing.T) {
 	}
 	script.AssertExhausted()
 	assertNoActivationArtifacts(t, root)
+}
+
+const mixedOpenCodeConfigTOML = `
+schema_version  = 1
+config_revision = "r1"
+
+[memhub]
+mode = "off"
+
+[hosts.opencode.roles.architect]
+model   = "openai/architect"
+variant = "deep"
+
+[hosts.opencode.roles.scout]
+model = "copilot/scout"
+
+[hosts.opencode.roles.implementer]
+model   = "local/team/implementer"
+variant = "fast"
+
+[hosts.opencode.roles.specialist]
+model = "openai/specialist"
+
+[hosts.opencode.roles.reviewer]
+model   = "copilot/reviewer"
+variant = "thorough"
+
+[hosts.opencode.roles.review_downgrade]
+model = "local/reviewer-lite"
+`
+
+func openCodePlanJSON() string {
+	return strings.Replace(codexPlanJSON(), `"host": "codex"`, `"host": "opencode"`, 1)
+}
+
+func openCodeCatalogCall(root, models string) execxtest.Call {
+	endpoint := "/api/model?" + url.Values{"location[directory]": {root}}.Encode()
+	return execxtest.Call{
+		Name:   opencodecatalog.Executable,
+		Args:   []string{"api", "get", endpoint},
+		Stdout: fmt.Sprintf(`{"location":{"directory":%q},"data":[%s]}`, root, models),
+	}
+}
+
+func availableMixedOpenCodeModels() string {
+	return strings.Join([]string{
+		`{"id":"architect","providerID":"openai","enabled":true,"capabilities":{"tools":true,"input":["text"],"output":["text"]},"variants":[{"id":"deep"}]}`,
+		`{"id":"scout","providerID":"copilot","enabled":true,"capabilities":{"tools":true,"input":["text"],"output":["text"]},"variants":[]}`,
+		`{"id":"team/implementer","providerID":"local","enabled":true,"capabilities":{"tools":true,"input":["text"],"output":["text"]},"variants":[{"id":"fast"}]}`,
+		`{"id":"specialist","providerID":"openai","enabled":true,"capabilities":{"tools":true,"input":["text"],"output":["text"]},"variants":[]}`,
+		`{"id":"reviewer","providerID":"copilot","enabled":true,"capabilities":{"tools":true,"input":["text"],"output":["text"]},"variants":[{"id":"thorough"}]}`,
+		`{"id":"reviewer-lite","providerID":"local","enabled":true,"capabilities":{"tools":true,"input":["text"],"output":["text"]},"variants":[]}`,
+	}, ",")
+}
+
+func TestActivateOpenCodeUnavailableSelectionsLeaveNothing(t *testing.T) {
+	root := newActivateRepoWithConfigAndIgnore(t, mixedOpenCodeConfigTOML, fullGitignore)
+	models := `{"id":"unrelated","providerID":"catalog","enabled":true,"capabilities":{"tools":true,"input":["text"],"output":["text"]},"variants":[{"id":"secret-variant","settings":{"token":"catalog-secret"}}]}`
+	script := &execxtest.Script{T: t, Calls: []execxtest.Call{openCodeCatalogCall(root, models)}}
+	env := Env{RepoRoot: root, Runner: muxRunner{git: execx.Local{}, gh: script}, Now: fixedNow}
+
+	_, err := Activate(context.Background(), env, activationJSON(t, openCodePlanJSON()))
+	if !errors.Is(err, ErrOpenCodeSelectionUnavailable) {
+		t.Fatalf("err = %v, want ErrOpenCodeSelectionUnavailable", err)
+	}
+	for _, role := range []string{"architect", "scout", "implementer", "specialist", "reviewer", "review_downgrade"} {
+		if !strings.Contains(err.Error(), "hosts.opencode.roles."+role) {
+			t.Errorf("err does not name %s: %v", role, err)
+		}
+	}
+	if strings.Contains(err.Error(), "catalog-secret") || strings.Contains(err.Error(), "secret-variant") {
+		t.Errorf("error disclosed catalog-only data: %v", err)
+	}
+	script.AssertExhausted()
+	assertNoActivationArtifacts(t, root)
+}
+
+func TestActivateOpenCodeAvailableMixedProfileProceedsWithFreshAgents(t *testing.T) {
+	root := newActivateRepoWithConfigAndIgnore(t, mixedOpenCodeConfigTOML, fullGitignore)
+	cfg, err := config.Load(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	stale, staleErr := agents.Stale(root, "opencode", cfg.Hosts.OpenCode)
+	if len(stale) > 0 || staleErr != nil {
+		t.Fatalf("OpenCode agents stale = %v, err = %v", stale, staleErr)
+	}
+	calls := []execxtest.Call{openCodeCatalogCall(root, availableMixedOpenCodeModels())}
+	calls = append(calls, fullTaxonomyScript()...)
+	calls = append(calls, ghIssueCreateCall("Issue A", []string{"ready", "feature", "implementer", "standard"}, 1))
+	script := &execxtest.Script{T: t, Calls: calls}
+	env := Env{RepoRoot: root, Runner: muxRunner{git: execx.Local{}, gh: script}, Now: fixedNow}
+
+	result, err := Activate(context.Background(), env, activationJSON(t, openCodePlanJSON()))
+	if err != nil {
+		t.Fatalf("Activate: %v", err)
+	}
+	script.AssertExhausted()
+	if len(result.Issues) != 1 || result.Issues[0].Number != 1 {
+		t.Errorf("Issues = %+v, want one issue #1", result.Issues)
+	}
 }
