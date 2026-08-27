@@ -47,7 +47,12 @@ export function definePlugin(run = runOrch) {
       })
       await ctx.session.hook("context", async (event) => {
         const session = await ctx.session.get({ sessionID: event.sessionID })
-        const text = run(["hook", "opencode", "session-start"], session.location.directory)
+        const args = ["hook", "opencode", "session-start"]
+        if (!session.parentID) {
+          const model = `${event.model.providerID}/${event.model.id}${event.model.variant ? `#${event.model.variant}` : ""}`
+          args.push("--model", model)
+        }
+        const text = run(args, session.location.directory)
         if (text) event.system.push({ type: "text", text })
       })
     },

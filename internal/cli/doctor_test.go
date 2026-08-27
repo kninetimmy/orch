@@ -17,6 +17,39 @@ import (
 	"github.com/kninetimmy/orch/internal/state"
 )
 
+const mixedOpenCodeTOML = `
+schema_version  = 1
+config_revision = "r1"
+
+[memhub]
+mode = "off"
+
+[hosts.opencode.roles.architect]
+model   = "openai/architect"
+variant = "deep"
+
+[hosts.opencode.roles.scout]
+model = "copilot/scout"
+
+[hosts.opencode.roles.implementer]
+model   = "local/team/implementer"
+variant = "fast"
+
+[hosts.opencode.roles.specialist]
+model = "openai/specialist"
+
+[hosts.opencode.roles.reviewer]
+model   = "copilot/reviewer"
+variant = "thorough"
+
+[hosts.opencode.roles.review_downgrade]
+model = "local/reviewer-lite"
+`
+
+func openCodeCatalogResponse(root, models string) string {
+	return fmt.Sprintf(`{"location":{"directory":%q},"data":[%s]}`, root, models)
+}
+
 func TestDoctorAllChecksPass(t *testing.T) {
 	env, stdout, _ := testEnv(t)
 	writeConfig(t, env.RepoRoot, validTOML)
@@ -173,6 +206,92 @@ func TestDoctorConfiguredAdaptersPassCurrentListings(t *testing.T) {
 				t.Errorf("stdout missing passing adapter check:\n%s", stdout.String())
 			}
 		})
+	}
+}
+
+func TestDoctorReportsEveryUnavailableOpenCodeRole(t *testing.T) {
+	const unavailable = `
+schema_version  = 1
+config_revision = "r1"
+
+[memhub]
+mode = "off"
+
+[hosts.opencode.roles.architect]
+model   = "missing/architect"
+variant = "deep"
+
+[hosts.opencode.roles.scout]
+model = "available/missing-scout"
+
+[hosts.opencode.roles.implementer]
+model   = "available/agent"
+variant = "missing-implementer"
+
+[hosts.opencode.roles.specialist]
+model = "missing/specialist"
+
+[hosts.opencode.roles.reviewer]
+model = "available/missing-reviewer"
+
+[hosts.opencode.roles.review_downgrade]
+model   = "available/agent"
+variant = "missing-safe"
+`
+	env, stdout, _ := testEnv(t)
+	writeConfig(t, env.RepoRoot, unavailable)
+	if code := Run([]string{"render-agents"}, env); code != ExitOK {
+		t.Fatalf("render-agents exit = %d\n%s", code, stdout.String())
+	}
+	stdout.Reset()
+	env.Runner = fakeRunner{
+		toplevel: env.RepoRoot,
+		opencodeCatalog: openCodeCatalogResponse(env.RepoRoot,
+			`{"id":"agent","providerID":"available","enabled":true,"capabilities":{"tools":true,"input":["text"],"output":["text"]},"variants":[{"id":"fast","settings":{"token":"catalog-secret"}}]}`),
+	}
+	if code := Run([]string{"doctor"}, env); code != ExitError {
+		t.Fatalf("exit = %d, want %d\n%s", code, ExitError, stdout.String())
+	}
+	out := stdout.String()
+	for _, role := range []string{"architect", "scout", "implementer", "specialist", "reviewer", "review_downgrade"} {
+		for _, want := range []string{"FAIL  opencode " + role + " selection", "hosts.opencode.roles." + role, "choose an available OpenCode selection for this role"} {
+			if !strings.Contains(out, want) {
+				t.Errorf("output missing %q:\n%s", want, out)
+			}
+		}
+	}
+	if strings.Contains(out, "catalog-secret") || strings.Contains(out, `"fast"`) {
+		t.Errorf("doctor disclosed catalog-only data:\n%s", out)
+	}
+}
+
+func TestDoctorAcceptsAvailableMixedProviderOpenCodeProfile(t *testing.T) {
+	env, stdout, _ := testEnv(t)
+	writeConfig(t, env.RepoRoot, mixedOpenCodeTOML)
+	if code := Run([]string{"render-agents"}, env); code != ExitOK {
+		t.Fatalf("render-agents exit = %d\n%s", code, stdout.String())
+	}
+	stdout.Reset()
+	models := strings.Join([]string{
+		`{"id":"architect","providerID":"openai","enabled":true,"capabilities":{"tools":true,"input":["text"],"output":["text"]},"variants":[{"id":"deep"}]}`,
+		`{"id":"scout","providerID":"copilot","enabled":true,"capabilities":{"tools":true,"input":["text"],"output":["text"]},"variants":[]}`,
+		`{"id":"team/implementer","providerID":"local","enabled":true,"capabilities":{"tools":true,"input":["text"],"output":["text"]},"variants":[{"id":"fast"}]}`,
+		`{"id":"specialist","providerID":"openai","enabled":true,"capabilities":{"tools":true,"input":["text"],"output":["text"]},"variants":[]}`,
+		`{"id":"reviewer","providerID":"copilot","enabled":true,"capabilities":{"tools":true,"input":["text"],"output":["text"]},"variants":[{"id":"thorough"}]}`,
+		`{"id":"reviewer-lite","providerID":"local","enabled":true,"capabilities":{"tools":true,"input":["text"],"output":["text"]},"variants":[]}`,
+	}, ",")
+	env.Runner = fakeRunner{toplevel: env.RepoRoot, opencodeCatalog: openCodeCatalogResponse(env.RepoRoot, models)}
+	if code := Run([]string{"doctor"}, env); code != ExitOK {
+		t.Fatalf("exit = %d, want %d\n%s", code, ExitOK, stdout.String())
+	}
+	out := stdout.String()
+	for _, role := range []string{"architect", "scout", "implementer", "specialist", "reviewer", "review_downgrade"} {
+		if !strings.Contains(out, "ok    opencode "+role+" selection") {
+			t.Errorf("output missing passing %s selection:\n%s", role, out)
+		}
+	}
+	if !strings.Contains(out, "ok    opencode agent files") {
+		t.Errorf("mixed-provider generated agents are not fresh:\n%s", out)
 	}
 }
 
