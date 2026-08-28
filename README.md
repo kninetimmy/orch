@@ -607,9 +607,11 @@ one control on this path that does not depend on the agent.
 
 **A crashed run leaves the Delivery lock held; there is no automatic
 takeover.** `.orchestrator/delivery.lock` is created with `O_EXCL` and
-Orch never steals it on a staleness guess. Symptom: the next run
-refuses to start, and `orch doctor` notes that the acquiring process
-is no longer running. Workaround: `orch resume` to reconcile and
+Orch never steals it on a staleness guess. This remains true for that
+run-spanning lock; the separate per-command mutation serializer is
+OS-owned and is released automatically when its process exits. Symptom:
+the next run refuses to start, and `orch doctor` notes that the acquiring
+process is no longer running. Workaround: `orch resume` to reconcile and
 continue, or `orch abort` to end it.
 
 </details>
@@ -882,7 +884,13 @@ and there is no automatic staleness takeover — recovery is always an
 explicit `orch abort` or `orch resume`. Run state is schema-versioned
 JSON at `.orchestrator/state.json` (machine-local, atomic writes,
 fail-closed loads), persisted after every sub-step, so a crash at any
-point is recoverable.
+point is recoverable. Separately, every mutating Delivery command — all
+mutating `orch run` verbs, `orch resume`, and `orch abort` — holds an
+OS-owned repository serializer through its final state and metrics write.
+Before that command-level serializer, the run-spanning lock excluded a
+second run but let two invocations in the same run load and replace the
+same documents concurrently. `orch run plan` and status commands remain
+outside this serialization, and process exit releases it automatically.
 
 ### The Delivery pipeline
 

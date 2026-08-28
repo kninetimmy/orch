@@ -14,9 +14,11 @@
 // refuses any worktree that is not detached, so neither can reach a
 // branch or the commits on it.
 //
-// Operations that pre-check and then act (for example AddWorktree)
-// are not atomic; the run engine serializes potentially conflicting
-// writes (PRD §14), so the gap is not raced in practice.
+// Operations that pre-check and then act (for example AddWorktree) are not
+// atomic, and this package adds no locking. For Delivery commands,
+// internal/cli serializes potentially conflicting writes at the full-command
+// boundary (PRD §14); callers outside that path must provide any coordination
+// they require.
 package gitops
 
 import (

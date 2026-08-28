@@ -1,9 +1,9 @@
-// Package lockfile implements the exclusive cross-host Delivery lock
-// (PRD §14): one active Delivery coordinator per repository across both
-// hosts. The lock is the existence of .orchestrator/delivery.lock,
-// created with O_EXCL so acquisition is atomic on every supported OS.
+// Package lockfile implements both Delivery locks from PRD §14: the
+// run-spanning Delivery lock and the process-scoped mutation serializer.
+// The run lock is the existence of .orchestrator/delivery.lock, created
+// with O_EXCL so acquisition is atomic on every supported OS.
 //
-// The lock deliberately outlives the acquiring process: a Delivery run
+// The run lock deliberately outlives the acquiring process: a Delivery run
 // spans many short-lived orch invocations plus a host agent session, so
 // the recorded PID is advisory and its death is never treated as
 // staleness. There is no automatic takeover; recovery is always the

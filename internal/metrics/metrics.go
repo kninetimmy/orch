@@ -10,10 +10,12 @@
 // gains no storage from merely reading (PRD §23: disabled metrics
 // create no storage).
 //
-// Exactly one Delivery run owns a repository at a time (the Delivery
-// lock, internal/lockfile), so writes to any one run's document are
-// serialized by construction — this package needs no locking of its
-// own.
+// Before command-level mutation serialization, exactly one Delivery run
+// owned a repository but multiple command invocations inside it could still
+// overlap Append's read-modify-write and lose an event. Now the production
+// CLI's process-scoped Delivery mutation lock covers each final Append. This
+// package remains policy-free and has no lock of its own; direct callers must
+// provide the same serialization.
 //
 // PRD §21 mapping: first-pass review outcome is the first "review"
 // event recorded for an issue; retries show up as ReviewCycles and

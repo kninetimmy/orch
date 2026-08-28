@@ -17,15 +17,19 @@
 // complete. Each reads a schema-versioned request document on stdin and
 // writes a schema-versioned result on stdout.
 //
-// Concurrency invariant: plan and status are read-only. Every mutating
-// verb acquires or re-verifies the cross-host Delivery lock: activate
-// enters Delivery via state.EnterDelivery, and each lifecycle verb runs
-// the shared preconditions in loadVerb (state.Load + lockfile.Inspect +
-// state.CheckConsistent with st.Run.ID == owner.RunID, plus config-drift
-// and stopped-run gates) before touching anything. Within one invocation
-// writes are sequential, so PRD §14's serialization requirement holds
-// trivially. Failure semantics are pure: a verb never mutates phase,
-// state, GitHub, or git as a side effect of failing.
+// Concurrency invariant: plan and status are read-only and never enter
+// mutation serialization. Every mutating verb acquires or re-verifies the
+// run-spanning cross-host Delivery lock: activate enters Delivery via
+// state.EnterDelivery, and each lifecycle verb runs the shared preconditions
+// in loadVerb (state.Load + lockfile.Inspect + state.CheckConsistent with
+// st.Run.ID == owner.RunID, plus config-drift and stopped-run gates) before
+// touching anything. Before process-scoped mutation serialization, those
+// checks excluded a second run but did not stop two invocations in the same
+// run from loading and replacing state concurrently. Now the production CLI
+// serializes every mutating run verb, resume, and abort for the full command;
+// the OS releases that serializer on process exit. Failure semantics are
+// pure: a verb never mutates phase, state, GitHub, or git as a side effect of
+// failing.
 //
 // All documents this package accepts are schema-versioned
 // (exact-match, fail closed) and decoded with DisallowUnknownFields:

@@ -383,6 +383,9 @@ Models do not become GitHub labels.
 - Default maximum: three concurrent subagents.
 - Initialization may configure another cap.
 - Potentially conflicting writes serialize.
+- Every mutating Delivery command invocation holds that serialization through its final persisted
+  state and metrics update; process exit releases it automatically.
+- Read-only plan and status commands do not acquire mutation serialization.
 - Read-only Scouts may run concurrently within the cap.
 - Review begins only after the reviewed PR stops changing.
 - Unaffected issues continue while another issue is blocked.

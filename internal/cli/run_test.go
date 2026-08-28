@@ -2,8 +2,18 @@ package cli
 
 import (
 	"bytes"
+	"context"
+	"fmt"
 	"strings"
+	"sync"
 	"testing"
+	"time"
+
+	"github.com/kninetimmy/orch/internal/execx"
+	"github.com/kninetimmy/orch/internal/lockfile"
+	"github.com/kninetimmy/orch/internal/manifest"
+	"github.com/kninetimmy/orch/internal/metrics"
+	"github.com/kninetimmy/orch/internal/state"
 )
 
 // TestNoArgCommandsRejectTrailingArgs proves noArgs still rejects a
@@ -113,6 +123,172 @@ func TestRunStatusNeverReadsStdin(t *testing.T) {
 	}
 	if !strings.Contains(stdout.String(), `"mode": "assist"`) {
 		t.Errorf("stdout = %s", stdout.String())
+	}
+}
+
+func TestRunPlanAndStatusDoNotWaitForMutationSerialization(t *testing.T) {
+	env, _, _ := testEnv(t)
+	writeConfig(t, env.RepoRoot, validTOML)
+	lock, err := lockfile.AcquireMutation(env.RepoRoot)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		if err := lock.Release(); err != nil {
+			t.Errorf("Release: %v", err)
+		}
+	}()
+
+	for name, args := range map[string][]string{
+		"plan":   {"run", "plan"},
+		"status": {"run", "status", "--json"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			callEnv := env
+			var stdout, callStderr bytes.Buffer
+			callEnv.Stdout = &stdout
+			callEnv.Stderr = &callStderr
+			if name == "plan" {
+				callEnv.Stdin = strings.NewReader(minimalPlanJSON)
+			}
+			done := make(chan int, 1)
+			go func() { done <- Run(args, callEnv) }()
+			select {
+			case code := <-done:
+				if code != ExitOK {
+					t.Fatalf("exit = %d, want %d; stderr = %s", code, ExitOK, callStderr.String())
+				}
+			case <-time.After(2 * time.Second):
+				t.Fatalf("%s waited for mutation serialization", name)
+			}
+		})
+	}
+}
+
+type firstCallGateRunner struct {
+	inner   execx.Runner
+	entered chan struct{}
+	release <-chan struct{}
+	once    sync.Once
+}
+
+func (r *firstCallGateRunner) Run(ctx context.Context, cmd execx.Cmd) (execx.Result, error) {
+	r.once.Do(func() {
+		close(r.entered)
+		<-r.release
+	})
+	return r.inner.Run(ctx, cmd)
+}
+
+type dispatchRunner struct{ fakeRunner }
+
+func (r dispatchRunner) Run(ctx context.Context, cmd execx.Cmd) (execx.Result, error) {
+	if cmd.Name == "gh" && len(cmd.Args) > 1 && cmd.Args[0] == "issue" && cmd.Args[1] == "edit" {
+		return execx.Result{}, nil
+	}
+	return r.fakeRunner.Run(ctx, cmd)
+}
+
+func TestConcurrentDispatchesPreserveBothStateAndMetrics(t *testing.T) {
+	env, stdout1, stderr1 := testEnv(t)
+	writeConfig(t, env.RepoRoot, validTOML+"\n[metrics]\nenabled = true\n")
+	planned := []state.Issue{
+		{PlanID: "a", Phase: state.PhasePlanned},
+		{PlanID: "b", Phase: state.PhasePlanned},
+	}
+	st, err := state.EnterDelivery(env.RepoRoot, "claude", testPlanRef(), planned)
+	if err != nil {
+		t.Fatal(err)
+	}
+	selection := manifest.Selection{Model: "claude-sonnet-5", Effort: "xhigh"}
+	for i, number := range []int{240, 241} {
+		st.Run.Issues[i] = state.Issue{
+			PlanID:             string(rune('a' + i)),
+			Title:              fmt.Sprintf("Issue %d", number),
+			Phase:              state.PhaseWorktreeReady,
+			Number:             number,
+			Branch:             fmt.Sprintf("orch/issue-%d", number),
+			Worktree:           fmt.Sprintf(".orchestrator/worktrees/issue-%d", number),
+			Objective:          "preserve this transition",
+			AcceptanceCriteria: []string{"state remains recorded"},
+			RequiredTests:      []string{"go test ./..."},
+			Decision: &state.Decision{
+				Role:      manifest.RoleImplementer,
+				Executor:  selection,
+				Reviewer:  selection,
+				Rationale: "test",
+			},
+		}
+	}
+	if err := state.Save(env.RepoRoot, st); err != nil {
+		t.Fatal(err)
+	}
+
+	entered := make(chan struct{})
+	release := make(chan struct{})
+	env.Runner = &firstCallGateRunner{
+		inner:   dispatchRunner{fakeRunner{toplevel: env.RepoRoot}},
+		entered: entered,
+		release: release,
+	}
+	env.Stdin = strings.NewReader(`{"schema_version":4,"issue_number":240}`)
+	done1 := make(chan int, 1)
+	go func() { done1 <- Run([]string{"run", "dispatch"}, env) }()
+	<-entered // issue #240 loaded state and is now paused before mutation
+
+	var stdout2, stderr2 bytes.Buffer
+	env2 := env
+	env2.Stdout = &stdout2
+	env2.Stderr = &stderr2
+	env2.Runner = dispatchRunner{fakeRunner{toplevel: env.RepoRoot}}
+	env2.Stdin = strings.NewReader(`{"schema_version":4,"issue_number":241}`)
+	done2 := make(chan int, 1)
+	go func() { done2 <- Run([]string{"run", "dispatch"}, env2) }()
+
+	var code2 int
+	secondFinishedEarly := false
+	select {
+	case code2 = <-done2:
+		// Without command serialization #241 saves its independently loaded
+		// state first; releasing #240 below then reproduces the lost update.
+		secondFinishedEarly = true
+	case <-time.After(200 * time.Millisecond):
+		// Serialized: #241 is waiting before its state load.
+	}
+	close(release)
+	code1 := <-done1
+	if !secondFinishedEarly {
+		code2 = <-done2
+	}
+	if code1 != ExitOK || code2 != ExitOK {
+		t.Fatalf("dispatch exits = (%d, %d), want (%d, %d); stderr #240 %q; stderr #241 %q; stdout #240 %q; stdout #241 %q",
+			code1, code2, ExitOK, ExitOK, stderr1.String(), stderr2.String(), stdout1.String(), stdout2.String())
+	}
+
+	got, err := state.Load(env.RepoRoot)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, issue := range got.Run.Issues {
+		if issue.Phase != state.PhaseDispatched {
+			t.Errorf("issue #%d phase = %s, want %s", issue.Number, issue.Phase, state.PhaseDispatched)
+		}
+	}
+	docs, err := metrics.LoadAll(env.RepoRoot)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(docs) != 1 || len(docs[0].Events) != 2 {
+		t.Fatalf("metrics documents = %+v, want one document with two events", docs)
+	}
+	seen := map[int]bool{}
+	for _, event := range docs[0].Events {
+		seen[event.IssueNumber] = true
+	}
+	for _, number := range []int{240, 241} {
+		if !seen[number] {
+			t.Errorf("metrics missing dispatch for issue #%d: %+v", number, docs[0].Events)
+		}
 	}
 }
 
