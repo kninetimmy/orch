@@ -1,10 +1,14 @@
 package lockfile
 
 import (
+	"bufio"
+	"bytes"
 	"errors"
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"sync"
 	"testing"
@@ -143,6 +147,93 @@ func TestAcquireExactlyOneWinner(t *testing.T) {
 	if wins != 1 {
 		t.Errorf("%d goroutines acquired the lock, want exactly 1", wins)
 	}
+}
+
+func TestMutationSerializationReleasedWhenProcessExits(t *testing.T) {
+	root := lockDir(t)
+	cmd := exec.Command(os.Args[0], "-test.run=^TestMutationSerializationHelper$")
+	cmd.Env = append(os.Environ(), "ORCH_MUTATION_HELPER_ROOT="+root)
+	stdout, err := cmd.StdoutPipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	var stderr bytes.Buffer
+	cmd.Stderr = &stderr
+	if err := cmd.Start(); err != nil {
+		t.Fatal(err)
+	}
+	waited := false
+	t.Cleanup(func() {
+		if !waited {
+			_ = cmd.Process.Kill()
+			_ = cmd.Wait()
+		}
+	})
+
+	scanner := bufio.NewScanner(stdout)
+	if !scanner.Scan() || scanner.Text() != "locked" {
+		_ = cmd.Process.Kill()
+		_ = cmd.Wait()
+		waited = true
+		t.Fatalf("helper did not acquire mutation serialization: stdout %q, stderr %q", scanner.Text(), stderr.String())
+	}
+
+	type result struct {
+		lock *Mutation
+		err  error
+	}
+	acquired := make(chan result, 1)
+	go func() {
+		lock, err := AcquireMutation(root)
+		acquired <- result{lock: lock, err: err}
+	}()
+	select {
+	case got := <-acquired:
+		if got.lock != nil {
+			_ = got.lock.Release()
+		}
+		t.Fatalf("AcquireMutation returned while helper still held it: %v", got.err)
+	case <-time.After(200 * time.Millisecond):
+		// Still blocked by the helper, as required.
+	}
+
+	if err := cmd.Process.Kill(); err != nil {
+		t.Fatal(err)
+	}
+	if err := cmd.Wait(); err == nil {
+		t.Fatal("killed mutation helper exited successfully")
+	}
+	waited = true
+
+	select {
+	case got := <-acquired:
+		if got.err != nil {
+			t.Fatalf("AcquireMutation after holder exit: %v", got.err)
+		}
+		if err := got.lock.Release(); err != nil {
+			t.Fatalf("Release: %v", err)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("mutation serialization remained held after holder process exited")
+	}
+}
+
+// TestMutationSerializationHelper is re-executed by
+// TestMutationSerializationReleasedWhenProcessExits. It deliberately exits
+// without Release so the parent proves the OS, rather than cleanup code,
+// recovers the serializer.
+func TestMutationSerializationHelper(t *testing.T) {
+	root := os.Getenv("ORCH_MUTATION_HELPER_ROOT")
+	if root == "" {
+		return
+	}
+	lock, err := AcquireMutation(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	fmt.Println("locked")
+	time.Sleep(time.Hour)
+	runtime.KeepAlive(lock)
 }
 
 func TestPIDAlive(t *testing.T) {

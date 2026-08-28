@@ -41,21 +41,23 @@ func runResume(env Env, args []string) error {
 		req.Statement = run.ResumeStoppedRunStatement
 	}
 
-	runEnv := run.Env{RepoRoot: env.RepoRoot, Runner: env.Runner, Now: time.Now}
-	doc, err := run.Resume(context.Background(), runEnv, req)
-	if err != nil {
-		return err
-	}
-
-	if asJSON {
-		data, err := json.MarshalIndent(doc, "", "  ")
+	return withDeliveryMutation(env.RepoRoot, func() error {
+		runEnv := run.Env{RepoRoot: env.RepoRoot, Runner: env.Runner, Now: time.Now}
+		doc, err := run.Resume(context.Background(), runEnv, req)
 		if err != nil {
-			return fmt.Errorf("encode resume result: %w", err)
+			return err
 		}
-		_, err = fmt.Fprintf(env.Stdout, "%s\n", data)
-		return err
-	}
-	return renderResume(env, doc)
+
+		if asJSON {
+			data, err := json.MarshalIndent(doc, "", "  ")
+			if err != nil {
+				return fmt.Errorf("encode resume result: %w", err)
+			}
+			_, err = fmt.Fprintf(env.Stdout, "%s\n", data)
+			return err
+		}
+		return renderResume(env, doc)
+	})
 }
 
 // renderResume prints the human report the resume example in PRD §23

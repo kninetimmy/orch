@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/kninetimmy/orch/internal/lockfile"
 	"github.com/kninetimmy/orch/internal/run"
 )
 
@@ -76,9 +77,36 @@ func runRunVerb(env Env, args []string) error {
 		return fmt.Errorf("read stdin: %w", err)
 	}
 
-	return emitRunResult(env, args[0], func(ctx context.Context, runEnv run.Env) (any, error) {
-		return handler(ctx, runEnv, input)
-	})
+	invoke := func() error {
+		return emitRunResult(env, args[0], func(ctx context.Context, runEnv run.Env) (any, error) {
+			return handler(ctx, runEnv, input)
+		})
+	}
+	// Plan is the only document-taking read-only run verb. Status was
+	// handled above; every other runVerbs entry is a mutating Delivery
+	// command and holds one repository serializer through its final state
+	// and metrics write. This is a command-class rule, not a Dispatch-only
+	// restriction.
+	if args[0] == "plan" {
+		return invoke()
+	}
+	return withDeliveryMutation(env.RepoRoot, invoke)
+}
+
+// withDeliveryMutation holds the process-scoped, cross-process serializer for
+// one complete mutating command invocation. Besides runRunVerb's mutators,
+// resume and abort use this same boundary.
+func withDeliveryMutation(repoRoot string, fn func() error) (err error) {
+	lock, err := lockfile.AcquireMutation(repoRoot)
+	if err != nil {
+		return err
+	}
+	defer func() {
+		if releaseErr := lock.Release(); err == nil && releaseErr != nil {
+			err = releaseErr
+		}
+	}()
+	return fn()
 }
 
 // emitRunResult runs one verb and writes its JSON result to stdout.
