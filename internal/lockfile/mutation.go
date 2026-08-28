@@ -2,9 +2,10 @@ package lockfile
 
 import "sync"
 
-// Mutation holds the process-scoped lock that serializes one repository's
-// mutating Delivery commands. Release must be deferred immediately after a
-// successful AcquireMutation.
+// Mutation holds the process-scoped lock that serializes mutating Delivery
+// commands. Release must be deferred immediately after a successful
+// AcquireMutation and called from the acquiring goroutine. On Windows that
+// goroutine stays pinned to the owning OS thread until Release.
 type Mutation struct {
 	once    sync.Once
 	release func() error
@@ -12,14 +13,17 @@ type Mutation struct {
 }
 
 // processMutation covers same-process callers because OS advisory locks may
-// be process-owned rather than descriptor-owned on a supported platform.
-// ponytail: this serializes different repositories only inside one process;
-// key it by canonical root if Orch ever runs multiple repositories in-process.
+// be process-owned rather than descriptor-owned on a supported platform. It
+// also serializes different repositories inside one process; cross-process
+// serialization remains repository-scoped.
+// ponytail: key it by canonical root if Orch ever runs multiple repositories
+// in-process.
 var processMutation sync.Mutex
 
 // AcquireMutation blocks until no other process is running a mutating
-// Delivery command for repoRoot. The operating system owns the underlying
-// lock, so process exit releases it without staleness detection or takeover.
+// Delivery command for repoRoot and no other same-process acquisition is
+// held. The operating system owns the underlying repository-scoped lock, so
+// process exit releases it without staleness detection or takeover.
 func AcquireMutation(repoRoot string) (*Mutation, error) {
 	processMutation.Lock()
 	release, err := acquireMutationOS(repoRoot)
@@ -30,7 +34,9 @@ func AcquireMutation(repoRoot string) (*Mutation, error) {
 	return &Mutation{release: release}, nil
 }
 
-// Release gives the mutation serializer to the next waiter. It is idempotent.
+// Release gives the mutation serializer to the next waiter. It is idempotent
+// and must run in the goroutine that called AcquireMutation because Windows
+// mutex ownership belongs to that goroutine's pinned OS thread.
 func (m *Mutation) Release() error {
 	if m == nil {
 		return nil

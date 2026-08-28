@@ -178,21 +178,25 @@ func TestMutationSerializationReleasedWhenProcessExits(t *testing.T) {
 		t.Fatalf("helper did not acquire mutation serialization: stdout %q, stderr %q", scanner.Text(), stderr.String())
 	}
 
-	type result struct {
-		lock *Mutation
-		err  error
-	}
-	acquired := make(chan result, 1)
+	acquired := make(chan error, 1)
+	release := make(chan struct{})
+	released := make(chan error, 1)
 	go func() {
 		lock, err := AcquireMutation(root)
-		acquired <- result{lock: lock, err: err}
+		acquired <- err
+		if err != nil {
+			return
+		}
+		<-release
+		released <- lock.Release()
 	}()
 	select {
-	case got := <-acquired:
-		if got.lock != nil {
-			_ = got.lock.Release()
+	case err := <-acquired:
+		if err == nil {
+			close(release)
+			_ = <-released
 		}
-		t.Fatalf("AcquireMutation returned while helper still held it: %v", got.err)
+		t.Fatalf("AcquireMutation returned while helper still held it: %v", err)
 	case <-time.After(200 * time.Millisecond):
 		// Still blocked by the helper, as required.
 	}
@@ -206,11 +210,12 @@ func TestMutationSerializationReleasedWhenProcessExits(t *testing.T) {
 	waited = true
 
 	select {
-	case got := <-acquired:
-		if got.err != nil {
-			t.Fatalf("AcquireMutation after holder exit: %v", got.err)
+	case err := <-acquired:
+		if err != nil {
+			t.Fatalf("AcquireMutation after holder exit: %v", err)
 		}
-		if err := got.lock.Release(); err != nil {
+		close(release)
+		if err := <-released; err != nil {
 			t.Fatalf("Release: %v", err)
 		}
 	case <-time.After(5 * time.Second):

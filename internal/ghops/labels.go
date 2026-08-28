@@ -248,7 +248,8 @@ func (g *GH) MissingLabels(ctx context.Context, names []string) ([]string, error
 // existing labels are never modified (no --force: repository
 // customizations survive). Idempotent; returns the names it created,
 // in taxonomy order, for the audit trail. The list-then-create gap is
-// not atomic; the run engine serializes conflicting writes (PRD §14).
+// not atomic. The Delivery path is serialized by internal/cli at the
+// full-command boundary (PRD §14); this method itself adds no locking.
 func (g *GH) EnsureLabelTaxonomy(ctx context.Context) ([]string, error) {
 	present, err := g.existingLabelNames(ctx)
 	if err != nil {
