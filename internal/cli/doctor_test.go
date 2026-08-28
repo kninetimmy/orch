@@ -295,9 +295,30 @@ func TestDoctorAcceptsAvailableMixedProviderOpenCodeProfile(t *testing.T) {
 	}
 }
 
+func TestDoctorAcceptsOpenCodeRuntimeFloorAndNewerBuilds(t *testing.T) {
+	for _, version := range []string{"opencode2 v0.0.0-beta-18314", "opencode2 v0.0.0-beta-18414"} {
+		t.Run(version, func(t *testing.T) {
+			env, stdout, _ := testEnv(t)
+			writeConfig(t, env.RepoRoot, validOpenCodeTOML)
+			if code := Run([]string{"render-agents"}, env); code != ExitOK {
+				t.Fatalf("render-agents exit = %d\n%s", code, stdout.String())
+			}
+			stdout.Reset()
+			env.Runner = fakeRunner{toplevel: env.RepoRoot, opencodeVersion: version}
+			if code := Run([]string{"doctor"}, env); code != ExitOK {
+				t.Fatalf("exit = %d, want %d\n%s", code, ExitOK, stdout.String())
+			}
+			if !strings.Contains(stdout.String(), "ok    opencode adapter") {
+				t.Errorf("stdout missing passing adapter check:\n%s", stdout.String())
+			}
+		})
+	}
+}
+
 func TestDoctorAdapterFailures(t *testing.T) {
 	claudeVersion := mustAdapterVersion(t, claudeAdapter)
 	codexVersion := mustAdapterVersion(t, codexAdapter)
+	otherCatalogRoot := t.TempDir()
 	tests := []struct {
 		name        string
 		config      string
@@ -417,13 +438,42 @@ func TestDoctorAdapterFailures(t *testing.T) {
 			wantDetails: []string{"orch@orch version mismatch", fmt.Sprintf(`installed "0.5.0", expected %q`, codexVersion)},
 		},
 		{
-			name:   "opencode runtime mismatch",
+			name:   "opencode runtime below minimum",
+			config: validOpenCodeTOML,
+			spec:   opencodeAdapter,
+			configure: func(r *fakeRunner) {
+				r.opencodeVersion = "opencode2 v0.0.0-beta-18313"
+			},
+			wantDetails: []string{"too old", "minimum supported runtime", minimumOpenCodeVersion},
+		},
+		{
+			name:   "opencode malformed runtime",
 			config: validOpenCodeTOML,
 			spec:   opencodeAdapter,
 			configure: func(r *fakeRunner) {
 				r.opencodeVersion = "opencode2 v0.0.0-beta-newer"
 			},
-			wantDetails: []string{"OpenCode V2 contract drift", pinnedOpenCodeVersion},
+			wantDetails: []string{"runtime version output", "malformed", "minimum supported runtime", minimumOpenCodeVersion},
+		},
+		{
+			name:   "opencode newer runtime still requires one active plugin",
+			config: validOpenCodeTOML,
+			spec:   opencodeAdapter,
+			configure: func(r *fakeRunner) {
+				r.opencodeVersion = "opencode2 v0.0.0-beta-18414"
+				r.opencodePlugins = `{"data":[{"id":"orch.delivery"},{"id":"orch.delivery"}]}`
+			},
+			wantDetails: []string{"orch.delivery appears 2 times", "exactly one active plugin is required"},
+		},
+		{
+			name:   "opencode newer runtime still requires repository catalog location",
+			config: validOpenCodeTOML,
+			spec:   opencodeAdapter,
+			configure: func(r *fakeRunner) {
+				r.opencodeVersion = "opencode2 v0.0.0-beta-18414"
+				r.opencodeCatalog = openCodeCatalogResponse(otherCatalogRoot, "")
+			},
+			wantDetails: []string{"OpenCode model catalog", "different directory"},
 		},
 		{
 			name:   "opencode malformed plugin response",

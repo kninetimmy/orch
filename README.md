@@ -114,8 +114,9 @@ on this machine. Work in a scratch directory, not in one of my projects.
         the absolute path to `$HOME/orch/adapters/opencode/src/index.js`
         to the `plugins` array in `opencode.json`. Restart OpenCode V2,
         then run `opencode2 --version` and
-        `opencode2 api get /api/plugin`; require exactly one
-        `orch.delivery` plugin entry before relying on enforcement.
+        `opencode2 api get /api/plugin`; require beta 18314 or a newer
+        numeric beta runtime and exactly one `orch.delivery` plugin entry
+        before relying on enforcement.
 
 4. Codex CLI only. Skip this entire step on Claude Code and OpenCode V2:
    a. Add both of these stanzas to ~/.codex/config.toml, leaving any
@@ -377,7 +378,8 @@ schema-v1 `effort` values from v0.8.0 still load with the same
 effective selection and configuration revision. This exception is OpenCode-only;
 Claude Code and Codex keep their existing model/effort configuration and routing.
 
-On the supported `opencode2 v0.0.0-beta-18314` contract, OpenCode setup reads the
+On the minimum supported `opencode2 v0.0.0-beta-18314` runtime, or a newer
+numeric beta that passes the same contract checks, OpenCode setup reads the
 repository's live, location-validated catalog. Each of the six roles independently
 chooses any enabled, tool-capable text model, so one profile may mix providers and
 models. A second question offers only the selected model's advertised variants;
@@ -516,8 +518,9 @@ configuration names, and fails when that host's CLI is missing from
 `PATH` or its adapter check fails. Claude and Codex adapter checks also
 report absent, duplicate, disabled, missing-version, and version-
 mismatch states (plus Codex's not-installed state). OpenCode instead
-checks its exact beta runtime and active plugin ID because its beta API
-does not expose adapter versions. Host enablement is a committed-only key
+checks for at least the beta 18314 runtime and exactly one active plugin
+with ID `orch.delivery` because its beta API does not expose adapter
+versions. Host enablement is a committed-only key
 — the Settings table above marks `hosts.claude` / `hosts.codex` /
 `hosts.opencode` as
 `no (committed)` — so machine-local configuration cannot switch a
@@ -570,22 +573,24 @@ envelope and denies the write. That is deliberate — an unparsed write
 must never be allowed — but it means a host upgrade can produce
 spurious denials. Workaround: update `orch`.
 
-**OpenCode V2 support is pinned to a beta API.** Before project-scoped
+**OpenCode V2 support has a beta runtime floor.** Before project-scoped
 catalog discovery, the live smoke check exercised exactly `opencode2
 v0.0.0-beta-17498` and `@opencode-ai/plugin`
 `0.0.0-beta-17498`, while doctor checked only that runtime and the active
 plugin ID. That old compatibility behavior no longer holds. The current
-package and live smoke instead exercise exactly `opencode2
-v0.0.0-beta-18314` and `@opencode-ai/plugin`
-`0.0.0-beta-18314`; no other V2 build is a supported compatibility floor.
-`orch doctor` checks that exact runtime, plugin ID `orch.delivery`, and a
-URL-location-scoped model catalog response for the repository. It retains
-only enabled text-input/text-output tool-capable `provider/model` IDs and
-their variant IDs; provider settings, headers, credentials, account IDs,
-and raw API payloads never enter the returned catalog or its diagnostics.
-The V2 API still does not expose an adapter version. After an OpenCode
-upgrade, restart the service and rerun doctor before relying on
-enforcement.
+minimum runtime is `opencode2 v0.0.0-beta-18314`. Newer numeric V2 beta
+builds are accepted only when `orch doctor` also finds exactly one active
+`orch.delivery` plugin and a URL-location-scoped model catalog response for
+the repository. It retains only enabled text-input/text-output tool-capable
+`provider/model` IDs and their variant IDs; provider settings, headers,
+credentials, account IDs, and raw API payloads never enter the returned
+catalog or its diagnostics. The npm SDK dependency and live smoke remain
+exactly pinned to `@opencode-ai/plugin` `0.0.0-beta-18314` and `opencode2
+v0.0.0-beta-18314`, respectively, to prove the oldest supported contract;
+they do not cap runtime support. The V2 API still does not expose an adapter
+version. After an OpenCode upgrade, restart the service and rerun doctor
+before relying on enforcement; upstream contract drift may require an Orch
+update.
 
 **The merge gate cannot tell a human's approval from an agent's.** The
 engine requires an approval carrying the exact literal `approve-merge`,

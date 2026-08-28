@@ -66,8 +66,12 @@ Orch must:
 - Claude Code CLI.
 - OpenCode V2 beta API. Before project-scoped catalog discovery it was pinned to
   `opencode2 v0.0.0-beta-17498` without a model/location contract; that behavior no longer
-  holds. It is now pinned to `opencode2 v0.0.0-beta-18314`, with project-scoped model and
-  returned-location validation.
+  holds. The minimum runtime is now `opencode2 v0.0.0-beta-18314`; newer numeric beta
+  builds are supported only while exactly one `orch.delivery` plugin and the
+  repository-scoped, returned-location-validated model catalog contract pass doctor.
+  The npm SDK remains exactly pinned to `@opencode-ai/plugin`
+  `0.0.0-beta-18314`, and the live smoke to `opencode2 v0.0.0-beta-18314`, to prove
+  that floor.
 - Windows, macOS, and Linux.
 - GitHub through authenticated `gh`.
 - Git repositories with isolated worktree support.
@@ -263,11 +267,12 @@ alias with the same effective selection and revision meaning. This change is
 restricted to OpenCode roles: every Claude Code and Codex role retains its
 required `model` plus `effort` shape and its existing rendering and routing.
 
-On the pinned `opencode2 v0.0.0-beta-18314` contract, initialization,
-configuration, and local configuration derive each OpenCode role's choices from
-the repository's live, returned-location-validated catalog. Every role may select
-a different enabled, tool-capable text `provider/model`; only that model's
-advertised variants are offered, and a model with none uses the bare reference.
+On the minimum `opencode2 v0.0.0-beta-18314` contract, and on newer numeric beta
+builds that preserve it, initialization, configuration, and local configuration
+derive each OpenCode role's choices from the repository's live,
+returned-location-validated catalog. Every role may select a different enabled,
+tool-capable text `provider/model`; only that model's advertised variants are
+offered, and a model with none uses the bare reference.
 Catalog model and variant domains are emitted as deterministic native pages of
 two or three mutually exclusive choices with explicit previous/next navigation,
 each answer appearing exactly once; a one-answer domain adds cancel. Discovery
@@ -592,7 +597,7 @@ V1 is acceptable when:
 - Disabled metrics create no metrics storage.
 - Successful merge leaves the primary checkout current and no stale worktree behind.
 - Behavior is validated on Windows, macOS, and Linux.
-- Codex and Claude adapters retain their shared parity tests; OpenCode passes its native adapter tests and pinned-beta smoke check.
+- Codex and Claude adapters retain their shared parity tests; OpenCode passes its native adapter tests and exact beta-18314 smoke check.
 
 ## 24. Deferred implementation decisions
 

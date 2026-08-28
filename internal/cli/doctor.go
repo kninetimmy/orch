@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 
 	"github.com/kninetimmy/orch/adapters/claude"
@@ -377,11 +378,11 @@ func adapterVersion(manifestJSON string) (string, error) {
 	return manifest.Version, nil
 }
 
-const pinnedOpenCodeVersion = opencodecatalog.PinnedVersion
+const minimumOpenCodeVersion = opencodecatalog.MinimumVersion
 
-// checkOpenCodeAdapter pins the beta runtime contract, checks the active
-// plugin ID, then returns the verified project-scoped catalog for role
-// selection checks. V2's plugin API does not currently expose adapter versions.
+// checkOpenCodeAdapter enforces the beta runtime floor, checks the active plugin
+// ID, then returns the verified project-scoped catalog for role selection
+// checks. V2's plugin API does not currently expose adapter versions.
 func checkOpenCodeAdapter(env Env, spec adapterSpec) (opencodecatalog.Catalog, error) {
 	fail := func(detail string) (opencodecatalog.Catalog, error) {
 		return opencodecatalog.Catalog{}, fmt.Errorf("%s; %s", detail, spec.repair)
@@ -400,8 +401,8 @@ func checkOpenCodeAdapter(env Env, spec adapterSpec) (opencodecatalog.Catalog, e
 		}
 		return fail(fmt.Sprintf("`%s --version` exited %d: %s", spec.executable, version.ExitCode, detail))
 	}
-	if got := strings.TrimSpace(version.Stdout); got != pinnedOpenCodeVersion {
-		return fail(fmt.Sprintf("OpenCode V2 contract drift: got %q, want %q", got, pinnedOpenCodeVersion))
+	if err := checkOpenCodeRuntimeVersion(strings.TrimSpace(version.Stdout)); err != nil {
+		return fail(err.Error())
 	}
 	listing, err := env.Runner.Run(context.Background(), execx.Cmd{Name: spec.executable, Args: []string{"api", "get", "/api/plugin"}, Dir: env.RepoRoot})
 	command := spec.executable + " api get /api/plugin"
@@ -437,6 +438,21 @@ func checkOpenCodeAdapter(env Env, spec adapterSpec) (opencodecatalog.Catalog, e
 		return fail(err.Error())
 	}
 	return catalog, nil
+}
+
+func checkOpenCodeRuntimeVersion(version string) error {
+	buildText, ok := strings.CutPrefix(version, opencodecatalog.RuntimeVersionPrefix)
+	if !ok || buildText == "" || strings.Trim(buildText, "0123456789") != "" {
+		return fmt.Errorf("OpenCode V2 runtime version output %q is malformed; minimum supported runtime is %q, or use a newer numeric beta build", version, minimumOpenCodeVersion)
+	}
+	build, err := strconv.ParseUint(buildText, 10, 64)
+	if err != nil {
+		return fmt.Errorf("OpenCode V2 runtime version output %q is malformed; minimum supported runtime is %q, or use a newer numeric beta build", version, minimumOpenCodeVersion)
+	}
+	if build < opencodecatalog.MinimumBetaBuild {
+		return fmt.Errorf("OpenCode V2 runtime %q is too old; minimum supported runtime is %q; update OpenCode V2 and retry", version, minimumOpenCodeVersion)
+	}
+	return nil
 }
 
 func decodeAdapterPlugins(host string, data []byte) ([]adapterPlugin, error) {

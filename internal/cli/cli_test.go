@@ -196,7 +196,7 @@ func (f fakeRunner) Run(_ context.Context, c execx.Cmd) (execx.Result, error) {
 		if len(c.Args) == 1 && c.Args[0] == "--version" {
 			version := f.opencodeVersion
 			if version == "" {
-				version = pinnedOpenCodeVersion
+				version = minimumOpenCodeVersion
 			}
 			return execx.Result{Stdout: version + "\n"}, nil
 		}
