@@ -5,7 +5,7 @@
 <p align="center">
   <img src="https://img.shields.io/badge/License-MIT-2E7D32?style=flat&logo=opensourceinitiative&logoColor=white" alt="License: MIT"/>
   <img src="https://img.shields.io/badge/Go-1.26%2B-00ADD8?style=flat&logo=go&logoColor=white" alt="Go 1.26+"/>
-  <img src="https://img.shields.io/badge/Release-v0.9.0-24292F?style=flat&logo=github&logoColor=white" alt="Release: v0.9.0"/>
+  <img src="https://img.shields.io/badge/Release-v0.10.0-24292F?style=flat&logo=github&logoColor=white" alt="Release: v0.10.0"/>
   <br/>
   <img src="https://img.shields.io/badge/Platform-Linux%20%C2%B7%20macOS%20%C2%B7%20Windows-607D8B?style=flat" alt="Platform: Linux, macOS, Windows"/>
   <img src="https://img.shields.io/badge/Hosts-Claude%20Code%20%C2%B7%20Codex%20CLI%20%C2%B7%20OpenCode%20V2-6E56CF?style=flat" alt="Hosts: Claude Code, Codex CLI, and OpenCode V2"/>
@@ -437,7 +437,7 @@ receive a copy of the memhub database.
 
 ## Status
 
-Early software. What can be stated as fact: 21 tagged releases, v0.1.0 through v0.9.0, and every pull request merged since PR #40 carries an Orch audit record in its body — apart from the configuration deliveries, which `orch configure` writes in its own body format. Since PR #40, this repository has been built through the pipeline described above: a plan gate, an isolated worktree per issue, a review dispatched separately from the work, CI, and a merge that fails closed unless it carries an approval pinned to the commit `merge-report` recorded.
+Early software. What can be stated as fact: 22 tagged releases, v0.1.0 through v0.10.0, and every pull request merged since PR #40 carries an Orch audit record in its body — apart from the configuration deliveries, which `orch configure` writes in its own body format. Since PR #40, this repository has been built through the pipeline described above: a plan gate, an isolated worktree per issue, a review dispatched separately from the work, CI, and a merge that fails closed unless it carries an approval pinned to the commit `merge-report` recorded.
 
 All of that evidence comes from one repository: this one.
 
@@ -619,7 +619,7 @@ continue, or `orch abort` to end it.
 <details>
 <summary>Defects already corrected, newest first</summary>
 
-Everything here is merged on `main` and shipped in v0.9.0, the latest
+Everything here is merged on `main` and shipped in v0.10.0, the latest
 tagged release.
 
 - The wrong-criterion guidance in the standard and safe reviewer
