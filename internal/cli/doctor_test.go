@@ -315,6 +315,86 @@ func TestDoctorAcceptsOpenCodeRuntimeFloorAndNewerBuilds(t *testing.T) {
 	}
 }
 
+func TestDoctorAcceptsCompatibleCustomizedOpenCodeSkills(t *testing.T) {
+	env, stdout, _ := testEnv(t)
+	writeConfig(t, env.RepoRoot, validOpenCodeTOML)
+	if code := Run([]string{"render-agents"}, env); code != ExitOK {
+		t.Fatalf("render-agents exit = %d\n%s", code, stdout.String())
+	}
+	stdout.Reset()
+	response := healthyOpenCodeSkillResponse(env.RepoRoot)
+	response = strings.ReplaceAll(response, `"content":"`, `"content":"customized preface `)
+	env.Runner = fakeRunner{toplevel: env.RepoRoot, opencodeSkills: response}
+	if code := Run([]string{"doctor"}, env); code != ExitOK {
+		t.Fatalf("exit = %d, want %d\n%s", code, ExitOK, stdout.String())
+	}
+	if !strings.Contains(stdout.String(), "ok    opencode adapter") {
+		t.Errorf("stdout missing passing adapter check:\n%s", stdout.String())
+	}
+}
+
+func TestDoctorRejectsMissingOrIncompatibleOpenCodeSkillsWithoutDisclosingContent(t *testing.T) {
+	contracts := openCodeSkillContracts()
+	tests := []struct {
+		name     string
+		skillID  string
+		response func(string) string
+	}{
+		{
+			name:    "missing shipped skill",
+			skillID: contracts[0].id,
+			response: func(root string) string {
+				return strings.Replace(healthyOpenCodeSkillResponse(root), fmt.Sprintf(`{"id":%q`, contracts[0].id), `{"id":"unrelated-skill"`, 1)
+			},
+		},
+	}
+	for _, contract := range contracts {
+		contract := contract
+		tests = append(tests, struct {
+			name     string
+			skillID  string
+			response func(string) string
+		}{
+			name:    "incompatible " + contract.id,
+			skillID: contract.id,
+			response: func(root string) string {
+				return openCodeSkillResponse(root, func(candidate openCodeSkillContract) string {
+					if candidate.id == contract.id {
+						return "raw-skill-secret"
+					}
+					return strings.Join(candidate.markers, "\n")
+				})
+			},
+		})
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			env, stdout, _ := testEnv(t)
+			writeConfig(t, env.RepoRoot, validOpenCodeTOML)
+			if code := Run([]string{"render-agents"}, env); code != ExitOK {
+				t.Fatalf("render-agents exit = %d\n%s", code, stdout.String())
+			}
+			stdout.Reset()
+			env.Runner = fakeRunner{toplevel: env.RepoRoot, opencodeSkills: tc.response(env.RepoRoot)}
+			if code := Run([]string{"doctor"}, env); code != ExitError {
+				t.Fatalf("exit = %d, want %d\n%s", code, ExitError, stdout.String())
+			}
+			out := stdout.String()
+			for _, want := range []string{"FAIL  opencode adapter", tc.skillID, canonicalOpenCodeSkillSource, "restart the OpenCode V2 service"} {
+				if !strings.Contains(out, want) {
+					t.Errorf("stdout missing %q:\n%s", want, out)
+				}
+			}
+			for _, forbidden := range []string{"raw-skill-secret", "/compatible/custom/"} {
+				if strings.Contains(out, forbidden) {
+					t.Errorf("doctor disclosed live skill data %q:\n%s", forbidden, out)
+				}
+			}
+		})
+	}
+}
+
 func TestDoctorAdapterFailures(t *testing.T) {
 	claudeVersion := mustAdapterVersion(t, claudeAdapter)
 	codexVersion := mustAdapterVersion(t, codexAdapter)
