@@ -29,6 +29,15 @@ func optionValuesOf(q question.Question) []string {
 	return values
 }
 
+func optionLabelOf(q question.Question, value string) string {
+	for _, option := range q.Options {
+		if option.Value == value {
+			return option.Label
+		}
+	}
+	return ""
+}
+
 func assertCatalogPagination(t *testing.T, q question.Question, want []string) {
 	t.Helper()
 	if q.FreeText {
@@ -269,6 +278,9 @@ func TestExistingOpenCodeModelIsTheOnlyNonCatalogOption(t *testing.T) {
 	if q.Default != "legacy-provider/retired-model" {
 		t.Errorf("default = %q, want committed model", q.Default)
 	}
+	if got, want := optionLabelOf(q, "legacy-provider/retired-model"), "legacy-provider/retired-model (committed, unavailable)"; got != want {
+		t.Errorf("retained model label = %q, want %q", got, want)
+	}
 
 	for i := 0; i < 100; i++ {
 		for _, q := range doc.Questions {
@@ -387,6 +399,9 @@ model = "retired-provider/model-b"
 					if q.ID == localRoleModelID("opencode", "architect") {
 						if q.Default != want.Model || slices.Contains(optionValuesOf(q), "retired-provider/model-b") {
 							t.Errorf("architect model question = %+v", q)
+						}
+						if got, label := optionLabelOf(q, want.Model), want.Model+" (committed, unavailable)"; got != label {
+							t.Errorf("retained local model label = %q, want %q", got, label)
 						}
 					}
 					answers[q.ID] = q.Default
