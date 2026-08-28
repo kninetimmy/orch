@@ -2,6 +2,7 @@ package opencode_test
 
 import (
 	"encoding/json"
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -27,6 +28,23 @@ func TestPackagePinsOpenCodeV2Contract(t *testing.T) {
 	}
 	if len(manifest.Dependencies) != 1 {
 		t.Fatalf("dependencies = %v, want only the V2 plugin API", manifest.Dependencies)
+	}
+}
+
+func TestInstallGuideAddsCheckoutPluginAndSkillSources(t *testing.T) {
+	data, err := os.ReadFile("README.md")
+	if err != nil {
+		t.Fatal(err)
+	}
+	content := string(data)
+	for _, want := range []string{
+		`"plugins": ["/absolute/path/to/orch/adapters/opencode/src/index.js"]`,
+		`"skills": ["/absolute/path/to/orch/adapters/opencode/skills"]`,
+		"entries to add, not replacement arrays",
+	} {
+		if !strings.Contains(content, want) {
+			t.Errorf("README.md missing additive installation guidance %q", want)
+		}
 	}
 }
 

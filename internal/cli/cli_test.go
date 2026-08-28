@@ -99,6 +99,9 @@ type fakeRunner struct {
 	opencodePlugins     string
 	opencodePluginExit  int
 	opencodePluginErr   error
+	opencodeSkills      string
+	opencodeSkillExit   int
+	opencodeSkillErr    error
 	opencodeCatalog     string
 	opencodeCatalogExit int
 	opencodeCatalogErr  error
@@ -210,6 +213,16 @@ func (f fakeRunner) Run(_ context.Context, c execx.Cmd) (execx.Result, error) {
 			}
 			return execx.Result{Stdout: plugins, ExitCode: f.opencodePluginExit}, nil
 		}
+		if len(c.Args) == 3 && c.Args[0] == "api" && c.Args[1] == "get" && strings.HasPrefix(c.Args[2], "/api/skill?") {
+			if f.opencodeSkillErr != nil {
+				return execx.Result{}, f.opencodeSkillErr
+			}
+			skills := f.opencodeSkills
+			if skills == "" {
+				skills = healthyOpenCodeSkillResponse(c.Dir)
+			}
+			return execx.Result{Stdout: skills, ExitCode: f.opencodeSkillExit}, nil
+		}
 		if len(c.Args) == 3 && c.Args[0] == "api" && c.Args[1] == "get" && strings.HasPrefix(c.Args[2], "/api/model?") {
 			if f.opencodeCatalogErr != nil {
 				return execx.Result{}, f.opencodeCatalogErr
@@ -237,6 +250,21 @@ func (f fakeRunner) Run(_ context.Context, c execx.Cmd) (execx.Result, error) {
 		}
 	}
 	return execx.Result{}, fmt.Errorf("fakeRunner: unexpected command %s %v", c.Name, c.Args)
+}
+
+func healthyOpenCodeSkillResponse(root string) string {
+	return openCodeSkillResponse(root, func(contract openCodeSkillContract) string {
+		return strings.Join(contract.markers, "\n")
+	})
+}
+
+func openCodeSkillResponse(root string, content func(openCodeSkillContract) string) string {
+	var skills []string
+	for _, contract := range openCodeSkillContracts() {
+		skills = append(skills, fmt.Sprintf(`{"id":%q,"location":%q,"content":%q}`,
+			contract.id, "/compatible/custom/"+contract.id+"/SKILL.md", content(contract)))
+	}
+	return fmt.Sprintf(`{"location":{"directory":%q},"data":[%s]}`, root, strings.Join(skills, ","))
 }
 
 func writeConfig(t *testing.T, root, content string) {

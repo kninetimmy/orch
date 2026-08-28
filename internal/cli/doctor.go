@@ -24,6 +24,8 @@ import (
 	"github.com/kninetimmy/orch/internal/memhub"
 	"github.com/kninetimmy/orch/internal/metrics"
 	opencodecatalog "github.com/kninetimmy/orch/internal/opencode"
+	"github.com/kninetimmy/orch/internal/question"
+	"github.com/kninetimmy/orch/internal/run"
 	"github.com/kninetimmy/orch/internal/state"
 )
 
@@ -381,8 +383,9 @@ func adapterVersion(manifestJSON string) (string, error) {
 const minimumOpenCodeVersion = opencodecatalog.MinimumVersion
 
 // checkOpenCodeAdapter enforces the beta runtime floor, checks the active plugin
-// ID, then returns the verified project-scoped catalog for role selection
-// checks. V2's plugin API does not currently expose adapter versions.
+// ID and live skill contracts, then returns the verified project-scoped model
+// catalog for role selection checks. V2's plugin API does not currently expose
+// adapter versions.
 func checkOpenCodeAdapter(env Env, spec adapterSpec) (opencodecatalog.Catalog, error) {
 	fail := func(detail string) (opencodecatalog.Catalog, error) {
 		return opencodecatalog.Catalog{}, fmt.Errorf("%s; %s", detail, spec.repair)
@@ -433,11 +436,78 @@ func checkOpenCodeAdapter(env Env, spec adapterSpec) (opencodecatalog.Catalog, e
 	if count != 1 {
 		return fail(fmt.Sprintf("%s appears %d times; exactly one active plugin is required", spec.pluginID, count))
 	}
+	skills, err := opencodecatalog.ReadSkillCatalog(context.Background(), env.Runner, env.RepoRoot)
+	if err != nil {
+		return failOpenCodeSkills(err.Error())
+	}
+	if err := checkOpenCodeSkillContracts(skills); err != nil {
+		return failOpenCodeSkills(err.Error())
+	}
 	catalog, err := opencodecatalog.ReadCatalog(context.Background(), env.Runner, env.RepoRoot)
 	if err != nil {
 		return fail(err.Error())
 	}
 	return catalog, nil
+}
+
+const canonicalOpenCodeSkillSource = "adapters/opencode/skills"
+
+type openCodeSkillContract struct {
+	id      string
+	markers []string
+}
+
+func openCodeSkillContracts() []openCodeSkillContract {
+	return []openCodeSkillContract{
+		{
+			id: "orch-setup",
+			markers: []string{
+				fmt.Sprintf(`{"schema_version": %d, "answers": {}}`, question.SchemaVersion),
+				fmt.Sprintf("Question wire `schema_version` is closed at `%d` for both `AnswerSet` and `Document`", question.SchemaVersion),
+			},
+		},
+		{
+			id: "orch-delivery",
+			markers: []string{
+				fmt.Sprintf("Selection-bearing wire versions are closed: StatusDoc `%d`, GateDoc `%d`, Dispatch `%d`, Escalate `%d`, Review `%d`.",
+					run.StatusSchemaVersion, run.GateSchemaVersion, run.DispatchSchemaVersion, run.EscalateSchemaVersion, run.ReviewSchemaVersion),
+				"Reject any other `schema_version` before reading or submitting a `Selection`.",
+				fmt.Sprintf("`GateDoc` (`schema_version: %d`)", run.GateSchemaVersion),
+				fmt.Sprintf("`{\"schema_version\": %d, \"issue_number\": N}`. Result (`DispatchResult`)", run.DispatchSchemaVersion),
+				fmt.Sprintf("{\"schema_version\": %d, \"issue_number\": N, \"reviewed_head_oid\": \"...\"", run.ReviewSchemaVersion),
+				fmt.Sprintf("{\"schema_version\": %d, \"issue_number\": N, \"trigger\": \"...\", \"detail\": \"...\"}", run.EscalateSchemaVersion),
+			},
+		},
+		{
+			id: "orch-architect",
+			markers: []string{
+				fmt.Sprintf("`orch run status --json` returns `StatusDoc` schema_version `%d`; reject any other before reading its Selection-bearing run state.", run.StatusSchemaVersion),
+			},
+		},
+	}
+}
+
+func checkOpenCodeSkillContracts(catalog opencodecatalog.SkillCatalog) error {
+	contents := make(map[string]string, len(catalog.Skills))
+	for _, skill := range catalog.Skills {
+		contents[skill.ID] = strings.Join(strings.Fields(skill.Content), " ")
+	}
+	for _, contract := range openCodeSkillContracts() {
+		content, ok := contents[contract.id]
+		if !ok {
+			return fmt.Errorf("live OpenCode skill %q is absent", contract.id)
+		}
+		for _, marker := range contract.markers {
+			if !strings.Contains(content, strings.Join(strings.Fields(marker), " ")) {
+				return fmt.Errorf("live OpenCode skill %q lacks this Orch build's wire contract", contract.id)
+			}
+		}
+	}
+	return nil
+}
+
+func failOpenCodeSkills(detail string) (opencodecatalog.Catalog, error) {
+	return opencodecatalog.Catalog{}, fmt.Errorf("%s; configure the checked-out `%s` directory as an additive OpenCode skill source, then restart the OpenCode V2 service", detail, canonicalOpenCodeSkillSource)
 }
 
 func checkOpenCodeRuntimeVersion(version string) error {
