@@ -1,7 +1,7 @@
 # OpenCode V2 adapter
 
 This directory is Orch's npm-native OpenCode V2 adapter. Its package ID
-is `@kninetimmy/orch-opencode` (version `0.9.0`) and its running plugin
+is `@kninetimmy/orch-opencode` (version `0.10.0`) and its running plugin
 ID is `orch.delivery`. It is not the Codex marketplace adapter: that is
 `adapters/codex/`, installed as `orch@orch` from the shared marketplace.
 
