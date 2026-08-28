@@ -14,8 +14,10 @@ import (
 )
 
 const (
-	Executable    = "opencode2"
-	PinnedVersion = "opencode2 v0.0.0-beta-18314"
+	Executable           = "opencode2"
+	RuntimeVersionPrefix = Executable + " v0.0.0-beta-"
+	MinimumBetaBuild     = 18314
+	MinimumVersion       = RuntimeVersionPrefix + "18314"
 )
 
 // Model is the safe subset of an available OpenCode model. Provider settings,
@@ -137,5 +139,5 @@ func sameDirectory(want, got string) (bool, error) {
 }
 
 func malformed(detail string) error {
-	return fmt.Errorf("read OpenCode model catalog: malformed `%s api get /api/model` response (%s); update to %s and retry", Executable, detail, PinnedVersion)
+	return fmt.Errorf("read OpenCode model catalog: malformed `%s api get /api/model` response (%s); %s or newer must preserve this catalog contract, so update Orch or OpenCode and retry", Executable, detail, MinimumVersion)
 }
