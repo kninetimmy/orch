@@ -194,7 +194,7 @@ func TestMutationSerializationReleasedWhenProcessExits(t *testing.T) {
 	case err := <-acquired:
 		if err == nil {
 			close(release)
-			_ = <-released
+			<-released
 		}
 		t.Fatalf("AcquireMutation returned while helper still held it: %v", err)
 	case <-time.After(200 * time.Millisecond):
