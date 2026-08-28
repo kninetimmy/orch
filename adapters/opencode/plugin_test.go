@@ -103,8 +103,33 @@ func TestSetupSkillHasTerminalForms(t *testing.T) {
 	adaptertest.CheckSetupTerminalForms(t, setupSkillPath)
 }
 
-func TestSetupSkillPagesLargeOptionSets(t *testing.T) {
-	adaptertest.CheckSetupOptionPagination(t, setupSkillPath)
+func TestSetupSkillShowsCatalogOptionsInOnePicker(t *testing.T) {
+	data, err := opencode.Skills.ReadFile(setupSkillPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	raw := string(data)
+	parts := strings.SplitN(raw, "---", 3)
+	if len(parts) != 3 || !strings.Contains(adaptertest.NormalizeWhitespace(parts[1]), "one native picker") {
+		t.Errorf("%s metadata does not describe one native picker", setupSkillPath)
+	}
+	content := adaptertest.NormalizeWhitespace(raw)
+	for _, phrase := range []string{
+		"When `pagination` is present, ignore its presentation pages on OpenCode",
+		"present every parent `options[]` entry together, in emitted order, in one `question` call",
+		"Never present or follow the emitted `next`, `previous`, or `cancel` actions",
+		"record `answers[question.id] = option.value`",
+		"Do not accept OpenCode's custom-answer choice for these closed catalog-backed selects",
+	} {
+		if !strings.Contains(content, adaptertest.NormalizeWhitespace(phrase)) {
+			t.Errorf("%s does not contain one-picker guidance %q", setupSkillPath, phrase)
+		}
+	}
+	for _, stale := range []string{"pagination.pages[0]", "move one page", "page's `index`/`total`"} {
+		if strings.Contains(content, stale) {
+			t.Errorf("%s retains paginated OpenCode navigation guidance %q", setupSkillPath, stale)
+		}
+	}
 }
 
 func TestDeliverySkillHasRoutedSelectionCue(t *testing.T) {

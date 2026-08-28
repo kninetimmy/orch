@@ -575,7 +575,9 @@ func localOpenCodeRoleDocSpecs(facts Facts, committed *config.Config, seeded, an
 		modelOpts := openCodeModelOptions(facts.OpenCodeCatalog, defModel, cp.Model)
 		for i := range modelOpts {
 			if modelOpts[i].Value == cp.Model {
-				modelOpts[i].Label += " (committed)"
+				if _, available := openCodeCatalogModel(facts.OpenCodeCatalog, cp.Model); available {
+					modelOpts[i].Label += " (committed)"
+				}
 			}
 		}
 		modelQ := question.Question{

@@ -3,9 +3,9 @@ name: orch-setup
 description: >-
   Shared step-loop driver for the three Orch setup interviews (`orch
   init --step`, `orch configure --step`, `orch configure-local --step`).
-  Invoke this skill directly to run any of the three interviews.
-  Presents each ordinary question and emitted 2-3-option pagination page via
-  OpenCode's `question` tool and drives the loop to its terminal form.
+  Invoke this skill directly to run any of the three interviews. Presents each
+  catalog-backed select in one native picker via OpenCode's `question` tool and
+  drives the loop to its terminal form.
 ---
 
 # Orch Setup
@@ -55,15 +55,17 @@ When the human answers that ordinary question, record `answers[question.id] = op
 — **the option's `value`, never its `label`**. The label is display
 text only; the value is what the core expects back.
 
-When `pagination` is present, require `pagination.hosts` to contain `opencode`,
-start at `pagination.pages[0]`, and present that page's 2–3 options exactly as
-emitted in one `question` call. Use the parent question's header/prompt and
-mention the page's `index`/`total` in the prompt. Never synthesize, split, merge,
-reorder, or replace pages with a request to type an identifier. A page option
-with `value` is a real answer: record it and finish the question. An option with
-`action` is navigation only: `next` and `previous` move one page, while `cancel`
-stops the interview without recording an answer. Never submit an action as
-`answers[question.id]`.
+When `pagination` is present, ignore its presentation pages on OpenCode and
+present every parent `options[]` entry together, in emitted order, in one
+`question` call. Use the parent question's header/prompt and preserve each
+option's label, description, recommended marker, and default marker as above.
+Never present or follow the emitted `next`, `previous`, or `cancel` actions.
+When the human selects an entry, record `answers[question.id] = option.value`.
+
+Do not accept OpenCode's custom-answer choice for these closed catalog-backed
+selects. If the human uses it, re-present the same picker without recording an
+answer; never introduce an arbitrary model or variant that is absent from the
+parent `options[]`.
 
 If a non-paginated `select` question has `free_text: true`, present its real options exactly
 as above. OpenCode adds its own custom-answer choice; when the human uses it,

@@ -423,7 +423,13 @@ func openCodeModelOptions(catalog opencode.Catalog, def string, retained ...stri
 	}
 	opts := make([]question.Option, len(values))
 	for i, id := range values {
-		opts[i] = question.Option{Value: id, Label: id, Recommended: id == def}
+		label := id
+		if slices.Contains(retained, id) {
+			if _, available := openCodeCatalogModel(catalog, id); !available {
+				label += " (committed, unavailable)"
+			}
+		}
+		opts[i] = question.Option{Value: id, Label: label, Recommended: id == def}
 	}
 	return opts
 }
