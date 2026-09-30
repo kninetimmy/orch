@@ -5,7 +5,7 @@
 // Metrics.Enabled gate, event timestamps, and event content all belong
 // to callers (internal/run, internal/cli); this package only knows how
 // to validate, append to, and load documents. Disabled metrics means
-// callers simply never call Append; LoadAll never creates the
+// callers simply never call Append or Record; LoadAll never creates the
 // directory itself, so a repository that has never enabled metrics
 // gains no storage from merely reading (PRD §23: disabled metrics
 // create no storage).
@@ -20,8 +20,10 @@
 // PRD §21 mapping: first-pass review outcome is the first "review"
 // event recorded for an issue; retries show up as ReviewCycles and
 // repeated review events; model fallback is an "escalate" event;
-// durations between lifecycle events fall out of consecutive Event.At
-// stamps.
+// Before observations, durations between lifecycle events were described as
+// falling out of consecutive Event.At stamps. Those gaps remain available,
+// but are not evidence of active, verification, CI, or human time; only
+// explicitly recorded intervals describe those measurements.
 package metrics
 
 import (
@@ -29,6 +31,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"io/fs"
 	"os"
 	"path/filepath"
@@ -38,9 +41,9 @@ import (
 	"github.com/kninetimmy/orch/internal/manifest"
 )
 
-// SchemaVersion is the metrics document schema this build reads and
-// writes.
-const SchemaVersion = 1
+// SchemaVersion adds observations beside unchanged legacy lifecycle events.
+// Schema 1 remains readable; only Record upgrades an existing schema-1 file.
+const SchemaVersion = 2
 
 // Dir is the repo-relative, slash-form location of the metrics
 // directory: one file per Delivery run.
@@ -53,7 +56,9 @@ const Dir = ".orchestrator/metrics"
 var runIDPattern = regexp.MustCompile(`^[A-Za-z0-9._-]+$`)
 
 // Usage is adapter-reported model usage (PRD §21 "where available");
-// every field is optional and omitted when zero. It is otherwise
+// Before schema 2, every field was omitted when zero. Existing Go callers
+// retain that behavior; decoded explicit zeros now survive a rewrite, and
+// Counters exposes absent fields as unknown. It is otherwise
 // opaque adapter-reported data — the only content check this package
 // performs is that no field is negative.
 type Usage struct {
@@ -67,6 +72,7 @@ type Usage struct {
 	// each other by this package.
 	TotalTokens int64 `json:"total_tokens,omitempty"`
 	DurationMS  int64 `json:"duration_ms,omitempty"`
+	zeroFields  uint8
 }
 
 // Validate reports the first negative field in u. A nil u is valid —
@@ -134,9 +140,10 @@ func (ev Event) validate() error {
 // Document is one Delivery run's metrics history, schema-versioned
 // like internal/state and internal/manifest.
 type Document struct {
-	SchemaVersion int     `json:"schema_version"`
-	RunID         string  `json:"run_id"`
-	Events        []Event `json:"events"`
+	SchemaVersion int           `json:"schema_version"`
+	RunID         string        `json:"run_id"`
+	Events        []Event       `json:"events"`
+	Observations  []Observation `json:"observations,omitempty"`
 }
 
 func dirPath(repoRoot string) string {
@@ -166,7 +173,7 @@ func strictDecode(data []byte, v any) error {
 	if err := dec.Decode(v); err != nil {
 		return err
 	}
-	if dec.More() {
+	if err := dec.Decode(new(any)); err != io.EOF {
 		return errors.New("trailing data after document")
 	}
 	return nil
@@ -186,6 +193,15 @@ func Append(repoRoot, runID string, ev Event) error {
 		return err
 	}
 
+	doc, err := load(repoRoot, runID)
+	if err != nil {
+		return err
+	}
+	doc.Events = append(doc.Events, ev)
+	return save(repoRoot, doc)
+}
+
+func load(repoRoot, runID string) (Document, error) {
 	path := docPath(repoRoot, runID)
 	doc := Document{SchemaVersion: SchemaVersion, RunID: runID}
 	data, err := os.ReadFile(path)
@@ -193,26 +209,28 @@ func Append(repoRoot, runID string, ev Event) error {
 	case errors.Is(err, fs.ErrNotExist):
 		// A fresh document: doc already holds the right schema/run id.
 	case err != nil:
-		return fmt.Errorf("read %s: %w", path, err)
+		return doc, fmt.Errorf("read %s: %w", path, err)
 	default:
 		if decErr := strictDecode(data, &doc); decErr != nil {
-			return fmt.Errorf("parse %s: %v", path, decErr)
+			return doc, fmt.Errorf("parse %s: %v", path, decErr)
 		}
-		if doc.SchemaVersion != SchemaVersion {
-			return fmt.Errorf("%s: unsupported schema_version %d (this build understands %d)", path, doc.SchemaVersion, SchemaVersion)
+		if err := doc.validate(); err != nil {
+			return doc, fmt.Errorf("%s: %w", path, err)
 		}
 		if doc.RunID != runID {
-			return fmt.Errorf("%s: run_id %q does not match %q", path, doc.RunID, runID)
+			return doc, fmt.Errorf("%s: run_id %q does not match %q", path, doc.RunID, runID)
 		}
 	}
 
-	doc.Events = append(doc.Events, ev)
+	return doc, nil
+}
 
+func save(repoRoot string, doc Document) error {
 	dir := dirPath(repoRoot)
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return fmt.Errorf("create %s: %w", dir, err)
 	}
-	return write(path, dir, doc)
+	return write(docPath(repoRoot, doc.RunID), dir, doc)
 }
 
 // write atomically replaces path with doc's JSON encoding: temp file
@@ -273,8 +291,11 @@ func LoadAll(repoRoot string) ([]Document, error) {
 		if err := strictDecode(data, &doc); err != nil {
 			return nil, fmt.Errorf("parse %s: %v", path, err)
 		}
-		if doc.SchemaVersion != SchemaVersion {
-			return nil, fmt.Errorf("%s: unsupported schema_version %d (this build understands %d)", path, doc.SchemaVersion, SchemaVersion)
+		if err := doc.validate(); err != nil {
+			return nil, fmt.Errorf("%s: %w", path, err)
+		}
+		if filepath.Base(path) != doc.RunID+".json" {
+			return nil, fmt.Errorf("%s: run_id does not match filename", path)
 		}
 		docs = append(docs, doc)
 	}

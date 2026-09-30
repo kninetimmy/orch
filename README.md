@@ -334,7 +334,7 @@ commands:
   configure-local  Interview and apply machine-local overrides
   resume           Reconcile an interrupted Delivery run against GitHub and continue
   abort            Stop dispatch and return to Assist
-  metrics          Show local metrics
+  metrics          Show local metrics (or record JSON observations with `metrics record`)
   render-agents    Render project agent definitions for every enabled host
   run              Adapter plumbing: Delivery run verbs (JSON stdin/stdout; not a human command)
   guard            Adapter plumbing: pre-write enforcement for host hooks (not a human command)
@@ -343,6 +343,10 @@ commands:
 
 The last three rows — `run`, `guard`, `hook` — are what the host
 adapters call for you; you never invoke them by hand.
+
+Previously `metrics` only accepted its read-only report form. That form still
+works; `metrics record` now accepts durable observation JSON. See the
+[observation contract and compatibility notes](docs/metric-observations.md).
 
 On Claude Code the three interviews also have slash commands:
 `/orch:init`, `/orch:configure`, `/orch:configure-local`.
