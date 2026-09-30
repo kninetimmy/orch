@@ -25,6 +25,16 @@ func (u Usage) Counters() Counters {
 	return counters(fields)
 }
 
+// ReportedDurationMS preserves the difference between an explicitly reported
+// zero and an omitted legacy duration. Legacy duration has no timing category.
+func (u Usage) ReportedDurationMS() *int64 {
+	if u.DurationMS == 0 && u.zeroFields&(1<<5) == 0 {
+		return nil
+	}
+	v := u.DurationMS
+	return &v
+}
+
 func (u Usage) MarshalJSON() ([]byte, error) {
 	c := u.Counters()
 	wire := legacyUsageWire{InputTokens: c.InputTokens, OutputTokens: c.OutputTokens,

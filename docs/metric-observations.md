@@ -103,14 +103,69 @@ baseline store; temp-file write, sync, and atomic replacement commit evidence
 and baselines together. Retry the identical request after a storage failure or
 an uncertain response. There is no separate checkpoint to advance or repair.
 
+## Read-only report and P1-A boundary
+
+`orch metrics` reports the evidence already present in every supported schema-1
+or schema-2 run document. It does not create or rewrite metrics storage. A
+corrupt document, an unsupported document or observation version, or invalid
+counter history still fails clearly instead of producing a partial report.
+
+Legacy lifecycle usage remains readable per event. Its host, native source and
+session semantics were never recorded, so the report does not publish a
+combined legacy total or compare it with native observations. Each legacy
+counter prints its decoded presence: an explicit zero is `0`, an omitted value
+is `unknown`, and `duration_ms` is labeled `unclassified reported duration`.
+Legacy duration is not assigned to an activity category.
+
+Native sample rows identify run, issue, role, native session, attempt and review
+cycle. Requested and observed profiles print separately; neither fills gaps in
+the other. The report uses `CounterContributions` for cumulative/delta replay,
+including repeated samples that contribute a measured zero. Comparable totals
+are grouped only by host, source and stream, the contract's counter-definition
+boundary. Every independent counter has its own total and measured-sample count;
+aggregate and split counters are never added together. Different sources or
+streams remain separate, and cross-session total overflow fails instead of
+wrapping.
+
+Coverage lists roles with recorded counter samples, roles with execution or
+observation evidence but no counters, known native sessions, observations with
+unknown role/session attribution, and explicit unavailable records. Architect
+is always named in role coverage because root usage participates in the run but
+has no automatic capture path. Recorded sessions are evidence, not a complete
+session census; the report always says the complete native session count is
+unknown. Lifecycle-event count is not used as a usage denominator.
+
+Measured timing is separate for `active-agent`, `verification`, `ci-waiting`
+and `human-waiting`. Each session/category uses an interval union, so replayed
+or overlapping intervals count once. Session unions are summed for agent
+effort, while a second union across sessions reports wall-clock coverage without
+double-counting concurrent work. Intervals without session identity contribute
+to wall-clock coverage but are excluded and named in the session-summed value;
+when all intervals lack sessions, session-summed effort is `unknown` rather than
+zero.
+No interval for a category means `unknown`; a recorded zero-length interval is
+measured `0s`.
+
+Explicit observation outcomes report implementation failure, infrastructure
+failure, evidence correction, wrong requirement, escalation and approval as
+separate categories. Unambiguous engine escalation and review-approval events
+print separately from reported outcomes. Other historical events remain
+unclassified, and all observation evidence remains read-only: it cannot change
+a review verdict, approval or merge decision.
+
+This closes P1-A's durable evidence and local reporting boundary. Native Windows
+Claude isolation/bridge work remains in follow-up #208 (P1-B), and live
+automation/evaluation remains P1-C. This delivery adds no Claude/OpenCode
+capture path, host installation, live model/API call, dashboard, exporter or
+telemetry.
+
 ## Compatibility and blast radius
 
 Before this change, metrics schema 1 held only lifecycle events and the metrics
 command had only a read-only form. Schema 2 adds a separate `observations` array;
-the no-argument report remains read-only and still summarizes legacy events.
-Observation reporting and native capture are separate follow-up work.
-That was the prerequisite's boundary. Native Codex child capture is now
-implemented below; observation reporting remains separate follow-up work.
+the no-argument report remains read-only, keeps legacy events readable and now
+reports observation usage, coverage, timing and outcomes. Native Codex child
+capture is implemented below.
 
 Schema-1 history remains readable without rewriting it. A lifecycle append to
 an existing schema-1 document keeps that version; the first successful new
@@ -123,11 +178,11 @@ downgrade a metrics document by relabeling its version.
 | Element | Previous behavior and status after this change |
 | --- | --- |
 | `metrics.Document`, `SchemaVersion`, `load`, `save`, `LoadAll` | Before: schema 1 only. After: read 1/2, write fresh documents as 2, upgrade existing 1 only on recording an observation. Corrupt/unsupported history still fails closed; reports never write. |
-| `metrics.Usage`, its JSON methods and `Counters` | Before: omitted and explicit zero decoded to the same integer, and zero was omitted on write. After: existing integer fields/manual callers retain their meaning, decoded explicit zero survives rewrites, and `Counters` exposes omitted fields as unknown. Legacy usage never becomes a native sample or baseline. Existing legacy text reports retain their original display behavior. |
+| `metrics.Usage`, its JSON methods and `Counters` | Before: omitted and explicit zero decoded to the same integer, and zero was omitted on write. After: existing integer fields/manual callers retain their meaning, decoded explicit zero survives rewrites, and `Counters` exposes omitted fields as unknown. Legacy usage never becomes a native sample or baseline. Reports label its missing attribution and duration limits explicitly. |
 | `metrics.Append`, `Event`, run activation and `recordMetric` callers | Lifecycle events, manual PR/review/executor usage, event ordering, enabled gate, and post-mutation error behavior remain. Append preserves observations. Callers and their Delivery decisions are unchanged. |
 | `metrics.write`, `strictDecode`, `validateRunID` | Atomic temp/sync/rename and path validation remain. Strict decoding now checks EOF explicitly. The new document validator additionally checks accepted observations and their stream arithmetic before writes and on reads. |
 | `Observation`, `Profile`, `Counters`, `CounterSample`, `Interval`, `ParseObservation`, `Record`, `CounterContributions` | New evidence-only contract; partial observed profiles are intentionally distinct from routing `manifest.Selection`, whose complete-profile restriction remains unchanged for every Selection. All counter fields share presence/nonnegative/overflow rules, not just total tokens. |
-| CLI `commands`, `runMetrics`, `cmdMetrics`, `withDeliveryMutation` | Before: metrics rejected every argument. After: `metrics record` adds JSON recording; other arguments still fail. `cmdMetrics` remains read-only. Every metrics storage writer (`Append` and `Record`), not just `Append`, needs external serialization; production record, lifecycle, resume, and abort commands share the existing repository boundary. Direct package callers must supply serialization themselves. |
+| CLI `commands`, `runMetrics`, `cmdMetrics`, `withDeliveryMutation` | Before: metrics rejected every argument. After: `metrics record` adds JSON recording; other arguments still fail. `cmdMetrics` remains read-only and reports observations without mixing incompatible evidence. Every metrics storage writer (`Append` and `Record`), not just `Append`, needs external serialization; production record, lifecycle, resume, and abort commands share the existing repository boundary. Direct package callers must supply serialization themselves. |
 | `state.Load`, `state.CheckConsistent`, `lockfile.Inspect`, `config.Load` | Reused read-only for current association and enabled checks. State schema, lock ownership, configuration, routing, approval, phase transitions, review verdicts, and GitHub resources retain their prior behavior. No new storage registry or dependencies. |
 | Metrics and CLI tests | Existing tests remain; focused checks add process restart/replay, concurrent submissions, failure/retry, presence, legacy reads, invalid associations and disabled storage. The required local race gate is `go test -race ./internal/metrics ./internal/cli`; current CI does not run it. |
 
@@ -246,7 +301,7 @@ part of capture. The unversioned helper remains available to older adapters.
 | `Observation`, `Unavailable`, `ParseObservation`, JSON decoding and validation | Before: schema 1 allowed exactly sample/interval/outcome. After: schema 1 retains its closed shape; schema 2 adds exclusive missingness and reasoning output. Partial profiles retain their previous meaning. |
 | `Counters`, `CounterContributions`, `Record`, metrics document validation | Five independent counters become six in v2; every counter, including reasoning output, follows the same presence, nonnegative, monotonic and overflow rules. Replay, immutable identities, atomic history, document version, stream boundaries and externally supplied serialization remain. Missingness contributes nothing. |
 | `Usage.Counters`, `legacyUsageWire`, legacy JSON methods | Internal wire is separated from the extended native counter type. Existing lifecycle fields, explicit zeros, unknown-field rejection and duration behavior remain; reasoning counters are not accepted as legacy usage. |
-| CLI `runMetrics` | Recording result remains schema 1 despite the new observation version. Current-run/issue/host validation, lock, enabled gate and read-only legacy report remain unchanged. |
+| CLI `runMetrics` | Recording result remains schema 1 despite the new observation version. Current-run/issue/host validation, lock and enabled gate remain unchanged. The read-only report now presents native evidence while keeping it separate from legacy usage. |
 | Codex Delivery instructions and contract test | Before/after usage mapping is explicit in the original document. New instructions require supported versions, saved associations and requests, recording before completion, honest missingness and no duplicate legacy submission. All other manual Delivery mechanics remain. |
 | Metrics/CLI tests and this compatibility document | Focused deterministic checks add capture-to-recorder subprocess restart/replay, repair and fresh-reviewer identities, malformed/unavailable evidence, zero/absent counters, planning/scout recording and closed version shapes. No live host sessions or dependencies are introduced. |
 
