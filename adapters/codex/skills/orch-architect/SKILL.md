@@ -68,6 +68,8 @@ actually true about this repository, do the following, in order:
    from `orch status`'s human-readable text — that command is for a
    person reading a terminal, not for you to parse.
    `orch run status --json` returns `StatusDoc` schema_version `3`; reject any other before reading its Selection-bearing run state.
+   Before, this skill accepted StatusDoc schema `2`. Now it accepts schema
+   `3`, preserving Selection shapes and exposing approval-contract metadata.
 2. Read the rendered `PROJECT.md` once, at the start of the session
    (memhub's own convention), for prior context.
 3. Recall relevant memhub history before planning new work, so you are
