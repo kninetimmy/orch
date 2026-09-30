@@ -1,14 +1,80 @@
 package cli
 
 import (
+	"encoding/json"
 	"fmt"
 	"io"
 	"sort"
 	"strings"
 
 	"github.com/kninetimmy/orch/internal/config"
+	"github.com/kninetimmy/orch/internal/lockfile"
 	"github.com/kninetimmy/orch/internal/metrics"
+	"github.com/kninetimmy/orch/internal/state"
 )
+
+func runMetrics(env Env, args []string) error {
+	if len(args) == 0 {
+		return cmdMetrics(env)
+	}
+	if len(args) != 1 || args[0] != "record" {
+		return usageError(fmt.Sprintf("orch metrics: unexpected argument %q; usage: orch metrics [record (JSON on stdin)]", args[0]))
+	}
+	data, err := io.ReadAll(env.Stdin)
+	if err != nil {
+		return fmt.Errorf("read observation: %w", err)
+	}
+	o, err := metrics.ParseObservation(data)
+	if err != nil {
+		return err
+	}
+	return withDeliveryMutation(env.RepoRoot, func() error {
+		cfg, err := config.Load(env.RepoRoot)
+		if err != nil {
+			return err
+		}
+		st, err := state.Load(env.RepoRoot)
+		if err != nil {
+			return err
+		}
+		owner, err := lockfile.Inspect(env.RepoRoot)
+		if err != nil {
+			return err
+		}
+		if err := state.CheckConsistent(st, owner); err != nil {
+			return err
+		}
+		if st.Run == nil || st.Run.ID != o.RunID {
+			return fmt.Errorf("observation run_id %q is not the current Delivery run", o.RunID)
+		}
+		if o.Host != "" && o.Host != st.Run.Host {
+			return fmt.Errorf("observation host %q does not match run host %q", o.Host, st.Run.Host)
+		}
+		if o.IssueNumber != 0 {
+			matches := 0
+			for _, issue := range st.Run.Issues {
+				if issue.Number == o.IssueNumber {
+					matches++
+				}
+			}
+			if matches != 1 {
+				return fmt.Errorf("observation issue #%d does not identify one issue in run %s", o.IssueNumber, o.RunID)
+			}
+		}
+		result := struct {
+			SchemaVersion int  `json:"schema_version"`
+			Enabled       bool `json:"enabled"`
+			Recorded      bool `json:"recorded"`
+		}{SchemaVersion: metrics.ObservationVersion, Enabled: cfg.Metrics.Enabled}
+		if cfg.Metrics.Enabled {
+			result.Recorded, err = metrics.Record(env.RepoRoot, o)
+			if err != nil {
+				return err
+			}
+		}
+		return json.NewEncoder(env.Stdout).Encode(result)
+	})
+}
 
 // cmdMetrics prints a read-only summary of every recorded metrics
 // document (PRD §21, §22): whether metrics are currently enabled, then

@@ -96,7 +96,7 @@ func runRunVerb(env Env, args []string) error {
 
 // withDeliveryMutation holds the process-scoped, cross-process serializer for
 // one complete mutating command invocation. Besides runRunVerb's mutators,
-// resume and abort use this same boundary.
+// resume, abort, and metrics record use this same boundary.
 func withDeliveryMutation(repoRoot string, fn func() error) (err error) {
 	lock, err := lockfile.AcquireMutation(repoRoot)
 	if err != nil {

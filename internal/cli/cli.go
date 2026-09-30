@@ -73,7 +73,7 @@ func commands() []command {
 		{"configure-local", "Interview and apply machine-local overrides", runConfigureLocal},
 		{"resume", "Reconcile an interrupted Delivery run against GitHub and continue", runResume},
 		{"abort", "Stop dispatch and return to Assist", noArgs("abort", runAbort)},
-		{"metrics", "Show local metrics", noArgs("metrics", cmdMetrics)},
+		{"metrics", "Show local metrics or record JSON observations", runMetrics},
 		{"render-agents", "Render project agent definitions for every enabled host", noArgs("render-agents", runRenderAgents)},
 		{"run", "Adapter plumbing: Delivery run verbs (JSON stdin/stdout; not a human command)", runRunVerb},
 		{"guard", "Adapter plumbing: pre-write enforcement for host hooks (not a human command)", runGuard},
