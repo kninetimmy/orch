@@ -13,6 +13,7 @@ import (
 	"github.com/kninetimmy/orch/internal/lockfile"
 	"github.com/kninetimmy/orch/internal/manifest"
 	"github.com/kninetimmy/orch/internal/metrics"
+	"github.com/kninetimmy/orch/internal/run"
 	"github.com/kninetimmy/orch/internal/state"
 )
 
@@ -189,6 +190,22 @@ func (r dispatchRunner) Run(ctx context.Context, cmd execx.Cmd) (execx.Result, e
 	return r.fakeRunner.Run(ctx, cmd)
 }
 
+func testApprovedPlanRef(t *testing.T, root string) state.PlanRef {
+	t.Helper()
+	gate, err := run.Plan(context.Background(), run.Env{RepoRoot: root}, []byte(minimalPlanJSON))
+	if err != nil {
+		t.Fatal(err)
+	}
+	digest, err := gate.Execution.Digest()
+	if err != nil {
+		t.Fatal(err)
+	}
+	ref := testPlanRef()
+	ref.ContractVersion = run.ContractVersion
+	ref.ExecutionDigest = digest
+	return ref
+}
+
 func TestConcurrentDispatchesPreserveBothStateAndMetrics(t *testing.T) {
 	env, stdout1, stderr1 := testEnv(t)
 	writeConfig(t, env.RepoRoot, validTOML+"\n[metrics]\nenabled = true\n")
@@ -196,7 +213,7 @@ func TestConcurrentDispatchesPreserveBothStateAndMetrics(t *testing.T) {
 		{PlanID: "a", Phase: state.PhasePlanned},
 		{PlanID: "b", Phase: state.PhasePlanned},
 	}
-	st, err := state.EnterDelivery(env.RepoRoot, "claude", testPlanRef(), planned)
+	st, err := state.EnterDelivery(env.RepoRoot, "claude", testApprovedPlanRef(t, env.RepoRoot), planned)
 	if err != nil {
 		t.Fatal(err)
 	}

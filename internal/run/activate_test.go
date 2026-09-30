@@ -220,13 +220,21 @@ func buildActivationJSON(t *testing.T, planJSON, digest, statement string) []byt
 
 // activationJSON builds a valid activation request for planJSON: the
 // correct recomputed digest and the correct approval statement.
-func activationJSON(t *testing.T, planJSON string) []byte {
+func activationJSON(t *testing.T, root, planJSON string) []byte {
 	t.Helper()
 	p, err := DecodePlan([]byte(planJSON))
 	if err != nil {
 		t.Fatal(err)
 	}
-	digest, err := p.Digest()
+	cfg, err := config.Load(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	contract, err := effectiveContract(p, cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	digest, err := contentDigest(contract)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -266,7 +274,7 @@ func TestActivateHappyPathTwoIssuesTwoWaves(t *testing.T) {
 	script := &execxtest.Script{T: t, Calls: calls}
 	env := Env{RepoRoot: root, Runner: muxRunner{git: execx.Local{}, gh: script}, Now: fixedNow}
 
-	result, err := Activate(context.Background(), env, activationJSON(t, twoIssuePlanJSON()))
+	result, err := Activate(context.Background(), env, activationJSON(t, root, twoIssuePlanJSON()))
 	if err != nil {
 		t.Fatalf("Activate: %v", err)
 	}
@@ -336,7 +344,11 @@ func TestActivateRecordsApprovedWork(t *testing.T) {
 	)
 	script := &execxtest.Script{T: t, Calls: calls}
 	env := Env{RepoRoot: root, Runner: muxRunner{git: execx.Local{}, gh: script}, Now: fixedNow}
-	if _, err := Activate(context.Background(), env, activationJSON(t, twoIssuePlanJSON())); err != nil {
+	gate, err := Plan(context.Background(), env, []byte(twoIssuePlanJSON()))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Activate(context.Background(), env, buildActivationJSON(t, twoIssuePlanJSON(), gate.PlanDigest, ApprovalStatement)); err != nil {
 		t.Fatalf("Activate: %v", err)
 	}
 	script.AssertExhausted()
@@ -368,6 +380,26 @@ func TestActivateRecordsApprovedWork(t *testing.T) {
 	st, err := state.Load(root)
 	if err != nil {
 		t.Fatal(err)
+	}
+	if st.Run.Plan.Digest != gate.PlanDigest || st.Run.Plan.ContractVersion != ContractVersion {
+		t.Fatalf("activation lost approval: %+v", st.Run.Plan)
+	}
+	for i, approved := range gate.Issues {
+		issue := st.Run.Issues[i]
+		m, err := manifest.Parse(script.StdinAt(len(taxonomy) + i))
+		if err != nil {
+			t.Fatal(err)
+		}
+		work := approvedWork{objective: approved.Objective, acceptanceCriteria: approved.AcceptanceCriteria, requiredTests: approved.RequiredTests, testsCIDoesNotRun: approved.TestsCIDoesNotRun}
+		if !sameWork(&issue, work) {
+			t.Fatalf("gate/state work differ for %s", approved.ID)
+		}
+		if !sameWork(&issue, approvedWork{objective: m.Objective, acceptanceCriteria: m.AcceptanceCriteria, requiredTests: m.RequiredTests, testsCIDoesNotRun: m.TestsCIDoesNotRun}) {
+			t.Fatalf("state/audit work differ for %s", approved.ID)
+		}
+		if issue.Decision.Executor != approved.Executor || issue.Decision.Reviewer != approved.Reviewer || m.Executor != approved.Executor || m.Reviewer != approved.Reviewer {
+			t.Fatalf("gate/state/audit selections differ for %s", approved.ID)
+		}
 	}
 	a := st.Run.Issues[0]
 	if a.Objective != "Do A" || len(a.AcceptanceCriteria) != 1 || len(a.RequiredTests) != 1 {
@@ -449,7 +481,7 @@ func TestActivateAreaLabelsPresentProceeds(t *testing.T) {
 	script := &execxtest.Script{T: t, Calls: calls}
 	env := Env{RepoRoot: root, Runner: muxRunner{git: execx.Local{}, gh: script}, Now: fixedNow}
 
-	result, err := Activate(context.Background(), env, activationJSON(t, areaPlanJSON()))
+	result, err := Activate(context.Background(), env, activationJSON(t, root, areaPlanJSON()))
 	if err != nil {
 		t.Fatalf("Activate: %v", err)
 	}
@@ -468,7 +500,7 @@ func TestActivateMissingAreaLabelLeavesNothing(t *testing.T) {
 	}}
 	env := Env{RepoRoot: root, Runner: muxRunner{git: execx.Local{}, gh: script}, Now: fixedNow}
 
-	_, err := Activate(context.Background(), env, activationJSON(t, areaPlanJSON()))
+	_, err := Activate(context.Background(), env, activationJSON(t, root, areaPlanJSON()))
 	if !errors.Is(err, ErrAreaLabelMissing) {
 		t.Fatalf("err = %v, want ErrAreaLabelMissing", err)
 	}
@@ -492,7 +524,7 @@ func TestActivateFailureAtSecondIssueCreateIsResumable(t *testing.T) {
 	script := &execxtest.Script{T: t, Calls: calls}
 	env := Env{RepoRoot: root, Runner: muxRunner{git: execx.Local{}, gh: script}, Now: fixedNow}
 
-	_, err := Activate(context.Background(), env, activationJSON(t, twoIssuePlanJSON()))
+	_, err := Activate(context.Background(), env, activationJSON(t, root, twoIssuePlanJSON()))
 	if err == nil {
 		t.Fatal("Activate succeeded, want error")
 	}
@@ -554,7 +586,7 @@ func TestActivateDirtyTreeLeavesNothing(t *testing.T) {
 	script := &execxtest.Script{T: t}
 	env := Env{RepoRoot: root, Runner: muxRunner{git: execx.Local{}, gh: script}, Now: fixedNow}
 
-	_, err := Activate(context.Background(), env, activationJSON(t, twoIssuePlanJSON()))
+	_, err := Activate(context.Background(), env, activationJSON(t, root, twoIssuePlanJSON()))
 	if !errors.Is(err, gitops.ErrNotClean) {
 		t.Fatalf("err = %v, want ErrNotClean", err)
 	}
@@ -577,7 +609,7 @@ func TestActivateMetricsTrapNamesCause(t *testing.T) {
 	script := &execxtest.Script{T: t}
 	env := Env{RepoRoot: root, Runner: muxRunner{git: execx.Local{}, gh: script}, Now: fixedNow}
 
-	_, err := Activate(context.Background(), env, activationJSON(t, twoIssuePlanJSON()))
+	_, err := Activate(context.Background(), env, activationJSON(t, root, twoIssuePlanJSON()))
 	if !errors.Is(err, gitops.ErrNotClean) {
 		t.Fatalf("err = %v, want ErrNotClean", err)
 	}
@@ -600,7 +632,7 @@ func TestActivateLockHeldLeavesExistingStateUntouched(t *testing.T) {
 	script := &execxtest.Script{T: t}
 	env := Env{RepoRoot: root, Runner: muxRunner{git: execx.Local{}, gh: script}, Now: fixedNow}
 
-	_, err = Activate(context.Background(), env, activationJSON(t, twoIssuePlanJSON()))
+	_, err = Activate(context.Background(), env, activationJSON(t, root, twoIssuePlanJSON()))
 	if !errors.Is(err, ErrDeliveryActive) {
 		t.Fatalf("err = %v, want ErrDeliveryActive", err)
 	}
@@ -620,7 +652,7 @@ func TestActivateContainerNotIgnoredLeavesNothing(t *testing.T) {
 	script := &execxtest.Script{T: t, Calls: []execxtest.Call{ghOpenCall(), ghRepoViewCall("main")}}
 	env := Env{RepoRoot: root, Runner: muxRunner{git: execx.Local{}, gh: script}, Now: fixedNow}
 
-	_, err := Activate(context.Background(), env, activationJSON(t, twoIssuePlanJSON()))
+	_, err := Activate(context.Background(), env, activationJSON(t, root, twoIssuePlanJSON()))
 	if !errors.Is(err, gitops.ErrNotIgnored) {
 		t.Fatalf("err = %v, want ErrNotIgnored", err)
 	}
@@ -671,7 +703,7 @@ func TestActivateUnauthGHLeavesNothing(t *testing.T) {
 	}}
 	env := Env{RepoRoot: root, Runner: muxRunner{git: execx.Local{}, gh: script}, Now: fixedNow}
 
-	_, err := Activate(context.Background(), env, activationJSON(t, twoIssuePlanJSON()))
+	_, err := Activate(context.Background(), env, activationJSON(t, root, twoIssuePlanJSON()))
 	if !errors.Is(err, ghops.ErrNotAuthenticated) {
 		t.Fatalf("err = %v, want ErrNotAuthenticated", err)
 	}
@@ -692,7 +724,7 @@ func TestActivateBranchExistsMidRun(t *testing.T) {
 	script := &execxtest.Script{T: t, Calls: calls}
 	env := Env{RepoRoot: root, Runner: muxRunner{git: execx.Local{}, gh: script}, Now: fixedNow}
 
-	_, err := Activate(context.Background(), env, activationJSON(t, twoIssuePlanJSON()))
+	_, err := Activate(context.Background(), env, activationJSON(t, root, twoIssuePlanJSON()))
 	if !errors.Is(err, gitops.ErrBranchExists) {
 		t.Fatalf("err = %v, want ErrBranchExists", err)
 	}
@@ -781,7 +813,7 @@ func TestActivateCodexAbsentAgentsLeavesNothing(t *testing.T) {
 	script := &execxtest.Script{T: t}
 	env := Env{RepoRoot: root, Runner: muxRunner{git: execx.Local{}, gh: script}, Now: fixedNow}
 
-	_, err := Activate(context.Background(), env, activationJSON(t, codexPlanJSON()))
+	_, err := Activate(context.Background(), env, activationJSON(t, root, codexPlanJSON()))
 	if !errors.Is(err, ErrAgentsStale) {
 		t.Fatalf("err = %v, want ErrAgentsStale", err)
 	}
@@ -806,7 +838,7 @@ func TestActivateCodexEditedAgentRefused(t *testing.T) {
 	script := &execxtest.Script{T: t}
 	env := Env{RepoRoot: root, Runner: muxRunner{git: execx.Local{}, gh: script}, Now: fixedNow}
 
-	_, err := Activate(context.Background(), env, activationJSON(t, codexPlanJSON()))
+	_, err := Activate(context.Background(), env, activationJSON(t, root, codexPlanJSON()))
 	if !errors.Is(err, ErrAgentsStale) {
 		t.Fatalf("err = %v, want ErrAgentsStale", err)
 	}
@@ -831,7 +863,7 @@ func TestActivateCodexCurrentAgentsProceeds(t *testing.T) {
 	script := &execxtest.Script{T: t, Calls: calls}
 	env := Env{RepoRoot: root, Runner: muxRunner{git: execx.Local{}, gh: script}, Now: fixedNow}
 
-	result, err := Activate(context.Background(), env, activationJSON(t, codexPlanJSON()))
+	result, err := Activate(context.Background(), env, activationJSON(t, root, codexPlanJSON()))
 	if err != nil {
 		t.Fatalf("Activate: %v", err)
 	}
@@ -853,7 +885,7 @@ func TestActivateClaudeChecksOnlyRelevantHostWithBothEnabled(t *testing.T) {
 	env := Env{RepoRoot: root, Runner: muxRunner{git: execx.Local{}, gh: script}, Now: fixedNow}
 	claudePlan := strings.Replace(codexPlanJSON(), `"host": "codex"`, `"host": "claude"`, 1)
 
-	result, err := Activate(context.Background(), env, activationJSON(t, claudePlan))
+	result, err := Activate(context.Background(), env, activationJSON(t, root, claudePlan))
 	if err != nil {
 		t.Fatalf("Activate: %v", err)
 	}
@@ -872,7 +904,7 @@ func TestActivateClaudeAbsentAgentsLeavesNothing(t *testing.T) {
 	env := Env{RepoRoot: root, Runner: muxRunner{git: execx.Local{}, gh: script}, Now: fixedNow}
 	claudePlan := strings.Replace(codexPlanJSON(), `"host": "codex"`, `"host": "claude"`, 1)
 
-	_, err := Activate(context.Background(), env, activationJSON(t, claudePlan))
+	_, err := Activate(context.Background(), env, activationJSON(t, root, claudePlan))
 	if !errors.Is(err, ErrAgentsStale) {
 		t.Fatalf("err = %v, want ErrAgentsStale", err)
 	}
@@ -950,7 +982,7 @@ func TestActivateOpenCodeUnavailableSelectionsLeaveNothing(t *testing.T) {
 	script := &execxtest.Script{T: t, Calls: []execxtest.Call{openCodeCatalogCall(root, models)}}
 	env := Env{RepoRoot: root, Runner: muxRunner{git: execx.Local{}, gh: script}, Now: fixedNow}
 
-	_, err := Activate(context.Background(), env, activationJSON(t, openCodePlanJSON()))
+	_, err := Activate(context.Background(), env, activationJSON(t, root, openCodePlanJSON()))
 	if !errors.Is(err, ErrOpenCodeSelectionUnavailable) {
 		t.Fatalf("err = %v, want ErrOpenCodeSelectionUnavailable", err)
 	}
@@ -982,7 +1014,7 @@ func TestActivateOpenCodeAvailableMixedProfileProceedsWithFreshAgents(t *testing
 	script := &execxtest.Script{T: t, Calls: calls}
 	env := Env{RepoRoot: root, Runner: muxRunner{git: execx.Local{}, gh: script}, Now: fixedNow}
 
-	result, err := Activate(context.Background(), env, activationJSON(t, openCodePlanJSON()))
+	result, err := Activate(context.Background(), env, activationJSON(t, root, openCodePlanJSON()))
 	if err != nil {
 		t.Fatalf("Activate: %v", err)
 	}

@@ -91,7 +91,9 @@ func (c *verbCtx) worktreeAbs() string {
 //
 //  1. Consistent delivery state owned by this run's lock.
 //  2. Delivery mode.
-//  3. Config that has not drifted from the run's ConfigRevision.
+//  3. Config that has not drifted from the run's ConfigRevision. Before
+//     contract v1 that string alone sufficed; now the effective execution
+//     fingerprint must also match, including local overrides.
 //  4. The run is not stopped (unless exemptStop — only block is exempt).
 //  5. When issueNumber > 0, exactly one matching run issue whose phase is
 //     in allowed; issueNumber == 0 is a run-level verb with no issue.
@@ -121,6 +123,9 @@ func loadVerb(env Env, issueNumber int, allowed []state.Phase, exemptStop bool) 
 	}
 	if cfg.ConfigRevision != st.Run.Plan.ConfigRevision {
 		return nil, fmt.Errorf("%w: config revision %q does not match the run's %q; run `orch abort`, ship the config change on its own Delivery run, then re-plan", ErrConfigDrift, cfg.ConfigRevision, st.Run.Plan.ConfigRevision)
+	}
+	if err := checkExecutionConfig(cfg, st); err != nil {
+		return nil, err
 	}
 	if !exemptStop && st.Run.StoppedReason != "" {
 		return nil, fmt.Errorf("%w (%s); run `orch abort` to return to assist, or `orch resume` to continue", ErrRunStopped, st.Run.StoppedReason)

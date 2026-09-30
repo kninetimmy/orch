@@ -103,9 +103,15 @@ func DecodePlan(data []byte) (*PlanDoc, error) {
 // the hex SHA-256 of the re-marshaled struct. Marshaling the decoded
 // struct (rather than hashing the raw input bytes) makes the digest
 // agree regardless of the adapter's original whitespace or key order,
-// so plan and activate compute the same value for the same content.
+// so equivalent submitted documents retain their legacy content identity.
+// Before contract v1 this was the approval digest; now approval hashes the
+// effective contract instead. Digest remains available for legacy inspection.
 func (p *PlanDoc) Digest() (string, error) {
-	data, err := json.Marshal(p)
+	return contentDigest(p)
+}
+
+func contentDigest(v any) (string, error) {
+	data, err := json.Marshal(v)
 	if err != nil {
 		return "", fmt.Errorf("encode plan for digest: %w", err)
 	}

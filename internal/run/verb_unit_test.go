@@ -93,7 +93,7 @@ func enterDeliveryAt(t *testing.T, root, planRev string, issues []state.Issue) {
 	for i := range issues {
 		planned[i] = state.Issue{PlanID: issues[i].PlanID, Phase: state.PhasePlanned}
 	}
-	st, err := state.EnterDelivery(root, "claude", state.PlanRef{Title: "t", Digest: "sha256:x", ConfigRevision: planRev}, planned)
+	st, err := state.EnterDelivery(root, "claude", approvedPlanRef(t, root, planRev), planned)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1253,7 +1253,7 @@ func TestSelectionWireRequestVersionsRejectPrevious(t *testing.T) {
 
 func TestSelectionWireSchemaVersions(t *testing.T) {
 	got := []int{StatusSchemaVersion, GateSchemaVersion, DispatchSchemaVersion, EscalateSchemaVersion, ReviewSchemaVersion}
-	want := []int{2, 2, 4, 2, 3}
+	want := []int{3, 3, 4, 2, 3}
 	if !slices.Equal(got, want) {
 		t.Errorf("Selection wire versions = %v, want %v", got, want)
 	}
@@ -1269,7 +1269,7 @@ func TestActivatePersistsV3Fields(t *testing.T) {
 	)
 	script := &execxtest.Script{T: t, Calls: calls}
 	env := Env{RepoRoot: root, Runner: muxRunner{git: execx.Local{}, gh: script}, Now: fixedNow}
-	if _, err := Activate(context.Background(), env, activationJSON(t, twoIssuePlanJSON())); err != nil {
+	if _, err := Activate(context.Background(), env, activationJSON(t, root, twoIssuePlanJSON())); err != nil {
 		t.Fatalf("Activate: %v", err)
 	}
 	script.AssertExhausted()

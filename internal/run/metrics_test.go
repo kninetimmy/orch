@@ -31,7 +31,7 @@ func setupDeliveryRepoWithConfig(t *testing.T, tomlContent, planRev string, issu
 	for i := range issues {
 		planned[i] = state.Issue{PlanID: issues[i].PlanID, Phase: state.PhasePlanned}
 	}
-	st, err := state.EnterDelivery(root, "claude", state.PlanRef{Title: "t", Digest: "sha256:x", ConfigRevision: planRev}, planned)
+	st, err := state.EnterDelivery(root, "claude", approvedPlanRef(t, root, planRev), planned)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -288,7 +288,7 @@ func TestPROpenRecordsExecutorRoleWhenEnabled(t *testing.T) {
 	activateCalls := append(fullTaxonomyScript(), ghIssueCreateCall(title, []string{"ready", "bug", "implementer", "standard"}, 1))
 	script := &execxtest.Script{T: t, Calls: activateCalls}
 	env := Env{RepoRoot: root, Runner: muxRunner{git: execx.Local{}, gh: script}, Now: fixedNow}
-	if _, err := Activate(context.Background(), env, activationJSON(t, validPlanJSON())); err != nil {
+	if _, err := Activate(context.Background(), env, activationJSON(t, root, validPlanJSON())); err != nil {
 		t.Fatalf("Activate: %v", err)
 	}
 	script.AssertExhausted()
@@ -344,7 +344,7 @@ func TestActivateRecordsOneMetricPerIssueWhenEnabled(t *testing.T) {
 	script := &execxtest.Script{T: t, Calls: calls}
 	env := Env{RepoRoot: root, Runner: muxRunner{git: execx.Local{}, gh: script}, Now: fixedNow}
 
-	result, err := Activate(context.Background(), env, activationJSON(t, twoIssuePlanJSON()))
+	result, err := Activate(context.Background(), env, activationJSON(t, root, twoIssuePlanJSON()))
 	if err != nil {
 		t.Fatalf("Activate: %v", err)
 	}
@@ -387,7 +387,7 @@ func TestActivateMetricsDisabledCreatesNoStorage(t *testing.T) {
 	script := &execxtest.Script{T: t, Calls: calls}
 	env := Env{RepoRoot: root, Runner: muxRunner{git: execx.Local{}, gh: script}, Now: fixedNow}
 
-	if _, err := Activate(context.Background(), env, activationJSON(t, validPlanJSON())); err != nil {
+	if _, err := Activate(context.Background(), env, activationJSON(t, root, validPlanJSON())); err != nil {
 		t.Fatalf("Activate: %v", err)
 	}
 	script.AssertExhausted()

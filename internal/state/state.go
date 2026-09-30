@@ -21,14 +21,16 @@ const Path = ".orchestrator/state.json"
 
 // SchemaVersion is the state-file schema this build reads and writes.
 // v3 adds the PR B per-issue lifecycle fields (Issue.Decision,
-// DependsOn, Wave, LastReviewVerdict) and Run.StoppedReason. There is no
-// migration from earlier versions: Load fails closed on a version
-// mismatch with the `orch abort` remediation, and no real run persists
-// across builds, so an out-of-version file on disk is a test artifact. v4
+// DependsOn, Wave, LastReviewVerdict) and Run.StoppedReason. Before v5,
+// Load rejected every earlier schema with the `orch abort` remediation. v4
 // preserves OpenCode's model-specific variant or explicit no-variant marker
 // in every persisted Selection. Before v4, state carried only model+effort;
 // after v4, Claude/Codex keep that shape and OpenCode uses the native one.
-const SchemaVersion = 4
+// Before v5 approvals bound only submitted plans and config revision strings.
+// v5 records the effective-contract version and execution fingerprint. v4 is
+// still readable for inspection; the run engine refuses to execute it under
+// the new approval semantics. No active run is migrated.
+const SchemaVersion = 5
 
 // Mode is the operating mode (PRD §7).
 type Mode string
@@ -42,11 +44,13 @@ const (
 // from (PRD §8). The engine cannot verify a human; this is the
 // adapter's assertion, kept for the audit trail.
 type PlanRef struct {
-	Title          string    `json:"title"`
-	Digest         string    `json:"digest"`
-	ApprovedBy     string    `json:"approved_by"`
-	ApprovedAt     time.Time `json:"approved_at"`
-	ConfigRevision string    `json:"config_revision"`
+	Title           string    `json:"title"`
+	Digest          string    `json:"digest"`
+	ApprovedBy      string    `json:"approved_by"`
+	ApprovedAt      time.Time `json:"approved_at"`
+	ConfigRevision  string    `json:"config_revision"`
+	ContractVersion int       `json:"contract_version,omitempty"`
+	ExecutionDigest string    `json:"execution_digest,omitempty"`
 }
 
 // Phase is one issue's position in the Delivery lifecycle (PRD §12).
@@ -237,7 +241,7 @@ func Load(repoRoot string) (*State, error) {
 // run engine is about to persist, so a bug there fails closed instead
 // of writing state that Load would later refuse to read back.
 func (st *State) validate() error {
-	if st.SchemaVersion != SchemaVersion {
+	if st.SchemaVersion != SchemaVersion && st.SchemaVersion != 4 {
 		return fmt.Errorf("%s: unsupported schema_version %d (this build understands %d; run `orch abort` to reset to assist)", Path, st.SchemaVersion, SchemaVersion)
 	}
 	switch st.Mode {

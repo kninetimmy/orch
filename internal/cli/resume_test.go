@@ -23,7 +23,7 @@ func TestResumeUnknownFlag(t *testing.T) {
 func TestResumeJSON(t *testing.T) {
 	env, stdout, _ := testEnv(t)
 	writeConfig(t, env.RepoRoot, validTOML)
-	if _, err := state.EnterDelivery(env.RepoRoot, "claude", testPlanRef(), testIssues()); err != nil {
+	if _, err := state.EnterDelivery(env.RepoRoot, "claude", testApprovedPlanRef(t, env.RepoRoot), testIssues()); err != nil {
 		t.Fatal(err)
 	}
 	if code := Run([]string{"resume", "--json"}, env); code != ExitOK {
@@ -42,7 +42,7 @@ func TestResumeJSON(t *testing.T) {
 func TestResumeHumanRender(t *testing.T) {
 	env, stdout, _ := testEnv(t)
 	writeConfig(t, env.RepoRoot, validTOML)
-	st, err := state.EnterDelivery(env.RepoRoot, "claude", testPlanRef(), testIssues())
+	st, err := state.EnterDelivery(env.RepoRoot, "claude", testApprovedPlanRef(t, env.RepoRoot), testIssues())
 	if err != nil {
 		t.Fatal(err)
 	}
