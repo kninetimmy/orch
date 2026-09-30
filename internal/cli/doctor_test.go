@@ -614,13 +614,22 @@ func TestDoctorAdapterFailures(t *testing.T) {
 			wantDetails: []string{"orch-claude@orch has no version", fmt.Sprintf(`expected %q`, claudeVersion)},
 		},
 		{
-			name:   "adapter version mismatch",
+			name:   "cached Codex 0.7.0 adapter version mismatch",
 			config: validCodexTOML,
 			spec:   codexAdapter,
 			configure: func(r *fakeRunner) {
-				r.codexPluginJSON = `{"installed":[{"pluginId":"orch@orch","version":"0.5.0","installed":true,"enabled":true}]}`
+				r.codexPluginJSON = `{"installed":[{"pluginId":"orch@orch","version":"0.7.0","installed":true,"enabled":true}]}`
 			},
-			wantDetails: []string{"orch@orch version mismatch", fmt.Sprintf(`installed "0.5.0", expected %q`, codexVersion), "align the Orch engine and codex adapter", "re-run the Orch installer if the engine is older"},
+			wantDetails: []string{"orch@orch version mismatch", `installed "0.7.0", expected "0.8.0"`, "align the Orch engine and codex adapter", "re-run the Orch installer if the engine is older"},
+		},
+		{
+			name:   "cached Claude 0.7.0 adapter version mismatch",
+			config: validTOML,
+			spec:   claudeAdapter,
+			configure: func(r *fakeRunner) {
+				r.claudePluginJSON = `[{"id":"orch-claude@orch","version":"0.7.0","enabled":true}]`
+			},
+			wantDetails: []string{"orch-claude@orch version mismatch", `installed "0.7.0", expected "0.8.0"`, "align the Orch engine and claude adapter", "re-run the Orch installer if the engine is older"},
 		},
 		{
 			name:   "newer adapter version mismatch",

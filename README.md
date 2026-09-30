@@ -248,6 +248,28 @@ adapters/opencode` again; see its README for the exact commands and
 plugin-ID check. Restart Claude Code, Codex CLI, or the OpenCode V2
 service after upgrading its adapter so the new hooks and skills are loaded.
 
+**Engine and manual-adapter compatibility.** The compatibility baseline at
+source revision `611c645` uses state schema 6, approval contract 1, and these
+manual wire versions: Gate 3, Status 4, Activation 2, Dispatch 4, Review 3,
+Escalate 2, Block 2, Resume 2, and Resolve Block 1. The Claude and Codex
+adapter version 0.8.0 identifies that bundled manual contract; cached 0.7.0
+adapters predate it and are rejected by the existing version check. Release
+and adapter version labels describe compatibility, while the source revision
+and build identity identify the code that was built.
+
+Update the engine and the configured manual adapter together while the
+repository is in Assist, then restart the host and run `orch doctor --host
+claude|codex`. Never replace either half during an active run. Finish an older
+run with its original engine and adapter, or explicitly run `orch abort` and
+seek fresh plan approval; active runs are not migrated. See
+[decision-block recovery](docs/decision-block-recovery.md) for the persisted
+state and approval boundary.
+
+These manual doctor and activation checks cover the contracts above. Driver
+protocol, subscription authentication, and isolation checks remain future
+preflights; they do not establish native Windows Claude isolation, unattended
+execution, or compatibility on untested platforms.
+
 **Manual download.** Take the static binary for your OS and
 architecture from
 [GitHub Releases](https://github.com/kninetimmy/orch/releases)
