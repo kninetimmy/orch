@@ -38,7 +38,7 @@ faithfully.
 
 `orch run status --json` never reads stdin — call it bare.
 
-Selection-bearing wire versions are closed: StatusDoc `3`, GateDoc `3`, Dispatch `4`, Escalate `2`, Review `3`.
+Selection-bearing wire versions are closed: StatusDoc `4`, GateDoc `3`, Dispatch `4`, Escalate `2`, Review `3`.
 Reject any other `schema_version` before reading or submitting a `Selection`.
 
 ## PlanDoc construction
@@ -235,7 +235,7 @@ On approval, call `orch run activate` with an `ActivationRequest`
 
 `plan_digest` = `GateDoc.plan_digest`. Before GateDoc v3, this bound only the submitted plan; now it binds the effective contract: submitted scope, engine-contributed criteria, routing, and `execution` settings. Present `execution` (all six profiles, concurrency limit, merge strategy, memhub mode, and metrics setting) alongside the issues. Never compute approval from `PlanDoc.Digest` or reuse an old approval. The earlier byte-for-byte instruction is relaxed: JSON whitespace and object-key order do not change approval. Activation v1 is rejected; re-gate and obtain fresh approval with matching engine and adapter versions.
 
-State v5 records the contract version and effective execution digest. State v4 remains inspectable, but lifecycle verbs and resume refuse to hot-migrate it: finish using the original engine, or abort and re-plan. Effective configuration drift, including local overrides without a revision change, also requires restoring the approved settings or aborting and re-planning. This restriction applies to every lifecycle verb and resume; engine-authorized issue escalation within the approved profiles remains supported.
+Before state v6, v5 recorded the contract version and effective execution digest. State v6 retains them and adds block causes and resolution history; v4/v5 remain inspectable, but lifecycle verbs and resume refuse to hot-migrate them: finish using the original engine, or abort and re-plan. Effective configuration drift, including local overrides without a revision change, also requires restoring the approved settings or aborting and re-planning. This restriction applies to every lifecycle verb and resume; engine-authorized issue escalation within the approved profiles remains supported.
 
 `approved_by` = `git config
 user.name`, falling back to `"human"`. `approved_at` = current time as
@@ -536,14 +536,42 @@ GitHub API failure, a validation failure, or anything else that stops
 progress, call `orch run block`:
 
 ```json
-{"schema_version": 1, "issue_number": N,
- "class": "secret|hook|auth|github|validation|other", "detail": "..."}
+{"schema_version": 2, "issue_number": N,
+ "class": "secret|hook|auth|github|validation|other|human-decision", "detail": "..."}
 ```
 
 A `secret` class **stops the entire run** (`run_stopped: true`): every
 mutating verb but `block` itself is refused until the human runs
 `orch abort` or `orch resume`. Report a secret-class block immediately
 and prominently, and make no further verb calls for the run.
+
+Before block v2 / resume v2, a later block replaced the reason and healthy
+artifacts could recover every blocked issue. Now review wrong-criterion,
+return-to-architect, secret, validation, other, and human-decision blocks stay
+blocked until an explicit decision; only hook/auth/github and reconciliation
+operational failures recover from observations. Generic failures never replace
+an unresolved decision. Clearing a run stop with `orch resume --resume-stopped-run`
+does not resolve an issue decision.
+
+Read StatusDoc v4 for the issue's current `blocks` entry (its issue-local `id`,
+`cause`, original `reason`, and optional `resolution`). Present the original
+reason. Only after a human/Architect explicitly resolves that exact block while
+keeping approved scope and criteria unchanged, call `orch run resolve-block`:
+
+```json
+{"schema_version": 1, "run_id": "...", "issue_number": N, "block_id": 1,
+ "resolved_by": "...", "detail": "Decision and why approved work remains unchanged",
+ "statement": "resolve-block-without-scope-change"}
+```
+
+Reject unsupported result versions: resolve-block v1, block v2, resume v2.
+Resolution is recorded against the original block and leaves its phase blocked;
+run `orch resume` afterward to reconcile artifacts. It does not reset attempts,
+change criteria, authorize a merge, or bypass a stopped run. Changed scope or
+criteria require aborting and returning through the plan gate for fresh approval.
+Before resume v2, audit text could repopulate approved work; now edited GitHub
+text cannot replace it. Legacy blocks without a cause require fresh plan approval,
+not a guessed resolution. Preserve branches, worktrees and evidence throughout.
 
 To abandon an issue without merging (closes its PR and issue, keeps
 branch/worktree for cleanup), call `orch run abandon`:

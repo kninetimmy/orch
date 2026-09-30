@@ -13,7 +13,7 @@ import (
 )
 
 // runUsage is the one-line usage for the adapter plumbing surface.
-const runUsage = "orch run: usage: orch run plan|activate|dispatch|pr-open|review-worktree|review|escalate|ci|merge-report|merge|block|abandon|cleanup|complete (JSON document on stdin) | orch run status --json"
+const runUsage = "orch run: usage: orch run plan|activate|dispatch|pr-open|review-worktree|review|escalate|ci|merge-report|merge|block|resolve-block|abandon|cleanup|complete (JSON document on stdin) | orch run status --json"
 
 // runVerbs maps each document-taking verb to its run-engine entry point.
 // Every one reads a JSON request on stdin and writes a JSON result on
@@ -30,6 +30,7 @@ var runVerbs = map[string]func(context.Context, run.Env, []byte) (any, error){
 	"merge-report":    adaptRunVerb(run.MergeReport),
 	"merge":           adaptRunVerb(run.Merge),
 	"block":           adaptRunVerb(run.Block),
+	"resolve-block":   adaptRunVerb(run.ResolveBlock),
 	"abandon":         adaptRunVerb(run.Abandon),
 	"cleanup":         adaptRunVerb(run.Cleanup),
 	"complete":        adaptRunVerb(run.Complete),

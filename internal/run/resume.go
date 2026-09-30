@@ -1,7 +1,8 @@
 // resume.go reconciles an interrupted Delivery run against GitHub and
 // git, then advances, adopts, blocks, or unblocks each issue by state
-// alone (PRD §23). It is the recovery path a crashed lifecycle verb, an
-// out-of-band GitHub action, or a secret-stopped run returns through.
+// and recorded decisions (PRD §23). It is the recovery path a crashed
+// lifecycle verb, an out-of-band GitHub action, or a secret-stopped run
+// returns through.
 //
 // Three strictly separated stages keep the decision auditable and the
 // failure semantics pure:
@@ -37,7 +38,9 @@ import (
 )
 
 // ResumeSchemaVersion is the resume-document schema this build emits.
-const ResumeSchemaVersion = 1
+// v1 could recover every block and replace approved text from GitHub. v2
+// preserves decisions and refuses changed approved text.
+const ResumeSchemaVersion = 2
 
 // ResumeStoppedRunStatement is the exact statement that authorizes resume
 // to clear a secret-stopped run's StoppedReason. A stopped run is fully
@@ -137,11 +140,9 @@ type issueObservations struct {
 }
 
 // approvedWork is the approved plan text an audit record carries. Run
-// state holds the same four fields, but the record is their durable
-// home: state.json is machine-local and an interrupted run is rebuilt
-// from the posted bodies, so resume carries them back rather than let a
-// resumed run dispatch an empty objective — or dispatch required tests
-// without the plan's declaration that CI runs none of them.
+// state holds the same four fields. Before v2, resume carried them back
+// from the record; now a mismatch requires plan approval instead of silently
+// adopting changed or missing scope. The CI declaration participates too.
 type approvedWork struct {
 	objective          string
 	acceptanceCriteria []string
@@ -153,6 +154,7 @@ type approvedWork struct {
 // and phase, a human reason, and the field mutations apply performs.
 type outcome struct {
 	action        ResumeAction
+	cause         string
 	phase         state.Phase
 	reason        string
 	adoptPRNumber int
@@ -161,10 +163,6 @@ type outcome struct {
 	adoptWorktree string
 	// clearApproval drops ApprovedHeadOID and LastReviewVerdict (demotion).
 	clearApproval bool
-	// work is the approved text read back from the audit record, applied
-	// on every classification alike (it is a fact the record proves, not a
-	// consequence of the verdict). nil leaves the issue's copy untouched.
-	work *approvedWork
 	// warnings are run-level notices appended to ResumeDoc.Warnings.
 	warnings []string
 }
@@ -344,7 +342,19 @@ func cloneState(st *state.State) (*state.State, error) {
 // changed, so a converged resume can skip Save entirely. Only the fields
 // resume ever rewrites are compared.
 func applyOutcome(iss *state.Issue, o outcome) bool {
+	if iss.DecisionPending() {
+		return false
+	}
 	changed := false
+	if o.action == ActionBlocked {
+		cause := state.BlockOperational
+		if o.cause != "" {
+			cause = o.cause
+		}
+		before := len(iss.Blocks)
+		iss.SetBlock(cause, o.reason)
+		changed = before != len(iss.Blocks)
+	}
 	if iss.Phase != o.phase {
 		iss.Phase = o.phase
 		changed = true
@@ -365,13 +375,6 @@ func applyOutcome(iss *state.Issue, o outcome) bool {
 	if o.clearApproval && (iss.ApprovedHeadOID != "" || iss.LastReviewVerdict != "") {
 		iss.ApprovedHeadOID = ""
 		iss.LastReviewVerdict = ""
-		changed = true
-	}
-	if o.work != nil && !sameWork(iss, *o.work) {
-		iss.Objective = o.work.objective
-		iss.AcceptanceCriteria = o.work.acceptanceCriteria
-		iss.RequiredTests = o.work.requiredTests
-		iss.TestsCIDoesNotRun = o.work.testsCIDoesNotRun
 		changed = true
 	}
 	// A blocked outcome records its reason; every other outcome clears any
@@ -400,10 +403,25 @@ func sameWork(iss *state.Issue, w approvedWork) bool {
 
 // reconcileIssue is the pure classifier: it maps one issue and its
 // observations onto an outcome via the reconciliation table. A blocked
-// issue re-derives an effective phase first (row 30); every emitted
+// operational or explicitly resolved issue re-derives an effective phase
+// (row 30); before v2 every blocked issue did so. Every emitted
 // blocked outcome is guarded so it can only land on an issue that
 // satisfies validateIssues (R1).
 func reconcileIssue(iss state.Issue, obs issueObservations) outcome {
+	if iss.DecisionPending() {
+		guidance := "human/Architect resolution required: use `orch run resolve-block` only if approved scope and criteria remain unchanged; otherwise return through plan approval"
+		if len(iss.Blocks) == 0 {
+			guidance = "block cause is unknown; preserve the run and return through plan approval (`orch abort` then re-plan); do not infer authorization from healthy artifacts"
+		}
+		return outcome{action: ActionBlocked, phase: state.PhaseBlocked, reason: iss.BlockedReason, warnings: []string{fmt.Sprintf("issue #%d: %s", iss.Number, guidance)}}
+	}
+	if obs.work != nil && !sameWork(&iss, *obs.work) {
+		reason := "audit record differs from approved work; restore the original audit text or return through plan approval; resume cannot amend approved scope or criteria"
+		if !canBlock(iss) {
+			return outcome{action: ActionKept, phase: iss.Phase, reason: reason, warnings: []string{reason}}
+		}
+		return outcome{action: ActionBlocked, phase: state.PhaseBlocked, cause: state.BlockHuman, reason: reason}
+	}
 	var o outcome
 	if iss.Phase == state.PhaseBlocked {
 		o = rederive(iss, obs)
@@ -420,17 +438,14 @@ func reconcileIssue(iss state.Issue, obs issueObservations) outcome {
 			warnings: []string{fmt.Sprintf("issue %s (%s) could not be blocked (missing number, branch, worktree, or routing decision); run `orch abort`", iss.PlanID, iss.Phase)},
 		}
 	}
-	// The approved work rides on every outcome the table can produce, so
-	// a resumed run dispatches the text an unresumed run would no matter
-	// which row classified the issue. It is nil unless the audit record
-	// parsed cleanly, so a blocked or unparsed record never overwrites
-	// what state already holds.
-	o.work = obs.work
+	// Before v2, the audit record replaced approved work on every outcome.
+	// Now state retains the plan-gated text; the record is checked above.
 	return o
 }
 
-// rederive recovers a blocked issue: it hypothesizes an effective phase
-// from the populated fields (row 30), reconciles against that phase, and
+// rederive recovers an operational or explicitly resolved block: it
+// hypothesizes an effective phase from the populated fields (row 30),
+// reconciles against that phase, and
 // — when the result is not itself blocked — applies it with BlockedReason
 // cleared. A dispatched-keep hypothesis drops to worktree-ready, the
 // deliberate lower bound (re-running dispatch is proven safe and restores
@@ -859,7 +874,7 @@ func observeIssue(ctx context.Context, gh *ghops.GH, git *gitops.Git, worktrees 
 
 // parsesManifest reports the phases whose audit record resume parses:
 // issue-created through awaiting-merge. Every one of them both
-// classifies on the record's health and repopulates the approved work
+// classifies on the record's health and checks the approved work
 // from it, so an issue that was resumed dispatches the same text an
 // issue that was not would.
 func parsesManifest(p state.Phase) bool {

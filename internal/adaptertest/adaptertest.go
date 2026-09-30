@@ -93,7 +93,7 @@ func Profile(host string) map[string]RoleSpec {
 }
 
 // runVerbTokens is the closed set every `orch run <word>` token found in
-// a skill must belong to: the 14 document-taking verbs internal/cli/run.go
+// a skill must belong to: the 15 document-taking verbs internal/cli/run.go
 // dispatches, plus "status" (orch run status --json, dispatched
 // separately but still spelled "orch run status"). Moved verbatim from
 // adapters/claude/plugin_test.go so both hosts pin against the same set.
@@ -102,6 +102,7 @@ var runVerbTokens = map[string]bool{
 	"review-worktree": true, "review": true, "escalate": true, "ci": true,
 	"merge-report": true, "merge": true, "block": true, "abandon": true,
 	"cleanup": true, "complete": true, "status": true,
+	"resolve-block": true,
 }
 
 var orchRunTokenPattern = regexp.MustCompile(`orch run ([a-z-]+)`)
@@ -165,7 +166,7 @@ func CheckRunVerbTokens(t *testing.T, skillGlob string) {
 		for _, m := range orchRunTokenPattern.FindAllStringSubmatch(content, -1) {
 			verb := m[1]
 			if !runVerbTokens[verb] {
-				t.Errorf("%s: mentions `orch run %s`, which is not one of the 14 verbs or status", path, verb)
+				t.Errorf("%s: mentions `orch run %s`, which is not one of the 15 verbs or status", path, verb)
 			}
 		}
 	}
@@ -183,6 +184,7 @@ var statementConstants = map[string]string{
 	run.MergeApprovalStatement: "run.MergeApprovalStatement",
 	run.AbandonStatement:       "run.AbandonStatement",
 	run.CleanupStatement:       "run.CleanupStatement",
+	run.ResolveBlockStatement:  "run.ResolveBlockStatement",
 }
 
 var statementLiteralPattern = regexp.MustCompile(`"statement":\s*"([a-z-]+)"`)
@@ -378,7 +380,8 @@ func CheckSelectionWireVersions(t *testing.T, deliverySkillPath, architectSkillP
 		versions,
 		fmt.Sprintf("(`schema_version: %d`) carrying the **identical** `PlanDoc`", run.ActivationSchemaVersion),
 		"Before GateDoc v3, this bound only the submitted plan; now it binds the effective contract",
-		"State v4 remains inspectable, but lifecycle verbs and resume refuse to hot-migrate it",
+		"v4/v5 remain inspectable, but lifecycle verbs and resume refuse to hot-migrate them",
+		fmt.Sprintf("Reject unsupported result versions: resolve-block v%d, block v%d, resume v%d.", run.ResolveBlockSchemaVersion, run.BlockSchemaVersion, run.ResumeSchemaVersion),
 		"Reject any other `schema_version` before reading or submitting a `Selection`.",
 		fmt.Sprintf("`GateDoc` (`schema_version: %d`)", run.GateSchemaVersion),
 		fmt.Sprintf("`{\"schema_version\": %d, \"issue_number\": N}`. Result (`DispatchResult`)", run.DispatchSchemaVersion),

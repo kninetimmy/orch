@@ -23,8 +23,7 @@ func pbool(b bool) *bool { return &b }
 // its populated fields, so re-derivation (row 30) has something to work
 // from.
 func blockedFrom(base state.Issue) state.Issue {
-	base.Phase = state.PhaseBlocked
-	base.BlockedReason = "seed"
+	base.SetBlock(state.BlockOperational, "seed")
 	return base
 }
 
@@ -463,16 +462,9 @@ func TestResumeSafeAtEveryPhase(t *testing.T) {
 	}
 }
 
-// --- Approved work repopulation ---
-
-// TestResumeRepopulatesApprovedWork proves that on every phase where
-// resume parses the audit record it also carries the approved work back
-// into run state, so a resumed run dispatches the text an unresumed run
-// would. Each fixture starts with the work stripped — the shape a run
-// activated by a pre-schema-2 build has, and the shape a resume would
-// otherwise leave behind silently. A second, identical resume must then
-// be a byte-level no-op: repopulation converges instead of rewriting.
-func TestResumeRepopulatesApprovedWork(t *testing.T) {
+// Before resume v2, missing approved work was repopulated from GitHub.
+// Now even valid audit text cannot supply or amend plan-gated work.
+func TestResumeRefusesReplacingApprovedWork(t *testing.T) {
 	body := baseManifestBody(t)
 	phases := []state.Phase{
 		state.PhaseIssueCreated, state.PhaseWorktreeReady, state.PhaseDispatched,
@@ -485,6 +477,9 @@ func TestResumeRepopulatesApprovedWork(t *testing.T) {
 			iss.Objective = ""
 			iss.AcceptanceCriteria = nil
 			iss.RequiredTests = nil
+			if ph == state.PhaseIssueCreated {
+				iss.Branch, iss.Worktree, iss.Decision = "", "", nil
+			}
 			root := setupDeliveryGitRepo(t, "r1", []state.Issue{iss})
 
 			var calls []execxtest.Call
@@ -505,21 +500,18 @@ func TestResumeRepopulatesApprovedWork(t *testing.T) {
 			script.AssertExhausted()
 
 			got := loadRun(t, root).Run.Issues[0]
-			if got.Objective != fixtureObjective {
-				t.Errorf("objective = %q, want the record's %q", got.Objective, fixtureObjective)
+			if got.Objective != "" || len(got.AcceptanceCriteria) != 0 || len(got.RequiredTests) != 0 {
+				t.Fatalf("unapproved text replaced state: %+v", got)
 			}
-			if len(got.AcceptanceCriteria) != 1 || got.AcceptanceCriteria[0] != fixtureAcceptance()[0] {
-				t.Errorf("acceptance criteria = %q, want the record's %q", got.AcceptanceCriteria, fixtureAcceptance())
-			}
-			if len(got.RequiredTests) != 1 || got.RequiredTests[0] != fixtureTests()[0] {
-				t.Errorf("required tests = %q, want the record's %q", got.RequiredTests, fixtureTests())
+			if ph != state.PhaseIssueCreated && !got.DecisionPending() {
+				t.Fatal("approved-work drift did not require a decision")
 			}
 
 			before := stateBytes(t, root)
 			_, script2 := resumeMux(t, root, ResumeRequest{}, calls...)
 			script2.AssertExhausted()
 			if string(stateBytes(t, root)) != string(before) {
-				t.Error("a converged repopulation rewrote state")
+				t.Error("a repeated refusal rewrote state")
 			}
 		})
 	}
@@ -538,9 +530,6 @@ func TestResumeKeepsApprovedWorkWhenRecordUnusable(t *testing.T) {
 	})
 	if o.action != ActionBlocked {
 		t.Fatalf("action = %q, want blocked on a drifted record", o.action)
-	}
-	if o.work != nil {
-		t.Fatal("a drifted record contributed approved work")
 	}
 	applyOutcome(&iss, o)
 	if iss.Objective != fixtureObjective || len(iss.AcceptanceCriteria) != 1 || len(iss.RequiredTests) != 1 {
@@ -593,6 +582,18 @@ func TestResumeAdoptsOrphanPR(t *testing.T) {
 	// Resume observes the orphan PR (with recorded verification evidence)
 	// and adopts it.
 	orphanBody := manifestBodyWithVerification(t)
+	m, err := manifest.Parse(orphanBody)
+	if err != nil {
+		t.Fatal(err)
+	}
+	m.AcceptanceCriteria = st.Run.Issues[0].AcceptanceCriteria
+	m.Objective = st.Run.Issues[0].Objective
+	m.RequiredTests = st.Run.Issues[0].RequiredTests
+	m.TestsCIDoesNotRun = st.Run.Issues[0].TestsCIDoesNotRun
+	orphanBody, err = manifest.Upsert(orphanBody, m)
+	if err != nil {
+		t.Fatal(err)
+	}
 	doc, resumeScript := resumeMux(t, root, ResumeRequest{},
 		ghAuth(),
 		ghIssueViewCall(t, 1, "OPEN", orphanBody),
