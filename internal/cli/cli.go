@@ -68,7 +68,7 @@ func commands() []command {
 	return []command{
 		{"init", "Interview and bootstrap this repository", runInit},
 		{"status", "Show mode and configuration summary", noArgs("status", runStatus)},
-		{"doctor", "Check environment and configuration health", noArgs("doctor", runDoctor)},
+		{"doctor", "Check environment and configuration health", runDoctor},
 		{"configure", "Interview and deliver committed configuration changes", runConfigure},
 		{"configure-local", "Interview and apply machine-local overrides", runConfigureLocal},
 		{"resume", "Reconcile an interrupted Delivery run against GitHub and continue", runResume},
@@ -82,9 +82,7 @@ func commands() []command {
 }
 
 // noArgs adapts a no-trailing-argument command function to the
-// dispatcher's func(Env, []string) error shape, preserving the
-// existing trailing-argument rejection for every command that isn't
-// adapter plumbing.
+// dispatcher's func(Env, []string) error shape.
 func noArgs(name string, fn func(Env) error) func(Env, []string) error {
 	return func(env Env, args []string) error {
 		if len(args) > 0 {

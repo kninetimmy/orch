@@ -161,6 +161,111 @@ func TestDoctorMissingConfig(t *testing.T) {
 	}
 }
 
+func TestDoctorHostArgumentErrors(t *testing.T) {
+	tests := []struct {
+		name string
+		args []string
+		want string
+	}{
+		{name: "missing host", args: []string{"doctor", "--host"}, want: doctorUsage},
+		{name: "invalid host", args: []string{"doctor", "--host", "other"}, want: `invalid host "other"`},
+		{name: "unexpected argument", args: []string{"doctor", "extra"}, want: doctorUsage},
+		{name: "extra argument", args: []string{"doctor", "--host", "claude", "extra"}, want: doctorUsage},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			env, _, stderr := testEnv(t)
+			if code := Run(tc.args, env); code != ExitUsage {
+				t.Fatalf("exit = %d, want %d", code, ExitUsage)
+			}
+			if !strings.Contains(stderr.String(), tc.want) {
+				t.Errorf("stderr missing %q: %s", tc.want, stderr.String())
+			}
+		})
+	}
+
+	t.Run("unconfigured host", func(t *testing.T) {
+		env, _, stderr := testEnv(t)
+		writeConfig(t, env.RepoRoot, validTOML)
+		if code := Run([]string{"doctor", "--host", "codex"}, env); code != ExitUsage {
+			t.Fatalf("exit = %d, want %d", code, ExitUsage)
+		}
+		if !strings.Contains(stderr.String(), `host "codex" is not configured`) {
+			t.Errorf("stderr does not name the unconfigured host: %s", stderr.String())
+		}
+	})
+}
+
+func TestDoctorSelectedHostAdvisesOnOtherHostFailures(t *testing.T) {
+	env, stdout, _ := testEnv(t)
+	writeConfig(t, env.RepoRoot, validBothHostsTOML)
+	if err := os.Remove(filepath.Join(env.RepoRoot, filepath.FromSlash(agents.CodexDir), "orch-scout.toml")); err != nil {
+		t.Fatal(err)
+	}
+	env.Runner = fakeRunner{toplevel: env.RepoRoot, codexPluginExit: 1, codexPluginStderr: "unavailable"}
+
+	if code := Run([]string{"doctor", "--host", "claude"}, env); code != ExitOK {
+		t.Fatalf("selected-host exit = %d, want %d\n%s", code, ExitOK, stdout.String())
+	}
+	out := stdout.String()
+	for _, want := range []string{
+		"ok    claude adapter",
+		"note  codex adapter:",
+		"note  codex agent files:",
+		"advisory; selected host is claude",
+	} {
+		if !strings.Contains(out, want) {
+			t.Errorf("selected-host output missing %q:\n%s", want, out)
+		}
+	}
+	if strings.Contains(out, "FAIL  codex") {
+		t.Errorf("unselected Codex failure remained fatal:\n%s", out)
+	}
+
+	stdout.Reset()
+	if code := Run([]string{"doctor"}, env); code != ExitError {
+		t.Fatalf("plain doctor exit = %d, want %d\n%s", code, ExitError, stdout.String())
+	}
+	for _, want := range []string{"FAIL  codex adapter", "FAIL  codex agent files"} {
+		if !strings.Contains(stdout.String(), want) {
+			t.Errorf("plain doctor output missing %q:\n%s", want, stdout.String())
+		}
+	}
+}
+
+func TestDoctorSelectedHostAndCommonFailuresRemainFatal(t *testing.T) {
+	tests := []struct {
+		name      string
+		runner    fakeRunner
+		wantCheck string
+	}{
+		{
+			name:      "selected host",
+			runner:    fakeRunner{claudePluginExit: 1, claudePluginStderr: "unavailable"},
+			wantCheck: "FAIL  claude adapter",
+		},
+		{
+			name:      "common",
+			runner:    fakeRunner{authExit: 1},
+			wantCheck: "FAIL  gh authentication",
+		},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			env, stdout, _ := testEnv(t)
+			writeConfig(t, env.RepoRoot, validBothHostsTOML)
+			tc.runner.toplevel = env.RepoRoot
+			env.Runner = tc.runner
+			if code := Run([]string{"doctor", "--host", "claude"}, env); code != ExitError {
+				t.Fatalf("exit = %d, want %d\n%s", code, ExitError, stdout.String())
+			}
+			if !strings.Contains(stdout.String(), tc.wantCheck) {
+				t.Errorf("output missing %q:\n%s", tc.wantCheck, stdout.String())
+			}
+		})
+	}
+}
+
 func TestDoctorConfiguredAdaptersPassCurrentListings(t *testing.T) {
 	tests := []struct {
 		name       string
@@ -209,7 +314,7 @@ func TestDoctorConfiguredAdaptersPassCurrentListings(t *testing.T) {
 	}
 }
 
-func TestDoctorReportsEveryUnavailableOpenCodeRole(t *testing.T) {
+func TestDoctorSelectedOpenCodeReportsEveryUnavailableRole(t *testing.T) {
 	const unavailable = `
 schema_version  = 1
 config_revision = "r1"
@@ -249,7 +354,7 @@ variant = "missing-safe"
 		opencodeCatalog: openCodeCatalogResponse(env.RepoRoot,
 			`{"id":"agent","providerID":"available","enabled":true,"capabilities":{"tools":true,"input":["text"],"output":["text"]},"variants":[{"id":"fast","settings":{"token":"catalog-secret"}}]}`),
 	}
-	if code := Run([]string{"doctor"}, env); code != ExitError {
+	if code := Run([]string{"doctor", "--host", "opencode"}, env); code != ExitError {
 		t.Fatalf("exit = %d, want %d\n%s", code, ExitError, stdout.String())
 	}
 	out := stdout.String()
@@ -515,7 +620,16 @@ func TestDoctorAdapterFailures(t *testing.T) {
 			configure: func(r *fakeRunner) {
 				r.codexPluginJSON = `{"installed":[{"pluginId":"orch@orch","version":"0.5.0","installed":true,"enabled":true}]}`
 			},
-			wantDetails: []string{"orch@orch version mismatch", fmt.Sprintf(`installed "0.5.0", expected %q`, codexVersion)},
+			wantDetails: []string{"orch@orch version mismatch", fmt.Sprintf(`installed "0.5.0", expected %q`, codexVersion), "align the Orch engine and codex adapter", "re-run the Orch installer if the engine is older"},
+		},
+		{
+			name:   "newer adapter version mismatch",
+			config: validTOML,
+			spec:   claudeAdapter,
+			configure: func(r *fakeRunner) {
+				r.claudePluginJSON = `[{"id":"orch-claude@orch","version":"99.0.0","enabled":true}]`
+			},
+			wantDetails: []string{"orch-claude@orch version mismatch", fmt.Sprintf(`installed "99.0.0", expected %q`, claudeVersion), "align the Orch engine and claude adapter", "re-run the Orch installer if the engine is older"},
 		},
 		{
 			name:   "opencode runtime below minimum",

@@ -19,15 +19,16 @@ import (
 
 // TestNoArgCommandsRejectTrailingArgs proves noArgs still rejects a
 // trailing argument for every PRD §22 command except the ones that parse
-// their own argv: the adapter-plumbing `run` verb, `resume` (which
-// takes flags), `init` (which takes --step/--bootstrap; see
-// init_test.go for its own trailing-argument coverage),
+// their own argv: the adapter-plumbing `run` verb, `doctor` (which takes
+// --host; see doctor_test.go), `resume` (which takes flags), `init`
+// (which takes --step/--bootstrap; see init_test.go for its own
+// trailing-argument coverage),
 // `configure-local` (which takes --step/--apply; see
 // configurelocal_test.go for its own trailing-argument coverage), and
 // `configure` (which takes --step/--deliver; see configure_test.go for
 // its own trailing-argument coverage).
 func TestNoArgCommandsRejectTrailingArgs(t *testing.T) {
-	for _, name := range []string{"status", "doctor", "abort", "metrics"} {
+	for _, name := range []string{"status", "abort", "metrics"} {
 		t.Run(name, func(t *testing.T) {
 			env, _, stderr := testEnv(t)
 			if code := Run([]string{name, "extra"}, env); code != ExitUsage {
