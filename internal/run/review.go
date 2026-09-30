@@ -210,8 +210,7 @@ func Review(ctx context.Context, env Env, reqJSON []byte) (*ReviewResult, error)
 	issue.LastReviewVerdict = req.Verdict
 	issue.Phase = state.PhaseInReview
 	if len(wrong) > 0 {
-		issue.Phase = state.PhaseBlocked
-		issue.BlockedReason = wrongCriteriaReason(wrong, issue.ReviewCycles)
+		issue.SetBlock(state.BlockWrong, wrongCriteriaReason(wrong, issue.ReviewCycles))
 	}
 	if err := c.save(); err != nil {
 		return nil, err

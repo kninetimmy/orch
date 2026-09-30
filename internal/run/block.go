@@ -11,17 +11,20 @@ import (
 
 // BlockSchemaVersion is the block request/result schema this build
 // accepts and emits.
-const BlockSchemaVersion = 1
+// Before v2 re-blocking replaced the reason and resume could clear any block.
+// v2 preserves decision blocks and adds the explicit human-decision class.
+const BlockSchemaVersion = 2
 
 // blockClasses is the closed failure-class set (PRD §15's classes plus
 // secret and a catch-all). A secret block stops the whole run.
 var blockClasses = map[string]bool{
-	"secret":     true,
-	"hook":       true,
-	"auth":       true,
-	"github":     true,
-	"validation": true,
-	"other":      true,
+	"secret":         true,
+	"hook":           true,
+	"auth":           true,
+	"github":         true,
+	"validation":     true,
+	"other":          true,
+	"human-decision": true,
 }
 
 // BlockRequest blocks an in-flight issue for human attention.
@@ -42,8 +45,9 @@ type BlockResult struct {
 
 // Block blocks an issue for human action (PRD §15), preserving its
 // branch and worktree. It is the only mutating verb allowed on a stopped
-// run, and it accepts any non-terminal phase including blocked (re-block
-// updates the reason). A secret block also stops the whole run (PRD §16),
+// run, and it accepts any non-terminal phase including blocked. Before v2,
+// re-block updated the reason; now unresolved decisions retain their reason.
+// A secret block also stops the whole run (PRD §16),
 // after which every other mutating verb fails closed until the human
 // recovers. Unaffected issues continue unless the run stopped.
 func Block(ctx context.Context, env Env, reqJSON []byte) (*BlockResult, error) {
@@ -55,7 +59,7 @@ func Block(ctx context.Context, env Env, reqJSON []byte) (*BlockResult, error) {
 		return nil, fmt.Errorf("%w: schema_version %d is unsupported (this build supports %d)", ErrBadRequest, req.SchemaVersion, BlockSchemaVersion)
 	}
 	if !blockClasses[req.Class] {
-		return nil, fmt.Errorf("%w: class %q is not one of secret, hook, auth, github, validation, other", ErrBadRequest, req.Class)
+		return nil, fmt.Errorf("%w: class %q is not one of secret, hook, auth, github, validation, other, human-decision", ErrBadRequest, req.Class)
 	}
 	if req.Detail == "" {
 		return nil, fmt.Errorf("%w: block detail must not be empty", ErrBadRequest)
@@ -75,10 +79,16 @@ func Block(ctx context.Context, env Env, reqJSON []byte) (*BlockResult, error) {
 	}
 
 	reason := fmt.Sprintf("%s: %s", req.Class, req.Detail)
-	issue.Phase = state.PhaseBlocked
-	issue.BlockedReason = reason
+	cause := state.BlockHuman
+	switch req.Class {
+	case "hook", "auth", "github":
+		cause = state.BlockOperational
+	case "secret":
+		cause = state.BlockSecret
+	}
+	issue.SetBlock(cause, reason)
 	runStopped := req.Class == "secret"
-	if runStopped {
+	if runStopped && c.st.Run.StoppedReason == "" {
 		c.st.Run.StoppedReason = reason
 	}
 	if err := c.save(); err != nil {

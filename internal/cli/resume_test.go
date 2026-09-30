@@ -30,7 +30,7 @@ func TestResumeJSON(t *testing.T) {
 		t.Fatalf("exit = %d, want %d", code, ExitOK)
 	}
 	out := stdout.String()
-	for _, want := range []string{`"schema_version": 1`, `"mode": "delivery"`} {
+	for _, want := range []string{`"schema_version": 2`, `"mode": "delivery"`} {
 		if !strings.Contains(out, want) {
 			t.Errorf("json output missing %q:\n%s", want, out)
 		}

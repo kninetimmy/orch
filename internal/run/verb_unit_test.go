@@ -72,6 +72,7 @@ func fixtureIssue(planID string, number int, phase state.Phase) state.Issue {
 		iss.ApprovedHeadOID = "head-oid"
 	case state.PhaseBlocked:
 		iss.BlockedReason = "seed"
+		iss.Blocks = []state.Block{{ID: 1, Cause: state.BlockOperational, Reason: "seed"}}
 	}
 	return iss
 }
@@ -207,7 +208,7 @@ func TestSecretBlockStopsRun(t *testing.T) {
 
 	// A secret block stops the whole run.
 	script := &execxtest.Script{T: t, Calls: []execxtest.Call{ghAuth(), ghSetStatusCall(1, ghops.StatusBlocked)}}
-	res, err := Block(context.Background(), ghEnv(root, script), []byte(`{"schema_version":1,"issue_number":1,"class":"secret","detail":"found a key"}`))
+	res, err := Block(context.Background(), ghEnv(root, script), []byte(`{"schema_version":2,"issue_number":1,"class":"secret","detail":"found a key"}`))
 	if err != nil {
 		t.Fatalf("Block: %v", err)
 	}
@@ -229,7 +230,7 @@ func TestSecretBlockStopsRun(t *testing.T) {
 
 	// block itself is exempt: it can still record another block.
 	script2 := &execxtest.Script{T: t, Calls: []execxtest.Call{ghAuth(), ghSetStatusCall(2, ghops.StatusBlocked)}}
-	res2, err := Block(context.Background(), ghEnv(root, script2), []byte(`{"schema_version":1,"issue_number":2,"class":"hook","detail":"pre-commit failed"}`))
+	res2, err := Block(context.Background(), ghEnv(root, script2), []byte(`{"schema_version":2,"issue_number":2,"class":"hook","detail":"pre-commit failed"}`))
 	if err != nil {
 		t.Fatalf("Block (exempt) on stopped run: %v", err)
 	}
@@ -431,7 +432,7 @@ func TestBlockGitHubUnavailableIsPure(t *testing.T) {
 	root := setupDeliveryRepo(t, "r1", []state.Issue{fixtureIssue("a", 1, state.PhaseDispatched)})
 	before := stateBytes(t, root)
 	script := &execxtest.Script{T: t, Calls: []execxtest.Call{{Name: "gh", Args: []string{"auth", "status"}, Exit: 1}}}
-	_, err := Block(context.Background(), ghEnv(root, script), []byte(`{"schema_version":1,"issue_number":1,"class":"hook","detail":"x"}`))
+	_, err := Block(context.Background(), ghEnv(root, script), []byte(`{"schema_version":2,"issue_number":1,"class":"hook","detail":"x"}`))
 	if !errors.Is(err, ghops.ErrNotAuthenticated) {
 		t.Fatalf("err = %v, want ErrNotAuthenticated", err)
 	}
@@ -1059,7 +1060,8 @@ func TestReviewRequiresOneJudgmentPerAcceptanceCriterion(t *testing.T) {
 // to the block), and the result names the wrong criteria and the reason
 // the human is being handed, since nothing later in the run will.
 func TestReviewWrongCriterionBlocksForTheHuman(t *testing.T) {
-	root := setupDeliveryRepo(t, "r1", []state.Issue{twoCriteriaIssue(state.PhaseInReview)})
+	root := setupDeliveryGitRepo(t, "r1", []state.Issue{twoCriteriaIssue(state.PhaseInReview)})
+	createBranchWorktree(t, root, "orch/issue-1")
 	body := twoCriteriaBody(t)
 	script := &execxtest.Script{T: t, Calls: []execxtest.Call{
 		ghAuth(), ghPRViewCall(10, "OPEN", "head-oid-1"),
@@ -1091,6 +1093,13 @@ func TestReviewWrongCriterionBlocksForTheHuman(t *testing.T) {
 	if iss.ReviewCycles != 1 || iss.LastReviewVerdict != VerdictRequestChanges {
 		t.Errorf("issue = %+v, want the cycle recorded despite the block", iss)
 	}
+	obs := okManifest(1)
+	obs.pr = &ghops.PR{Number: 10, State: "OPEN", HeadRefOid: "head-oid-1"}
+	applyOutcome(&iss, reconcileIssue(iss, obs))
+	if iss.Phase != state.PhaseBlocked || iss.BlockedReason != res.BlockedReason {
+		t.Fatalf("healthy recovery erased the review decision: phase=%s reason=%q", iss.Phase, iss.BlockedReason)
+	}
+	assertDecisionSurvivesResume(t, root, body, true)
 }
 
 // TestReviewUnsatisfiedCriterionReturnsToTheExecutor proves the other
@@ -1253,7 +1262,7 @@ func TestSelectionWireRequestVersionsRejectPrevious(t *testing.T) {
 
 func TestSelectionWireSchemaVersions(t *testing.T) {
 	got := []int{StatusSchemaVersion, GateSchemaVersion, DispatchSchemaVersion, EscalateSchemaVersion, ReviewSchemaVersion}
-	want := []int{3, 3, 4, 2, 3}
+	want := []int{4, 3, 4, 2, 3}
 	if !slices.Equal(got, want) {
 		t.Errorf("Selection wire versions = %v, want %v", got, want)
 	}

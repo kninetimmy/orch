@@ -24,8 +24,8 @@ const prFieldsRun = "number,state,title,url,headRefName,baseRefName,headRefOid,m
 
 // fixtureObjective and the two fixture lists are the approved work every
 // run-package fixture carries. The scripted audit records below and
-// fixtureIssue's state both use them, so resume — which repopulates the
-// approved work from the record — reads back what state already holds
+// fixtureIssue's state both use them. Before resume v2 the record repopulated
+// approved work; now resume checks that it matches what state already holds
 // and stays a byte-level no-op on a converged fixture.
 const fixtureObjective = "Fix the status lock race."
 

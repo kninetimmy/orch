@@ -30,7 +30,9 @@ const Path = ".orchestrator/state.json"
 // v5 records the effective-contract version and execution fingerprint. v4 is
 // still readable for inspection; the run engine refuses to execute it under
 // the new approval semantics. No active run is migrated.
-const SchemaVersion = 5
+// v6 records block causes and issue-local resolution history. v4/v5 remain
+// inspectable but cannot execute with this engine; no active run is migrated.
+const SchemaVersion = 6
 
 // Mode is the operating mode (PRD §7).
 type Mode string
@@ -88,8 +90,9 @@ const (
 	// PhaseAbandoned marks an issue closed without merging; its branch
 	// and worktree are preserved until cleanup.
 	PhaseAbandoned Phase = "abandoned"
-	// PhaseBlocked marks an issue awaiting human action; recovery is
-	// `orch resume` or `orch abort`.
+	// PhaseBlocked marks an issue awaiting recovery. Before v6, resume
+	// could clear every block; decisions now require an explicit resolution
+	// or fresh plan approval. Operational recovery still uses `orch resume`.
 	PhaseBlocked Phase = "blocked"
 )
 
@@ -150,9 +153,9 @@ type Issue struct {
 	// Objective, AcceptanceCriteria, RequiredTests, and TestsCIDoesNotRun
 	// are the approved plan text, copied at EnterDelivery so dispatch
 	// hands the executor a transcription of what a human approved rather
-	// than a recollection of it. Their durable home is the issue body's
-	// audit record, and `orch resume` repopulates them from it on every
-	// phase where it already parses that record.
+	// than a recollection of it. Before v6, `orch resume` repopulated them
+	// from the issue body's audit record. Now that record is checked against
+	// state: edited GitHub text cannot amend the approved work.
 	//
 	// They are optional in the persisted file rather than required by
 	// validateIssues because a run activated by a build older than the
@@ -186,6 +189,58 @@ type Issue struct {
 	LastReviewVerdict string    `json:"last_review_verdict,omitempty"`
 	BlockedReason     string    `json:"blocked_reason,omitempty"`
 	Attempts          []Attempt `json:"attempts,omitempty"`
+	Blocks            []Block   `json:"blocks,omitempty"`
+}
+
+// Block retains each block's identity, cause and original reason, including
+// after resolution. IDs are one-based positions within this issue's history.
+type Block struct {
+	ID         int              `json:"id"`
+	Cause      string           `json:"cause"`
+	Reason     string           `json:"reason"`
+	Resolution *BlockResolution `json:"resolution,omitempty"`
+}
+
+const (
+	BlockOperational = "operational"
+	BlockHuman       = "human-decision"
+	BlockWrong       = "wrong-criterion"
+	BlockArchitect   = "return-to-architect"
+	BlockSecret      = "secret"
+)
+
+type BlockResolution struct {
+	ResolvedBy string `json:"resolved_by"`
+	Detail     string `json:"detail"`
+	At         string `json:"at"`
+	Statement  string `json:"statement"`
+}
+
+// DecisionPending fails closed for old blocks without structured provenance.
+// Observations can discharge operational blocks, never a decision.
+func (iss Issue) DecisionPending() bool {
+	if iss.Phase != PhaseBlocked {
+		return false
+	}
+	if len(iss.Blocks) == 0 {
+		return true
+	}
+	b := iss.Blocks[len(iss.Blocks)-1]
+	return b.Cause != BlockOperational && b.Resolution == nil
+}
+
+// SetBlock is shared by every producer. A later failure cannot replace an
+// unresolved decision (including an old block whose cause is unknown).
+func (iss *Issue) SetBlock(cause, reason string) {
+	if iss.DecisionPending() {
+		return
+	}
+	if iss.Phase == PhaseBlocked && iss.BlockedReason == reason && len(iss.Blocks) > 0 && iss.Blocks[len(iss.Blocks)-1].Cause == cause && iss.Blocks[len(iss.Blocks)-1].Resolution == nil {
+		return
+	}
+	iss.Blocks = append(iss.Blocks, Block{ID: len(iss.Blocks) + 1, Cause: cause, Reason: reason})
+	iss.Phase = PhaseBlocked
+	iss.BlockedReason = reason
 }
 
 // Run describes the active Delivery run.
@@ -241,7 +296,7 @@ func Load(repoRoot string) (*State, error) {
 // run engine is about to persist, so a bug there fails closed instead
 // of writing state that Load would later refuse to read back.
 func (st *State) validate() error {
-	if st.SchemaVersion != SchemaVersion && st.SchemaVersion != 4 {
+	if st.SchemaVersion != SchemaVersion && st.SchemaVersion != 5 && st.SchemaVersion != 4 {
 		return fmt.Errorf("%s: unsupported schema_version %d (this build understands %d; run `orch abort` to reset to assist)", Path, st.SchemaVersion, SchemaVersion)
 	}
 	switch st.Mode {
@@ -272,6 +327,22 @@ func (st *State) validate() error {
 // can be abandoned before its PR ever opened.
 func (r *Run) validateIssues() error {
 	for i, iss := range r.Issues {
+		for j, b := range iss.Blocks {
+			if b.ID != j+1 || b.Reason == "" {
+				return fmt.Errorf("issue %d: invalid block identity or reason", iss.Number)
+			}
+			switch b.Cause {
+			case BlockOperational, BlockHuman, BlockWrong, BlockArchitect, BlockSecret:
+			default:
+				return fmt.Errorf("issue %d: unsupported block cause %q; preserve the run and use its original engine", iss.Number, b.Cause)
+			}
+			if b.Resolution != nil && (b.Resolution.ResolvedBy == "" || b.Resolution.Detail == "" || b.Resolution.At == "" || b.Resolution.Statement != "resolve-block-without-scope-change") {
+				return fmt.Errorf("issue %d: invalid block resolution", iss.Number)
+			}
+		}
+		if iss.Phase == PhaseBlocked && len(iss.Blocks) > 0 && iss.BlockedReason != iss.Blocks[len(iss.Blocks)-1].Reason {
+			return fmt.Errorf("issue %d: blocked reason does not match its original block", iss.Number)
+		}
 		if !iss.Phase.Valid() {
 			return fmt.Errorf("issue %d (%s): invalid phase %q", i, iss.PlanID, iss.Phase)
 		}

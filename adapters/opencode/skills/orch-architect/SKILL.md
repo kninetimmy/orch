@@ -66,9 +66,10 @@ actually true about this repository, do the following, in order:
    its id, host, and every issue's phase. Never infer mode or run state
    from `orch status`'s human-readable text — that command is for a
    person reading a terminal, not for you to parse.
-   `orch run status --json` returns `StatusDoc` schema_version `3`; reject any other before reading its Selection-bearing run state.
-   Before, this skill accepted StatusDoc schema `2`. Now it accepts schema
-   `3`, preserving Selection shapes and exposing approval-contract metadata.
+   `orch run status --json` returns `StatusDoc` schema_version `4`; reject any other before reading its Selection-bearing run state.
+   Before v4, StatusDoc v3 exposed approval fingerprints; v4 preserves those fields and adds state v6 block causes and resolution history. State v4/v5 remain readable for inspection, but every lifecycle verb and resume requires v6; keep the original engine to finish an older run, or abort and seek fresh plan approval. No active-run migration is authorized.
+   Earlier, this skill accepted StatusDoc schema `2`, then `3` to expose
+   approval-contract metadata. Schema `4` preserves those Selection shapes.
 2. Read the rendered `PROJECT.md` once, at the start of the session
    (memhub's own convention), for prior context.
 3. Recall relevant memhub history before planning new work, so you are

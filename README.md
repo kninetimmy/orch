@@ -936,6 +936,19 @@ three strict stages — observe (all reads up front), classify (a pure
 has already converged). It never fabricates approval, never advances
 past the human merge gate, and never deletes or recreates anything.
 
+Before state v6 / resume v2, recovery re-derived every blocked issue from
+healthy artifacts and copied approved work from the GitHub audit record.
+Now operational blocks still recover that way, but review, escalation and
+explicit decision blocks retain their cause and original reason until an
+explicit resolution. Edited GitHub text cannot replace approved scope or
+criteria. `orch run resolve-block` records a decision tied to the run, issue
+and original block, only while approved work stays unchanged; `orch resume`
+then reconciles artifacts. Changed work returns through the plan gate for
+fresh approval. Unknown legacy blocks stay blocked with re-planning guidance.
+The run-stop statement and per-PR merge approval remain separate gates.
+See [decision-block recovery](docs/decision-block-recovery.md) for the wire
+versions, recovery contract and affected consumers.
+
 ### Routing and escalation
 
 `internal/routing` is pure and deterministic: a five-row,

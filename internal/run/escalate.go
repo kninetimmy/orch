@@ -161,8 +161,7 @@ func escalateReroute(ctx context.Context, env Env, c *verbCtx, gh *ghops.GH, out
 func escalateReturnToArchitect(ctx context.Context, c *verbCtx, gh *ghops.GH, outcome routing.Outcome) (*EscalateResult, error) {
 	issue := c.issue()
 	issue.Attempts = fromRoutingHistory(outcome.History)
-	issue.Phase = state.PhaseBlocked
-	issue.BlockedReason = outcome.Reason
+	issue.SetBlock(state.BlockArchitect, outcome.Reason)
 	if err := c.save(); err != nil {
 		return nil, err
 	}
