@@ -19,6 +19,13 @@ import (
 // The test binary is the scripted app-server. No installed Codex, credentials,
 // network or model is used, including on the three CI operating systems.
 func TestMain(m *testing.M) {
+	if len(os.Args) > 1 && os.Args[1] == "orch-isolation-fixture" {
+		os.Exit(isolationFixture(os.Args[2:]))
+	}
+	if len(os.Args) > 4 && reflect.DeepEqual(os.Args[1:4], []string{"app-server", "--listen", "stdio://"}) {
+		scriptedIsolationServer()
+		os.Exit(0)
+	}
 	if scenario := os.Getenv("ORCH_CODEX_NATIVE_TEST_SERVER"); scenario != "" {
 		scriptedServer(scenario)
 		os.Exit(0)
@@ -117,6 +124,9 @@ func scriptedServer(scenario string) {
 			agent := "Codex Desktop/0.159.2 (windows; x86_64)"
 			if scenario == "cli-version" {
 				agent = "codex_cli_rs/0.159.2 (linux; x86_64)"
+			}
+			if scenario == "orch-version" {
+				agent = "orch/0.159.2 (Windows 10.0.26200; x86_64) unknown (orch; isolation-smoke)"
 			}
 			if scenario == "missing-version" {
 				agent = "unknown"
@@ -235,7 +245,7 @@ func scriptedPreflight(t *testing.T, scenario string, timeout time.Duration, cli
 }
 
 func TestPreflightHandshakeInterleavingAndAllPages(t *testing.T) {
-	for _, scenario := range []string{"success", "cli-version"} {
+	for _, scenario := range []string{"success", "cli-version", "orch-version"} {
 		t.Run(scenario, func(t *testing.T) {
 			capabilities, err := scriptedPreflight(t, scenario, 5*time.Second, "test-build")
 			if err != nil {
@@ -351,7 +361,7 @@ func TestPreflightSelectionAndExecutionBoundary(t *testing.T) {
 		t.Fatalf("missing executable: %v", err)
 	}
 	var c connection
-	for _, method := range []string{"thread/start", "thread/resume", "turn/start", "turn/steer", "command/exec", "account/login/start", "account/logout", "config/value/write"} {
+	for _, method := range []string{"thread/start", "thread/resume", "turn/start", "turn/steer", "command/exec", "command/exec/terminate", "process/spawn", "windowsSandbox/readiness", "permissionProfile/list", "account/login/start", "account/logout", "config/value/write"} {
 		if err := c.call(method, nil, nil); err == nil || !strings.Contains(err.Error(), "method unavailable") {
 			t.Fatalf("unavailable method %s: %v", method, err)
 		}

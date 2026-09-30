@@ -22,6 +22,13 @@ model turns. See the [native protocol subset](../../docs/codex-native-protocol.m
 for its authentication/catalog checks, bounds and version-sensitive Windows
 diagnostics. The manual adapter's workflows and restrictions below still hold.
 
+#293 adds a separate native workspace preflight and an opt-in no-model Windows
+isolation smoke in the same [protocol document](../../docs/codex-native-protocol.md#native-workspace-permission-contract-293).
+Its worker/reviewer command profiles are tested with synthetic fixtures;
+native model execution remains unavailable because 0.159.2 cannot establish
+the required inherited-tool boundary. It adds no execution CLI and does not
+change any manual role's guard or instruction-based read-only restrictions.
+
 ## Artifact map
 
 - `.codex-plugin/plugin.json` — the plugin manifest (name, description,
