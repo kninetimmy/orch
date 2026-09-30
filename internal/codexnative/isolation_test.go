@@ -248,13 +248,14 @@ func scriptedIsolationServer() {
 			write(request.ID, map[string]any{"userAgent": "Codex Desktop/" + version})
 		case "initialized":
 		case "windowsSandbox/readiness":
-			if scenario == "missing-method" {
+			switch scenario {
+			case "missing-method":
 				_ = json.NewEncoder(os.Stdout).Encode(map[string]any{"id": request.ID, "error": map[string]any{"code": -32601, "message": "DO-NOT-LEAK"}})
-			} else if scenario == "missing-readiness" {
+			case "missing-readiness":
 				write(request.ID, map[string]any{})
-			} else if scenario == "not-ready" {
+			case "not-ready":
 				write(request.ID, map[string]any{"status": "notConfigured"})
-			} else {
+			default:
 				write(request.ID, map[string]any{"status": "ready"})
 			}
 		case "permissionProfile/list":
@@ -366,8 +367,8 @@ func isolationFixture(args []string) int {
 		if err := os.WriteFile(args[1]+".started", []byte("started"), 0o600); err != nil {
 			return 21
 		}
-		executable, err := os.Executable()
-		if err != nil {
+		executable, executableErr := os.Executable()
+		if executableErr != nil {
 			return 25
 		}
 		child := exec.Command(executable, "orch-isolation-fixture", "delayed-child", args[1]+".child")
@@ -405,4 +406,21 @@ func isolationFixture(args []string) int {
 		return 14
 	}
 	return 0
+}
+
+func TestIsolationFixtureCancellationWriteError(t *testing.T) {
+	// The child succeeds, then the final marker write fails because its target
+	// is a directory. The cancel case must report that error, not the shadowed
+	// executable lookup's nil error.
+	target := filepath.Join(t.TempDir(), "marker-directory")
+	if err := os.Mkdir(target, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	code := isolationFixture([]string{"cancel", target})
+	if code != 13 && code != 14 {
+		t.Fatalf("final cancellation marker write failure returned %d, want a filesystem error", code)
+	}
+	if data, err := os.ReadFile(target + ".child"); err != nil || string(data) != "not canceled" {
+		t.Fatalf("child did not finish before final marker failure: %v", err)
+	}
 }

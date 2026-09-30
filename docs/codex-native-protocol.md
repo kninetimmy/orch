@@ -172,6 +172,13 @@ exception. A worker using such metadata cannot commit through it; trusted
 host Git operations remain outside this sandbox. Invalid or unverifiable
 pointers refuse execution. No user's checkout is reset, cleaned or repaired.
 
+Before the cleanup repair, Git-pointer file closes and Windows final-path
+handle closes ignored errors; after it, either close failure refuses path
+validation. Before the fixture repair, the cancellation helper's executable
+lookup shadowed its final marker-write error; after it, that write failure
+reaches the shared filesystem-error exit handling. This applies to every
+call of these helpers, including worker and reviewer checks.
+
 Each launch uses a fresh random profile name to avoid inherited extensions or
 workspace roots being merged into it. Profiles named `orch_worker_<nonce>`
 grant `:root` reads, workspace and scratch writes, and protected-path denials.
@@ -283,7 +290,7 @@ touched by #293 is accounted for below.
 | New `isolation.go`: `isolationPath`, `overlap`, `prepareIsolation`, `readGitPointer`, `sharedGitPaths`, `isolationBoundary.profile`, `quoteTOML`, `isolationBoundary.args` | No native layout/profile checks. | Adds canonical layout and shared-Git checks plus transient profiles. Existing checkouts/configuration are preserved and general path helpers reused. |
 | New `isolation_path_windows.go`: `finalPathName`, `finalIsolationPath`; new `isolation_path_other.go`: `finalIsolationPath` | No final-handle normalization here. | Adds Windows junction/8.3 resolution for every isolation path. Other platforms retain canonical processing but cannot pass native Windows validation. General path helpers are unchanged. |
 | New `isolation.go`: `serverEnvironment`, `isolationBoundary.commandEnvironment`, `openIsolation`, `connection.diagnosticCommand` | No native sandbox command connection. | Adds private no-model diagnostics with scrubbed credentials, elevated profiles, capability refusals, bounded buffered commands and owned cleanup. CLI/Delivery do not call it; no public execution API. |
-| New `isolation_test.go`: `isolationLayout`, `configOverrides`, `linkIsolationDirectory`, `scriptedIsolationServer`, `isolationFixture`; `TestIsolationPathsAndProfiles`, `TestIsolationRejectsUnsafeLayouts`, `TestIsolationPathAliasesAndSharedGit`, `TestIsolationEnvironmentsAndModelRefusal`, `TestIsolationCapabilitiesAndFailureCleanup` | No isolation regressions. | Adds focused CI checks and task-owned subprocess/descendant fixtures. Existing tests remain; no dependency or framework added. |
+| New `isolation_test.go`: `isolationLayout`, `configOverrides`, `linkIsolationDirectory`, `scriptedIsolationServer`, `isolationFixture`; `TestIsolationPathsAndProfiles`, `TestIsolationRejectsUnsafeLayouts`, `TestIsolationPathAliasesAndSharedGit`, `TestIsolationEnvironmentsAndModelRefusal`, `TestIsolationCapabilitiesAndFailureCleanup`, `TestIsolationFixtureCancellationWriteError` | No isolation regressions. | Adds focused CI checks and task-owned subprocess/descendant fixtures. Existing tests remain; no dependency or framework added. |
 | New `isolation_live_test.go`: `TestCodexIsolationSmoke` | No repeatable native command proof. | Adds opt-in 46-command synthetic validation, parent verification and unsupported-platform failure. No model work or automatic setup. |
 | This document and `adapters/codex/README.md` native-check link | Metadata-only package contract and manual workflow limitations. | Adds isolation contract, native limitations, validation and before/after scope. Every manual role/guard limitation still holds; native proof does not upgrade manual roles. |
 

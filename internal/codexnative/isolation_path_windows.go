@@ -16,7 +16,7 @@ var finalPathName = syscall.NewLazyDLL("kernel32.dll").NewProc("GetFinalPathName
 // EvalSymlinks alone does not resolve Windows junctions on the supported Go
 // runtime. Ask Windows for the final handle path, including long names for 8.3
 // aliases. For a missing deny target, resolve its deepest existing ancestor.
-func finalIsolationPath(path string) (string, error) {
+func finalIsolationPath(path string) (result string, resultErr error) {
 	dir := path
 	var rest []string
 	for {
@@ -26,7 +26,7 @@ func finalIsolationPath(path string) (string, error) {
 		}
 		handle, err := syscall.CreateFile(name, 0x80, syscall.FILE_SHARE_READ|syscall.FILE_SHARE_WRITE|syscall.FILE_SHARE_DELETE, nil, syscall.OPEN_EXISTING, syscall.FILE_FLAG_BACKUP_SEMANTICS, 0)
 		if err == nil {
-			defer syscall.CloseHandle(handle)
+			defer func() { resultErr = errors.Join(resultErr, syscall.CloseHandle(handle)) }()
 			buffer := make([]uint16, 32768)
 			n, _, callErr := finalPathName.Call(uintptr(handle), uintptr(unsafe.Pointer(&buffer[0])), uintptr(len(buffer)), 0)
 			if n == 0 || n >= uintptr(len(buffer)) {

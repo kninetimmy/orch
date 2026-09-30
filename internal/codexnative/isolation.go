@@ -181,8 +181,8 @@ func readGitPointer(path string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	defer f.Close()
 	data, err := io.ReadAll(io.LimitReader(f, 4097))
+	err = errors.Join(err, f.Close())
 	if err != nil || len(data) > 4096 || strings.TrimSpace(string(data)) == "" {
 		return "", fmt.Errorf("%w: invalid shared Git pointer", ErrIsolationUnavailable)
 	}
