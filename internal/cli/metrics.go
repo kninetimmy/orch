@@ -154,14 +154,15 @@ type runSummary struct {
 
 	legacyUsage []usageEventRow
 
-	usageSamples       []usageSampleRow
-	usageGroups        []usageGroup
-	recordedUsageRoles []string
-	missingUsageRoles  []string
-	recordedSessions   []string
-	unknownRoleRecords int
-	unknownSessions    int
-	unavailable        []metrics.Observation
+	usageSamples             []usageSampleRow
+	usageGroups              []usageGroup
+	recordedUsageRoles       []string
+	missingUsageRoles        []string
+	usageSessions            []string
+	missingUsageSessions     []string
+	unknownRoleRecords       int
+	incompleteSessionRecords int
+	unavailable              []metrics.Observation
 
 	timing           map[string]timingSummary
 	reportedOutcomes map[string]int
@@ -200,10 +201,10 @@ type usageGroup struct {
 }
 
 type timingSummary struct {
-	intervals       int
-	unknownSessions int
-	sessionEffort   time.Duration
-	wallClock       time.Duration
+	intervals          int
+	incompleteSessions int
+	sessionEffort      time.Duration
+	wallClock          time.Duration
 }
 
 type measuredRange struct {
@@ -264,7 +265,8 @@ func summarizeRun(doc metrics.Document) (runSummary, error) {
 	ciLastState := map[int]string{}
 	expectedUsageRoles := map[string]bool{"architect": true}
 	recordedUsageRoles := map[string]bool{}
-	recordedSessions := map[string]bool{}
+	knownSessions := map[string]bool{}
+	usageSessions := map[string]bool{}
 
 	for i, ev := range doc.Events {
 		if ev.IssueNumber != 0 {
@@ -333,10 +335,10 @@ func summarizeRun(doc metrics.Document) (runSummary, error) {
 		} else {
 			expectedUsageRoles[o.Role] = true
 		}
-		if o.Session == "" {
-			s.unknownSessions++
+		if o.Host == "" || o.Session == "" {
+			s.incompleteSessionRecords++
 		} else {
-			recordedSessions[nativeSession(o)] = true
+			knownSessions[nativeSession(o)] = true
 		}
 		if o.Unavailable != nil {
 			s.unavailable = append(s.unavailable, o)
@@ -346,6 +348,7 @@ func summarizeRun(doc metrics.Document) (runSummary, error) {
 		}
 		if o.Sample != nil {
 			s.usageSamples = append(s.usageSamples, usageSampleRow{observation: o, counters: contributions[i]})
+			usageSessions[nativeSession(o)] = true
 			if o.Role != "" {
 				recordedUsageRoles[o.Role] = true
 			}
@@ -379,7 +382,7 @@ func summarizeRun(doc metrics.Document) (runSummary, error) {
 			r := measuredRange{start: start, end: end}
 			kind := o.Interval.Kind
 			timingRanges[kind] = append(timingRanges[kind], r)
-			if o.Session != "" {
+			if o.Host != "" && o.Session != "" {
 				if sessionRanges[kind] == nil {
 					sessionRanges[kind] = map[string][]measuredRange{}
 				}
@@ -402,7 +405,13 @@ func summarizeRun(doc metrics.Document) (runSummary, error) {
 		}
 	}
 	sort.Strings(s.missingUsageRoles)
-	s.recordedSessions = sortedSet(recordedSessions)
+	s.usageSessions = sortedSet(usageSessions)
+	for session := range knownSessions {
+		if !usageSessions[session] {
+			s.missingUsageSessions = append(s.missingUsageSessions, session)
+		}
+	}
+	sort.Strings(s.missingUsageSessions)
 	for _, kind := range intervalKinds {
 		if len(timingRanges[kind]) == 0 {
 			continue
@@ -419,9 +428,9 @@ func summarizeRun(doc metrics.Document) (runSummary, error) {
 			}
 			t.sessionEffort += d
 		}
-		t.unknownSessions = t.intervals
+		t.incompleteSessions = t.intervals
 		for _, ranges := range sessionRanges[kind] {
-			t.unknownSessions -= len(ranges)
+			t.incompleteSessions -= len(ranges)
 		}
 		s.timing[kind] = t
 	}
@@ -602,8 +611,9 @@ func printObservedUsage(w io.Writer, s runSummary) {
 	}
 	fmt.Fprintf(w, "coverage: observed usage roles recorded: %s\n", listOrNone(s.recordedUsageRoles))
 	fmt.Fprintf(w, "          roles without recorded counters: %s\n", listOrNone(s.missingUsageRoles))
-	fmt.Fprintf(w, "          native sessions recorded: %s; complete native session count unknown\n", listOrNone(s.recordedSessions))
-	fmt.Fprintf(w, "          observations with unknown role: %d; unknown session: %d\n", s.unknownRoleRecords, s.unknownSessions)
+	fmt.Fprintf(w, "          native sessions with counters: %s\n", listOrNone(s.usageSessions))
+	fmt.Fprintf(w, "          known native sessions without counters: %s; complete native session count unknown\n", listOrNone(s.missingUsageSessions))
+	fmt.Fprintf(w, "          observations with unknown role: %d; incomplete host/session: %d\n", s.unknownRoleRecords, s.incompleteSessionRecords)
 	if len(s.unavailable) > 0 {
 		fmt.Fprintln(w, "unavailable evidence:")
 		for _, o := range s.unavailable {
@@ -621,13 +631,13 @@ func printTiming(w io.Writer, timing map[string]timingSummary) {
 			continue
 		}
 		sessionMeasurement := "session-summed " + t.sessionEffort.String()
-		if t.unknownSessions == t.intervals {
-			sessionMeasurement = "session-summed unknown (no session-attributed intervals)"
-		} else if t.unknownSessions > 0 {
+		if t.incompleteSessions == t.intervals {
+			sessionMeasurement = "session-summed unknown (no complete host/session intervals)"
+		} else if t.incompleteSessions > 0 {
 			sessionMeasurement = "known-session subtotal " + t.sessionEffort.String()
 		}
-		fmt.Fprintf(w, "  %s: %s; wall-clock %s; %d intervals; %d unknown-session intervals excluded from session sum\n",
-			kind, sessionMeasurement, t.wallClock, t.intervals, t.unknownSessions)
+		fmt.Fprintf(w, "  %s: %s; wall-clock %s; %d intervals; %d incomplete host/session intervals excluded from session sum\n",
+			kind, sessionMeasurement, t.wallClock, t.intervals, t.incompleteSessions)
 	}
 }
 

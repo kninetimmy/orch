@@ -128,21 +128,22 @@ streams remain separate, and cross-session total overflow fails instead of
 wrapping.
 
 Coverage lists roles with recorded counter samples, roles with execution or
-observation evidence but no counters, known native sessions, observations with
-unknown role/session attribution, and explicit unavailable records. Architect
-is always named in role coverage because root usage participates in the run but
-has no automatic capture path. Recorded sessions are evidence, not a complete
-session census; the report always says the complete native session count is
-unknown. Lifecycle-event count is not used as a usage denominator.
+observation evidence but no counters, known native sessions with and without
+counter samples, incomplete host/session attribution, and explicit unavailable
+records. Architect is always named in role coverage because root usage
+participates in the run but has no automatic capture path. Recorded sessions
+are evidence, not a complete session census; the report always says the complete
+native session count is unknown. Lifecycle-event count is not used as a usage
+denominator.
 
 Measured timing is separate for `active-agent`, `verification`, `ci-waiting`
 and `human-waiting`. Each session/category uses an interval union, so replayed
 or overlapping intervals count once. Session unions are summed for agent
 effort, while a second union across sessions reports wall-clock coverage without
-double-counting concurrent work. Intervals without session identity contribute
-to wall-clock coverage but are excluded and named in the session-summed value;
-when all intervals lack sessions, session-summed effort is `unknown` rather than
-zero.
+double-counting concurrent work. Intervals without complete host/session
+identity contribute to wall-clock coverage but are excluded and named in the
+session-summed value; when all intervals lack complete identity, session-summed
+effort is `unknown` rather than zero.
 No interval for a category means `unknown`; a recorded zero-length interval is
 measured `0s`.
 

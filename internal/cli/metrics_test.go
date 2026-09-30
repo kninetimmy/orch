@@ -307,11 +307,11 @@ func TestMetricsReportsObservedCoverageTimingAndOutcomes(t *testing.T) {
 		"host codex; source manual-host-report; stream native-token-usage; input 0 (1/1 measured)",
 		"roles without recorded counters: architect",
 		"complete native session count unknown",
-		"observations with unknown role: 0; unknown session: 2",
+		"observations with unknown role: 0; incomplete host/session: 2",
 		"architect-unavailable; run-level; role architect; native session unknown; attempt unknown; review cycle unknown; reason root-capture-unsupported",
-		"active-agent: session-summed 25m0s; wall-clock 20m0s; 3 intervals; 0 unknown-session intervals",
+		"active-agent: session-summed 25m0s; wall-clock 20m0s; 3 intervals; 0 incomplete host/session intervals",
 		"verification: session-summed 0s; wall-clock 0s; 1 intervals",
-		"ci-waiting: session-summed unknown (no session-attributed intervals); wall-clock 5m0s; 1 intervals; 1 unknown-session intervals",
+		"ci-waiting: session-summed unknown (no complete host/session intervals); wall-clock 5m0s; 1 intervals; 1 incomplete host/session intervals",
 		"human-waiting: unknown (no measured intervals)",
 		"reported outcomes: approval: 1, escalation: 1, evidence-correction: 1, implementation-failure: 1, infrastructure-failure: 1, wrong-requirement: 1",
 		"engine outcomes: approval: 1, escalation: 1",
@@ -335,5 +335,49 @@ func TestMetricsRejectsCompatibleAggregateOverflow(t *testing.T) {
 	}}
 	if _, err := summarizeRun(doc); err == nil || !strings.Contains(err.Error(), "overflow") {
 		t.Fatalf("summarizeRun error = %v, want compatible total overflow", err)
+	}
+}
+
+func TestMetricsCoverageNamesKnownSessionsWithoutCounters(t *testing.T) {
+	tokens := int64(10)
+	doc := metrics.Document{SchemaVersion: 2, RunID: "run-session-coverage", Observations: []metrics.Observation{
+		{SchemaVersion: 2, RunID: "run-session-coverage", ID: "review-usage", At: "2026-09-30T00:00:00Z", Source: "native",
+			IssueNumber: 1, Role: "reviewer", ReviewCycle: 1, Host: "codex", Session: "reviewer-1",
+			Sample: &metrics.CounterSample{Stream: "tokens", Mode: "cumulative", Sequence: 1, Counters: metrics.Counters{TotalTokens: &tokens}}},
+		{SchemaVersion: 2, RunID: "run-session-coverage", ID: "approval-only", At: "2026-09-30T00:01:00Z", Source: "native",
+			IssueNumber: 1, Role: "reviewer", ReviewCycle: 2, Host: "codex", Session: "reviewer-2", Outcome: "approval"},
+	}}
+	summary, err := summarizeRun(doc)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var out strings.Builder
+	printObservedUsage(&out, summary)
+	for _, want := range []string{
+		"native sessions with counters: codex/reviewer-1",
+		"known native sessions without counters: codex/reviewer-2",
+	} {
+		if !strings.Contains(out.String(), want) {
+			t.Errorf("coverage missing %q:\n%s", want, out.String())
+		}
+	}
+}
+
+func TestMetricsTimingExcludesIncompleteHostSessionIdentity(t *testing.T) {
+	interval := func(id, host string) metrics.Observation {
+		return metrics.Observation{SchemaVersion: 2, RunID: "run-timing-identity", ID: id, At: "2026-09-30T00:10:00Z", Source: "native",
+			Role: "specialist", Host: host, Session: "a",
+			Interval: &metrics.Interval{Kind: "active-agent", Start: "2026-09-30T00:00:00Z", End: "2026-09-30T00:10:00Z"}}
+	}
+	summary, err := summarizeRun(metrics.Document{SchemaVersion: 2, RunID: "run-timing-identity",
+		Observations: []metrics.Observation{interval("known", "codex"), interval("missing-host", "")}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var out strings.Builder
+	printTiming(&out, summary.timing)
+	want := "active-agent: known-session subtotal 10m0s; wall-clock 10m0s; 2 intervals; 1 incomplete host/session intervals excluded"
+	if !strings.Contains(out.String(), want) {
+		t.Errorf("timing missing %q:\n%s", want, out.String())
 	}
 }
