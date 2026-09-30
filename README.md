@@ -5,7 +5,7 @@
 <p align="center">
   <img src="https://img.shields.io/badge/License-MIT-2E7D32?style=flat&logo=opensourceinitiative&logoColor=white" alt="License: MIT"/>
   <img src="https://img.shields.io/badge/Go-1.26%2B-00ADD8?style=flat&logo=go&logoColor=white" alt="Go 1.26+"/>
-  <img src="https://img.shields.io/badge/Release-v0.10.0-24292F?style=flat&logo=github&logoColor=white" alt="Release: v0.10.0"/>
+  <img src="https://img.shields.io/badge/Release%20target-v0.11.0-24292F?style=flat&logo=github&logoColor=white" alt="Release target: v0.11.0"/>
   <br/>
   <img src="https://img.shields.io/badge/Platform-Linux%20%C2%B7%20macOS%20%C2%B7%20Windows-607D8B?style=flat" alt="Platform: Linux, macOS, Windows"/>
   <img src="https://img.shields.io/badge/Hosts-Claude%20Code%20%C2%B7%20Codex%20CLI%20%C2%B7%20OpenCode%20V2-6E56CF?style=flat" alt="Hosts: Claude Code, Codex CLI, and OpenCode V2"/>
@@ -461,9 +461,37 @@ Every memhub command runs with the primary checkout as its working
 directory, never inside a per-issue worktree, because worktrees never
 receive a copy of the memhub database.
 
+## v0.11.0 release target
+
+- Delivery mutations now share a repository serializer, and plan approval binds
+  the submitted scope, engine-contributed criteria, routing, and effective
+  execution settings.
+- State schema 6 keeps human-decision blocks durable through recovery, while
+  `orch doctor --host` focuses diagnostics on one configured host without hiding
+  failures from the others.
+- The OpenCode lockfile updates `brace-expansion` from 2.1.4 to 2.1.7, clearing
+  the prerequisite audit finding.
+- P1-A adds durable metric observations, attributable Codex child-session
+  capture, and read-only coverage, measured timing, and outcome reporting. See
+  the [metric observation contract](docs/metric-observations.md).
+
+Engine release v0.11.0 and manual-adapter contract 0.8.0 are separate
+identities; a `0.8.0` adapter label alone does not prove capture-v2 support.
+Adopt supporting engine and adapter revisions together between runs. State
+schema 6 has no active-run migration, so an active run stays on its original
+pair. Metrics schema-2 history requires this or a newer compatible reader,
+while legacy schema-1 history remains readable without rewriting.
+
 ## Status
 
-Early software. What can be stated as fact: 22 tagged releases, v0.1.0 through v0.10.0, and every pull request merged since PR #40 carries an Orch audit record in its body — apart from the configuration deliveries, which `orch configure` writes in its own body format. Since PR #40, this repository has been built through the pipeline described above: a plan gate, an isolated worktree per issue, a review dispatched separately from the work, CI, and a merge that fails closed unless it carries an approval pinned to the commit `merge-report` recorded.
+Early software. See [GitHub Releases](https://github.com/kninetimmy/orch/releases)
+for the tagged-release history. Every pull request merged since PR #40 carries
+an Orch audit record in its body — apart from the configuration deliveries,
+which `orch configure` writes in its own body format. Since PR #40, this
+repository has been built through the pipeline described above: a plan gate,
+an isolated worktree per issue, a review dispatched separately from the work,
+CI, and a merge that fails closed unless it carries an approval pinned to the
+commit `merge-report` recorded.
 
 All of that evidence comes from one repository: this one.
 
@@ -651,8 +679,9 @@ continue, or `orch abort` to end it.
 <details>
 <summary>Defects already corrected, newest first</summary>
 
-Everything here is merged on `main` and shipped in v0.10.0, the latest
-tagged release.
+Everything here was merged on `main` and shipped in v0.10.0. See
+[GitHub Releases](https://github.com/kninetimmy/orch/releases) for the current
+release history.
 
 - The wrong-criterion guidance in the standard and safe reviewer
   definitions for each host now names a
