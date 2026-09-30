@@ -513,24 +513,28 @@ the first-install ones; `orch doctor` names the installed and the
 expected adapter version when they diverge.
 
 **`orch doctor` fails on a machine that lacks a configured host's
-command-line tool.** Doctor checks every host the committed
-configuration names, and fails when that host's CLI is missing from
-`PATH` or its adapter check fails. Claude and Codex adapter checks also
-report absent, duplicate, disabled, missing-version, and version-
-mismatch states (plus Codex's not-installed state). OpenCode instead
+command-line tool.** Plain `orch doctor` checks every host the committed
+configuration names, and fails when any host's CLI, adapter, selection,
+or project agent files fail their checks. Use `orch doctor --host
+claude|codex|opencode` to diagnose one configured host: common repository
+and selected-host failures still fail the command, while failures from
+other configured hosts are reported as advisory notes. Claude and Codex
+adapter checks also report absent, duplicate, disabled, missing-version,
+and version-mismatch states (plus Codex's not-installed state). A version
+mismatch names the installed and expected adapter versions and tells you
+to align the older engine or adapter to the same release. OpenCode instead
 checks for at least the beta 18314 runtime and exactly one active plugin
 with ID `orch.delivery` because its beta API does not expose adapter
 versions. Host enablement is a committed-only key
 — the Settings table above marks `hosts.claude` / `hosts.codex` /
 `hosts.opencode` as
 `no (committed)` — so machine-local configuration cannot switch a
-host off for one machine. Symptom: a repository configured for multiple
-hosts reports a failing doctor on every machine that has only one of
-them installed. Workaround: enable only the hosts every machine
-working on the repository will have, or install the missing CLI on
-that machine. There is no override for this, by design: the check
-exists so an adapter that is absent or out of date is reported rather
-than trusted.
+host off for one machine. Before selected-host diagnostics, a repository
+configured for multiple hosts reported a failing doctor on every machine
+that had only one of them installed; there was no per-machine diagnostic
+choice. Now `--host` gives that machine a focused result without hiding
+the other failures or changing committed host policy. Plain doctor keeps
+the historical all-host failure behavior.
 
 **Codex `workspace-write` sandbox mode on Windows fails every agent
 write where the sandbox helper infrastructure is absent.** Observed

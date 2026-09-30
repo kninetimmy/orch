@@ -61,7 +61,14 @@ var (
 	}
 )
 
-func runDoctor(env Env) error {
+const doctorUsage = "orch doctor: usage: orch doctor [--host <claude|codex|opencode>]"
+
+func runDoctor(env Env, args []string) error {
+	selectedHost, err := doctorHost(args)
+	if err != nil {
+		return err
+	}
+
 	fmt.Fprintf(env.Stdout, "note  orch version: %s\n", Version)
 
 	failed := false
@@ -72,6 +79,13 @@ func runDoctor(env Env) error {
 			return
 		}
 		fmt.Fprintf(env.Stdout, "ok    %s\n", name)
+	}
+	checkHost := func(host, name string, err error) {
+		if err != nil && selectedHost != "" && host != selectedHost {
+			fmt.Fprintf(env.Stdout, "note  %s: %v (advisory; selected host is %s)\n", name, err, selectedHost)
+			return
+		}
+		check(name, err)
 	}
 
 	_, gitErr := env.LookPath("git")
@@ -123,6 +137,9 @@ func runDoctor(env Env) error {
 
 	cfg, cfgErr := config.Load(env.RepoRoot)
 	check("configuration", cfgErr)
+	if cfgErr == nil && selectedHost != "" && cfg.Host(selectedHost) == nil {
+		return usageError(fmt.Sprintf("orch doctor: host %q is not configured", selectedHost))
+	}
 
 	if cfgErr == nil && config.HasLocalOverride(env.RepoRoot) {
 		if len(cfg.Overrides) > 0 {
@@ -134,17 +151,17 @@ func runDoctor(env Env) error {
 
 	if cfgErr == nil {
 		if cfg.Hosts.Claude != nil {
-			check("claude adapter", checkAdapter(env, claudeAdapter))
+			checkHost("claude", "claude adapter", checkAdapter(env, claudeAdapter))
 		}
 		if cfg.Hosts.Codex != nil {
-			check("codex adapter", checkAdapter(env, codexAdapter))
+			checkHost("codex", "codex adapter", checkAdapter(env, codexAdapter))
 		}
 		if cfg.Hosts.OpenCode != nil {
 			catalog, err := checkOpenCodeAdapter(env, opencodeAdapter)
-			check("opencode adapter", err)
+			checkHost("opencode", "opencode adapter", err)
 			if err == nil {
 				for _, selection := range opencodecatalog.CheckSelections(cfg.Hosts.OpenCode.Roles, catalog) {
-					check("opencode "+selection.Role+" selection", selection.Err)
+					checkHost("opencode", "opencode "+selection.Role+" selection", selection.Err)
 				}
 			}
 		}
@@ -160,11 +177,11 @@ func runDoctor(env Env) error {
 				if staleErr != nil {
 					detail += fmt.Sprintf(" (%v)", staleErr)
 				}
-				check(host+" agent files", fmt.Errorf("absent, unreadable, or out of date: %s; run `orch render-agents` to regenerate them", detail))
+				checkHost(host, host+" agent files", fmt.Errorf("absent, unreadable, or out of date: %s; run `orch render-agents` to regenerate them", detail))
 			case staleErr != nil:
-				check(host+" agent files", staleErr)
+				checkHost(host, host+" agent files", staleErr)
 			default:
-				check(host+" agent files", nil)
+				checkHost(host, host+" agent files", nil)
 			}
 		}
 	}
@@ -273,6 +290,21 @@ func runDoctor(env Env) error {
 	return nil
 }
 
+func doctorHost(args []string) (string, error) {
+	if len(args) == 0 {
+		return "", nil
+	}
+	if len(args) != 2 || args[0] != "--host" {
+		return "", usageError(doctorUsage)
+	}
+	switch args[1] {
+	case "claude", "codex", "opencode":
+		return args[1], nil
+	default:
+		return "", usageError(fmt.Sprintf("orch doctor: invalid host %q; expected claude, codex, or opencode", args[1]))
+	}
+}
+
 type adapterPlugin struct {
 	ID        string `json:"id"`
 	PluginID  string `json:"pluginId"`
@@ -362,7 +394,7 @@ func checkAdapter(env Env, spec adapterSpec) error {
 		return fail(fmt.Sprintf("%s has no version (expected %q)", spec.pluginID, expected))
 	}
 	if plugin.Version != expected {
-		return fail(fmt.Sprintf("%s version mismatch: installed %q, expected %q", spec.pluginID, plugin.Version, expected))
+		return fmt.Errorf("%s version mismatch: installed %q, expected %q; align the Orch engine and %s adapter to the same release: re-run the Orch installer if the engine is older; if the adapter is older, %s", spec.pluginID, plugin.Version, expected, spec.host, spec.repair)
 	}
 	return nil
 }
