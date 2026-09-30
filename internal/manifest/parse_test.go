@@ -290,21 +290,65 @@ func TestSchemaTwoRegionIsAGenuineRender(t *testing.T) {
 	}
 }
 
-// TestParseRejectsSchemaThreeRecord proves a v3 record — the version
-// every posted body in flight when this build ships carries — fails
+// schemaThreeRegion is frozen from
+// internal/manifest/testdata/minimal.golden.md at 60446fc, the commit
+// that introduced the schema-3 renderer.
+const schemaThreeRegion = BeginMarker + `
+### Orch audit record
+
+**Objective:** Ship the manifest round trip.
+
+**Acceptance criteria:**
+- Render and Parse agree on every field.
+
+**Required tests:**
+- ` + "`go test ./internal/manifest/...`" + `
+
+| Field | Value |
+| --- | --- |
+| Role | ` + "`implementer`" + ` |
+| Executor | ` + "`opus-4-8`" + ` — effort ` + "`high`" + ` |
+| Reviewer | ` + "`gpt-5.6-sol`" + ` — effort ` + "`medium`" + ` |
+| Effort delivery | ` + "`parameter`" + ` — the host applied the routed effort as a real model parameter |
+| Config revision | ` + "`cfg-2026-07-10`" + ` |
+
+**Routing rationale:** Selected implementer for a bounded single-file change.
+
+**Escalations:** _none_
+
+**Verification:** _none_
+
+` + dataOpen + `
+{
+  "schema_version": 3,
+  "objective": "Ship the manifest round trip.",
+  "acceptance_criteria": [
+    "Render and Parse agree on every field."
+  ],
+  "required_tests": [
+    "go test ./internal/manifest/..."
+  ],
+  "role": "implementer",
+  "executor": {
+    "model": "opus-4-8",
+    "effort": "high"
+  },
+  "routing_rationale": "Selected implementer for a bounded single-file change.",
+  "reviewer": {
+    "model": "gpt-5.6-sol",
+    "effort": "medium"
+  },
+  "effort_delivery": "parameter",
+  "config_revision": "cfg-2026-07-10"
+}
+` + dataClose + `
+` + EndMarker
+
+// TestParseRejectsSchemaThreeRecord proves a genuine v3 record fails
 // closed through the unsupported-version path, before the drift compare,
 // with the remediation an operator can actually run.
-//
-// Its body is lowered from this build's own render rather than frozen
-// like schemaOneRegion and schemaTwoRegion above, because that
-// construction is exact for this pair: v4's only added field is optional
-// and renders nothing when the plan declared nothing, so a genuine v3
-// render of a declaration-free record and a v4 render of it differ in
-// exactly the schema_version line. Freezing a copy would assert the same
-// bytes with more of them.
 func TestParseRejectsSchemaThreeRecord(t *testing.T) {
-	body := tamperJSON(mustRender(t, fullManifest()), `"schema_version": 5`, `"schema_version": 3`)
-	_, err := Parse(body)
+	_, err := Parse(schemaThreeRegion)
 	if !errors.Is(err, ErrBadManifest) {
 		t.Fatalf("err = %v, want ErrBadManifest", err)
 	}

@@ -285,10 +285,13 @@ func TestDigestUnchangedForAPlanThatDeclaresNothing(t *testing.T) {
 // be inside the digest the approval is tied to rather than a field an
 // adapter could revise between gate and activation.
 func TestDigestCoversTheCIDeclaration(t *testing.T) {
-	silent := mustDecodePlan(t, validPlanJSON())
 	declaring := mustDecodePlan(t, ciDeclarationPlanJSON())
-	if err := declaring.Validate(testConfig()); err != nil {
-		t.Fatalf("Validate: %v", err)
+	silent := mustDecodePlan(t, ciDeclarationPlanJSON())
+	silent.Issues[0].TestsCIDoesNotRun = nil
+	for name, p := range map[string]*PlanDoc{"silent": silent, "declaring": declaring} {
+		if err := p.Validate(testConfig()); err != nil {
+			t.Fatalf("%s plan Validate: %v", name, err)
+		}
 	}
 	a, err := silent.Digest()
 	if err != nil {
