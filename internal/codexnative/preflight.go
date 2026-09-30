@@ -28,7 +28,7 @@ type Capabilities struct {
 	Selection      manifest.Selection
 }
 
-var hostVersion = regexp.MustCompile(`^(?:codex_cli_rs|codex-cli|Codex Desktop)/([0-9]+\.[0-9]+\.[0-9]+(?:[-+][0-9A-Za-z.-]+)?)(?:\s|$)`)
+var hostVersion = regexp.MustCompile(`^(?:orch|codex_cli_rs|codex-cli|Codex Desktop)/([0-9]+\.[0-9]+\.[0-9]+(?:[-+][0-9A-Za-z.-]+)?)(?:\s|$)`)
 
 // Preflight starts a fresh local app-server, inspects native metadata, and shuts
 // it down. It never attempts login, authentication refresh or model work.

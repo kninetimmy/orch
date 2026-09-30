@@ -1,5 +1,6 @@
-// Package codexnative implements the read-only Codex app-server preflight.
-// It has no thread, turn, login, command execution or approval methods.
+// Package codexnative implements Codex metadata and isolation preflights.
+// Only a private isolation connection permits no-model sandbox diagnostics;
+// metadata preflight connections have no execution methods.
 package codexnative
 
 import (
@@ -34,21 +35,26 @@ const (
 // connection has one caller and one outstanding request. It deliberately does
 // not multiplex: preflight only makes sequential metadata requests.
 type connection struct {
-	ctx      context.Context
-	cmd      *exec.Cmd
-	stdin    io.WriteCloser
-	stdout   *os.File
-	reader   *bufio.Reader
-	exited   chan struct{}
-	exitErr  error // read only after exited closes
-	stopIO   func() bool
-	sequence int
-	authSeen bool
+	ctx       context.Context
+	cmd       *exec.Cmd
+	stdin     io.WriteCloser
+	stdout    *os.File
+	reader    *bufio.Reader
+	exited    chan struct{}
+	exitErr   error // read only after exited closes
+	stopIO    func() bool
+	sequence  int
+	authSeen  bool
+	isolation bool
 }
 
 // start follows execx's argument-vector and explicit-cwd contract. execx.Local
 // collects output until exit; streaming this small subset needs owned pipes.
 func start(ctx context.Context, command execx.Cmd) (*connection, error) {
+	return startWithEnv(ctx, command, append(os.Environ(), command.Env...))
+}
+
+func startWithEnv(ctx context.Context, command execx.Cmd, env []string) (*connection, error) {
 	if !filepath.IsAbs(command.Dir) {
 		return nil, errors.New("codex app-server requires an absolute working directory")
 	}
@@ -58,7 +64,7 @@ func start(ctx context.Context, command execx.Cmd) (*connection, error) {
 	}
 	cmd := exec.CommandContext(ctx, path, command.Args...)
 	cmd.Dir = command.Dir
-	cmd.Env = append(os.Environ(), command.Env...)
+	cmd.Env = env
 	cmd.Stderr = io.Discard // never retain account/configuration diagnostics
 	cmd.WaitDelay = shutdownTimeout
 	stdin, err := cmd.StdinPipe()
@@ -161,6 +167,15 @@ type message struct {
 	Error  json.RawMessage `json:"error"`
 }
 
+type rpcRejection struct {
+	method string
+	code   int64
+}
+
+func (r *rpcRejection) Error() string {
+	return fmt.Sprintf("codex app-server %s rejected (code %d)", r.method, r.code)
+}
+
 func (c *connection) read() (message, error) {
 	if err := c.contextError("read"); err != nil {
 		return message{}, err
@@ -208,6 +223,10 @@ func (c *connection) read() (message, error) {
 func (c *connection) call(method string, params, result any) error {
 	switch method {
 	case "initialize", "account/read", "model/list":
+	case "windowsSandbox/readiness", "permissionProfile/list", "command/exec":
+		if !c.isolation {
+			return errors.New("codex native preflight method unavailable")
+		}
 	default:
 		return errors.New("codex native preflight method unavailable")
 	}
@@ -240,7 +259,7 @@ func (c *connection) call(method string, params, result any) error {
 			if err := json.Unmarshal(m.Error, &rejection); err != nil || rejection.Code == nil || rejection.Message == nil {
 				return fmt.Errorf("%w: invalid RPC error", ErrMalformedMessage)
 			}
-			return fmt.Errorf("codex app-server %s rejected (code %d)", method, *rejection.Code)
+			return &rpcRejection{method: method, code: *rejection.Code}
 		}
 		if bytes.Equal(bytes.TrimSpace(m.Result), []byte("null")) || json.Unmarshal(m.Result, result) != nil {
 			return fmt.Errorf("%w: invalid %s result", ErrMalformedMessage, method)
