@@ -406,9 +406,7 @@ func TestDeliverySkillAndReviewersHaveWrongCriterionGuidance(t *testing.T) {
 }
 
 // TestDeliverySkillPinsCodexChildUsageMapping keeps the adapter's optional
-// exact-usage capture scoped to the completed task that produced it: the
-// initial executor and fresh reviewer use full totals, while a resumed fix
-// executor goes to the following review cycle as a delta.
+// capture scoped to the completed task and durably recorded exactly once.
 func TestDeliverySkillPinsCodexChildUsageMapping(t *testing.T) {
 	data, err := os.ReadFile(deliverySkillPath)
 	if err != nil {
@@ -419,12 +417,19 @@ func TestDeliverySkillPinsCodexChildUsageMapping(t *testing.T) {
 		"`CODEX_THREAD_ID`",
 		"canonical task identity returned by `spawn_agent`",
 		"`orch hook codex subagent-usage`",
-		"`previous_total_tokens`",
-		"previous captured cumulative total",
-		"initial executor full total to `pr-open`'s `usage`",
-		"fresh reviewer full total to that cycle's `review` `usage`",
-		"resumed fix executor delta to the following `review`'s `executor_usage`",
-		"When capture returns no total, omit the corresponding optional field",
+		"capture request/response schema 2 and observation schema 2",
+		"engine `47f0cbc` predates these contracts",
+		"submit it unchanged to `orch metrics record`",
+		"Require recording response schema 1",
+		"No token baseline belongs in conversational context",
+		"Omit `usage` and `executor_usage`",
+		"never also submit measured usage through the legacy delta path",
+		"Fresh reviewers retain their own native sessions and review cycles",
+		"cycle that requested that repair",
+		"explicit `unavailable.reason`",
+		"never fill observed fields from requested config",
+		"Before this update, the unversioned helper",
+		"Claude and OpenCode manual usage contracts are unchanged",
 	} {
 		if !strings.Contains(content, adaptertest.NormalizeWhitespace(phrase)) {
 			t.Errorf("%s does not contain child-usage mapping phrase %q", deliverySkillPath, phrase)

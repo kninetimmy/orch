@@ -250,42 +250,86 @@ The result (`ActivationResult`) carries `run_id` and, per issue,
 Work issues in wave order, never more than `concurrency.max_subagents`
 in flight at once. For each issue:
 
-### Exact Codex child usage
+### Durable Codex child observations
 
-Before dispatching a child, retain this Architect session's
-`CODEX_THREAD_ID`. For every completed child, retain the canonical task
-identity returned by `spawn_agent`; never substitute a task-name
-shorthand or reuse an identity from another agent. After `wait_agent`
-reports that exact child complete, use the scratch-file JSON pattern
-above to call `orch hook codex subagent-usage` with:
+This path requires an engine supporting capture request/response schema 2
+and observation schema 2. The adapter's `0.8` label alone does not establish
+support: engine `47f0cbc` predates these contracts and rejects the new request.
+Do not upgrade an engine or adapter during an active run. Finish older runs
+with their original adapter's legacy path; use this path with a supporting
+engine in a new run. Reject unsupported response versions or command failures;
+do not silently fall back to delta capture.
+
+Before dispatching a child, retain this Architect session's `CODEX_THREAD_ID`
+and the canonical task identity returned by `spawn_agent`; never substitute
+a shorthand or another agent's identity. Save the run/issue, actual attempt
+identifier, role and review cycle with that task identity in a scratch JSON
+request. After `wait_agent` reports that exact child complete, use the
+scratch-file pattern above to call `orch hook codex subagent-usage`:
 
 ```json
-{"parent_thread_id": "<CODEX_THREAD_ID>", "task_identity": "<canonical task identity>"}
+{"schema_version": 2,
+ "parent_thread_id": "<CODEX_THREAD_ID>", "task_identity": "<canonical task identity>",
+ "run_id": "<ActivationResult.run_id>", "issue_number": 282,
+ "role": "specialist", "attempt": "implementation-1",
+ "unavailable_id": "issue-282-implementation-1-capture-check-1",
+ "unavailable_at": "2026-09-30T12:10:00Z"}
 ```
 
-Without `previous_total_tokens`, `{"total_tokens": N}` is the child's
-full exact cumulative total. A `followup_task` resumes the same executor
-rollout, so save that initial full total and pass it back for the next
-completion:
+Replace the example association with the actual dispatched work. Executor and
+reviewer captures require an issue and attempt; reviewers also require a
+positive `review_cycle`. Use `implementation-1` for the initial executor,
+`repair-1` for its first completed repair, and separate `review-1`, `review-2`
+attempts and cycles for fresh reviewers. These are caller-retained identities,
+not values inferred from current routing. Persist `unavailable_id` and the UTC
+check time `unavailable_at` before capture; retry with the same request after
+an uncertain response. A later check gets a new check ID/time.
 
-```json
-{"parent_thread_id": "<CODEX_THREAD_ID>", "task_identity": "<same executor task identity>", "previous_total_tokens": N}
-```
+The response is `{"schema_version":2,"observation":{...}}`, optionally with
+the observed `native_source`. Save it, extract only `observation` into the
+recording request, and submit it unchanged to `orch metrics record` from the
+main checkout. Require recording response schema 1. `recorded:false` with
+`enabled:true` means an exact replay; `enabled:false` means storage is disabled.
+Record before `complete` or `abort` clears the run. Retry the saved observation
+after a storage failure; never alter its ID, time, attempt or cycle to bypass
+a conflict. No token baseline belongs in conversational context.
 
-That response's `total_tokens` is the exact non-negative delta from the
-previous captured cumulative total. Update the stored cumulative total to
-`previous_total_tokens + N` before any later resume. `{}` means capture
-is unavailable: do not retry with a different task, inspect a parent
-total, estimate, or update the stored total. The helper accepts only one
-persisted child rollout whose parent thread and canonical task identity
-both match, so a parent session, sibling child, or different parent's
-child is never a candidate. Capture every completed agent separately:
+Capture every completed agent separately. A `followup_task` resumes the same
+executor rollout: capture its new cumulative sample with the repair attempt
+and the cycle that requested that repair. Fresh reviewers retain their own
+native sessions and review cycles. The recorder durably subtracts previous
+samples in each session/stream; restarting capture or replaying completion
+cannot add the same usage again. Omit `usage` and `executor_usage` from
+`pr-open` and `review` when using this observation path, including unavailable
+capture; never also submit measured usage through the legacy delta path.
 
-- Send the initial executor full total to `pr-open`'s `usage`.
-- Send the fresh reviewer full total to that cycle's `review` `usage`.
-- Send the resumed fix executor delta to the following `review`'s `executor_usage`.
+Only one persisted child matching both parent and canonical task identity is
+accepted. Wrong-parent, sibling, duplicate, malformed or unfinished evidence
+stays unavailable, with its reason in an exclusive `unavailable` payload.
+Submit that observation too; it has no fake session, counter or failure outcome.
+Unidentified unrelated corruption cannot poison the requested child's capture.
+An absent counter stays unknown; explicit zero stays zero. Native timestamps
+identify samples, not active time. Capture does not report model, effort or
+elapsed/activity intervals: never fill observed fields from requested config.
 
-When capture returns no total, omit the corresponding optional field.
+An attributable completed Scout child uses the same path with `role:scout`
+(omit issue/attempt/cycle for run-level scouting). Generic `metrics record`
+also accepts independently attributable planning/scouting evidence. This
+helper cannot capture the Architect/root by substituting parent totals. Record
+missing Architect or Scout evidence with observation schema 2, a unique retained
+ID/check time, the run, role, source and an explicit `unavailable.reason`, and
+omit unknown session/usage. Do not invent host events, active time, or API
+authentication fallbacks. See `docs/metric-observations.md` for mappings and limits.
+
+Before this update, the unversioned helper's `{"total_tokens":N}` was the full
+exact total, or the delta from `previous_total_tokens`. The adapter kept the
+previous captured cumulative total, sent the initial executor full total to
+`pr-open`'s `usage`, the fresh reviewer full total to that cycle's `review`
+`usage`, and the resumed fix executor delta to the following `review`'s
+`executor_usage`; unavailable capture returned `{}` and omitted that field.
+After this update, that helper contract remains available to existing callers,
+but this adapter uses only the versioned observation path above. Claude and
+OpenCode manual usage contracts are unchanged.
 
 1. **Dispatch** — `orch run dispatch` with
    `{"schema_version": 4, "issue_number": N}`. Result
@@ -359,9 +403,9 @@ When capture returns no total, omit the corresponding optional field.
    replacing the original, and the unprefixed original persists in the
    audit record permanently. This prefix does not collide with the
    engine-owned names `required-ci`, `merge`, `abandoned`, and
-    `review-cycle-<n>`. `usage` is optional (PRD §21) and is the
-     initial executor's own full cost: add only its captured
-     `{"total_tokens": N}` when available, never an estimate. Result
+    `review-cycle-<n>`. `usage` remains optional for legacy callers;
+    this adapter omits it and records the initial executor observation
+    through the durable path above. Result
     carries `pr_number`, `pr_url`.
 
 4. **Dispatch the reviewer** — once the PR stops changing, dispatch
@@ -416,9 +460,8 @@ When capture returns no total, omit the corresponding optional field.
    the reviewer's per-criterion calls, never your own reading of its
    summary.
 
-     `usage` is optional (PRD §21), same rule as PR-open: every reviewer
-     is fresh, so add only its full exact `{"total_tokens": N}` when
-     available.
+   `usage` remains optional for legacy callers. This adapter omits it:
+   every fresh reviewer has its own recorded native session observation.
    A criterion judged `wrong` is the needs-human outcome, and this one
    `orch run review` call makes it: the engine blocks the issue and
    flags it needs-human itself, and the result says so in `phase`,
@@ -431,13 +474,9 @@ When capture returns no total, omit the corresponding optional field.
     **same worktree** on the same branch: it fixes and pushes, then a
     **fresh** reviewer is dispatched (step 4) and `orch run review` is
     called again.
-   Because this is the only verb call on that cycle, `executor_usage`
-   (same optional shape as `usage`) carries the executor's
-     fix-and-push delta for the cycle just finished — pass that
-     executor's previous captured cumulative total to the helper and
-     report only its exact `{"total_tokens": N}`, never an estimate,
-     and omit it when there was no fix cycle (the first review after
-     pr-open).
+   `executor_usage` retains its optional delta contract for legacy callers.
+   This adapter omits it and records the resumed executor's cumulative sample
+   under its repair attempt/cycle before recording the fresh reviewer.
    `orch run pr-open` is not reachable a second time, so
    `verifications` is optional and takes pr-open's input shape — use
    it to carry evidence re-run on the fix commit (e.g. tests re-run

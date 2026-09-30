@@ -65,7 +65,7 @@ func runMetrics(env Env, args []string) error {
 			SchemaVersion int  `json:"schema_version"`
 			Enabled       bool `json:"enabled"`
 			Recorded      bool `json:"recorded"`
-		}{SchemaVersion: metrics.ObservationVersion, Enabled: cfg.Metrics.Enabled}
+		}{SchemaVersion: 1, Enabled: cfg.Metrics.Enabled}
 		if cfg.Metrics.Enabled {
 			result.Recorded, err = metrics.Record(env.RepoRoot, o)
 			if err != nil {
