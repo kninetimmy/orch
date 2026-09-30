@@ -562,7 +562,7 @@ func TestResumeAdoptsOrphanPR(t *testing.T) {
 	activateCalls := append(fullTaxonomyScript(), ghIssueCreateCall(title, []string{"ready", "bug", "implementer", "standard"}, 1))
 	script := &execxtest.Script{T: t, Calls: activateCalls}
 	env := Env{RepoRoot: root, Runner: muxRunner{git: execx.Local{}, gh: script}, Now: fixedNow}
-	if _, err := Activate(context.Background(), env, activationJSON(t, validPlanJSON())); err != nil {
+	if _, err := Activate(context.Background(), env, activationJSON(t, root, validPlanJSON())); err != nil {
 		t.Fatalf("Activate: %v", err)
 	}
 	script.AssertExhausted()
@@ -619,7 +619,7 @@ func setupDeliveryGitRepo(t *testing.T, planRev string, issues []state.Issue) st
 	for i := range issues {
 		planned[i] = state.Issue{PlanID: issues[i].PlanID, Phase: state.PhasePlanned}
 	}
-	st, err := state.EnterDelivery(root, "claude", state.PlanRef{Title: "t", Digest: "sha256:x", ConfigRevision: planRev}, planned)
+	st, err := state.EnterDelivery(root, "claude", approvedPlanRef(t, root, planRev), planned)
 	if err != nil {
 		t.Fatal(err)
 	}

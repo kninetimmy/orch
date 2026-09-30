@@ -101,7 +101,15 @@ func TestPlanGoldenTwoIssue(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	wantDigest, err := p.Digest()
+	cfg, err := config.Load(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	contract, err := effectiveContract(p, cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	wantDigest, err := contentDigest(contract)
 	if err != nil {
 		t.Fatal(err)
 	}

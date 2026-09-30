@@ -240,7 +240,7 @@ func TestCIDeclarationReachesTheExecutorAndReviewer(t *testing.T) {
 	calls := append(taxonomy, ghIssueCreateCall(title, []string{"ready", "bug", "implementer", "standard"}, 1))
 	script := &execxtest.Script{T: t, Calls: calls}
 	env := Env{RepoRoot: root, Runner: muxRunner{git: execx.Local{}, gh: script}, Now: fixedNow}
-	if _, err := Activate(context.Background(), env, activationJSON(t, ciDeclarationPlanJSON())); err != nil {
+	if _, err := Activate(context.Background(), env, activationJSON(t, root, ciDeclarationPlanJSON())); err != nil {
 		t.Fatalf("Activate: %v", err)
 	}
 	script.AssertExhausted()
@@ -318,7 +318,7 @@ func TestLifecycleWalk(t *testing.T) {
 	activateCalls := append(fullTaxonomyScript(), ghIssueCreateCall(title, []string{"ready", "bug", "implementer", "standard"}, 1))
 	script := &execxtest.Script{T: t, Calls: activateCalls}
 	env := Env{RepoRoot: root, Runner: muxRunner{git: execx.Local{}, gh: script}, Now: fixedNow}
-	if _, err := Activate(context.Background(), env, activationJSON(t, validPlanJSON())); err != nil {
+	if _, err := Activate(context.Background(), env, activationJSON(t, root, validPlanJSON())); err != nil {
 		t.Fatalf("Activate: %v", err)
 	}
 	script.AssertExhausted()

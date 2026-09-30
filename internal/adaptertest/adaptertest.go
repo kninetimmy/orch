@@ -376,6 +376,9 @@ func CheckSelectionWireVersions(t *testing.T, deliverySkillPath, architectSkillP
 	delivery := normalizeWhitespace(readFile(t, deliverySkillPath))
 	phrases := []string{
 		versions,
+		fmt.Sprintf("(`schema_version: %d`) carrying the **identical** `PlanDoc`", run.ActivationSchemaVersion),
+		"Before GateDoc v3, this bound only the submitted plan; now it binds the effective contract",
+		"State v4 remains inspectable, but lifecycle verbs and resume refuse to hot-migrate it",
 		"Reject any other `schema_version` before reading or submitting a `Selection`.",
 		fmt.Sprintf("`GateDoc` (`schema_version: %d`)", run.GateSchemaVersion),
 		fmt.Sprintf("`{\"schema_version\": %d, \"issue_number\": N}`. Result (`DispatchResult`)", run.DispatchSchemaVersion),

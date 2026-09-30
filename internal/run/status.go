@@ -12,7 +12,8 @@ import (
 // versions Selection's OpenCode variant/no_variant shapes transitively through
 // RunView.Issues[].Decision; retaining v1 would let stale adapters misread run
 // state.
-const StatusSchemaVersion = 2
+// v3 exposes PlanRef's effective-contract version and execution fingerprint.
+const StatusSchemaVersion = 3
 
 // StatusDoc is the run-state document `orch run status --json`
 // reports. It never loads config, and it never fails on an

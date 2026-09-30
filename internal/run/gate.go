@@ -9,29 +9,33 @@ import (
 	"github.com/kninetimmy/orch/internal/lockfile"
 	"github.com/kninetimmy/orch/internal/manifest"
 	"github.com/kninetimmy/orch/internal/memhub"
+	"github.com/kninetimmy/orch/internal/routing"
 	"github.com/kninetimmy/orch/internal/state"
 )
 
 // GateSchemaVersion is the gate-document schema this build emits. v2 versions
 // Selection's OpenCode variant/no_variant shapes; retaining v1 would let a
 // stale adapter silently drop the execution profile.
-const GateSchemaVersion = 2
+// v3 additionally binds approval to the effective contract and exposes its
+// execution configuration. v2 bound only the submitted PlanDoc.
+const GateSchemaVersion = 3
 
 // GateDoc is the human decision gate for a plan (PRD §8, covering
 // every §8 bullet): the adapter renders it natively and owns the four
 // §8 choices (approve and enter Delivery, adjust agent routing, revise
 // scope, or cancel and remain read-only).
 type GateDoc struct {
-	SchemaVersion   int          `json:"schema_version"`
-	PlanDigest      string       `json:"plan_digest"`
-	PlanTitle       string       `json:"plan_title"`
-	Host            string       `json:"host"`
-	ConfigRevision  string       `json:"config_revision"`
-	ConfigOverrides []string     `json:"config_overrides,omitempty"`
-	MergeStrategy   string       `json:"merge_strategy"`
-	Memhub          MemhubReport `json:"memhub"`
-	CI              CIReport     `json:"ci"`
-	Issues          []GateIssue  `json:"issues"`
+	SchemaVersion   int             `json:"schema_version"`
+	PlanDigest      string          `json:"plan_digest"`
+	PlanTitle       string          `json:"plan_title"`
+	Host            string          `json:"host"`
+	ConfigRevision  string          `json:"config_revision"`
+	ConfigOverrides []string        `json:"config_overrides,omitempty"`
+	MergeStrategy   string          `json:"merge_strategy"`
+	Execution       ExecutionConfig `json:"execution"`
+	Memhub          MemhubReport    `json:"memhub"`
+	CI              CIReport        `json:"ci"`
+	Issues          []GateIssue     `json:"issues"`
 }
 
 // GateIssue is one plan issue's gate view: what it will do plus the
@@ -89,16 +93,15 @@ func Plan(ctx context.Context, env Env, planJSON []byte) (*GateDoc, error) {
 	if err := plan.Validate(cfg); err != nil {
 		return nil, err
 	}
-	digest, err := plan.Digest()
+	contract, err := effectiveContract(plan, cfg)
 	if err != nil {
 		return nil, err
 	}
 
-	profile, err := hostProfile(cfg, plan.Host)
+	digest, err := contentDigest(contract)
 	if err != nil {
 		return nil, err
 	}
-	denylist := modelDenylist(cfg)
 
 	ci, err := detectCI(env.RepoRoot)
 	if err != nil {
@@ -110,6 +113,16 @@ func Plan(ctx context.Context, env Env, planJSON []byte) (*GateDoc, error) {
 		return nil, err
 	}
 
+	return &GateDoc{
+		SchemaVersion: GateSchemaVersion, PlanDigest: digest,
+		PlanTitle: plan.Title, Host: plan.Host, ConfigRevision: cfg.ConfigRevision,
+		ConfigOverrides: cfg.Overrides, MergeStrategy: cfg.Merge.Strategy,
+		Execution: contract.Execution, Memhub: mh, CI: ci, Issues: contract.Issues,
+	}, nil
+}
+
+func gateIssues(plan *PlanDoc, cfg *config.Config, profile routing.Profile) ([]GateIssue, error) {
+	denylist := modelDenylist(cfg)
 	issues := make([]GateIssue, len(plan.Issues))
 	for idx, i := range plan.Issues {
 		d, err := decideIssue(profile, i)
@@ -140,18 +153,7 @@ func Plan(ctx context.Context, env Env, planJSON []byte) (*GateDoc, error) {
 		}
 	}
 
-	return &GateDoc{
-		SchemaVersion:   GateSchemaVersion,
-		PlanDigest:      digest,
-		PlanTitle:       plan.Title,
-		Host:            plan.Host,
-		ConfigRevision:  cfg.ConfigRevision,
-		ConfigOverrides: cfg.Overrides,
-		MergeStrategy:   cfg.Merge.Strategy,
-		Memhub:          mh,
-		CI:              ci,
-		Issues:          issues,
-	}, nil
+	return issues, nil
 }
 
 // requireAssistNoLock enforces the precondition Plan and Activate

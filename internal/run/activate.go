@@ -24,7 +24,7 @@ import (
 
 // ActivationSchemaVersion is the activation-request/result schema this
 // build accepts and emits.
-const ActivationSchemaVersion = 1
+const ActivationSchemaVersion = 2
 
 // ApprovalStatement is the exact assertion an adapter's human approval
 // must carry (PRD §8): the engine cannot verify a human, so this
@@ -93,7 +93,7 @@ func DecodeActivation(data []byte) (*ActivationRequest, error) {
 		return nil, fmt.Errorf("%w: trailing data after activation request", ErrBadApproval)
 	}
 	if req.SchemaVersion != ActivationSchemaVersion {
-		return nil, fmt.Errorf("%w: schema_version %d is unsupported (this build supports %d)", ErrBadApproval, req.SchemaVersion, ActivationSchemaVersion)
+		return nil, fmt.Errorf("%w: schema_version %d is unsupported (this build supports %d); run `orch run plan` and obtain fresh approval with a matching adapter", ErrBadApproval, req.SchemaVersion, ActivationSchemaVersion)
 	}
 	return &req, nil
 }
@@ -148,7 +148,11 @@ func Activate(ctx context.Context, env Env, reqJSON []byte) (*ActivationResult, 
 	if err := plan.Validate(cfg); err != nil {
 		return nil, err
 	}
-	digest, err := plan.Digest()
+	contract, err := effectiveContract(plan, cfg)
+	if err != nil {
+		return nil, err
+	}
+	digest, err := contentDigest(contract)
 	if err != nil {
 		return nil, err
 	}
@@ -156,7 +160,7 @@ func Activate(ctx context.Context, env Env, reqJSON []byte) (*ActivationResult, 
 		return nil, err
 	}
 
-	profile, err := hostProfile(cfg, plan.Host)
+	executionDigest, err := contract.Execution.Digest()
 	if err != nil {
 		return nil, err
 	}
@@ -169,7 +173,7 @@ func Activate(ctx context.Context, env Env, reqJSON []byte) (*ActivationResult, 
 	labelsByID := make(map[string]ghops.Labels, len(plan.Issues))
 	waveByID := make(map[string]int, len(plan.Issues))
 	for _, pi := range plan.Issues {
-		d, err := decideIssue(profile, pi)
+		d, err := decideIssue(contract.Execution.Profiles, pi)
 		if err != nil {
 			return nil, err
 		}
@@ -282,11 +286,13 @@ func Activate(ctx context.Context, env Env, reqJSON []byte) (*ActivationResult, 
 		}
 	}
 	planRef := state.PlanRef{
-		Title:          plan.Title,
-		Digest:         digest,
-		ApprovedBy:     req.Approval.ApprovedBy,
-		ApprovedAt:     req.Approval.ApprovedAt,
-		ConfigRevision: cfg.ConfigRevision,
+		Title:           plan.Title,
+		Digest:          digest,
+		ApprovedBy:      req.Approval.ApprovedBy,
+		ApprovedAt:      req.Approval.ApprovedAt,
+		ConfigRevision:  cfg.ConfigRevision,
+		ContractVersion: ContractVersion,
+		ExecutionDigest: executionDigest,
 	}
 	st, err := state.EnterDelivery(env.RepoRoot, plan.Host, planRef, stateIssues)
 	if err != nil {

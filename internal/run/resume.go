@@ -319,6 +319,9 @@ func resumeLoad(env Env) (*resumeCtx, error) {
 	if cfg.ConfigRevision != st.Run.Plan.ConfigRevision {
 		return nil, fmt.Errorf("%w: config revision %q does not match the run's %q; run `orch abort`, ship the config change on its own Delivery run, then re-plan", ErrConfigDrift, cfg.ConfigRevision, st.Run.Plan.ConfigRevision)
 	}
+	if err := checkExecutionConfig(cfg, st); err != nil {
+		return nil, err
+	}
 	return &resumeCtx{env: env, cfg: cfg, st: st, owner: owner}, nil
 }
 

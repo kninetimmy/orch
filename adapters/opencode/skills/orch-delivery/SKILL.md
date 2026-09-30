@@ -38,7 +38,7 @@ faithfully.
 
 `orch run status --json` never reads stdin — call it bare.
 
-Selection-bearing wire versions are closed: StatusDoc `2`, GateDoc `2`, Dispatch `4`, Escalate `2`, Review `3`.
+Selection-bearing wire versions are closed: StatusDoc `3`, GateDoc `3`, Dispatch `4`, Escalate `2`, Review `3`.
 Reject any other `schema_version` before reading or submitting a `Selection`.
 
 ## PlanDoc construction
@@ -178,8 +178,8 @@ inherit.
 ## Plan gate
 
 Call `orch run plan` with the `PlanDoc` on stdin. The result is a
-`GateDoc` (`schema_version: 2`): `plan_digest`, `plan_title`, `host`,
-`config_revision`, `config_overrides`, `merge_strategy`, `memhub`
+`GateDoc` (`schema_version: 3`): `plan_digest`, `plan_title`, `host`,
+`config_revision`, `config_overrides`, `merge_strategy`, `execution`, `memhub`
 (`{mode, probe, recall, detail}`), `ci` (`{workflows_present, statement}`), and
 `issues[]` — each with `id`, `title`, `objective`,
 `acceptance_criteria`, `role`, `executor` and `reviewer` (each either
@@ -219,12 +219,12 @@ Assist conduct.
 ## Activation
 
 On approval, call `orch run activate` with an `ActivationRequest`
-(`schema_version: 1`) carrying the **identical** `PlanDoc` just gated
-(byte-for-byte — the digest is recomputed server-side) plus:
+(`schema_version: 2`) carrying the **identical** `PlanDoc` just gated
+(same decoded content — the digest is recomputed server-side) plus:
 
 ```json
 {
-  "schema_version": 1,
+  "schema_version": 2,
   "plan": { "...": "the exact gated PlanDoc" },
   "approval": {
     "plan_digest": "sha256:...", "approved_by": "...",
@@ -234,7 +234,11 @@ On approval, call `orch run activate` with an `ActivationRequest`
 }
 ```
 
-`plan_digest` = `GateDoc.plan_digest`. `approved_by` = `git config
+`plan_digest` = `GateDoc.plan_digest`. Before GateDoc v3, this bound only the submitted plan; now it binds the effective contract: submitted scope, engine-contributed criteria, routing, and `execution` settings. Present `execution` (all six profiles, concurrency limit, merge strategy, memhub mode, and metrics setting) alongside the issues. Never compute approval from `PlanDoc.Digest` or reuse an old approval. The earlier byte-for-byte instruction is relaxed: JSON whitespace and object-key order do not change approval. Activation v1 is rejected; re-gate and obtain fresh approval with matching engine and adapter versions.
+
+State v5 records the contract version and effective execution digest. State v4 remains inspectable, but lifecycle verbs and resume refuse to hot-migrate it: finish using the original engine, or abort and re-plan. Effective configuration drift, including local overrides without a revision change, also requires restoring the approved settings or aborting and re-planning. This restriction applies to every lifecycle verb and resume; engine-authorized issue escalation within the approved profiles remains supported.
+
+`approved_by` = `git config
 user.name`, falling back to `"human"`. `approved_at` = current time as
 UTC RFC3339. `statement` is the exact literal
 `approve-and-enter-delivery`.
