@@ -16,6 +16,12 @@ The Claude Code adapter lives at `adapters/claude/` and passes the same
 shared parity suite (`internal/adaptertest`) this adapter's plugin tests
 do.
 
+Before #292, the manual plugin was Orch's Codex execution path. After #292,
+it remains that path; an internal metadata preflight adds no execution CLI or
+model turns. See the [native protocol subset](../../docs/codex-native-protocol.md)
+for its authentication/catalog checks, bounds and version-sensitive Windows
+diagnostics. The manual adapter's workflows and restrictions below still hold.
+
 ## Artifact map
 
 - `.codex-plugin/plugin.json` — the plugin manifest (name, description,
