@@ -36,7 +36,7 @@ func (u *Usage) UnmarshalJSON(data []byte) error {
 	}
 	*u = Usage{}
 	values := []*int64{&u.InputTokens, &u.OutputTokens, &u.CacheReadTokens, &u.CacheCreationTokens, &u.TotalTokens, &u.DurationMS}
-	fields := wire.Counters.fields()
+	fields := wire.fields()
 	for i, v := range append(fields[:], wire.DurationMS) {
 		if v != nil {
 			*values[i] = *v
