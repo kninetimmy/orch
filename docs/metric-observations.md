@@ -56,10 +56,13 @@ An explicit empty variant means no host variant; effort and variant cannot both
 be supplied in one profile. The recorder never fills observed fields from
 requested fields or config.
 
-Exactly one payload is required:
+Observation schema 1 remains readable and recordable. Schema 2 adds explicit
+missingness and the independent `reasoning_output_tokens` counter. Exactly one
+payload is required:
 
 - `sample`: native `input_tokens`, `output_tokens`, `cache_read_tokens`,
-  `cache_creation_tokens`, and `total_tokens` are independent optional int64
+  `cache_creation_tokens`, `total_tokens`, and (schema 2) `reasoning_output_tokens`
+  are independent optional int64
   counters. Zero is measured zero; absent or null is unknown. At least one must
   be present. All fields inherit the observation's source and sample's stream;
   different definitions or sources need different streams. No input/output/cache
@@ -74,6 +77,12 @@ Exactly one payload is required:
 - `outcome`: `implementation-failure`, `infrastructure-failure`,
   `evidence-correction`, `wrong-requirement`, `escalation`, or `approval` records
   a reported result, never a lifecycle verdict or permission.
+- `unavailable` (schema 2): `{"reason":"matching-child-unavailable"}` records
+  missing evidence. The reason is a nonempty identifier under the same length
+  and whitespace rules as source. It contributes no counters or duration and
+  asserts no failure outcome. Omit a session that is not known; do not invent
+  an empty sample or measured zero. Its ID/time describe the coverage check,
+  not an unobserved native event.
 
 Samples require host, native session, stream, and a positive sequence. A stream
 is the tuple (run, host, session, source, stream). Its mode is fixed as either
@@ -100,6 +109,8 @@ Before this change, metrics schema 1 held only lifecycle events and the metrics
 command had only a read-only form. Schema 2 adds a separate `observations` array;
 the no-argument report remains read-only and still summarizes legacy events.
 Observation reporting and native capture are separate follow-up work.
+That was the prerequisite's boundary. Native Codex child capture is now
+implemented below; observation reporting remains separate follow-up work.
 
 Schema-1 history remains readable without rewriting it. A lifecycle append to
 an existing schema-1 document keeps that version; the first successful new
@@ -119,3 +130,127 @@ downgrade a metrics document by relabeling its version.
 | CLI `commands`, `runMetrics`, `cmdMetrics`, `withDeliveryMutation` | Before: metrics rejected every argument. After: `metrics record` adds JSON recording; other arguments still fail. `cmdMetrics` remains read-only. Every metrics storage writer (`Append` and `Record`), not just `Append`, needs external serialization; production record, lifecycle, resume, and abort commands share the existing repository boundary. Direct package callers must supply serialization themselves. |
 | `state.Load`, `state.CheckConsistent`, `lockfile.Inspect`, `config.Load` | Reused read-only for current association and enabled checks. State schema, lock ownership, configuration, routing, approval, phase transitions, review verdicts, and GitHub resources retain their prior behavior. No new storage registry or dependencies. |
 | Metrics and CLI tests | Existing tests remain; focused checks add process restart/replay, concurrent submissions, failure/retry, presence, legacy reads, invalid associations and disabled storage. The required local race gate is `go test -race ./internal/metrics ./internal/cli`; current CI does not run it. |
+
+## Codex capture and recording
+
+`orch hook codex subagent-usage` remains read-only. An unversioned request
+retains its original exact aggregate or `previous_total_tokens` delta response,
+including `{}` when unavailable. Explicit `schema_version:2` selects a different
+closed request/response shape; all other explicit versions are rejected.
+
+```json
+{
+  "schema_version": 2,
+  "parent_thread_id": "native-parent-thread",
+  "task_identity": "/root/issue_282_executor",
+  "run_id": "run-20260930T120000Z-12345678",
+  "issue_number": 282,
+  "role": "specialist",
+  "attempt": "implementation-1",
+  "unavailable_id": "issue-282-implementation-1-check-1",
+  "unavailable_at": "2026-09-30T12:10:00Z"
+}
+```
+
+The response has `schema_version:2`, an `observation` ready for `metrics record`,
+and, when identified, the native session metadata's `native_source`. Save the
+request and response, then send only the observation unchanged to the recorder.
+Recording still returns response schema 1. The request's run/issue, role,
+attempt and cycle are caller-supplied associations, not proof of an execution
+profile. Executors/reviewers require an issue and attempt; reviewers require a
+positive `review_cycle`. Scouting may be run-level without an issue/attempt.
+The recorder still checks current run/issue/host association under its lock.
+
+The capture uses the existing session directory and JSONL parser. Both
+`TotalTokens` and `Completed` accept only an unambiguous child whose persisted
+parent references and canonical task identity match. Parent totals, siblings,
+wrong-parent children, duplicate matching files, identified malformed files and
+unfinished rollouts are never substitutes. Unidentified/unrelated corruption
+cannot suppress another child's valid result. `Completed` additionally requires
+a canonical child path, agreement with any source-level agent path, valid native
+counters, and the terminal token event's RFC3339 timestamp. Those extra checks
+apply to the new capture only; the legacy aggregate helper still accepts its
+previous fixtures without timestamps or optional split counters.
+
+The supported terminal pair is `token_count` followed by `task_complete`.
+`total_token_usage` fields map as follows; a missing or null field stays unknown
+and zero stays measured zero:
+
+| Native field | Observation counter |
+| --- | --- |
+| `input_tokens` | `input_tokens` |
+| `cached_input_tokens` | `cache_read_tokens` |
+| `cache_write_input_tokens` | `cache_creation_tokens` |
+| `output_tokens` | `output_tokens` |
+| `reasoning_output_tokens` | `reasoning_output_tokens` |
+| `total_tokens` | `total_tokens` |
+
+These preserve the host's definitions as independent cumulative counters: cached
+input and reasoning output are not added to input/output, and no component sum
+replaces the native total. Counter field names and timestamp presence were
+confirmed from local persisted host metadata; fixture values are synthetic.
+No additional host event or execution-profile format is assumed. Models,
+effort/variant, elapsed time and active intervals remain unknown in this capture.
+The native token timestamp is an observation time, never an activity estimate.
+
+Samples use source `codex-session-log`, stream `codex-total-token-usage`, actual
+session metadata `id`, and the token event's position among nonempty JSONL
+records as sequence. The deterministic observation ID is
+`codex:<session>:tokens:<sequence>`. Repeated reads, including after process
+restart, produce the same observation. A resumed executor has the same stream
+and a later sample, so the durable recorder contributes only increases. Fresh
+reviewers use their own sessions; attempts/cycles never partition the baseline.
+Changing an existing sample's association conflicts rather than double-counts.
+Replacing, truncating or reordering a rollout can cause identity/sequence or
+counter conflicts: surface those errors, never reset a baseline to evade them.
+
+Unavailable capture returns observation schema 2 with only `unavailable` as its
+payload, the caller's retained check ID/time, and no invented native session.
+Reasons distinguish storage, missing identity/match, duplicate matches, invalid
+or unfinished evidence, absent counters and missing native timestamps. Save and
+retry that exact observation after uncertain recording; a new coverage check
+gets a new ID/time. Missingness never advances a token baseline.
+
+An exact Scout child can use this path. Independently attributable planning or
+scouting evidence can use the generic recorder, including run-level architect
+or scout roles. Root/Architect usage has no supported automatic capture path
+here; absent coverage must be explicitly recorded as unavailable with its reason,
+not estimated or copied from child/parent totals. No API fallback, live model
+call, requested-profile proof, or permission bypass is involved. Submit before
+run completion/abort; the existing current-run association limit still applies.
+
+## Codex compatibility and blast radius
+
+Before: the Codex adapter retained previous totals conversationally and submitted
+full/delta usage on lifecycle verbs. After: it records cumulative observations
+and omits both `usage` and `executor_usage` on those verbs. The same before/after
+is retained in the adapter document that originally prescribed the old behavior.
+Legacy helper callers and Claude/OpenCode manual workflows remain unchanged.
+
+Observation schema 2 still lives in metrics document schema 2. The prerequisite
+engine at `4097c4d` understands document schema 2 and observation schema 1, but
+rejects schema-2 observations; engine `47f0cbc` predates both native observation
+contracts. This engine reads observation 1/2 and document 1/2. Unknown fields
+and unsupported versions still fail closed, including new fields relabeled as
+observation 1. Never relabel history to make an older binary accept it. The
+adapter's `0.8` label alone is not a capability check; the new adapter requires
+the supporting engine. Keep an active run on its original engine/adapter, and
+adopt the new pair for a later run. No installation or active-run migration is
+part of capture. The unversioned helper remains available to older adapters.
+
+| Touched element | Previous behavior and status after this change |
+| --- | --- |
+| `codexusage.TotalTokens`, shared rollout discovery/parser, terminal validation | Exact aggregate/delta and unrelated-corruption isolation remain. Discovery now also retains native metadata, terminal records and position for the new capture; legacy optional-counter/timestamp behavior remains. |
+| `Completed`, `Capture`, `NativeCounters`, `SampleID` | New read-only cumulative evidence path. No parent/root capture, timing inference or requested-profile proof. Child-only attribution is shared with `TotalTokens`; additional native field/path/timestamp checks apply to `Completed`, not every legacy aggregate call. |
+| CLI `runCodexSubagentUsage`, versioned request/response and `runCodexObservation` | Unversioned shape remains. Explicit v2 returns an observation or exclusive unavailable payload; unsupported versions/fields fail. Session-root lookup is reused unchanged. Capture never writes metrics or lifecycle state. |
+| `Observation`, `Unavailable`, `ParseObservation`, JSON decoding and validation | Before: schema 1 allowed exactly sample/interval/outcome. After: schema 1 retains its closed shape; schema 2 adds exclusive missingness and reasoning output. Partial profiles retain their previous meaning. |
+| `Counters`, `CounterContributions`, `Record`, metrics document validation | Five independent counters become six in v2; every counter, including reasoning output, follows the same presence, nonnegative, monotonic and overflow rules. Replay, immutable identities, atomic history, document version, stream boundaries and externally supplied serialization remain. Missingness contributes nothing. |
+| `Usage.Counters`, `legacyUsageWire`, legacy JSON methods | Internal wire is separated from the extended native counter type. Existing lifecycle fields, explicit zeros, unknown-field rejection and duration behavior remain; reasoning counters are not accepted as legacy usage. |
+| CLI `runMetrics` | Recording result remains schema 1 despite the new observation version. Current-run/issue/host validation, lock, enabled gate and read-only legacy report remain unchanged. |
+| Codex Delivery instructions and contract test | Before/after usage mapping is explicit in the original document. New instructions require supported versions, saved associations and requests, recording before completion, honest missingness and no duplicate legacy submission. All other manual Delivery mechanics remain. |
+| Metrics/CLI tests and this compatibility document | Focused deterministic checks add capture-to-recorder subprocess restart/replay, repair and fresh-reviewer identities, malformed/unavailable evidence, zero/absent counters, planning/scout recording and closed version shapes. No live host sessions or dependencies are introduced. |
+
+No Claude/OpenCode adapter, lifecycle verb, routing `Selection`, configuration,
+approval, guard, GitHub resource or active-run state format changes. This applies
+to every lifecycle verb, not just `pr-open`/`review`; capture's new schema is not
+an authorization or an observed execution-profile guarantee.

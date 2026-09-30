@@ -5,14 +5,18 @@ import "encoding/json"
 // legacyUsageWire preserves presence without changing the legacy Go request
 // fields used by PROpen and Review. It is never treated as a native sample.
 type legacyUsageWire struct {
-	Counters
-	DurationMS *int64 `json:"duration_ms,omitempty"`
+	InputTokens         *int64 `json:"input_tokens,omitempty"`
+	OutputTokens        *int64 `json:"output_tokens,omitempty"`
+	CacheReadTokens     *int64 `json:"cache_read_tokens,omitempty"`
+	CacheCreationTokens *int64 `json:"cache_creation_tokens,omitempty"`
+	TotalTokens         *int64 `json:"total_tokens,omitempty"`
+	DurationMS          *int64 `json:"duration_ms,omitempty"`
 }
 
 // Counters exposes known legacy values. A constructed zero still means omitted,
 // as it did in schema 1; only an explicitly decoded zero is measured zero.
 func (u Usage) Counters() Counters {
-	var fields [5]*int64
+	var fields [6]*int64
 	for i, value := range [5]int64{u.InputTokens, u.OutputTokens, u.CacheReadTokens, u.CacheCreationTokens, u.TotalTokens} {
 		if value != 0 || u.zeroFields&(1<<i) != 0 {
 			fields[i] = &value
@@ -22,7 +26,9 @@ func (u Usage) Counters() Counters {
 }
 
 func (u Usage) MarshalJSON() ([]byte, error) {
-	wire := legacyUsageWire{Counters: u.Counters()}
+	c := u.Counters()
+	wire := legacyUsageWire{InputTokens: c.InputTokens, OutputTokens: c.OutputTokens,
+		CacheReadTokens: c.CacheReadTokens, CacheCreationTokens: c.CacheCreationTokens, TotalTokens: c.TotalTokens}
 	if u.DurationMS != 0 || u.zeroFields&(1<<5) != 0 {
 		wire.DurationMS = &u.DurationMS
 	}
@@ -36,8 +42,7 @@ func (u *Usage) UnmarshalJSON(data []byte) error {
 	}
 	*u = Usage{}
 	values := []*int64{&u.InputTokens, &u.OutputTokens, &u.CacheReadTokens, &u.CacheCreationTokens, &u.TotalTokens, &u.DurationMS}
-	fields := wire.fields()
-	for i, v := range append(fields[:], wire.DurationMS) {
+	for i, v := range []*int64{wire.InputTokens, wire.OutputTokens, wire.CacheReadTokens, wire.CacheCreationTokens, wire.TotalTokens, wire.DurationMS} {
 		if v != nil {
 			*values[i] = *v
 			if *v == 0 {

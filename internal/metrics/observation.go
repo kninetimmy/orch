@@ -1,6 +1,7 @@
 package metrics
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"math"
@@ -10,7 +11,7 @@ import (
 	"unicode"
 )
 
-const ObservationVersion = 1
+const ObservationVersion = 2
 
 // Profile is reported evidence, not a routing Selection. Each field may be
 // unknown; an explicit empty variant means the host used no variant.
@@ -24,19 +25,20 @@ type Profile struct {
 // that a host did not report; no total is synthesized from input/output/cache.
 // Every present field has the enclosing observation's source and stream.
 type Counters struct {
-	InputTokens         *int64 `json:"input_tokens,omitempty"`
-	OutputTokens        *int64 `json:"output_tokens,omitempty"`
-	CacheReadTokens     *int64 `json:"cache_read_tokens,omitempty"`
-	CacheCreationTokens *int64 `json:"cache_creation_tokens,omitempty"`
-	TotalTokens         *int64 `json:"total_tokens,omitempty"`
+	InputTokens           *int64 `json:"input_tokens,omitempty"`
+	OutputTokens          *int64 `json:"output_tokens,omitempty"`
+	CacheReadTokens       *int64 `json:"cache_read_tokens,omitempty"`
+	CacheCreationTokens   *int64 `json:"cache_creation_tokens,omitempty"`
+	TotalTokens           *int64 `json:"total_tokens,omitempty"`
+	ReasoningOutputTokens *int64 `json:"reasoning_output_tokens,omitempty"`
 }
 
-func (c Counters) fields() [5]*int64 {
-	return [5]*int64{c.InputTokens, c.OutputTokens, c.CacheReadTokens, c.CacheCreationTokens, c.TotalTokens}
+func (c Counters) fields() [6]*int64 {
+	return [6]*int64{c.InputTokens, c.OutputTokens, c.CacheReadTokens, c.CacheCreationTokens, c.TotalTokens, c.ReasoningOutputTokens}
 }
 
-func counters(fields [5]*int64) Counters {
-	return Counters{fields[0], fields[1], fields[2], fields[3], fields[4]}
+func counters(fields [6]*int64) Counters {
+	return Counters{fields[0], fields[1], fields[2], fields[3], fields[4], fields[5]}
 }
 
 type CounterSample struct {
@@ -53,7 +55,7 @@ type Interval struct {
 }
 
 // Observation is the JSON recording request and the persisted evidence. ID is
-// unique within RunID. Exactly one sample, interval, or outcome is required.
+// unique within RunID. Exactly one sample, interval, outcome or unavailable is required.
 // Attempts are caller-assigned identifiers; review cycles are positive ordinals.
 // Neither is inferred from the current lifecycle state.
 type Observation struct {
@@ -73,6 +75,39 @@ type Observation struct {
 	Sample        *CounterSample `json:"sample,omitempty"`
 	Interval      *Interval      `json:"interval,omitempty"`
 	Outcome       string         `json:"outcome,omitempty"`
+	Unavailable   *Unavailable   `json:"unavailable,omitempty"`
+}
+
+// Unavailable is missing evidence, never a measured zero or a failure outcome.
+type Unavailable struct {
+	Reason string `json:"reason"`
+}
+
+// Keep version-1's closed wire shape, even when a version-2 field is null.
+func (o *Observation) UnmarshalJSON(data []byte) error {
+	type wire Observation
+	var decoded wire
+	if err := strictDecode(data, &decoded); err != nil {
+		return err
+	}
+	if decoded.SchemaVersion == 1 {
+		var fields struct {
+			Unavailable json.RawMessage `json:"unavailable"`
+			Sample      struct {
+				Counters struct {
+					Reasoning json.RawMessage `json:"reasoning_output_tokens"`
+				} `json:"counters"`
+			} `json:"sample"`
+		}
+		if err := json.Unmarshal(data, &fields); err != nil {
+			return err
+		}
+		if len(fields.Unavailable) != 0 || len(fields.Sample.Counters.Reasoning) != 0 {
+			return errors.New("unavailable and reasoning_output_tokens require observation schema_version 2")
+		}
+	}
+	*o = Observation(decoded)
+	return nil
 }
 
 // identifier permits opaque native identifiers, but not empty/whitespace or
@@ -92,8 +127,11 @@ func ParseObservation(data []byte) (Observation, error) {
 }
 
 func (o Observation) Validate() error {
-	if o.SchemaVersion != ObservationVersion {
-		return fmt.Errorf("unsupported observation schema_version %d (supports %d)", o.SchemaVersion, ObservationVersion)
+	if o.SchemaVersion != 1 && o.SchemaVersion != ObservationVersion {
+		return fmt.Errorf("unsupported observation schema_version %d (supports 1 and %d)", o.SchemaVersion, ObservationVersion)
+	}
+	if o.SchemaVersion == 1 && (o.Unavailable != nil || (o.Sample != nil && o.Sample.Counters.ReasoningOutputTokens != nil)) {
+		return errors.New("unavailable and reasoning_output_tokens require observation schema_version 2")
 	}
 	if err := validateRunID(o.RunID); err != nil {
 		return err
@@ -138,6 +176,12 @@ func (o Observation) Validate() error {
 		return fmt.Errorf("invalid observation at: %w", err)
 	}
 	kinds := 0
+	if u := o.Unavailable; u != nil {
+		kinds++
+		if !identifier(u.Reason) {
+			return errors.New("unavailable requires a nonempty reason identifier")
+		}
+	}
 	if s := o.Sample; s != nil {
 		kinds++
 		if o.Host == "" || o.Session == "" || !identifier(s.Stream) || s.Sequence <= 0 {
@@ -181,13 +225,13 @@ func (o Observation) Validate() error {
 		}
 	}
 	if kinds != 1 {
-		return errors.New("observation requires exactly one sample, interval or outcome")
+		return errors.New("observation requires exactly one sample, interval, outcome or unavailable")
 	}
 	return nil
 }
 
 // CounterContributions returns one counter delta per observation (empty for
-// intervals/outcomes). Streams are scoped by run, host, session, source and
+// intervals/outcomes/unavailable). Streams are scoped by run, host, session, source and
 // stream identifier; never combine differently defined streams as native totals.
 // Replaying accepted history rebuilds baselines without a second state store.
 func CounterContributions(observations []Observation) ([]Counters, error) {
@@ -196,7 +240,7 @@ func CounterContributions(observations []Observation) ([]Counters, error) {
 		mode     string
 		sequence int64
 		at       time.Time
-		values   [5]int64
+		values   [6]int64
 	}
 	streams := map[streamKey]baseline{}
 	ids := map[[2]string]bool{}
@@ -220,7 +264,7 @@ func CounterContributions(observations []Observation) ([]Counters, error) {
 		if exists && (b.mode != s.Mode || s.Sequence <= b.sequence || at.Before(b.at)) {
 			return nil, fmt.Errorf("observation %q: counter stream mode changed or sample out of order", o.ID)
 		}
-		var delta [5]*int64
+		var delta [6]*int64
 		for i, value := range s.Counters.fields() {
 			if value == nil {
 				continue

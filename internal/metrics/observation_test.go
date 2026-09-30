@@ -57,6 +57,63 @@ func TestObservationReplayAndBaselines(t *testing.T) {
 	}
 }
 
+func TestObservationVersionedMissingnessAndReasoning(t *testing.T) {
+	o := sample("missing", 1, 0)
+	o.Sample, o.Session = nil, ""
+	o.Unavailable = &Unavailable{Reason: "matching-child-unavailable"}
+	root := t.TempDir()
+	if recorded, err := Record(root, o); err != nil || !recorded {
+		t.Fatalf("missingness: %t %v", recorded, err)
+	}
+	if recorded, err := Record(root, o); err != nil || recorded {
+		t.Fatalf("missingness replay: %t %v", recorded, err)
+	}
+	deltas, err := CounterContributions([]Observation{o})
+	if err != nil || deltas[0] != (Counters{}) {
+		t.Fatalf("missingness became a counter: %+v %v", deltas, err)
+	}
+	for _, mutate := range []func(*Observation){
+		func(o *Observation) { o.SchemaVersion = 1 },
+		func(o *Observation) { o.Sample = sample("s", 1, 0).Sample },
+		func(o *Observation) { o.Outcome = "infrastructure-failure" },
+		func(o *Observation) { o.Unavailable = &Unavailable{} },
+	} {
+		bad := o
+		mutate(&bad)
+		if err := bad.Validate(); err == nil {
+			t.Fatalf("accepted invalid missingness: %+v", bad)
+		}
+	}
+	legacy := sample("old", 1, 0)
+	legacy.SchemaVersion = 1
+	data, err := json.Marshal(legacy)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := ParseObservation(data); err != nil {
+		t.Fatalf("legacy shape rejected: %v", err)
+	}
+	for _, bad := range []string{
+		strings.Replace(string(data), `"schema_version":1`, `"schema_version":1,"unavailable":null`, 1),
+		strings.Replace(string(data), `"total_tokens":0`, `"total_tokens":0,"reasoning_output_tokens":null`, 1),
+		strings.Replace(string(data), `"schema_version":1`, `"schema_version":2,"unknown":null`, 1),
+	} {
+		if _, err := ParseObservation([]byte(bad)); err == nil {
+			t.Fatalf("accepted extended/unknown legacy shape: %s", bad)
+		}
+	}
+	var usage Usage
+	if json.Unmarshal([]byte(`{"reasoning_output_tokens":null}`), &usage) == nil {
+		t.Fatal("legacy usage silently accepted native reasoning counter")
+	}
+	a, b := sample("a", 1, 0), sample("b", 2, 0)
+	a.Sample.Counters.ReasoningOutputTokens = ptr(5)
+	b.Sample.Counters.ReasoningOutputTokens = ptr(4)
+	if _, err := CounterContributions([]Observation{a, b}); err == nil {
+		t.Fatal("accepted regressing reasoning counter")
+	}
+}
+
 func TestObservationRejectionsPreserveHistory(t *testing.T) {
 	root := t.TempDir()
 	if _, err := Record(root, sample("a", 1, 100)); err != nil {

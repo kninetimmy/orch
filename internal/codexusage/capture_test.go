@@ -3,6 +3,7 @@ package codexusage
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -23,6 +24,21 @@ func TestTotalTokensSelectsOnlyExactCompletedChild(t *testing.T) {
 	}
 	if got != 782763 {
 		t.Errorf("total_tokens = %d, want 782763", got)
+	}
+}
+
+func TestLegacyTotalIgnoresUnsupportedOptionalFields(t *testing.T) {
+	dir := t.TempDir()
+	data := strings.ReplaceAll(string(exactRollout(t)), `"type":"event_msg"`, `"timestamp":false,"type":"event_msg"`)
+	data = strings.Replace(data, `"total_tokens":782763`, `"total_tokens":782763,"reasoning_output_tokens":-1`, 1)
+	if err := os.WriteFile(filepath.Join(dir, "child.jsonl"), []byte(data), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if total, ok := TotalTokens(dir, parentThread, executorTask, nil); !ok || total != 782763 {
+		t.Fatalf("legacy optional fields changed aggregate: %d %t", total, ok)
+	}
+	if got := Completed(dir, parentThread, executorTask); got.Reason != "invalid-terminal-usage" {
+		t.Fatalf("new capture accepted invalid native counter: %+v", got)
 	}
 }
 
