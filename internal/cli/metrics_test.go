@@ -103,8 +103,10 @@ func TestMetricsSummarizesFixtureRun(t *testing.T) {
 		"escalations: 0",
 		"reviews:     1 cycles; first-pass approve: 1 of 1 reviewed issues",
 		"ci:          passing: 1",
-		"usage:       input 100, output 40, cache read 5, cache creation 2, total 900, duration 300ms",
-		"usage reported on 1 of 7 events",
+		"legacy usage by event (host/source/session unavailable; no combined total):",
+		"input 100, output 40, cache read 5, cache creation 2, total 900, reasoning output unknown; unclassified reported duration 300ms",
+		"observed usage: none recorded; native counters unknown",
+		"roles without recorded counters: architect, implementer, reviewer",
 	} {
 		if !strings.Contains(out, want) {
 			t.Errorf("output missing %q:\n%s", want, out)
@@ -145,7 +147,7 @@ func TestMetricsReportsPerEventUsageAttributedByRoleAndCycle(t *testing.T) {
 	out := stdout.String()
 	for _, want := range []string{
 		"reviews:     2 cycles; first-pass approve: 0 of 1 reviewed issues",
-		"usage by event:",
+		"legacy usage by event",
 		"role implementer",
 		"role reviewer",
 		"cycle 1",
@@ -199,7 +201,183 @@ func TestMetricsOmitsUsageLinesWhenNoEventCarriesUsage(t *testing.T) {
 	if code := Run([]string{"metrics"}, env); code != ExitOK {
 		t.Fatalf("exit = %d, want %d\n%s", code, ExitOK, stdout.String())
 	}
-	if strings.Contains(stdout.String(), "usage:") {
-		t.Errorf("output has a usage: line though no event carried usage:\n%s", stdout.String())
+	if strings.Contains(stdout.String(), "legacy usage by event") {
+		t.Errorf("output has legacy usage detail though no event carried usage:\n%s", stdout.String())
+	}
+}
+
+func TestMetricsReportsObservedCoverageTimingAndOutcomes(t *testing.T) {
+	env, stdout, _ := testEnv(t)
+	writeConfig(t, env.RepoRoot, validTOML)
+	runID := "run-20260930T120000Z-28300000"
+	value := func(v int64) *int64 { return &v }
+	observation := func(id, at, role, session string) metrics.Observation {
+		return metrics.Observation{SchemaVersion: 2, RunID: runID, ID: id, At: at,
+			Source: "codex-session-log", IssueNumber: 283, Role: role, Host: "codex", Session: session}
+	}
+	sample := func(id, at, role, session, attempt string, cycle int, sequence int64, counters metrics.Counters) metrics.Observation {
+		o := observation(id, at, role, session)
+		o.Attempt, o.ReviewCycle = attempt, cycle
+		o.Sample = &metrics.CounterSample{Stream: "native-token-usage", Mode: "cumulative", Sequence: sequence, Counters: counters}
+		return o
+	}
+	interval := func(id, at, role, session, kind, start, end string) metrics.Observation {
+		o := observation(id, at, role, session)
+		o.Interval = &metrics.Interval{Kind: kind, Start: start, End: end}
+		return o
+	}
+	outcome := func(id, kind string) metrics.Observation {
+		o := observation(id, "2026-09-30T00:30:00Z", "specialist", "executor")
+		o.Outcome = kind
+		return o
+	}
+
+	first := sample("executor-1", "2026-09-30T00:10:00Z", "specialist", "executor", "implementation-1", 0, 1,
+		metrics.Counters{InputTokens: value(100), OutputTokens: value(0), TotalTokens: value(160)})
+	first.Requested = &metrics.Profile{Model: "requested-model", Effort: "high"}
+	first.Observed = &metrics.Profile{Model: "observed-model", Effort: "medium"}
+	second := sample("executor-2", "2026-09-30T00:16:00Z", "specialist", "executor", "repair-1", 0, 2,
+		metrics.Counters{InputTokens: value(150), OutputTokens: value(0), TotalTokens: value(200)})
+	repeated := sample("executor-3", "2026-09-30T00:17:00Z", "specialist", "executor", "repair-1", 0, 3,
+		metrics.Counters{InputTokens: value(150), OutputTokens: value(0), TotalTokens: value(200)})
+	reviewer := sample("reviewer-1", "2026-09-30T00:21:00Z", "reviewer", "reviewer-1", "review-1", 1, 1,
+		metrics.Counters{InputTokens: value(20), TotalTokens: value(30)})
+	otherSource := sample("reviewer-2", "2026-09-30T00:22:00Z", "reviewer", "reviewer-2", "review-2", 2, 1,
+		metrics.Counters{InputTokens: value(0), TotalTokens: value(0)})
+	otherSource.Source = "manual-host-report"
+
+	observations := []metrics.Observation{
+		first, second, repeated, reviewer, otherSource,
+		interval("active-1", "2026-09-30T00:10:00Z", "specialist", "executor", "active-agent", "2026-09-30T00:00:00Z", "2026-09-30T00:10:00Z"),
+		interval("active-2", "2026-09-30T00:15:00Z", "specialist", "executor", "active-agent", "2026-09-30T00:05:00Z", "2026-09-30T00:15:00Z"),
+		interval("active-3", "2026-09-30T00:20:00Z", "reviewer", "reviewer-1", "active-agent", "2026-09-30T00:10:00Z", "2026-09-30T00:20:00Z"),
+		interval("verification-0", "2026-09-30T00:20:00Z", "specialist", "executor", "verification", "2026-09-30T00:20:00Z", "2026-09-30T00:20:00Z"),
+		interval("ci-unknown-session", "2026-09-30T00:25:00Z", "specialist", "", "ci-waiting", "2026-09-30T00:20:00Z", "2026-09-30T00:25:00Z"),
+	}
+	for _, kind := range []string{"implementation-failure", "infrastructure-failure", "evidence-correction", "wrong-requirement", "escalation", "approval"} {
+		observations = append(observations, outcome("outcome-"+kind, kind))
+	}
+	unavailable := observation("architect-unavailable", "2026-09-30T00:30:00Z", "architect", "")
+	unavailable.IssueNumber, unavailable.Host = 0, ""
+	unavailable.Unavailable = &metrics.Unavailable{Reason: "root-capture-unsupported"}
+	observations = append(observations, unavailable)
+
+	var legacyZero metrics.Usage
+	if err := json.Unmarshal([]byte(`{"input_tokens":0,"duration_ms":0}`), &legacyZero); err != nil {
+		t.Fatal(err)
+	}
+	doc := metrics.Document{SchemaVersion: 2, RunID: runID, Observations: observations, Events: []metrics.Event{
+		{At: "t0", Verb: "dispatch", IssueNumber: 283, Role: "specialist"},
+		{At: "t1", Verb: "review", IssueNumber: 283, Verdict: "request-changes", ReviewCycles: 1},
+		{At: "t2", Verb: "review", IssueNumber: 283, Verdict: "approve", ReviewCycles: 2},
+		{At: "t3", Verb: "escalate", IssueNumber: 283},
+		{At: "t4", Verb: "pr-open", IssueNumber: 283, Role: "specialist", Usage: &legacyZero},
+	}}
+	legacyRunID := "run-20260929T120000Z-legacy01"
+	writeMetricsFixture(t, env.RepoRoot, legacyRunID, metrics.Document{SchemaVersion: 1, RunID: legacyRunID,
+		Events: []metrics.Event{{At: "legacy", Verb: "dispatch", IssueNumber: 1, Role: "implementer"}}})
+	writeMetricsFixture(t, env.RepoRoot, runID, doc)
+	path := filepath.Join(env.RepoRoot, filepath.FromSlash(metrics.Dir), runID+".json")
+	before, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if code := Run([]string{"metrics"}, env); code != ExitOK {
+		t.Fatalf("exit = %d, want %d\n%s", code, ExitOK, stdout.String())
+	}
+	after, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(after) != string(before) {
+		t.Fatal("metrics report mutated its schema-2 fixture")
+	}
+	out := stdout.String()
+	for _, want := range []string{
+		"run:         " + legacyRunID,
+		"run:         " + runID,
+		"input 0, output unknown",
+		"unclassified reported duration 0ms",
+		"executor-1; issue #283; role specialist; native session codex/executor; attempt implementation-1; review cycle unknown",
+		"requested [model requested-model, effort high]; observed [model observed-model, effort medium]",
+		"executor-3; issue #283; role specialist; native session codex/executor; attempt repair-1; review cycle unknown; source codex-session-log; requested [unknown]; observed [unknown]; input 0",
+		"reviewer-1; issue #283; role reviewer; native session codex/reviewer-1; attempt review-1; review cycle 1",
+		"reviewer-2; issue #283; role reviewer; native session codex/reviewer-2; attempt review-2; review cycle 2",
+		"host codex; source codex-session-log; stream native-token-usage; input 170 (4/4 measured), output 0 (3/4 measured)",
+		"host codex; source manual-host-report; stream native-token-usage; input 0 (1/1 measured)",
+		"roles without recorded counters: architect",
+		"complete native session count unknown",
+		"observations with unknown role: 0; incomplete host/session: 2",
+		"architect-unavailable; run-level; role architect; native session unknown; attempt unknown; review cycle unknown; reason root-capture-unsupported",
+		"active-agent: session-summed 25m0s; wall-clock 20m0s; 3 intervals; 0 incomplete host/session intervals",
+		"verification: session-summed 0s; wall-clock 0s; 1 intervals",
+		"ci-waiting: session-summed unknown (no complete host/session intervals); wall-clock 5m0s; 1 intervals; 1 incomplete host/session intervals",
+		"human-waiting: unknown (no measured intervals)",
+		"reported outcomes: approval: 1, escalation: 1, evidence-correction: 1, implementation-failure: 1, infrastructure-failure: 1, wrong-requirement: 1",
+		"engine outcomes: approval: 1, escalation: 1",
+	} {
+		if !strings.Contains(out, want) {
+			t.Errorf("output missing %q:\n%s", want, out)
+		}
+	}
+	if strings.Contains(out, "input 170 (5/5 measured)") {
+		t.Errorf("report combined incompatible sources:\n%s", out)
+	}
+}
+
+func TestMetricsRejectsCompatibleAggregateOverflow(t *testing.T) {
+	value := func(v int64) *int64 { return &v }
+	doc := metrics.Document{SchemaVersion: 2, RunID: "run-overflow", Observations: []metrics.Observation{
+		{SchemaVersion: 2, RunID: "run-overflow", ID: "a", At: "2026-09-30T00:00:00Z", Source: "native", Host: "codex", Session: "a",
+			Sample: &metrics.CounterSample{Stream: "tokens", Mode: "delta", Sequence: 1, Counters: metrics.Counters{TotalTokens: value(int64(^uint64(0) >> 1))}}},
+		{SchemaVersion: 2, RunID: "run-overflow", ID: "b", At: "2026-09-30T00:00:00Z", Source: "native", Host: "codex", Session: "b",
+			Sample: &metrics.CounterSample{Stream: "tokens", Mode: "delta", Sequence: 1, Counters: metrics.Counters{TotalTokens: value(1)}}},
+	}}
+	if _, err := summarizeRun(doc); err == nil || !strings.Contains(err.Error(), "overflow") {
+		t.Fatalf("summarizeRun error = %v, want compatible total overflow", err)
+	}
+}
+
+func TestMetricsCoverageNamesKnownSessionsWithoutCounters(t *testing.T) {
+	tokens := int64(10)
+	doc := metrics.Document{SchemaVersion: 2, RunID: "run-session-coverage", Observations: []metrics.Observation{
+		{SchemaVersion: 2, RunID: "run-session-coverage", ID: "review-usage", At: "2026-09-30T00:00:00Z", Source: "native",
+			IssueNumber: 1, Role: "reviewer", ReviewCycle: 1, Host: "codex", Session: "reviewer-1",
+			Sample: &metrics.CounterSample{Stream: "tokens", Mode: "cumulative", Sequence: 1, Counters: metrics.Counters{TotalTokens: &tokens}}},
+		{SchemaVersion: 2, RunID: "run-session-coverage", ID: "approval-only", At: "2026-09-30T00:01:00Z", Source: "native",
+			IssueNumber: 1, Role: "reviewer", ReviewCycle: 2, Host: "codex", Session: "reviewer-2", Outcome: "approval"},
+	}}
+	summary, err := summarizeRun(doc)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var out strings.Builder
+	printObservedUsage(&out, summary)
+	for _, want := range []string{
+		"native sessions with counters: codex/reviewer-1",
+		"known native sessions without counters: codex/reviewer-2",
+	} {
+		if !strings.Contains(out.String(), want) {
+			t.Errorf("coverage missing %q:\n%s", want, out.String())
+		}
+	}
+}
+
+func TestMetricsTimingExcludesIncompleteHostSessionIdentity(t *testing.T) {
+	interval := func(id, host string) metrics.Observation {
+		return metrics.Observation{SchemaVersion: 2, RunID: "run-timing-identity", ID: id, At: "2026-09-30T00:10:00Z", Source: "native",
+			Role: "specialist", Host: host, Session: "a",
+			Interval: &metrics.Interval{Kind: "active-agent", Start: "2026-09-30T00:00:00Z", End: "2026-09-30T00:10:00Z"}}
+	}
+	summary, err := summarizeRun(metrics.Document{SchemaVersion: 2, RunID: "run-timing-identity",
+		Observations: []metrics.Observation{interval("known", "codex"), interval("missing-host", "")}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var out strings.Builder
+	printTiming(&out, summary.timing)
+	want := "active-agent: known-session subtotal 10m0s; wall-clock 10m0s; 2 intervals; 1 incomplete host/session intervals excluded"
+	if !strings.Contains(out.String(), want) {
+		t.Errorf("timing missing %q:\n%s", want, out.String())
 	}
 }
