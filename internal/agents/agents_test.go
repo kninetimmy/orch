@@ -18,6 +18,28 @@ import (
 	"github.com/kninetimmy/orch/internal/config"
 )
 
+func TestCodexInstructionsUseCanonicalProse(t *testing.T) {
+	for role, stem := range map[string]string{"scout": "orch-scout", "implementer": "orch-implementer", "specialist": "orch-specialist", "reviewer": "orch-reviewer", "review_downgrade": "orch-reviewer-safe"} {
+		data, err := codex.AgentTOMLs.ReadFile("agents/" + stem + ".toml")
+		if err != nil {
+			t.Fatal(err)
+		}
+		var definition struct {
+			Instructions string `toml:"developer_instructions"`
+		}
+		if _, err := toml.Decode(string(data), &definition); err != nil {
+			t.Fatal(err)
+		}
+		instructions, err := agents.CodexInstructions(role)
+		if err != nil || instructions != definition.Instructions || instructions == "" {
+			t.Fatalf("canonical prose changed for %s: %v", role, err)
+		}
+	}
+	if _, err := agents.CodexInstructions("architect"); err == nil {
+		t.Fatal("invented an Architect definition")
+	}
+}
+
 // defaultCodexHost builds a *config.Host whose roles equal the PRD §10
 // codex defaults (adaptertest.Profile("codex"), the same fixture
 // adapters/codex/plugin_test.go's TestAgentTOMLs pins the shipped
