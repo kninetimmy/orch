@@ -81,6 +81,7 @@ type Session struct {
 	incoming     chan sessionMessage
 	pending      string
 	connection   *connection
+	turnReady    chan struct{} // private scripted-fixture synchronization; unset in production
 }
 
 type sessionMessage struct {
@@ -101,7 +102,7 @@ func RunSession(ctx context.Context, options Options, approved Task) (*Session, 
 	}
 	c, cleanup, err := s.connect(ctx)
 	if err != nil {
-		return s, s.finish(err)
+		return s, s.finish(err, nil)
 	}
 	defer cleanup()
 	return s, s.execute(ctx, c, false)
@@ -279,19 +280,19 @@ type nativeSettings struct {
 	} `json:"activePermissionProfile"`
 }
 
+type nativeThread struct {
+	nativeSettings
+	ID      string       `json:"id"`
+	Session string       `json:"sessionId"`
+	Parent  *string      `json:"parentThreadId"`
+	Turns   []nativeTurn `json:"turns"`
+}
+
 type nativeThreadResponse struct {
 	nativeSettings
-	Thread struct {
-		ID      string       `json:"id"`
-		Session string       `json:"sessionId"`
-		Cwd     string       `json:"cwd"`
-		Parent  *string      `json:"parentThreadId"`
-		Model   *string      `json:"model"`
-		Effort  *string      `json:"reasoningEffort"`
-		Turns   []nativeTurn `json:"turns"`
-	} `json:"thread"`
-	TurnsCursor *string `json:"turnsBackwardsCursor"`
-	ItemsCursor *string `json:"itemsBackwardsCursor"`
+	Thread      nativeThread `json:"thread"`
+	TurnsCursor *string      `json:"turnsBackwardsCursor"`
+	ItemsCursor *string      `json:"itemsBackwardsCursor"`
 }
 
 func (s *Session) execute(ctx context.Context, c *connection, resume bool) (err error) {
@@ -314,12 +315,17 @@ func (s *Session) execute(ctx context.Context, c *connection, resume bool) (err 
 		}
 	}()
 	defer func() {
+		var cleanupErr error
 		if err != nil && !s.completed {
-			err = errors.Join(err, s.interrupt())
+			if interruptErr := s.interrupt(); interruptErr != nil {
+				cleanupErr = fmt.Errorf("codex native interruption cleanup: %w", interruptErr)
+			}
 		}
-		err = errors.Join(err, c.close())
+		if closeErr := c.close(); closeErr != nil {
+			cleanupErr = errors.Join(cleanupErr, fmt.Errorf("codex native shutdown cleanup: %w", closeErr))
+		}
 		s.connection = nil
-		err = s.finish(err)
+		err = s.finish(err, cleanupErr)
 	}()
 	params := map[string]any{"cwd": s.task.Layout.Workspace, "model": s.task.Selection.Model,
 		"config": map[string]string{"model_reasoning_effort": s.task.Selection.Effort}, "approvalPolicy": "never",
@@ -448,7 +454,7 @@ func (s *Session) acceptThread(response nativeThreadResponse, resume bool) error
 	if err := s.settings(response.nativeSettings); err != nil {
 		return err
 	}
-	if err := s.settings(nativeSettings{Cwd: t.Cwd, Model: t.Model, Effort: t.Effort}); err != nil {
+	if err := s.settings(t.nativeSettings); err != nil {
 		return err
 	}
 	if response.TurnsCursor != nil || response.ItemsCursor != nil || (!resume && len(t.Turns) != 0) {
@@ -479,6 +485,10 @@ func (s *Session) acceptTurn(turn nativeTurn, terminal bool) error {
 	if !terminal {
 		if turn.Status != "inProgress" && (!s.completed || turn.Status != s.result.NativeStatus) {
 			return fmt.Errorf("%w: invalid started turn status", ErrMalformedMessage)
+		}
+		if s.turnReady != nil {
+			close(s.turnReady)
+			s.turnReady = nil
 		}
 		return nil
 	}
@@ -567,10 +577,7 @@ func (s *Session) notification(m message) error {
 		return s.item(event.Item, method == "item/completed")
 	case "thread/started":
 		var started struct {
-			Thread struct {
-				ID     string  `json:"id"`
-				Parent *string `json:"parentThreadId"`
-			} `json:"thread"`
+			Thread nativeThread `json:"thread"`
 		}
 		if json.Unmarshal(m.Params, &started) != nil || started.Thread.ID == "" || started.Thread.Parent != nil {
 			return fmt.Errorf("%w: unapproved additional thread", ErrTaskBoundary)
@@ -581,6 +588,7 @@ func (s *Session) notification(m message) error {
 		if started.Thread.ID != s.result.ThreadID {
 			return fmt.Errorf("%w: unapproved additional thread", ErrTaskBoundary)
 		}
+		return s.settings(started.Thread.nativeSettings)
 	}
 	return nil // other notifications cannot satisfy a request or authorize work
 }
@@ -730,7 +738,7 @@ func (s *Session) interrupt() error {
 	return nil
 }
 
-func (s *Session) finish(err error) error {
+func (s *Session) finish(err, cleanupErr error) error {
 	switch {
 	case errors.Is(err, ErrProfileMismatch), errors.Is(err, ErrTaskBoundary), errors.Is(err, ErrMalformedMessage):
 		s.result.Outcome = SessionFailed
@@ -755,5 +763,5 @@ func (s *Session) finish(err error) error {
 		s.result.Outcome = SessionFailed
 		err = errors.New("codex session ended without a terminal turn")
 	}
-	return errors.Join(err, s.terminalObservation())
+	return errors.Join(err, cleanupErr, s.terminalObservation())
 }

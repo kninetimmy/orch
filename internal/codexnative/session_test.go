@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"maps"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -188,6 +189,18 @@ func scriptedSessionServer(scenario string) {
 			if scenario == "thread-workspace" {
 				result["cwd"] = filepath.Dir(cwd)
 			}
+			notificationThread := maps.Clone(thread)
+			switch scenario {
+			case "notification-model":
+				notificationThread["model"] = "other-model"
+			case "notification-effort":
+				notificationThread["reasoningEffort"] = "high"
+			case "notification-observed":
+				delete(result, "model")
+				delete(result, "reasoningEffort")
+				notificationThread["model"] = "gpt-6.1-sol"
+				notificationThread["reasoningEffort"] = "max"
+			}
 			if request.Method == "thread/resume" {
 				status := "completed"
 				if scenario == "resume-active" {
@@ -212,7 +225,7 @@ func scriptedSessionServer(scenario string) {
 					completed("completed")
 				}
 			} else {
-				notify("thread/started", map[string]any{"thread": thread})
+				notify("thread/started", map[string]any{"thread": notificationThread})
 				response(request.ID, result)
 			}
 		case "turn/start":
@@ -387,8 +400,43 @@ func TestSessionScriptedLifecycle(t *testing.T) {
 	}
 }
 
+func TestSessionThreadStartedProfile(t *testing.T) {
+	for _, scenario := range []string{"notification-model", "notification-effort", "notification-observed"} {
+		t.Run(scenario, func(t *testing.T) {
+			options, task := sessionTask(t)
+			s, _, err := newSession(options, task)
+			if err != nil {
+				t.Fatal(err)
+			}
+			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			defer cancel()
+			c, cleanup := scriptedSessionConnection(t, ctx, s, scenario)
+			defer cleanup()
+			err = s.execute(ctx, c, false)
+			if scenario == "notification-observed" {
+				if err != nil || s.result.Outcome != SessionSuccessful || s.result.Observed.Model != task.Selection.Model || s.result.Observed.Effort != task.Selection.Effort {
+					t.Fatalf("notification-only reported profile lost: %+v %v", s.result, err)
+				}
+				for _, observation := range s.Result().Observations {
+					if observation.Observed == nil || observation.Observed.Model != task.Selection.Model || observation.Observed.Effort != task.Selection.Effort {
+						t.Fatal("notification-only profile absent from observations")
+					}
+				}
+				return
+			}
+			if !errors.Is(err, ErrProfileMismatch) || s.result.Outcome != SessionFailed {
+				t.Fatalf("notification mismatch accepted: %+v %v", s.result, err)
+			}
+			calls, err := os.ReadFile(filepath.Join(task.Layout.Workspace, ".scripted-native-calls"))
+			if err != nil || strings.Contains(string(calls), "turn/start") {
+				t.Fatalf("notification mismatch progressed: %s %v", calls, err)
+			}
+		})
+	}
+}
+
 func TestSessionNativeInterruptionAndBounds(t *testing.T) {
-	for _, scenario := range []string{"deadline", "cancel", "interrupt-stall"} {
+	for _, scenario := range []string{"deadline", "cancel", "interrupt-stall", "cancel-stall"} {
 		t.Run(scenario, func(t *testing.T) {
 			options, task := sessionTask(t)
 			s, _, err := newSession(options, task)
@@ -396,53 +444,72 @@ func TestSessionNativeInterruptionAndBounds(t *testing.T) {
 				t.Fatal(err)
 			}
 			duration := time.Second
-			if scenario == "cancel" {
+			cancelled := strings.HasPrefix(scenario, "cancel")
+			if cancelled {
 				duration = 5 * time.Second
 			}
 			ctx, cancel := context.WithTimeout(context.Background(), duration)
 			defer cancel()
 			serverScenario := "wait"
-			if scenario == "interrupt-stall" {
-				serverScenario = scenario
+			if strings.Contains(scenario, "stall") {
+				serverScenario = "interrupt-stall"
 			}
 			c, cleanup := scriptedSessionConnection(t, ctx, s, serverScenario)
 			defer cleanup()
-			if scenario == "cancel" {
+			if cancelled {
+				// Server receipt does not identify the turn to this client. Wait
+				// until acceptTurn has validated and retained its native ID.
+				turnReady := make(chan struct{})
+				s.turnReady = turnReady
 				go func() {
-					timer := time.NewTicker(10 * time.Millisecond)
-					defer timer.Stop()
-					for {
-						select {
-						case <-ctx.Done():
-							return
-						case <-timer.C:
-							calls, _ := os.ReadFile(filepath.Join(task.Layout.Workspace, ".scripted-native-calls"))
-							if strings.Contains(string(calls), "turn/start") {
-								cancel()
-								return
-							}
-						}
+					select {
+					case <-turnReady:
+						cancel()
+					case <-ctx.Done():
 					}
 				}()
 			}
 			start := time.Now()
 			err = s.execute(ctx, c, false)
 			want := SessionTimedOut
-			if scenario == "cancel" {
+			if cancelled {
 				want = SessionCancelled
 			}
 			if err == nil || s.result.Outcome != want || time.Since(start) > 5*time.Second {
 				t.Fatalf("unbounded or misclassified interrupt: %s %v %s", s.result.Outcome, err, time.Since(start))
 			}
+			if cancelled && (!errors.Is(err, context.Canceled) || ctx.Err() != context.Canceled) {
+				t.Fatalf("execution cancellation lost or deadline expired: %v", err)
+			}
+			if !cancelled && !errors.Is(err, context.DeadlineExceeded) {
+				t.Fatalf("execution deadline classification lost: %v", err)
+			}
+			if scenario == "cancel-stall" && !strings.Contains(err.Error(), "interruption cleanup") {
+				t.Fatalf("stalled interruption cleanup failure lost: %v", err)
+			}
 			calls, err := os.ReadFile(filepath.Join(task.Layout.Workspace, ".scripted-native-calls"))
 			if err != nil || !strings.Contains(string(calls), "turn/interrupt") {
 				t.Fatalf("native interrupt not sent: %s %v", calls, err)
 			}
-			if scenario != "interrupt-stall" && s.result.NativeStatus != "interrupted" {
+			if !strings.Contains(scenario, "stall") && s.result.NativeStatus != "interrupted" {
 				t.Fatal("native interruption completion not observed")
 			}
 		})
 	}
+	t.Run("cancel-cleanup-timeout", func(t *testing.T) {
+		options, task := sessionTask(t)
+		s, _, err := newSession(options, task)
+		if err != nil {
+			t.Fatal(err)
+		}
+		err = s.finish(context.Canceled, errors.Join(context.DeadlineExceeded, ErrTimeout))
+		if s.result.Outcome != SessionCancelled || !errors.Is(err, context.Canceled) || !errors.Is(err, context.DeadlineExceeded) || !errors.Is(err, ErrTimeout) {
+			t.Fatalf("cleanup timeout replaced execution cancellation or was swallowed: %s %v", s.result.Outcome, err)
+		}
+		if s.result.Observations[0].Unavailable.Reason != "native-session-cancelled" {
+			t.Fatal("cleanup timeout replaced recorded execution outcome")
+		}
+	})
 }
 
 func TestSessionDisconnectResumeReplay(t *testing.T) {

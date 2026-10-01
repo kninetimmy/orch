@@ -358,6 +358,13 @@ unknown. Any present mismatch or `model/rerouted` event stops work, even if the
 reroute names the requested model again. No catalog or request field fills an
 observed field, and no reported setting is claimed as inference proof.
 
+Before repair-1, `thread/started` retained only identity/parent fields and
+discarded its optional model/effort reports. After repair-1, its Thread payload
+shares `nativeThread`/`nativeSettings` with start/resume responses and reaches
+the same `settings` validation. Notification-only mismatches stop before a
+turn; matching notification-only evidence remains observed. This check applies
+to every supported thread/profile carrier, not only one response symbol.
+
 A caller context must have a finite execution deadline. Cancellation/deadline
 attempts native `turn/interrupt` for the identified turn, waits at most two
 seconds for acknowledgement/completion, then uses the existing bounded stdio
@@ -367,6 +374,21 @@ safely. Failure, successful completion, cancellation, timeout and disconnect
 remain distinct `SessionOutcome` values. A successful native turn is neither
 implementation verification nor review/merge approval. Cleanup never resets,
 cleans, commits or repairs a checkout, and existing dirty work survives.
+
+Before repair-1, execution and cleanup errors were joined before outcome
+classification, so an interruption-cleanup deadline could overwrite explicit
+execution cancellation as timed-out. After repair-1, `finish` classifies the
+primary execution result and returns all cleanup failures alongside it.
+Cleanup errors name their step; actual execution deadlines still
+classify as timed-out. The existing interrupt/shutdown bounds remain.
+
+Before repair-1, the cancellation fixture acted on server receipt of
+`turn/start`, before the client necessarily knew its native turn ID. After
+repair-1, its private `Session.turnReady` channel signals only after
+`acceptTurn` validates and retains an identified turn. The channel is unset in
+production and changes no admission gate. No polling, larger sleep or wider
+execution deadline substitutes for that synchronization; unknown-turn
+interruption/resume refusal remains.
 
 `Session.Resume` accepts only a disconnected, identified, unfinished turn on
 the same retained session object. It canonicalizes and compares the entire
@@ -480,10 +502,10 @@ host installation or role default.
 | `isolation.go`: `openIsolation`, `diagnosticCommand` comment | Fresh pinned profiles, scrubbed environments, private no-model command diagnostics and unconditional model refusal. | All remain. The connection additionally retains its own profile ID for session-response checks; no profile widening or diagnostic execution change. The old all-connection turn prohibition becomes the gated session exception documented above. |
 | New `session.go`: `Task`, `SessionResult`, `Session`, `sessionMessage`, `SessionOutcome`, `SessionSuccessful`, `SessionFailed`, `SessionCancelled`, `SessionTimedOut`, `SessionDisconnected`, `ErrProfileMismatch`, `ErrTaskBoundary`, `maxSessionEvents` | No bounded native task representation/checkpoint. | Adds one in-memory, caller-approved task and distinct results/evidence; no storage, policy engine, driver or prior workflow removed. |
 | New `session.go`: `RunSession`, `Resume`, `Result`, `sessionDeadline`, `bindTask`, `newSession`, `metricRole`, `checkResume`, `connect`, `sessionContext` | No native single-task caller API. | Adds canonical immutable binding, mandatory deadlines, snapshot copying and revalidation. Every production entry still refuses the unsupported isolation boundary; no public bypass. |
-| New `session.go`: `nativeTurn`, `nativeSettings`, `nativeThreadResponse`, `execute`, `call`, `receive`, `settings`, `acceptThread`, `acceptTurn`, `notification` | No thread/turn exchange or reported execution settings here. | Adds the closed private session subset with native identity, partial configured-profile evidence and mismatch/reroute refusal. Every new turn still requires the same gate; requested settings never become observed settings. |
-| New `session.go`: `item`, `nativeIdentity`, `taskPath`, `interrupt`, `finish` | No native session item/control/result handling. | Adds input/tool/path/delegation restrictions, native interruption and distinct terminal states. All items/roles share the boundary; every scout/reviewer role rejects file changes. Existing work is never cleaned/reset. |
+| New `session.go`: `nativeTurn`, `nativeSettings`, `nativeThread`, `nativeThreadResponse`, `execute`, `call`, `receive`, `settings`, `acceptThread`, `acceptTurn`, `notification`; private test-only `Session.turnReady` | No thread/turn exchange or reported execution settings here. | Adds the closed private session subset with native identity, partial configured-profile evidence and mismatch/reroute refusal. Repair-1 shares validation across supported profile carriers and synchronizes identified-turn test cancellation. Every new turn still requires the same gate; requested settings never become observed settings. |
+| New `session.go`: `item`, `nativeIdentity`, `taskPath`, `interrupt`, `finish` | No native session item/control/result handling. | Adds input/tool/path/delegation restrictions, native interruption and distinct terminal states. Repair-1 preserves the primary execution classification while returning cleanup failures. All items/roles share the boundary; every scout/reviewer role rejects file changes. Existing work is never cleaned/reset. |
 | New `session_observation.go`: `nativeCounters`, `observation`, `tokenUsage`, `appendObservation`, `terminalObservation` | Existing session-log capture and generic schema-2 metrics contract. | Adds a distinct, presence-preserving native stream with same-object replay identity and local receipt time. Existing recorder/storage/legacy behavior remains, no usage submission or inferred timing/root coverage. |
-| `preflight_test.go`: `TestMain`; new `session_test.go`: `scriptedSessionConnection`, `sessionTask`, `scriptedSessionServer`, `TestSessionScriptedLifecycle`, `TestSessionNativeInterruptionAndBounds`, `TestSessionDisconnectResumeReplay`, `TestSessionProductionGateAndBinding`, `TestSessionUnknownTurnCannotResume`, `TestSessionReadOnlyRolesAndRetentionBounds` | Scripted metadata/isolation and independent tagged native command smoke. | Existing checks remain. Adds ordinary no-model session exchanges and a private test-only seam; production refuses even the scripted host through its public entry points. |
+| `preflight_test.go`: `TestMain`; new `session_test.go`: `scriptedSessionConnection`, `sessionTask`, `scriptedSessionServer`, `TestSessionScriptedLifecycle`, `TestSessionThreadStartedProfile`, `TestSessionNativeInterruptionAndBounds`, `TestSessionDisconnectResumeReplay`, `TestSessionProductionGateAndBinding`, `TestSessionUnknownTurnCannotResume`, `TestSessionReadOnlyRolesAndRetentionBounds` | Scripted metadata/isolation and independent tagged native command smoke. | Existing checks remain. Adds ordinary no-model session exchanges and a private test-only seam; repair-1 covers notification-only profile reports, cancellation with stalled cleanup and deterministic client identification. Production refuses even the scripted host through its public entry points. |
 | This document; `docs/metric-observations.md` native-session appendix | Documented metadata/diagnostic limits and session-log observation semantics. | Keeps the old restriction and records its exact narrower session exception, new evidence semantics, bounded approved smoke procedure and remaining gaps. Every manual adapter limitation remains. |
 
 `execx.Local`, all of its single-shot callers, metrics recorder/schema/storage,
