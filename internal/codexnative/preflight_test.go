@@ -19,6 +19,10 @@ import (
 // The test binary is the scripted app-server. No installed Codex, credentials,
 // network or model is used, including on the three CI operating systems.
 func TestMain(m *testing.M) {
+	if scenario := os.Getenv("ORCH_CODEX_SESSION_TEST_SERVER"); scenario != "" {
+		scriptedSessionServer(scenario)
+		os.Exit(0)
+	}
 	if len(os.Args) > 1 && os.Args[1] == "orch-isolation-fixture" {
 		os.Exit(isolationFixture(os.Args[2:]))
 	}

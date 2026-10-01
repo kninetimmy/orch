@@ -85,6 +85,12 @@ func inspect(c *connection, clientVersion string, selection manifest.Selection) 
 	if err := c.initialized(); err != nil {
 		return capabilities, err
 	}
+	return inspectCatalog(c, capabilities, selection)
+}
+
+// inspectCatalog also revalidates the actual isolated session connection after
+// its own initialization; a prior metadata process is not execution evidence.
+func inspectCatalog(c *connection, capabilities Capabilities, selection manifest.Selection) (Capabilities, error) {
 	var account struct {
 		Account *struct {
 			Type string `json:"type"`

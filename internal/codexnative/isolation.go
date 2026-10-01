@@ -326,6 +326,7 @@ func openIsolation(ctx context.Context, options Options, b isolationBoundary) (c
 		return nil, capabilities, err
 	}
 	c.isolation = true
+	c.profile = b.profile()
 	defer func() {
 		if err != nil {
 			err = errors.Join(err, c.close(), c.contextError("isolation initialization"))
@@ -389,8 +390,8 @@ func openIsolation(ctx context.Context, options Options, b isolationBoundary) (c
 	return c, capabilities, nil
 }
 
-// diagnosticCommand is private: only no-model synthetic tests call it. Model
-// turns and unsandboxed process APIs remain absent from every connection.
+// diagnosticCommand is private: only no-model synthetic tests call it.
+// Metadata/diagnostic connections cannot start turns or unsandboxed processes.
 func (c *connection) diagnosticCommand(b isolationBoundary, argv []string, cancelByTimeout bool) (int, error) {
 	timeout := 10000
 	if cancelByTimeout {

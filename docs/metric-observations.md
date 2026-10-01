@@ -310,3 +310,40 @@ No Claude/OpenCode adapter, lifecycle verb, routing `Selection`, configuration,
 approval, guard, GitHub resource or active-run state format changes. This applies
 to every lifecycle verb, not just `pr-open`/`review`; capture's new schema is not
 an authorization or an observed execution-profile guarantee.
+
+## Bounded native Codex sessions (#294)
+
+The dormant internal `codexnative` session API returns schema-2 observations;
+it never records them or submits legacy lifecycle usage. Its production entry
+points require capability and isolation preflight, and the unresolved native
+inherited-tool boundary still refuses every model turn. Ordinary tests exercise
+only a private scripted host. See the [native session contract and approved
+smoke procedure](codex-native-protocol.md#bounded-single-task-sessions-294).
+
+Native source `codex-app-server` and cumulative stream
+`codex-app-server-thread-total-token-usage` retain the installed camelCase
+thread-total counters independently, including absent/null fields and explicit
+zero. Metrics `session` is the executed native thread ID; the separate native
+session-tree ID remains in the session result and does not combine child usage.
+This source is distinct from session-log capture. Pick one capture source for
+the task and omit legacy `usage`/`executor_usage`; adding the two sources cannot
+establish a comparable total and would double-count execution.
+
+The native notification has no event ID, sequence or timestamp. The retained
+session derives identity from task/thread/turn and decoded counter presence and
+values, and retains the first local receipt time and local positive sequence.
+Same-object reconnect replay returns the original observation unchanged. This
+is local receipt provenance, not a native event timestamp or active-agent
+interval. The existing recorder validates profiles, counters, replay and
+cumulative arithmetic unchanged. A fresh process cannot reconstruct this
+in-memory verified binding/history and has no restore API here.
+
+Reported thread settings remain partial configured-profile evidence, separate
+from requested settings and from per-turn inference proof. No missing field,
+counter, total, active time or Architect coverage is inferred. Incomplete
+streams retain actual partial samples and explicit terminal missingness; failed
+sessions report infrastructure-failure evidence. Successful native completion
+records `native-completion-not-verification`, never review/merge approval.
+Callers save and submit unchanged evidence through the existing current-run
+recorder before ending the run. Recorder/storage/lifecycle behavior and every
+existing capture source remain unchanged.

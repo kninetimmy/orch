@@ -37,7 +37,7 @@ mutation and approval methods are unavailable. The only outgoing notification
 is `initialized`; there is no arbitrary notification or request API exported.
 The connection is private to the preflight and is closed before returning.
 
-After #293, that complete restriction still applies to every metadata
+After #293 (before #294), that complete restriction still applies to every metadata
 connection owned by `Preflight`. A separate private isolation connection adds
 only `windowsSandbox/readiness`, `permissionProfile/list` and buffered
 `command/exec` for no-model synthetic diagnostics. All request methods in
@@ -46,6 +46,16 @@ only the named `turn/start` symbol. Every thread/turn, unsandboxed `process/*`,
 login/logout, setup, configuration mutation and approval method remains
 unavailable in both kinds. Neither public preflight exports a command or
 connection API; the new launch overrides below are process-only.
+
+After #294, those restrictions still apply to every metadata and diagnostic
+connection. A private session connection adds only `thread/start`,
+`thread/resume`, `turn/start` and `turn/interrupt` after successful capability
+and isolation preflight. This removes the package-wide prohibition on those
+four methods in session machinery; it does not remove the production refusal:
+the isolation check still fails for every host/version and every dispatched
+role. There is no public bypass, callback or test flag. Unsandboxed processes,
+fork/steering, approval/tool responses and arbitrary RPCs remain unavailable
+on **every** connection, including sessions.
 
 ## Bounds and evidence
 
@@ -300,3 +310,185 @@ setup are untouched. The manual adapter remains the available execution path;
 its instruction-based reviewer restriction still applies to every manual
 reviewer role, not just `orch-reviewer`. The native reviewer profile's command
 read-only behavior is a separate validated boundary.
+
+## Bounded single-task sessions (#294)
+
+`RunSession` represents one caller-approved `Task`, using its task ID, exact
+prompt, run/issue attribution, role, canonical complete layout and routed
+`manifest.Selection`. It does not approve tasks, select models or evaluate
+issue eligibility. A future trusted caller must obtain and revalidate those
+decisions from the engine before calling it or `Session.Resume`. There is no
+CLI, evaluation/batch driver, unattended lifecycle caller or automatic merge.
+
+Canonical developer instructions come from `agents.CodexInstructions`, which
+decodes the existing shipped Codex role definition, without copying its default
+model/effort into the requested selection. All five dispatched roles are
+supported; `review_downgrade` keeps its exact role binding and records metrics
+as reviewer. Architect has no dispatched definition and is refused. This is
+true for every canonical role lookup, not just the specialist symbol. Scout
+and both reviewer roles use the existing read-only native profile.
+
+Capability and isolation checks must pass before any thread or turn request.
+The actual isolated connection also rechecks authentication/catalog and its
+model-tool boundary. `IsolationPreflight` still **always refuses model
+execution**, including 0.159.2 after a successful command smoke. Only the
+private test-binary seam exercises session requests. No source-delivery test
+here establishes P1-B model readiness or a verified inherited-tool boundary.
+
+When that boundary becomes available through a separately approved change,
+the session machinery pins canonical cwd, fresh native permission profile,
+`approvalPolicy: "never"`, requested model/effort and canonical role prose.
+Provider model fallback is disabled. It accepts no caller-supplied dynamic
+tools, capability roots, steering, fork, approval or replacement task input.
+Server requests fail closed. Additional native threads/turns, delegation,
+unsupported tool items, changed task input, tool paths outside workspace/scratch
+and file changes by a read-only role stop progression. Every native item shares
+these restrictions; none is an exception because its tool has another name.
+These protocol checks do not detect arbitrary semantic drift inside prose or
+make instruction-based tool restrictions into native enforcement. That is why
+the unresolved inherited-tool boundary remains a production refusal.
+
+`SessionResult` retains native thread ID, session-tree ID and turn ID separately.
+The metrics session is the executed **thread** ID; the native tree ID can be
+shared with other threads and is not a usage aggregation key. Requested
+settings stay separate from reported model/effort. Thread responses and
+`thread/settings/updated` report configured profiles, not per-turn inference
+telemetry, as the installed schema explicitly says. Missing fields remain
+unknown. Any present mismatch or `model/rerouted` event stops work, even if the
+reroute names the requested model again. No catalog or request field fills an
+observed field, and no reported setting is claimed as inference proof.
+
+A caller context must have a finite execution deadline. Cancellation/deadline
+attempts native `turn/interrupt` for the identified turn, waits at most two
+seconds for acknowledgement/completion, then uses the existing bounded stdio
+shutdown. The host context has only that bounded cleanup grace; it cannot
+extend task execution. Unknown turns cannot be addressed or resubmitted
+safely. Failure, successful completion, cancellation, timeout and disconnect
+remain distinct `SessionOutcome` values. A successful native turn is neither
+implementation verification nor review/merge approval. Cleanup never resets,
+cleans, commits or repairs a checkout, and existing dirty work survives.
+
+`Session.Resume` accepts only a disconnected, identified, unfinished turn on
+the same retained session object. It canonicalizes and compares the entire
+approved binding, re-runs both preflights and resumes by native thread ID,
+never by a caller-supplied rollout path or history. The native tree/thread IDs,
+profile, workspace and complete single-turn history must agree. An already
+completed turn is consumed as completion, without a second `turn/start`; an
+in-progress turn is observed until completion. Changed identities, additional
+turns, incomplete paginated history and unknown submitted turn IDs refuse.
+Cancelled/timed-out/failed sessions cannot be resumed through this API.
+
+The session keeps its checkpoint and immutable observation history in memory;
+`Result` returns independent snapshots. It adds no persistence subsystem or
+process-restart restore API. Losing this retained object also loses the
+verified binding/replay history: a fresh process must not reconstruct it from
+untrusted native history or replay the prompt. Each retained session admits
+at most 1,024 notifications/observations and 1 MiB of final output in addition
+to the existing per-message bound. Calls are sequential; callers interrupt via
+their context, not concurrent session mutation.
+
+## Native observation semantics
+
+`thread/tokenUsage/updated.tokenUsage.total` is a cumulative thread stream.
+The installed camelCase fields map independently to the existing schema-2
+observation counters: `inputTokens`, `outputTokens`, `cachedInputTokens`,
+`cacheWriteInputTokens`, `totalTokens` and `reasoningOutputTokens`. Null/absent
+fields remain unknown, including the schema-defaulted cache-write field. No
+sum, default or `last` sample substitutes for an absent total field.
+
+Source is `codex-app-server` and stream is
+`codex-app-server-thread-total-token-usage`, deliberately distinct from the
+existing `codex-session-log` / `codex-total-token-usage` pair. The producer
+cannot establish that different capture sources have interchangeable counter
+definitions. Choose one capture source for a task; never add both captures or
+legacy `usage`/`executor_usage` for this native execution.
+
+Native notifications contain no event ID, sequence or timestamp. Identity is
+a SHA-256 key of the retained task/thread/turn and decoded total-counter
+presence/values. Identical events in the same turn retain the original
+observation, first receipt timestamp and positive local sequence. New totals
+advance that sequence; the existing `metrics.CounterContributions` validation
+rejects regressing counters, overflow or invalid evidence. Receipt time is
+labelled as local evidence time, never native time or active-agent duration.
+No intervals, inferred missing counters or Architect/root coverage are created.
+
+Incomplete streams retain their actual partial counters and a terminal
+missingness record. Failed sessions produce infrastructure-failure evidence;
+cancelled/timed-out/disconnected sessions produce explicit missingness, and
+successful completion produces `native-completion-not-verification`, never
+`approval`. Events with no counters produce `native-counters-unavailable`.
+The session returns evidence without recording it. A future trusted caller
+saves and submits the unchanged observations through the existing recorder,
+under its current-run association/serialization boundary, before ending the
+run. Exact recorder retries and same-object stream replay count once.
+
+## Separately approved live model/tool smoke
+
+This batch executes **no native model trial**. Ordinary tests use the scripted
+test binary for start/completion, mismatch/reroute, interruption, disconnect,
+resume, missing counters, duplicate/replayed events, dirty-work preservation
+and capture-to-recorder replay. The tagged `TestCodexIsolationSmoke` remains
+the independent 46-command, no-model containment proof described above.
+
+Before any model/tool smoke, obtain separate approval for the exact one-task
+native trial and finite cutoff. First establish a supported native closed
+inherited-tool boundary, update its refusal only through an approved reviewed
+change, and repeat command containment on that exact host/profile. Approval
+alone cannot bypass today's `ErrIsolationUnavailable`; until that work is
+verified, this procedure stops before any turn.
+
+The approved caller must supply a separate checkout/scratch outside protected
+main/controller/sibling/credential/shared-Git locations, keep the exact routed
+profile and canonical role, and revalidate engine eligibility. Use existing
+managed ChatGPT subscription authentication; no login/token RPC, API-key
+fallback, paid alternative or role-default change is part of this procedure.
+Start one task that performs one bounded tool action on task-owned fixtures,
+with parent checks of the expected result and unchanged protected sentinels.
+Reviewer trials must additionally show denied checkout writes. Do not probe
+actual credential contents.
+
+Retain native host/version, task/workspace/profile binding, thread/tree/turn
+identities, reported settings with their configured-profile limitation, any
+independent per-turn identity evidence, native counters with presence and
+local timestamp provenance, interrupt acknowledgement/terminal status, bounded
+shutdown and parent-visible descendant/dirty-work evidence. Separately approved
+disconnect/resume evidence must show the same turn is observed rather than
+replayed, with unchanged original observations and monotonic cumulative deltas.
+Any mismatch/reroute, task expansion, permission request, incomplete identity
+or isolation failure stops the trial. Record remaining unknown counters,
+Architect coverage and active time as unavailable, without estimates.
+
+The installed turn schemas support interruption, but ordinary scripted proof
+does not validate native Windows model interruption or descendants. The
+existing native command timeout proof is not turn-interruption proof. Live
+inference entitlement, per-turn model/effort identity, inherited tool closure,
+native usage delivery/replay and interruption behavior remain evidence gaps.
+Neither smoke completion nor source merge authorizes unattended execution,
+further tasks, lifecycle progression or automatic merge.
+
+## #294 blast radius and compatibility
+
+The #292/#293 statements above remain as historical before-and-after evidence.
+Every touched structure is named below. This changes no engine policy, schema,
+host installation or role default.
+
+| Touched element | Before #294 | After #294; does prior behavior still hold? |
+| --- | --- | --- |
+| `agents.go`: new `CodexInstructions`; existing embedded definitions/`roleFiles` reused; `agents_test.go`: `TestCodexInstructionsUseCanonicalProse` | Canonical definitions rendered only as host files; Architect had no dispatched definition. | Adds read-only role-prose extraction for all five definitions. Rendering/defaults remain; Architect still has no definition. |
+| `transport.go`: package comment, `connection.session`/`.profile`, new `request`, `decodeResponse`; changed `call` | Every connection denied all thread/turn methods; sequential requests had closed metadata/diagnostic allowlists and redacted errors. | Metadata/diagnostic behavior remains. Only a privately gated session admits the four named methods; this removed package-wide restriction is recorded in Supported subset. Shared decoding, request IDs, message bounds, server-request refusal and bounded shutdown remain for every connection. |
+| `preflight.go`: `inspect`, new `inspectCatalog` | Initialization and managed-auth/all-page catalog checking lived in `inspect`. | Same public metadata preflight and evidence. The extracted checker additionally revalidates an actual isolated connection; no new auth methods. |
+| `isolation.go`: `openIsolation`, `diagnosticCommand` comment | Fresh pinned profiles, scrubbed environments, private no-model command diagnostics and unconditional model refusal. | All remain. The connection additionally retains its own profile ID for session-response checks; no profile widening or diagnostic execution change. The old all-connection turn prohibition becomes the gated session exception documented above. |
+| New `session.go`: `Task`, `SessionResult`, `Session`, `sessionMessage`, `SessionOutcome`, `SessionSuccessful`, `SessionFailed`, `SessionCancelled`, `SessionTimedOut`, `SessionDisconnected`, `ErrProfileMismatch`, `ErrTaskBoundary`, `maxSessionEvents` | No bounded native task representation/checkpoint. | Adds one in-memory, caller-approved task and distinct results/evidence; no storage, policy engine, driver or prior workflow removed. |
+| New `session.go`: `RunSession`, `Resume`, `Result`, `sessionDeadline`, `bindTask`, `newSession`, `metricRole`, `checkResume`, `connect`, `sessionContext` | No native single-task caller API. | Adds canonical immutable binding, mandatory deadlines, snapshot copying and revalidation. Every production entry still refuses the unsupported isolation boundary; no public bypass. |
+| New `session.go`: `nativeTurn`, `nativeSettings`, `nativeThreadResponse`, `execute`, `call`, `receive`, `settings`, `acceptThread`, `acceptTurn`, `notification` | No thread/turn exchange or reported execution settings here. | Adds the closed private session subset with native identity, partial configured-profile evidence and mismatch/reroute refusal. Every new turn still requires the same gate; requested settings never become observed settings. |
+| New `session.go`: `item`, `nativeIdentity`, `taskPath`, `interrupt`, `finish` | No native session item/control/result handling. | Adds input/tool/path/delegation restrictions, native interruption and distinct terminal states. All items/roles share the boundary; every scout/reviewer role rejects file changes. Existing work is never cleaned/reset. |
+| New `session_observation.go`: `nativeCounters`, `observation`, `tokenUsage`, `appendObservation`, `terminalObservation` | Existing session-log capture and generic schema-2 metrics contract. | Adds a distinct, presence-preserving native stream with same-object replay identity and local receipt time. Existing recorder/storage/legacy behavior remains, no usage submission or inferred timing/root coverage. |
+| `preflight_test.go`: `TestMain`; new `session_test.go`: `scriptedSessionConnection`, `sessionTask`, `scriptedSessionServer`, `TestSessionScriptedLifecycle`, `TestSessionNativeInterruptionAndBounds`, `TestSessionDisconnectResumeReplay`, `TestSessionProductionGateAndBinding`, `TestSessionUnknownTurnCannotResume`, `TestSessionReadOnlyRolesAndRetentionBounds` | Scripted metadata/isolation and independent tagged native command smoke. | Existing checks remain. Adds ordinary no-model session exchanges and a private test-only seam; production refuses even the scripted host through its public entry points. |
+| This document; `docs/metric-observations.md` native-session appendix | Documented metadata/diagnostic limits and session-log observation semantics. | Keeps the old restriction and records its exact narrower session exception, new evidence semantics, bounded approved smoke procedure and remaining gaps. Every manual adapter limitation remains. |
+
+`execx.Local`, all of its single-shot callers, metrics recorder/schema/storage,
+run/manifest state, approvals, routing, roles, host/plugin setup and manual
+Codex/Claude/OpenCode execution remain unchanged. The existing manual adapter
+is still the available production Codex execution path. Its instruction-based
+reviewer restriction applies to every manual reviewer role, and session source
+delivery does not improve that manual restriction or claim model readiness.

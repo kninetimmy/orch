@@ -1,6 +1,6 @@
-// Package codexnative implements Codex metadata and isolation preflights.
-// Only a private isolation connection permits no-model sandbox diagnostics;
-// metadata preflight connections have no execution methods.
+// Package codexnative implements Codex preflights and bounded task sessions.
+// Production sessions require a verified model-tool boundary, currently absent.
+// Metadata connections have no execution methods.
 package codexnative
 
 import (
@@ -32,8 +32,8 @@ const (
 	shutdownTimeout  = 2 * time.Second
 )
 
-// connection has one caller and one outstanding request. It deliberately does
-// not multiplex: preflight only makes sequential metadata requests.
+// connection has one reader and sequential requests. A task session may also
+// interrupt its outstanding turn; it never multiplexes unrelated work.
 type connection struct {
 	ctx       context.Context
 	cmd       *exec.Cmd
@@ -46,6 +46,8 @@ type connection struct {
 	sequence  int
 	authSeen  bool
 	isolation bool
+	session   bool // private; enabled only after both session preflights succeed
+	profile   string
 }
 
 // start follows execx's argument-vector and explicit-cwd contract. execx.Local
@@ -220,15 +222,19 @@ func (c *connection) read() (message, error) {
 	return m, nil
 }
 
-func (c *connection) call(method string, params, result any) error {
+func (c *connection) request(method string, params any) (string, error) {
 	switch method {
 	case "initialize", "account/read", "model/list":
 	case "windowsSandbox/readiness", "permissionProfile/list", "command/exec":
 		if !c.isolation {
-			return errors.New("codex native preflight method unavailable")
+			return "", errors.New("codex native preflight method unavailable")
+		}
+	case "thread/start", "thread/resume", "turn/start", "turn/interrupt":
+		if !c.isolation || !c.session {
+			return "", errors.New("codex native session method unavailable")
 		}
 	default:
-		return errors.New("codex native preflight method unavailable")
+		return "", errors.New("codex native preflight method unavailable")
 	}
 	c.sequence++
 	id := fmt.Sprintf("orch-preflight-%d", c.sequence)
@@ -237,6 +243,35 @@ func (c *connection) call(method string, params, result any) error {
 		Method string `json:"method"`
 		Params any    `json:"params"`
 	}{id, method, params}); err != nil {
+		return "", err
+	}
+	return id, nil
+}
+
+func decodeResponse(m message, id, method string, result any) error {
+	var responseID string
+	if err := json.Unmarshal(m.ID, &responseID); err != nil || responseID != id {
+		return fmt.Errorf("%w: response id does not match pending request", ErrMalformedMessage)
+	}
+	if len(m.Error) != 0 {
+		var rejection struct {
+			Code    *int64  `json:"code"`
+			Message *string `json:"message"`
+		}
+		if err := json.Unmarshal(m.Error, &rejection); err != nil || rejection.Code == nil || rejection.Message == nil {
+			return fmt.Errorf("%w: invalid RPC error", ErrMalformedMessage)
+		}
+		return &rpcRejection{method: method, code: *rejection.Code}
+	}
+	if bytes.Equal(bytes.TrimSpace(m.Result), []byte("null")) || json.Unmarshal(m.Result, result) != nil {
+		return fmt.Errorf("%w: invalid %s result", ErrMalformedMessage, method)
+	}
+	return nil
+}
+
+func (c *connection) call(method string, params, result any) error {
+	id, err := c.request(method, params)
+	if err != nil {
 		return err
 	}
 	for {
@@ -247,24 +282,7 @@ func (c *connection) call(method string, params, result any) error {
 		if len(m.Method) != 0 {
 			continue // notifications never satisfy a pending request
 		}
-		var responseID string
-		if err := json.Unmarshal(m.ID, &responseID); err != nil || responseID != id {
-			return fmt.Errorf("%w: response id does not match pending request", ErrMalformedMessage)
-		}
-		if len(m.Error) != 0 {
-			var rejection struct {
-				Code    *int64  `json:"code"`
-				Message *string `json:"message"`
-			}
-			if err := json.Unmarshal(m.Error, &rejection); err != nil || rejection.Code == nil || rejection.Message == nil {
-				return fmt.Errorf("%w: invalid RPC error", ErrMalformedMessage)
-			}
-			return &rpcRejection{method: method, code: *rejection.Code}
-		}
-		if bytes.Equal(bytes.TrimSpace(m.Result), []byte("null")) || json.Unmarshal(m.Result, result) != nil {
-			return fmt.Errorf("%w: invalid %s result", ErrMalformedMessage, method)
-		}
-		return nil
+		return decodeResponse(m, id, method, result)
 	}
 }
 

@@ -15,6 +15,8 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/BurntSushi/toml"
+
 	"github.com/kninetimmy/orch/adapters/claude"
 	"github.com/kninetimmy/orch/adapters/codex"
 	"github.com/kninetimmy/orch/adapters/opencode"
@@ -47,6 +49,32 @@ var roleFiles = []roleFile{
 	{"specialist", "orch-specialist"},
 	{"reviewer", "orch-reviewer"},
 	{"review_downgrade", "orch-reviewer-safe"},
+}
+
+// CodexInstructions returns the shipped role prose, without its default routing
+// fields. The caller must already have an engine-approved execution selection.
+// Architect has no dispatched definition and is deliberately unsupported.
+func CodexInstructions(role string) (string, error) {
+	for _, rf := range roleFiles {
+		if rf.role != role {
+			continue
+		}
+		data, err := codex.AgentTOMLs.ReadFile("agents/" + rf.stem + ".toml")
+		if err != nil {
+			return "", err
+		}
+		var definition struct {
+			Instructions string `toml:"developer_instructions"`
+		}
+		if _, err := toml.Decode(string(data), &definition); err != nil {
+			return "", fmt.Errorf("canonical Codex instructions: %w", err)
+		}
+		if strings.TrimSpace(definition.Instructions) == "" {
+			return "", errors.New("canonical Codex instructions are empty")
+		}
+		return definition.Instructions, nil
+	}
+	return "", fmt.Errorf("no dispatched Codex instructions for role %q", role)
 }
 
 // File is one rendered project agent definition. Path is repo-relative
