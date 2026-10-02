@@ -35,19 +35,20 @@ const (
 // connection has one reader and sequential requests. A task session may also
 // interrupt its outstanding turn; it never multiplexes unrelated work.
 type connection struct {
-	ctx       context.Context
-	cmd       *exec.Cmd
-	stdin     io.WriteCloser
-	stdout    *os.File
-	reader    *bufio.Reader
-	exited    chan struct{}
-	exitErr   error // read only after exited closes
-	stopIO    func() bool
-	sequence  int
-	authSeen  bool
-	isolation bool
-	session   bool // private; enabled only after both session preflights succeed
-	profile   string
+	ctx             context.Context
+	cmd             *exec.Cmd
+	stdin           io.WriteCloser
+	stdout          *os.File
+	reader          *bufio.Reader
+	exited          chan struct{}
+	exitErr         error // read only after exited closes
+	stopIO          func() bool
+	sequence        int
+	authSeen        bool
+	isolation       bool
+	diagnosticReady bool // set only after actual-connection restriction/readiness checks
+	session         bool // private; enabled only after both session preflights succeed
+	profile         string
 }
 
 // start follows execx's argument-vector and explicit-cwd contract. execx.Local
@@ -225,9 +226,16 @@ func (c *connection) read() (message, error) {
 func (c *connection) request(method string, params any) (string, error) {
 	switch method {
 	case "initialize", "account/read", "model/list":
-	case "windowsSandbox/readiness", "permissionProfile/list", "command/exec":
+	case "config/read", "experimentalFeature/list", "windowsSandbox/readiness", "permissionProfile/list":
 		if !c.isolation {
 			return "", errors.New("codex native preflight method unavailable")
+		}
+	case "command/exec":
+		if !c.isolation {
+			return "", errors.New("codex native preflight method unavailable")
+		}
+		if !c.diagnosticReady {
+			return "", errors.New("codex native diagnostic command unavailable before restriction verification")
 		}
 	case "thread/start", "thread/resume", "turn/start", "turn/interrupt":
 		if !c.isolation || !c.session {

@@ -57,6 +57,15 @@ role. There is no public bypass, callback or test flag. Unsandboxed processes,
 fork/steering, approval/tool responses and arbitrary RPCs remain unavailable
 on **every** connection, including sessions.
 
+After #298, the private read-only discovery and diagnostic subset additionally
+admits `config/read` with the approved `cwd` and `includeLayers: false`, and
+`experimentalFeature/list` for loaded feature enablement. Metadata connections
+owned by `Preflight` still deny both. Discovery cannot execute commands;
+`command/exec` is admitted only after the actual diagnostic connection verifies
+its effective restrictions, elevated readiness and selected profile. Every
+thread/turn, unsandboxed process, approval, MCP/app call and configuration-write
+restriction above still applies to these connections, not just `turn/start`.
+
 ## Bounds and evidence
 
 The check has a 15-second deadline, further shortened by caller cancellation or
@@ -202,8 +211,15 @@ describes these rules; [Windows sandbox prerequisites](https://learn.chatgpt.com
 must already be satisfied by the operator.
 
 The launch pins `windows.sandbox="elevated"` and refuses unavailable,
-unrecognized, unready, incompatible, missing or denied capabilities. The
-validated native protocol version is 0.159.2. There is no automatic setup,
+unrecognized, unready, incompatible, missing or denied capabilities. Before
+#298, the validated native protocol version was 0.159.2 and `openIsolation`
+accepted only that exact version; updating to 0.160.0 refused diagnostics
+before checking capabilities. After #298, the version is evidence only:
+every parseable version must supply the required RPCs, interpretable fields,
+effective restrictions, elevated readiness and an allowed profile. Unfamiliar
+versions with equivalent capabilities pass diagnostics, while familiar versions
+missing a requirement fail with that requirement. No version-specific exclusion
+is implemented or future release claimed as validated. There is no automatic setup,
 permission widening, unelevated/WSL fallback, blanket bypass flag or
 unsandboxed command API. Readiness alone cannot prove effectiveness; the
 tagged synthetic smoke supplies separate command-containment evidence.
@@ -217,8 +233,14 @@ and scratch temp locations. No credentials are copied into a workspace,
 child environment, fixture, report or log. Native output is bounded and
 discarded; RPC errors retain only method and numeric code.
 
-Transient flags disable apps, hooks and multi-agent features as defense in
-depth. They do **not** establish a closed model-tool allowlist. The installed
+Before #298, transient flags disabled apps, hooks and multi-agent features as
+defense in depth. After #298, every diagnostic launch sets process-only
+`features.apps`, `plugins`, `remote_plugin`, `hooks`, `multi_agent`,
+`multi_agent_v2`, `browser_use`, `browser_use_external`, `computer_use`,
+`code_mode_host`, `workspace_dependencies` and `skill_mcp_dependency_install`
+to false; `web_search` is disabled and `approval_policy` is `never`.
+The feature names after `features.apps` share the same `features.` prefix.
+These settings do **not** establish a closed model-tool allowlist. The installed
 0.159.2 generated `ThreadStartResponse`, `ThreadResumeResponse`,
 `ThreadForkResponse` and `ThreadSettingsUpdatedNotification` schemas describe
 `disabledPluginIds` as a saved list that does not yet filter plugin
@@ -230,6 +252,37 @@ with a specific 0.159.2 explanation. Both worker and reviewer model execution
 remain unavailable after a successful command smoke. No tool-filter mechanism
 or future compatibility is invented.
 
+MCP tables merge inherited user/project entries: `mcp_servers={}` does not
+disable them. A bounded read-only discovery process obtains all configured
+server names at the approved cwd and closes without commands. A fresh child
+explicitly sets every discovered server's `enabled=false` using quoted TOML
+table keys, including names with dots, quotes or Unicode. There is no server
+name allowlist. Missing/malformed server tables, more than 256 entries, invalid
+names, missing disable evidence or a changed server set refuse diagnostics.
+Names and server credentials are not retained in returned capability evidence.
+
+On the actual connection, `config/read` verifies all required feature disables,
+disabled web search, noninteractive approval policy, elevated sandbox, exact
+default profile, empty command environment and the complete approved filesystem
+and network rules. Inherited profile extensions or workspace roots refuse.
+The normalized `multi_agent_v2.enabled=false` object and filesystem scan
+metadata are accepted; unrelated additive metadata is ignored. The separate
+read-only `experimentalFeature/list` must report every required feature as
+unambiguously disabled, across at most 16 pages of 100 entries with bounded,
+nonrepeating cursors. A raw config echo or successful initialization alone does
+not demonstrate control support. Policy conflicts or unsupported RPCs/controls
+return a specific limitation without fallback. All calls retain the caller's
+deadline and 1 MiB message bound; the discovery process additionally has a
+15-second deadline. Public isolation preflight keeps its overall 15-second bound.
+
+`IsolationCapabilities.ToolsDisabled` and `DisabledMCP` are configuration
+observations, alongside host version, readiness and profile availability.
+None is containment, inferred model-tool enforcement, entitlement or metrics
+evidence. No raw configuration, origins, credentials, account data or native
+diagnostics are logged. Persisted settings, installations and authentication
+are untouched. The [managed-configuration reference](https://learn.chatgpt.com/docs/enterprise/managed-configuration#configure-network-access-requirements)
+also describes why command network restrictions do not cover other surfaces.
+
 ## Repeatable no-model validation
 
 Normal CI runs scripted subprocess regressions without an installed host,
@@ -240,14 +293,23 @@ and failure cleanup preserving existing work. Existing transport tests still
 cover caller cancellation and blocked read/write deadlines. The test binary's
 fixture dispatchers are not production commands or a public batch CLI.
 
+After #298, scripted cases also cover equivalent capabilities with only the
+parseable version changed (0.159.2, 0.160.0 and a synthetic unfamiliar version),
+missing RPCs on both familiar and unfamiliar versions, inherited MCP merging
+and arbitrary names, denied/missing/malformed controls, conflicting feature
+enablement, pagination and harmless additive fields. These fixtures do not
+validate an actual future release. Every production start and resume role is
+separately checked for unchanged model refusal and checkpoint preservation.
+
 Run locally on native Windows with an already configured elevated sandbox and
 native `codex.exe` on PATH or in its standard local desktop install location:
 
 ```sh
-go test -tags=codex_live -run '^TestCodexIsolationSmoke$' -count=1 -v ./internal/...
+go test -tags=codex_live -run '^TestCodexIsolationSmoke$' -count=1 -v ./internal/codexnative
 ```
 
-CI does not run this command. Unsupported/missing hosts or platforms fail
+Before #298 this recipe targeted `./internal/...`; after #298 it targets the
+exact `./internal/codexnative` package. CI does not run this command. Unsupported/missing hosts or platforms fail
 with a validation limitation; they never skip as a successful proof. Confirm
 `=== RUN   TestCodexIsolationSmoke`, its `PASS`, and the parent-verification
 count. The test asserts 46 native commands actually ran. Every read/write
@@ -278,6 +340,28 @@ five-second delayed write, neither delayed marker existed. This proves the
 synthetic native timeout behavior, not `command/exec/terminate`, streamed
 process control or live turn interruption. Missing timeout behavior or a
 surviving descendant fails validation.
+
+Repeated on 2026-10-02 for #298: native Windows amd64, OS 10.0.26300,
+Go 1.26.5, installed Codex 0.160.0 and an already ready elevated sandbox.
+`TestCodexIsolationSmoke` passed in 43.75 seconds and the parent verified all
+46 synthetic commands. Both worker and reviewer connections reported effective
+tool restrictions and three dynamically discovered configured MCP servers
+disabled; these are configuration observations, reported separately from the
+executed containment checks. Worker writes, reviewer read-only checkout,
+scratch writes, protected sentinels, shared Git metadata, junction/`..` escapes,
+scrubbed environment and timeout/descendant cleanup all passed. Timeout RPC
+-32603 arrived in 1.73/1.67 seconds; neither delayed payload nor descendant
+marker existed after the parent waited beyond five seconds. No model turns ran.
+The 0.159.2 observations above remain historical evidence, not proof for 0.160.0.
+
+The generated 0.160.0 thread start/resume schemas still say `disabledPluginIds`
+does not filter plugin capabilities. Configuration observations and synthetic
+commands cannot establish model-tool closure; `modelToolBoundary` therefore
+continues to refuse every version. Task 210 remains open. Closing it requires
+separately approved evidence of native model-tool enforcement on the actual
+host/profile, an approved reviewed change to the refusal and the finite one-task
+model/tool smoke described below. Native identity/effort, entitlement, usage,
+turn interruption and disconnect/resume remain unverified by this diagnostic.
 
 No live inference, model-tool calls, model identity/effort observations or token
 usage are validated here. Those remain #294 work and cannot proceed through
@@ -514,3 +598,32 @@ Codex/Claude/OpenCode execution remain unchanged. The existing manual adapter
 is still the available production Codex execution path. Its instruction-based
 reviewer restriction applies to every manual reviewer role, and session source
 delivery does not improve that manual restriction or claim model readiness.
+
+## #298 blast radius and compatibility
+
+Historical #292/#293/#294 statements above remain as before-and-after evidence.
+The following accounts for every element touched by #298; no lifecycle, routing,
+model/effort catalog, managed-subscription authentication or Assist guard changes
+are made.
+
+| Touched element | Before #298 | After #298; does prior behavior still hold? |
+| --- | --- | --- |
+| `isolation.go`: `IsolationCapabilities` | Host version, sandbox readiness and profile availability described prerequisites. | Keeps those fields and adds `ToolsDisabled` and an MCP count as configuration observations only; no containment or model readiness claim. |
+| `isolation.go`: `isolationBoundary.args` | Fresh workspace/scratch/protected-path profile, elevated sandbox, scrubbed command environment and three feature disables. | Keeps the entire filesystem/network/environment contract. Adds all required surface disables, disabled web search and noninteractive approval; every diagnostic child uses the same builder. The old narrower flag set is recorded above. |
+| `isolation.go`: `openIsolation`, new `startIsolation` | Exact 0.159.2 eligibility, then readiness/profile checks on one connection. | Removes only the exact-version gate, recorded above; parseable host-version evidence remains. Adds bounded no-command discovery, explicit dynamic MCP disables and actual-connection configuration/feature verification before readiness/profile acceptance. Preserves cwd/path checks, owned cleanup and public unconditional model refusal. |
+| `isolation.go`: `connection.diagnosticCommand` | Private buffered synthetic commands pinned cwd/profile/environment/timeout. | Keeps those settings and output discard. Requires the connection's verified boundary before submitting any command; applies to every diagnostic call and both roles. |
+| New `isolation_config.go`: `restrictedFeatures`, `isolationConfig`, `restrictionError`, `readIsolationConfig`, `isolationConfig.serverNames`, `disableMCP`, `isolationConfig.verify`, `verifyRestrictedFeatures` | No effective inherited-tool verification existed. | Adds only bounded, redacted read-only checking and quoted process-only overrides. Unknown server names are discovered; missing/denied/conflicting requirements fail while harmless additive fields pass. No config-write or tool-call API is added. |
+| `transport.go`: `connection.diagnosticReady`, `connection.request` | Isolation connections could submit diagnostic commands after initialization; metadata denylist and session gates already existed. | Removes that early command admission: discovery/unchecked connections cannot submit commands. Adds only private isolation `config/read` and `experimentalFeature/list`; metadata denial, every thread/turn production gate, unsandboxed process/approval/MCP/app refusal, redacted errors and shutdown bounds remain for all connections. |
+| `isolation_test.go`: `scriptedIsolationServer`, `TestIsolationEnvironmentsAndModelRefusal`, `TestIsolationCapabilitiesAndFailureCleanup` | Scripted exact-version failure, readiness/profile/output bounds, environment scrubbing and model refusal. | Replaces exact-version fixture rejection with capability compatibility and specific missing-RPC checks. Adds inherited table merging, arbitrary MCP keys, normalized controls, denied/missing/malformed/conflicting restrictions and feature pagination. Environment, output, existing-work preservation, cleanup and model refusal checks remain. |
+| `preflight_test.go`: `TestPreflightSelectionAndExecutionBoundary` | Metadata connections denied execution and isolation RPCs. | Same behavior; now explicitly checks denial of the two new private read-only RPCs. Exact routed model/effort and managed-auth checks are untouched. |
+| `session_test.go`: new `TestSessionProductionRefusalEveryRole` | Production start refusal was tested for the specialist; shared production code also guarded every role/resume. | Adds public start/resume refusal checks for all five roles without a new execution seam. No thread/turn submission; disconnected checkpoints remain unchanged. Production session code is untouched. |
+| `isolation_live_test.go`: `TestCodexIsolationSmoke` | Opt-in 46-command native synthetic containment proof, readiness/profile logs and parent cleanup checks. | Keeps all 46 probes, sentinels, environment and descendant checks. Additionally verifies and separately reports effective tool configuration and MCP count on the observed host. No model trial or new public driver. |
+| This protocol document | Recorded 0.159.2 exact eligibility, three defense-in-depth flags, historical native command evidence and model refusal. | Keeps and labels those historical restrictions, records their precise replacements, 0.160.0 configuration/containment evidence, bounded discovery limits and remaining task-210 approval/evidence requirements. |
+
+All unlisted path helpers, credential separation, shared-Git protection,
+`modelToolBoundary`, session start/resume implementation, role definitions,
+engine/CLI/manual adapters, metrics/schema/storage, manifests, configuration
+files, plugin installation, authentication and security policy remain unchanged.
+Command restrictions apply to every diagnostic command; metadata and diagnostic
+thread/turn restrictions apply to every connection of those kinds. The manual
+Assist shell-write loophole remains outside this issue.

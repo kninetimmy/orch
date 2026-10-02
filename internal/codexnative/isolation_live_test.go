@@ -79,7 +79,10 @@ func TestCodexIsolationSmoke(t *testing.T) {
 					t.Errorf("native app-server cleanup: %v", err)
 				}
 			}()
-			t.Logf("native Windows host=%s role=%s readiness=%v profileAllowed=%v; these are prerequisites only", capabilities.HostVersion, b.profile(), capabilities.SandboxReady, capabilities.ProfileAllowed)
+			if !capabilities.ToolsDisabled || capabilities.DisabledMCP < 0 {
+				t.Fatal("effective capability restrictions were not verified before command execution")
+			}
+			t.Logf("configuration observations: native Windows host=%s role=%s readiness=%v profileAllowed=%v toolsDisabled=%v disabledMCP=%d; these do not prove containment or model-tool readiness", capabilities.HostVersion, b.profile(), capabilities.SandboxReady, capabilities.ProfileAllowed, capabilities.ToolsDisabled, capabilities.DisabledMCP)
 			check := func(operation, path string, want int) {
 				t.Helper()
 				code, err := c.diagnosticCommand(b, []string{payload, "orch-isolation-fixture", operation, path}, false)
@@ -127,7 +130,7 @@ func TestCodexIsolationSmoke(t *testing.T) {
 			if err := modelToolBoundary(capabilities.HostVersion); !errors.Is(err, ErrIsolationUnavailable) {
 				t.Fatal("command proof incorrectly enabled model tools")
 			}
-			t.Logf("%s synthetic checks: allowed access, explicit denied reads/writes, outside write denial, environment and native timeout cancellation verified", b.profile())
+			t.Logf("executed containment checks: %s allowed access, explicit denied reads/writes, outside write denial, environment and native timeout cancellation verified", b.profile())
 		}()
 	}
 	if commands != 46 {

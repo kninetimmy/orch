@@ -635,6 +635,34 @@ func TestSessionProductionGateAndBinding(t *testing.T) {
 	}
 }
 
+func TestSessionProductionRefusalEveryRole(t *testing.T) {
+	t.Setenv("ORCH_CODEX_SESSION_TEST_SERVER", "production")
+	for _, role := range []string{"scout", "implementer", "specialist", "reviewer", "review_downgrade"} {
+		t.Run(role, func(t *testing.T) {
+			options, task := sessionTask(t)
+			task.Role = role
+			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			defer cancel()
+			s, err := RunSession(ctx, options, task)
+			if !errors.Is(err, ErrIsolationUnavailable) || s == nil || s.result.ThreadID != "" || s.result.TurnID != "" {
+				t.Fatalf("production start passed isolation for %s: %v", role, err)
+			}
+			// Supply an identified unfinished checkpoint to exercise the public
+			// resume gate, without executing a synthetic or native model turn.
+			s.result.Outcome = SessionDisconnected
+			s.result.ThreadID, s.result.NativeSessionID, s.result.TurnID = "retained-thread", "retained-tree", "retained-turn"
+			before := s.Result()
+			if err := s.Resume(ctx, task); !errors.Is(err, ErrIsolationUnavailable) || !reflect.DeepEqual(s.Result(), before) {
+				t.Fatalf("production resume passed isolation or changed checkpoint for %s: %v", role, err)
+			}
+			calls, err := os.ReadFile(filepath.Join(task.Layout.Workspace, ".scripted-native-calls"))
+			if err != nil || strings.Contains(string(calls), "thread/start") || strings.Contains(string(calls), "thread/resume") || strings.Contains(string(calls), "turn/start") {
+				t.Fatalf("production preflights submitted model work for %s: %v", role, err)
+			}
+		})
+	}
+}
+
 func TestSessionUnknownTurnCannotResume(t *testing.T) {
 	options, task := sessionTask(t)
 	s, _, err := newSession(options, task)

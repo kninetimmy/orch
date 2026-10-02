@@ -188,14 +188,14 @@ func TestIsolationEnvironmentsAndModelRefusal(t *testing.T) {
 			t.Fatalf("tool environment did not explicitly unset %s", name)
 		}
 	}
-	for _, version := range []string{"0.159.2", "", "future-version"} {
+	for _, version := range []string{"0.159.2", "0.160.0", "77.88.99", "", "future-version"} {
 		if err := modelToolBoundary(version); !errors.Is(err, ErrIsolationUnavailable) {
 			t.Fatalf("unverified model-tool boundary accepted: %v", err)
 		}
 	}
 	var c connection
 	c.isolation = true
-	for _, method := range []string{"thread/start", "turn/start", "process/spawn", "thread/shellCommand", "windowsSandbox/setupStart", "config/value/write"} {
+	for _, method := range []string{"thread/start", "thread/resume", "turn/start", "turn/interrupt", "command/exec", "process/spawn", "thread/shellCommand", "windowsSandbox/setupStart", "config/value/write", "config/batchWrite", "mcpServer/tool/call", "app/tool/call", "approval/respond"} {
 		if err := c.call(method, nil, nil); err == nil {
 			t.Fatalf("isolation connection allowed %s", method)
 		}
@@ -242,11 +242,106 @@ func scriptedIsolationServer() {
 			}
 			scenario = params.ClientInfo.Version
 			version := "0.159.2"
-			if scenario == "incompatible-version" {
-				version = "0.160.0"
+			if base, observed, ok := strings.Cut(scenario, "@"); ok {
+				scenario, version = base, observed
 			}
-			write(request.ID, map[string]any{"userAgent": "Codex Desktop/" + version})
+			write(request.ID, map[string]any{"userAgent": "Codex Desktop/" + version, "extraMetadata": "harmless"})
 		case "initialized":
+		case "config/read":
+			var params struct {
+				Cwd    string `json:"cwd"`
+				Layers bool   `json:"includeLayers"`
+			}
+			cwd, cwdErr := os.Getwd()
+			if json.Unmarshal(request.Params, &params) != nil || cwdErr != nil || !strings.EqualFold(params.Cwd, cwd) || params.Layers {
+				os.Exit(47)
+			}
+			if scenario == "missing-config-method" {
+				_ = json.NewEncoder(os.Stdout).Encode(map[string]any{"id": request.ID, "error": map[string]any{"code": -32601, "message": "DO-NOT-LEAK"}})
+				continue
+			}
+			// Emulate user/project table merging: empty tables preserve entries.
+			servers := map[string]any{
+				"user-server":                      map[string]any{"enabled": true, "secret": "DO-NOT-LEAK"},
+				"project.server with \"quotes\" 雪": map[string]any{"enabled": true},
+				"already-disabled":                 map[string]any{"enabled": false},
+			}
+			overrides, restricted := config["mcp_servers"].(map[string]any)
+			for name, value := range overrides {
+				servers[name] = value
+			}
+			config["mcp_servers"] = servers
+			if enabled, ok := config["features"].(map[string]any)["multi_agent_v2"].(bool); ok {
+				config["features"].(map[string]any)["multi_agent_v2"] = map[string]any{"enabled": enabled, "additionalMetadata": 42}
+			}
+			if restricted {
+				switch scenario {
+				case "missing-config":
+					write(request.ID, map[string]any{"origins": "harmless"})
+					continue
+				case "missing-mcp":
+					delete(config, "mcp_servers")
+				case "enabled-mcp":
+					servers["user-server"] = map[string]any{"enabled": true}
+				case "missing-mcp-enabled":
+					servers["user-server"] = map[string]any{"secret": "DO-NOT-LEAK"}
+				case "new-mcp":
+					servers["late-server"] = map[string]any{"enabled": false}
+				case "denied-apps":
+					config["features"].(map[string]any)["apps"] = true
+				case "missing-hooks":
+					delete(config["features"].(map[string]any), "hooks")
+				case "malformed-control":
+					config["features"].(map[string]any)["plugins"] = 1
+				case "malformed-config":
+					config["windows"] = 1
+				case "missing-multi-agent-enabled":
+					config["features"].(map[string]any)["multi_agent_v2"] = map[string]any{"metadata": false}
+				case "search-enabled":
+					config["web_search"] = "live"
+				case "approval-enabled":
+					config["approval_policy"] = "on-request"
+				case "network-enabled":
+					config["permissions"].(map[string]any)[config["default_permissions"].(string)].(map[string]any)["network"] = map[string]any{"enabled": true}
+				case "filesystem-conflict":
+					config["permissions"].(map[string]any)[config["default_permissions"].(string)].(map[string]any)["filesystem"].(map[string]any)["/unapproved"] = "write"
+				case "inherited-environment":
+					config["shell_environment_policy"].(map[string]any)["set"] = map[string]any{"secret": "DO-NOT-LEAK"}
+				}
+			}
+			write(request.ID, map[string]any{"config": config, "origins": "ignored metadata", "extra": true})
+		case "experimentalFeature/list":
+			if scenario == "missing-feature-method" {
+				_ = json.NewEncoder(os.Stdout).Encode(map[string]any{"id": request.ID, "error": map[string]any{"code": -32601, "message": "DO-NOT-LEAK"}})
+				continue
+			}
+			var params struct {
+				Cursor *string `json:"cursor"`
+			}
+			if json.Unmarshal(request.Params, &params) != nil {
+				os.Exit(48)
+			}
+			var data []any
+			for i, name := range restrictedFeatures {
+				if (params.Cursor == nil && i >= 6) || (params.Cursor != nil && i < 6) || (scenario == "unsupported-feature" && name == "plugins") {
+					continue
+				}
+				entry := map[string]any{"name": name, "enabled": false, "metadata": "harmless"}
+				if scenario == "conflicting-feature" && name == "hooks" {
+					entry["enabled"] = true
+				}
+				if scenario == "missing-feature-enabled" && name == "plugins" {
+					delete(entry, "enabled")
+				}
+				data = append(data, entry)
+			}
+			data = append(data, map[string]any{"name": "unrelated-feature", "metadata": "ignored"})
+			var next *string
+			if params.Cursor == nil || scenario == "repeated-feature-cursor" {
+				value := "second-page"
+				next = &value
+			}
+			write(request.ID, map[string]any{"data": data, "nextCursor": next})
 		case "windowsSandbox/readiness":
 			switch scenario {
 			case "missing-method":
@@ -272,6 +367,9 @@ func scriptedIsolationServer() {
 			}
 			write(request.ID, map[string]any{"data": data})
 		case "command/exec":
+			if scenario != "success" && scenario != "excessive-output" {
+				os.Exit(49) // a refused control must stop before commands
+			}
 			if scenario == "excessive-output" {
 				write(request.ID, map[string]any{"exitCode": 0, "stdout": strings.Repeat("x", maxMessageBytes), "stderr": ""})
 				continue
@@ -301,12 +399,12 @@ func TestIsolationCapabilitiesAndFailureCleanup(t *testing.T) {
 			if !errors.Is(err, ErrIsolationUnavailable) {
 				t.Fatalf("public isolation preflight accepted model execution: %v", err)
 			}
-			if runtime.GOOS == "windows" && (!capabilities.SandboxReady || !capabilities.ProfileAllowed || !strings.Contains(err.Error(), "disabledPluginIds")) {
+			if runtime.GOOS == "windows" && (!capabilities.SandboxReady || !capabilities.ProfileAllowed || !capabilities.ToolsDisabled || !strings.Contains(err.Error(), "disabledPluginIds")) {
 				t.Fatalf("readiness/profile availability bypassed specific tool refusal: %+v, %v", capabilities, err)
 			}
 		}
 	})
-	for _, scenario := range []string{"success", "missing-method", "missing-readiness", "not-ready", "denied-profile", "missing-profile", "missing-allowed", "duplicate-profile", "incompatible-version", "excessive-output"} {
+	for _, scenario := range []string{"success", "success@0.160.0", "success@77.88.99-beta.2", "missing-method", "missing-method@77.88.99", "missing-readiness", "not-ready", "denied-profile", "missing-profile", "missing-allowed", "duplicate-profile", "excessive-output", "missing-config-method", "missing-config", "missing-mcp", "enabled-mcp", "missing-mcp-enabled", "new-mcp", "denied-apps", "missing-hooks", "malformed-control", "malformed-config", "missing-multi-agent-enabled", "search-enabled", "approval-enabled", "network-enabled", "filesystem-conflict", "inherited-environment", "missing-feature-method", "unsupported-feature", "conflicting-feature", "missing-feature-enabled", "repeated-feature-cursor", "success@not-a-version"} {
 		t.Run(scenario, func(t *testing.T) {
 			layout := isolationLayout(t)
 			preserved := filepath.Join(layout.Workspace, "existing-work")
@@ -320,9 +418,18 @@ func TestIsolationCapabilitiesAndFailureCleanup(t *testing.T) {
 			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 			defer cancel()
 			c, capabilities, err := openIsolation(ctx, Options{Executable: executable, Dir: layout.Workspace, ClientVersion: scenario}, b)
-			if scenario == "success" || scenario == "excessive-output" {
-				if err != nil || !capabilities.SandboxReady || !capabilities.ProfileAllowed {
+			if (strings.HasPrefix(scenario, "success") && scenario != "success@not-a-version") || scenario == "excessive-output" {
+				if err != nil || !capabilities.SandboxReady || !capabilities.ProfileAllowed || !capabilities.ToolsDisabled || capabilities.DisabledMCP != 3 {
 					t.Fatalf("configuration availability: %+v, %v", capabilities, err)
+				}
+				_, version, versionChanged := strings.Cut(scenario, "@")
+				if versionChanged && capabilities.HostVersion != version {
+					t.Fatal("observed host version was not retained")
+				}
+				if scenario != "excessive-output" {
+					if code, err := c.diagnosticCommand(b, []string{"fixture"}, false); err != nil || code != 0 {
+						t.Fatalf("compatible diagnostic command refused: %v", err)
+					}
 				}
 				if scenario == "excessive-output" {
 					_, err = c.diagnosticCommand(b, []string{"fixture"}, false)
@@ -340,6 +447,9 @@ func TestIsolationCapabilitiesAndFailureCleanup(t *testing.T) {
 				}
 			} else if err == nil || c != nil || strings.Contains(err.Error(), "DO-NOT-LEAK") {
 				t.Fatalf("missing/denied capability was accepted: %+v, %v", capabilities, err)
+			}
+			if strings.HasPrefix(scenario, "missing-method") && !strings.Contains(err.Error(), "windowsSandbox/readiness rejected") {
+				t.Fatalf("version hid the specific missing capability: %v", err)
 			}
 			if data, err := os.ReadFile(preserved); err != nil || string(data) != "preserve" {
 				t.Fatal("failure cleanup modified existing work")
