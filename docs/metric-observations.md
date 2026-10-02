@@ -311,6 +311,59 @@ approval, guard, GitHub resource or active-run state format changes. This applie
 to every lifecycle verb, not just `pr-open`/`review`; capture's new schema is not
 an authorization or an observed execution-profile guarantee.
 
+### Forked rollout compatibility (#300)
+
+Before #300, `readRollout` rejected every second `session_meta`, including an
+inherited parent's metadata in an otherwise completed child. After #300, that
+blanket rejection has one bounded exception shared by **both** `TotalTokens`
+and `Completed`; all other duplicate metadata remains unavailable.
+
+The supported fork shape starts with exact child metadata at ordinal 0 and one
+inherited user-parent metadata record at ordinal 1. The inherited record must
+have `id` and `session_id` equal to the requested parent, a valid non-spawn
+source, no parent/task reference and no fork claim. Presence of either child
+`forked_from_id` or `subagent_history_start_ordinal` claims this format and
+requires both: an exact parent match and an integer boundary of at least 2.
+Every nonblank record must have a contiguous integer ordinal starting at 0.
+At the declared boundary the child starts with `event_msg/thread_settings_applied`
+followed by `event_msg/task_started`. This is the observed supported shape,
+not a CLI-version allowlist or inferred event-payload contract.
+
+Only records at or after that validated boundary can supply child terminal
+evidence. Inherited counters, timestamps and completion never fill a missing
+child value or complete an unfinished child. Missing, null, malformed,
+conflicting or out-of-range fork/boundary/ordinal evidence, conflicting
+inherited or source identity, extra metadata anywhere, unsupported start
+markers and malformed or unfinished child tails remain unavailable. Ordinary
+legacy files without either fork field keep their previous behavior, including
+ignoring unused ordinals. Wrong-parent/sibling isolation, unrelated-corruption
+isolation and duplicate-matching-file rejection still apply to both helpers.
+
+The validated native ordinal is zero-based; schema-2 sequence remains the
+existing **one-based physical nonblank token-record position**, counting the
+inherited prefix. Skipping inherited evidence does not renumber samples.
+Counter presence/zero, child terminal time, native cumulative definitions,
+stable sample IDs, replay and resumed-child contributions remain unchanged.
+Native counter/time and canonical-child-path checks remain specific to
+`Completed`. Agreement with a supplied source-level task path was previously
+additional only for `Completed`; it now also applies to claimed forks through
+`TotalTokens`. Ordinary legacy `TotalTokens` keeps its previous behavior. All
+fork-shape restrictions apply through the shared reader to both helpers.
+
+| Touched element | Before and after #300 |
+| --- | --- |
+| `record.Ordinal` | Previously ignored. Retained as raw JSON and validated only for claimed forks; existing timestamp/type/payload decoding and physical record counting remain. |
+| `sessionMeta.ForkedFromID`, `SubagentHistoryStartOrdinal` | Previously ignored. Raw fields now establish and validate the bounded fork claim after child identification. Existing identity/source fields retain legacy validation. |
+| `readRollout` | Previously rejected every second metadata record. Now admits only the validated parent record at ordinal 1 and excludes inherited records from child terminal selection. Other metadata rejection, JSON/size/read failures and candidate classification remain. |
+| `hasOrdinal`, `inheritedParent` | New private checks for all records of a claimed fork and its single inherited metadata record. They do not broaden matching into parent/root capture or change ordinary legacy validation. |
+| `findRollout`, `TotalTokens`, `Completed`, `finalUsage`, `finalTotal`, `Capture.SampleID` | Existing contracts and implementations remain; the shared parser now accepts the supported fork shape. Exact aggregate/delta, native counter presence, timestamp checks, uniqueness and physical sample identity remain. |
+| `TestLegacyTotalIgnoresUnsupportedOptionalFields`; new `forkedRollout`, `TestForkedRolloutCapturesOnlyChildUsage`, `TestForkedRolloutRejectsInvalidHistory`, `TestForkedRolloutIsolatesOtherSessions`; `testdata/forked/executor.jsonl` | Existing tests remain. Synthetic checks add bounded-prefix selection, malformed evidence and attribution cases; the legacy optional-field check also proves unused ordinals remain ignored. The new fixture contains no native transcript or machine path. |
+| CLI test helpers `forkedCodexRollout`, `captureCodexLegacy`; `TestForkedCodexCaptureContractsAndRecorderReplay`, `TestForkedCodexCaptureBoundaryAndCounterFailures` | New checks exercise both unchanged public request/response contracts, capture/recorder subprocess restart, replay and repair. No CLI production code, recorder schema, history or association rule changes. |
+| `docs/metric-observations.md` | The old blanket rejection is retained explicitly as the before behavior, alongside the exception and its remaining limits. Earlier capture and recording contracts remain documented. |
+
+No dependency, metrics/run schema, recorded-history backfill, installed host,
+model execution, role default or native-isolation behavior changes.
+
 ## Bounded native Codex sessions (#294)
 
 The dormant internal `codexnative` session API returns schema-2 observations;
