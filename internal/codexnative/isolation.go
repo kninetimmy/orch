@@ -37,6 +37,8 @@ type IsolationCapabilities struct {
 	HostVersion    string
 	SandboxReady   bool
 	ProfileAllowed bool
+	ToolsDisabled  bool // effective configuration only, never model-tool proof
+	DisabledMCP    int  // names and configuration are not retained as evidence
 }
 
 type isolationBoundary struct {
@@ -267,9 +269,13 @@ func (b isolationBoundary) args() []string {
 	// A fresh profile name avoids merging inherited extensions/workspace roots
 	// into this boundary. These are process-only overrides, never config writes.
 	profile := `{filesystem={` + strings.Join(entries, ",") + `},network={enabled=false}}`
-	return []string{"app-server", "--listen", "stdio://", "-c", `windows.sandbox="elevated"`, "-c", "permissions." + b.profile() + "=" + profile,
+	args := []string{"app-server", "--listen", "stdio://", "-c", `windows.sandbox="elevated"`, "-c", "permissions." + b.profile() + "=" + profile,
 		"-c", "default_permissions=" + quoteTOML(b.profile()), "-c", `shell_environment_policy={inherit="none",set={}}`,
-		"-c", "features.apps=false", "-c", "features.hooks=false", "-c", "features.multi_agent=false"}
+		"-c", `approval_policy="never"`, "-c", `web_search="disabled"`}
+	for _, feature := range restrictedFeatures {
+		args = append(args, "-c", "features."+feature+"=false")
+	}
+	return args
 }
 
 func serverEnvironment(environ []string, scratch string) []string {
@@ -321,36 +327,45 @@ func openIsolation(ctx context.Context, options Options, b isolationBoundary) (c
 	if options.Executable == "" {
 		options.Executable = "codex"
 	}
-	c, err = startWithEnv(ctx, execx.Cmd{Name: options.Executable, Args: b.args(), Dir: b.workspace}, serverEnvironment(os.Environ(), b.scratch))
+	// Discover the merged server names without executing commands, then disable
+	// each one explicitly on a fresh connection. An empty table is only a merge.
+	discoveryCtx, cancel := context.WithTimeout(ctx, preflightTimeout)
+	defer cancel()
+	discovery, capabilities, err := startIsolation(discoveryCtx, options, b, b.args())
 	if err != nil {
 		return nil, capabilities, err
 	}
-	c.isolation = true
-	c.profile = b.profile()
+	config, readErr := readIsolationConfig(discovery, b.workspace)
+	err = errors.Join(readErr, discovery.close(), discovery.contextError("configuration discovery"))
+	if err != nil {
+		return nil, capabilities, err
+	}
+	servers, err := config.serverNames()
+	if err != nil {
+		return nil, capabilities, err
+	}
+	c, capabilities, err = startIsolation(ctx, options, b, disableMCP(b.args(), servers))
+	if err != nil {
+		return nil, capabilities, err
+	}
 	defer func() {
 		if err != nil {
 			err = errors.Join(err, c.close(), c.contextError("isolation initialization"))
 			c = nil
 		}
 	}()
-	var initialize struct {
-		UserAgent string `json:"userAgent"`
-	}
-	params := map[string]any{"clientInfo": map[string]string{"name": "orch", "version": options.ClientVersion}, "capabilities": map[string]bool{"experimentalApi": true}}
-	if err = c.call("initialize", params, &initialize); err != nil {
+	config, err = readIsolationConfig(c, b.workspace)
+	if err != nil {
 		return c, capabilities, err
 	}
-	version := hostVersion.FindStringSubmatch(initialize.UserAgent)
-	if len(version) != 2 {
-		return c, capabilities, fmt.Errorf("%w: native host version unavailable", ErrIsolationUnavailable)
-	}
-	capabilities.HostVersion = version[1]
-	if capabilities.HostVersion != "0.159.2" {
-		return c, capabilities, fmt.Errorf("%w: native version has no validated isolation protocol", ErrIsolationUnavailable)
-	}
-	if err = c.initialized(); err != nil {
+	if err = config.verify(b, servers); err != nil {
 		return c, capabilities, err
 	}
+	if err = verifyRestrictedFeatures(c); err != nil {
+		return c, capabilities, err
+	}
+	capabilities.ToolsDisabled = true
+	capabilities.DisabledMCP = len(servers)
 	var readiness struct {
 		Status string `json:"status"`
 	}
@@ -358,6 +373,9 @@ func openIsolation(ctx context.Context, options Options, b isolationBoundary) (c
 		return c, capabilities, err
 	}
 	if readiness.Status != "ready" {
+		if readiness.Status == "" {
+			return c, capabilities, fmt.Errorf("%w: windowsSandbox/readiness status missing", ErrIsolationUnavailable)
+		}
 		return c, capabilities, fmt.Errorf("%w: elevated Windows sandbox is not ready; operator setup is required", ErrIsolationUnavailable)
 	}
 	capabilities.SandboxReady = true
@@ -387,12 +405,44 @@ func openIsolation(ctx context.Context, options Options, b isolationBoundary) (c
 		return c, capabilities, fmt.Errorf("%w: native permission profile missing", ErrIsolationUnavailable)
 	}
 	capabilities.ProfileAllowed = true
+	c.diagnosticReady = true
 	return c, capabilities, nil
+}
+
+func startIsolation(ctx context.Context, options Options, b isolationBoundary, args []string) (c *connection, capabilities IsolationCapabilities, err error) {
+	c, err = startWithEnv(ctx, execx.Cmd{Name: options.Executable, Args: args, Dir: b.workspace}, serverEnvironment(os.Environ(), b.scratch))
+	if err != nil {
+		return nil, capabilities, err
+	}
+	c.isolation, c.profile = true, b.profile()
+	defer func() {
+		if err != nil {
+			err = errors.Join(err, c.close(), c.contextError("isolation initialization"))
+			c = nil
+		}
+	}()
+	var initialize struct {
+		UserAgent string `json:"userAgent"`
+	}
+	params := map[string]any{"clientInfo": map[string]string{"name": "orch", "version": options.ClientVersion}, "capabilities": map[string]bool{"experimentalApi": true}}
+	if err = c.call("initialize", params, &initialize); err != nil {
+		return c, capabilities, err
+	}
+	version := hostVersion.FindStringSubmatch(initialize.UserAgent)
+	if len(version) != 2 {
+		return c, capabilities, fmt.Errorf("%w: native host version unavailable", ErrIsolationUnavailable)
+	}
+	capabilities.HostVersion = version[1] // evidence, never an eligibility allowlist
+	err = c.initialized()
+	return c, capabilities, err
 }
 
 // diagnosticCommand is private: only no-model synthetic tests call it.
 // Metadata/diagnostic connections cannot start turns or unsandboxed processes.
 func (c *connection) diagnosticCommand(b isolationBoundary, argv []string, cancelByTimeout bool) (int, error) {
+	if !c.diagnosticReady || c.profile != b.profile() || c.cmd.Dir != b.workspace {
+		return 0, fmt.Errorf("%w: diagnostic command requires its verified connection and boundary", ErrIsolationUnavailable)
+	}
 	timeout := 10000
 	if cancelByTimeout {
 		timeout = 1000

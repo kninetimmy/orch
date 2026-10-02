@@ -365,7 +365,7 @@ func TestPreflightSelectionAndExecutionBoundary(t *testing.T) {
 		t.Fatalf("missing executable: %v", err)
 	}
 	var c connection
-	for _, method := range []string{"thread/start", "thread/resume", "turn/start", "turn/steer", "command/exec", "command/exec/terminate", "process/spawn", "windowsSandbox/readiness", "permissionProfile/list", "account/login/start", "account/logout", "config/value/write"} {
+	for _, method := range []string{"thread/start", "thread/resume", "turn/start", "turn/steer", "command/exec", "command/exec/terminate", "process/spawn", "windowsSandbox/readiness", "permissionProfile/list", "config/read", "experimentalFeature/list", "account/login/start", "account/logout", "config/value/write"} {
 		if err := c.call(method, nil, nil); err == nil || !strings.Contains(err.Error(), "method unavailable") {
 			t.Fatalf("unavailable method %s: %v", method, err)
 		}
