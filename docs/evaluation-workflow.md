@@ -1,11 +1,17 @@
 # Proposed P1-C evaluation workflow
 
-**Status: design only.** Every `orch eval` command, plan format, storage location
+**Status: proposed runner; maintainer corpus preparation implemented.**
+Every `orch eval` command, plan format, storage location
 and output described below is proposed and unimplemented. Current `orch help`
 does not list this family. Existing `orch metrics` reporting and `orch metrics
 record` observations are available under the [metrics contract](metric-observations.md);
-they do not supply evaluation grades or a comparison runner. There is no prepared
-reference corpus, validated grader or measured P1-C baseline delivered here.
+they do not supply evaluation grades or a comparison runner. Before issue #310
+this guide stated: "There is no prepared reference corpus, validated grader or
+measured P1-C baseline delivered here." After that increment,
+[reference-v1](../evaluation/reference-v1/preparation-report.md) contains twelve
+scoped historical cases and deterministic preparation controls. Independent
+semantic validation is separately retained; no validated grader, protected
+runtime store or measured P1-C baseline is claimed by author checks.
 
 This v1 experience is for maintainers and advanced users screening Orch changes
 against a versioned **Orch reference corpus**. It does not establish tuning
@@ -15,6 +21,37 @@ governs cases, grading, matching, measurements and decisions; the
 [native contract](codex-native-protocol.md) governs execution eligibility.
 Existing engine approval, routing, canonical roles and permissions remain
 authoritative. This guide grants no trial approval or alternate execution path.
+
+## Maintainer preparation available now
+
+Ordinary approved Orch agents may author corpus artifacts and independently
+validate them without launching evaluation model trials. A fresh person or agent
+other than the author checks pinned source and reproduces control evidence,
+checks the semantic rubric and records identity and unavoidable prior exposure.
+Agreement between agents alone is insufficient. Disputes stay unresolved or go
+to an independent adjudicator. This applies to preparation of scout,
+implementation and review cases alike. The earlier "without model calls"
+wording is replaced by this specific prohibition on evaluation model trials;
+it does not prohibit approved authoring/review agents.
+
+Read the preparation report and frozen manifest/exposure register, ensure its
+historical Git objects and documented Go/Git prerequisites exist locally, then
+run the existing test entry point:
+
+```sh
+go test -tags=corpus_validation -count=1 ./internal/evalcorpus
+```
+
+This reconstructs worker packets from only declared bytes in new disposable
+directories, separately reconstructs controller code/probes, and verifies
+known-good/bad/alternative control results under finite limits. It makes no model
+calls or production GitHub writes and is not an `orch eval` command. Ordinary
+package tests check manifest and export rejection without requiring historical
+Orch objects. Follow the report to retain exact outputs and link fresh independent
+review evidence; passing author controls alone cannot declare preparation
+validated. Source/controller material in the repository must never be reachable
+by evaluated workers. Export inspection is not OS or model-tool isolation;
+protected runtime access enforcement remains unimplemented and blocks execution.
 
 ## Choose the question and scope
 
@@ -150,6 +187,10 @@ example, “native execution unavailable: model-tool containment unverified;
 complete the separately approved native validation and reviewed refusal change.”
 Today's production `ErrIsolationUnavailable` remains binding; synthetic command
 success or configuration flags do not establish model-tool containment.
+Both production turn entry points, `RunSession` and `Session.Resume`, require
+`IsolationPreflight` for every task role. This is broader than one sentinel's
+caller and narrower than all native APIs: metadata and command diagnostics do
+not become model execution permission.
 
 Approval binds the exact frozen scope, digests, effective profiles/routing,
 budgets, measurement and decision rules. Revalidate before execution; changes
@@ -251,8 +292,10 @@ changes follow the existing approved Delivery workflow and separate merge gate.
 
 ## Work still required
 
-Separately scope corpus/grader preparation and independent validation without
-model calls; runner/CLI and controller storage implementation; supported native
+Before issue #310, this guide deferred corpus/grader preparation and independent
+validation "without model calls." After that increment, maintainer preparation
+exists and fresh independent semantic validation remains required. Separately
+scope runner/CLI and protected controller storage implementation; supported native
 model-tool containment, the reviewed refusal change and separately approved
 finite one-task validation; then approved bounded screens, baseline and matched
 trials. Corpus readiness and runner implementation alone do not authorize native

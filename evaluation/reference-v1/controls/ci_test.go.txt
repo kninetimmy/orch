@@ -1,0 +1,58 @@
+package ghops
+
+import (
+	"context"
+	"slices"
+	"testing"
+
+	"github.com/kninetimmy/orch/internal/execx"
+)
+
+type corpusRunner struct {
+	output string
+	exit   int
+}
+
+func (r corpusRunner) Run(_ context.Context, c execx.Cmd) (execx.Result, error) {
+	if slices.Equal(c.Args, []string{"pr", "view", "7", "--json", "statusCheckRollup"}) {
+		return execx.Result{Stdout: `{"statusCheckRollup":[{}]}`}, nil
+	}
+	if slices.Equal(c.Args, []string{"pr", "checks", "7", "--required", "--json", "name,state,bucket,link"}) {
+		return execx.Result{Stdout: r.output, ExitCode: r.exit}, nil
+	}
+	panic("unexpected external command")
+}
+func TestCorpus(t *testing.T) {
+	t.Run("empty", func(t *testing.T) {
+		for _, output := range []string{"", " \r\n\t", "[]"} {
+			g := &GH{r: corpusRunner{output: output}, root: t.TempDir()}
+			got, err := g.RequiredCI(context.Background(), 7)
+			if err != nil || got.State != CINoChecks || got.Total != 1 || len(got.Required) != 0 {
+				t.Errorf("%q: %+v, %v", output, got, err)
+			}
+		}
+	})
+	t.Run("malformed", func(t *testing.T) {
+		for _, r := range []corpusRunner{{output: "{"}, {output: "[]", exit: 42}} {
+			g := &GH{r: r, root: t.TempDir()}
+			if _, err := g.RequiredCI(context.Background(), 7); err == nil {
+				t.Errorf("accepted invalid response: %+v", r)
+			}
+		}
+	})
+	t.Run("states", func(t *testing.T) {
+		for _, tc := range []struct {
+			checks []Check
+			want   CIState
+		}{
+			{nil, CINoChecks}, {[]Check{{Bucket: "pass"}}, CIPassing},
+			{[]Check{{Bucket: "pending"}, {Bucket: "pass"}}, CIPending},
+			{[]Check{{Bucket: "pending"}, {Bucket: "cancel"}}, CIFailing},
+			{[]Check{{Bucket: "fail"}}, CIFailing},
+		} {
+			if got := deriveCIState(tc.checks); got != tc.want {
+				t.Errorf("%+v: %s, want %s", tc.checks, got, tc.want)
+			}
+		}
+	})
+}

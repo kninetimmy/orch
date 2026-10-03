@@ -1,0 +1,7 @@
+[
+  {
+    "path": "internal/routing/risk.go",
+    "old": "RiskSecurity,\n\t\tRiskAuthentication,",
+    "new": "RiskAuthentication,\n\t\tRiskSecurity,"
+  }
+]

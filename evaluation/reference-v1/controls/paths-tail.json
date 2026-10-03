@@ -1,0 +1,7 @@
+[
+  {
+    "path": "internal/paths/paths.go",
+    "old": "rest = append(rest, filepath.Base(dir))",
+    "new": "rest = rest"
+  }
+]

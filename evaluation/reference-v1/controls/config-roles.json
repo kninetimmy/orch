@@ -1,0 +1,7 @@
+[
+  {
+    "path": "internal/config/validate.go",
+    "old": "\t\t{\"specialist\", h.Roles.Specialist},\n",
+    "new": ""
+  }
+]

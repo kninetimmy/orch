@@ -1,0 +1,7 @@
+[
+  {
+    "path": "internal/question/decode.go",
+    "old": "dec.DisallowUnknownFields()",
+    "new": "// Deliberate external bad control: ignore unknown fields."
+  }
+]

@@ -1,0 +1,7 @@
+[
+  {
+    "path": "internal/paths/paths.go",
+    "old": "return rel != \"..\" && !strings.HasPrefix(rel, \"..\"+string(filepath.Separator))",
+    "new": "return true"
+  }
+]

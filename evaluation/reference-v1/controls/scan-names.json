@@ -1,0 +1,7 @@
+[
+  {
+    "path": "internal/instructions/scan.go",
+    "old": "strings.EqualFold(name, n)",
+    "new": "name == n"
+  }
+]

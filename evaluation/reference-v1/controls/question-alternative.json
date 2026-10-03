@@ -1,0 +1,7 @@
+[
+  {
+    "path": "internal/question/decode.go",
+    "old": "if dec.More() {\n\t\treturn AnswerSet{}, fmt.Errorf(\"decode answer set: trailing data after document\")\n\t}",
+    "new": "if len(bytes.TrimSpace(data[dec.InputOffset():])) != 0 {\n\t\treturn AnswerSet{}, fmt.Errorf(\"decode answer set: trailing data after document\")\n\t}"
+  }
+]

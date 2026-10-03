@@ -1,0 +1,67 @@
+{
+  "version": 1,
+  "author": "Codex /root/implement_310; gpt-6.1-sol @ max; Delivery run run-20261003T181029Z-9e5e94f5",
+  "date": "2026-10-03",
+  "published_history": true,
+  "training_unseen_claim": false,
+  "scope": "Corpus authoring/control preparation only; no evaluation model trial or configuration tuning.",
+  "access": [
+    {
+      "identity": "Codex /root/implement_310; gpt-6.1-sol @ max",
+      "relationship": "author",
+      "case_ids": [
+        "scout-dev-paths",
+        "scout-dev-scan",
+        "scout-held-git-gates",
+        "scout-held-question",
+        "implement-dev-ci-empty",
+        "implement-dev-ignore-lf",
+        "implement-held-capture",
+        "implement-held-effort-window",
+        "review-dev-risk-clean",
+        "review-dev-ci-defective",
+        "review-held-effort-clean",
+        "review-held-question-defective"
+      ],
+      "material": "All selected historical source, tasks, role/context instructions, partitions, external keys, probes, control patches and author outputs.",
+      "reason": "Approved issue #310 authoring and deterministic preparation.",
+      "tuning": false,
+      "prior_exposure": "Dispatch supplied PR44, PR110, PR148 and PR210 candidates. Other selected published history was inspected during authoring. Model-training familiarity is unknown; no training-unseen claim."
+    },
+    {
+      "identity": "Orch Architect /root; parent thread 01a102e1-0567-7d23-abaf-6eb8ded0befe",
+      "relationship": "preparation coordinator",
+      "case_ids": [
+        "scout-dev-paths",
+        "scout-dev-scan",
+        "scout-held-git-gates",
+        "scout-held-question",
+        "implement-dev-ci-empty",
+        "implement-dev-ignore-lf",
+        "implement-held-capture",
+        "implement-held-effort-window",
+        "review-dev-risk-clean",
+        "review-dev-ci-defective",
+        "review-held-effort-clean",
+        "review-held-question-defective"
+      ],
+      "material": "Selected family/partition summaries and author-check progress sent by the author; deeper prior repository familiarity is not inferred.",
+      "reason": "Approved Delivery coordination for run-20261003T181029Z-9e5e94f5.",
+      "tuning": false,
+      "prior_exposure": "Published historical candidates were investigated before dispatch; exact extent of prior personal/model recall is unknown."
+    }
+  ],
+  "independent_validation": {
+    "status": "pending fresh independent Orch review",
+    "record": "https://github.com/kninetimmy/orch/issues/310",
+    "required_record_fields": [
+      "Validator identity and date, with proof it is a fresh person/agent other than the author.",
+      "Case versions and manifest/head digests reviewed.",
+      "Prior familiarity, author-report exposure, source/key access and other unavoidable exposure.",
+      "Exact commands run, source/control evidence independently checked, outcomes and artifact digests.",
+      "Semantic assessment of every known-good/bad/alternative outcome, clean/defective classification and severity.",
+      "Unresolved disputes, limitations and any independent adjudicator identity/rationale."
+    ]
+  },
+  "future_confirmation_rule": "Authoring and independent validation access are recorded without treating them as tuning. If any held-out prompt, output, key or result informs configuration/instruction/candidate selection, mark the affected lineage tuning-exposed, retain the access and prior results, and replace that lineage with newly independently checked held-out cases before future confirmation. This rule applies to every person/agent and every held-out lineage, not only the named author."
+}

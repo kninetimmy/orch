@@ -1,0 +1,7 @@
+[
+  {
+    "path": "internal/gitops/branch.go",
+    "old": "func (g *Git) ForceDeleteBranch(ctx context.Context, branch string, c Confirmation) error {\n\tif !c.ok {",
+    "new": "func (g *Git) ForceDeleteBranch(ctx context.Context, branch string, c Confirmation) error {\n\tif false {"
+  }
+]

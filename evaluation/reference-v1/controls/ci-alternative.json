@@ -1,0 +1,7 @@
+[
+  {
+    "path": "internal/ghops/checks.go",
+    "old": "if trimmed := strings.TrimSpace(res.Stdout); trimmed != \"\" {\n\t\tif err := json.Unmarshal([]byte(trimmed), &decoded); err != nil {\n\t\t\treturn CISummary{}, fmt.Errorf(\"gh pr checks in %s returned unparsable JSON: %w\", g.root, err)\n\t\t}\n\t}",
+    "new": "response := strings.TrimSpace(res.Stdout)\n\tif response == \"\" {\n\t\tresponse = \"[]\"\n\t}\n\tif err := json.Unmarshal([]byte(response), &decoded); err != nil {\n\t\treturn CISummary{}, fmt.Errorf(\"gh pr checks in %s returned unparsable JSON: %w\", g.root, err)\n\t}"
+  }
+]

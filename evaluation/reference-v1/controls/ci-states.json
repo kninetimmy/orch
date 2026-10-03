@@ -1,0 +1,7 @@
+[
+  {
+    "path": "internal/ghops/checks.go",
+    "old": "state = CIPending",
+    "new": "state = CIPassing"
+  }
+]

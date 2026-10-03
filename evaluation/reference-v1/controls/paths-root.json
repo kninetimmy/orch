@@ -1,0 +1,7 @@
+[
+  {
+    "path": "internal/paths/paths.go",
+    "old": "return dir, nil",
+    "new": "dir = filepath.Dir(dir)\n\t\t\tcontinue"
+  }
+]

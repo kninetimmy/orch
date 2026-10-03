@@ -1,0 +1,91 @@
+package gitops
+
+import (
+	"context"
+	"errors"
+	"fmt"
+	"slices"
+	"strings"
+	"testing"
+
+	"github.com/kninetimmy/orch/internal/execx"
+)
+
+type corpusRunner struct {
+	run   func(execx.Cmd) execx.Result
+	calls [][]string
+}
+
+func (r *corpusRunner) Run(_ context.Context, c execx.Cmd) (execx.Result, error) {
+	r.calls = append(r.calls, slices.Clone(c.Args))
+	return r.run(c), nil
+}
+func TestCorpus(t *testing.T) {
+	ctx := context.Background()
+	t.Run("confirmation", func(t *testing.T) {
+		r := &corpusRunner{run: func(c execx.Cmd) execx.Result { t.Fatalf("unapproved command: %v", c.Args); return execx.Result{} }}
+		g := &Git{r: r, root: t.TempDir()}
+		for _, err := range []error{g.DeleteBranch(ctx, "topic", Confirmation{}), g.ForceDeleteBranch(ctx, "topic", Confirmation{}), g.DeleteRemoteBranch(ctx, "origin", "topic", Confirmation{}), g.RemoveWorktree(ctx, "unused", Confirmation{})} {
+			if !errors.Is(err, ErrNotConfirmed) {
+				t.Errorf("zero confirmation: %v", err)
+			}
+		}
+	})
+	t.Run("checked-out", func(t *testing.T) {
+		root := t.TempDir()
+		r := &corpusRunner{run: func(c execx.Cmd) execx.Result {
+			switch c.Args[0] {
+			case "rev-parse":
+				return execx.Result{}
+			case "worktree":
+				return execx.Result{Stdout: fmt.Sprintf("worktree %s\nHEAD 012345\nbranch refs/heads/topic\n", root)}
+			default:
+				return execx.Result{}
+			}
+		}}
+		g := &Git{r: r, root: root}
+		if err := g.ForceDeleteBranch(ctx, "topic", ExplicitConfirmation()); err == nil {
+			t.Error("checked-out branch was eligible for forced deletion")
+		}
+		for _, args := range r.calls {
+			if slices.Equal(args, []string{"branch", "-D", "topic"}) {
+				t.Error("issued destructive command")
+			}
+		}
+	})
+	t.Run("fast-forward", func(t *testing.T) {
+		for _, scenario := range []string{"wrong-branch", "dirty", "diverged", "clean"} {
+			r := &corpusRunner{run: func(c execx.Cmd) execx.Result {
+				switch c.Args[0] {
+				case "symbolic-ref":
+					if scenario == "wrong-branch" {
+						return execx.Result{Stdout: "other\n"}
+					}
+					return execx.Result{Stdout: "main\n"}
+				case "status":
+					if scenario == "dirty" {
+						return execx.Result{Stdout: "?? file\n"}
+					}
+				case "merge-base":
+					if scenario == "diverged" {
+						return execx.Result{ExitCode: 1}
+					}
+				}
+				return execx.Result{}
+			}}
+			g := &Git{r: r, root: t.TempDir()}
+			err := g.FastForward(ctx, "origin", "main")
+			if (err == nil) != (scenario == "clean") {
+				t.Errorf("%s error: %v", scenario, err)
+			}
+			merged, fetched := false, false
+			for _, args := range r.calls {
+				merged = merged || args[0] == "merge"
+				fetched = fetched || args[0] == "fetch"
+			}
+			if merged != (scenario == "clean") || (strings.Contains(scenario, "branch") || scenario == "dirty") && fetched {
+				t.Errorf("%s unsafe command order: %v", scenario, r.calls)
+			}
+		}
+	})
+}
