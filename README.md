@@ -348,6 +348,12 @@ Previously `metrics` only accepted its read-only report form. That form still
 works; `metrics record` now accepts durable observation JSON. See the
 [observation contract and compatibility notes](docs/metric-observations.md).
 
+To evaluate an Orch change, see the proposed
+[evaluation workflow](docs/evaluation-workflow.md) and its
+[measurement contract](docs/evaluation-contract.md). These are specifications;
+`orch eval` is unimplemented and absent from the help output above. Existing
+metrics do not supply a validated corpus, grader or measured evaluation baseline.
+
 On Claude Code the three interviews also have slash commands:
 `/orch:init`, `/orch:configure`, `/orch:configure-local`.
 
