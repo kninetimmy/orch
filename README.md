@@ -5,7 +5,7 @@
 <p align="center">
   <img src="https://img.shields.io/badge/License-MIT-2E7D32?style=flat&logo=opensourceinitiative&logoColor=white" alt="License: MIT"/>
   <img src="https://img.shields.io/badge/Go-1.26%2B-00ADD8?style=flat&logo=go&logoColor=white" alt="Go 1.26+"/>
-  <img src="https://img.shields.io/badge/Release%20target-v0.11.0-24292F?style=flat&logo=github&logoColor=white" alt="Release target: v0.11.0"/>
+  <img src="https://img.shields.io/badge/Release%20target-v0.11.1-24292F?style=flat&logo=github&logoColor=white" alt="Release target: v0.11.1"/>
   <br/>
   <img src="https://img.shields.io/badge/Platform-Linux%20%C2%B7%20macOS%20%C2%B7%20Windows-607D8B?style=flat" alt="Platform: Linux, macOS, Windows"/>
   <img src="https://img.shields.io/badge/Hosts-Claude%20Code%20%C2%B7%20Codex%20CLI%20%C2%B7%20OpenCode%20V2-6E56CF?style=flat" alt="Hosts: Claude Code, Codex CLI, and OpenCode V2"/>
@@ -461,7 +461,36 @@ Every memhub command runs with the primary checkout as its working
 directory, never inside a per-issue worktree, because worktrees never
 receive a copy of the memhub database.
 
-## v0.11.0 release target
+## v0.11.1 release target
+
+- Codex child-usage capture now supports the bounded forked-rollout format,
+  validating the fork boundary and exact child attribution while excluding
+  inherited parent counters, timestamps and completion evidence. Unsupported
+  or malformed evidence remains unavailable; root usage, complete-run savings
+  and historical backfill are not provided —
+  [#301](https://github.com/kninetimmy/orch/pull/301). See the
+  [metric observation contract](docs/metric-observations.md).
+- Internal native Codex groundwork adds bounded capability preflight, native
+  Windows workspace/credential isolation diagnostics and single-task sessions
+  with interruption, in-memory resume and attributable observations —
+  [#295](https://github.com/kninetimmy/orch/pull/295),
+  [#296](https://github.com/kninetimmy/orch/pull/296),
+  [#297](https://github.com/kninetimmy/orch/pull/297). Diagnostic admission now
+  checks capabilities and inherited tool restrictions rather than an exact host
+  version — [#299](https://github.com/kninetimmy/orch/pull/299). Production native
+  model execution remains unavailable because model-tool isolation is unverified;
+  wider live model-tool validation is deferred. See the
+  [native protocol contract](docs/codex-native-protocol.md).
+
+Engine release v0.11.1, the unchanged Claude/Codex manual-adapter contract 0.8.0,
+and the unchanged OpenCode package 0.11.0 are separate identities; a `0.8.0`
+adapter label alone does not prove capture-v2 support. Adopt supporting engine
+and adapter revisions together between runs. State schema 6 has no active-run
+migration, so an active run stays on its original pair. Metrics schema-2 history
+requires v0.11.0 or a newer compatible reader, while legacy schema-1 history
+remains readable without rewriting.
+
+## v0.11.0 release
 
 - Delivery mutations now share a repository serializer, and plan approval binds
   the submitted scope, engine-contributed criteria, routing, and effective
@@ -474,13 +503,6 @@ receive a copy of the memhub database.
 - P1-A adds durable metric observations, attributable Codex child-session
   capture, and read-only coverage, measured timing, and outcome reporting. See
   the [metric observation contract](docs/metric-observations.md).
-
-Engine release v0.11.0 and manual-adapter contract 0.8.0 are separate
-identities; a `0.8.0` adapter label alone does not prove capture-v2 support.
-Adopt supporting engine and adapter revisions together between runs. State
-schema 6 has no active-run migration, so an active run stays on its original
-pair. Metrics schema-2 history requires this or a newer compatible reader,
-while legacy schema-1 history remains readable without rewriting.
 
 ## Status
 
