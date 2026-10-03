@@ -335,6 +335,7 @@ commands:
   resume           Reconcile an interrupted Delivery run against GitHub and continue
   abort            Stop dispatch and return to Assist
   metrics          Show local metrics (or record JSON observations with `metrics record`)
+  eval             Preview and retain a local evaluation plan (eval preview --plan FILE)
   render-agents    Render project agent definitions for every enabled host
   run              Adapter plumbing: Delivery run verbs (JSON stdin/stdout; not a human command)
   guard            Adapter plumbing: pre-write enforcement for host hooks (not a human command)
@@ -348,11 +349,19 @@ Previously `metrics` only accepted its read-only report form. That form still
 works; `metrics record` now accepts durable observation JSON. See the
 [observation contract and compatibility notes](docs/metric-observations.md).
 
-To evaluate an Orch change, see the proposed
+To prepare an evaluation of an Orch change, see the
 [evaluation workflow](docs/evaluation-workflow.md) and its
-[measurement contract](docs/evaluation-contract.md). These are specifications;
-`orch eval` is unimplemented and absent from the help output above. Existing
-metrics do not supply a validated corpus, grader or measured evaluation baseline.
+[measurement contract](docs/evaluation-contract.md). Before issue #312,
+`orch eval` was unimplemented and absent from help. Now
+`orch eval preview --plan FILE [--json]` validates version 1 local JSON, freezes
+the bounded schedule and retains an immutable public preparation record under
+an explicit existing local root outside the checkout, Git metadata and declared
+worker/scratch locations. A valid blocked preview exits successfully; it grants
+no approval. Its storage is unverified against worker access. Evaluation
+execution, stop/status/report and protected runtime storage remain proposed;
+unsupported evaluation verbs fail explicitly. Existing metrics do not supply a
+validated corpus, grader or measured evaluation baseline. Preview supplies plans
+and blockers, with no observed results.
 
 On Claude Code the three interviews also have slash commands:
 `/orch:init`, `/orch:configure`, `/orch:configure-local`.
@@ -1083,6 +1092,7 @@ its own.
 | `internal/manifest/` | The issue/PR audit record — lossless render/parse over a managed body region |
 | `internal/memhub/` | Read-only client for the external memhub CLI: health probe and fixed-canary recall check |
 | `internal/metrics/` | Local, opt-in per-run JSON metrics recorder (schema-versioned, never transmitted) |
+| `internal/evalplan/` | Bounded local evaluation preview and immutable public preparation records; no execution or worker-access enforcement |
 | `internal/codexusage/` | Reader that recovers exact Codex subagent token totals from persisted child rollout files |
 | `internal/routing/` | Pure role routing and the escalation ladder |
 | `internal/guard/` | Mechanical pre-write enforcement behind host PreToolUse hooks |
