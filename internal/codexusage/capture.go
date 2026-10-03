@@ -162,17 +162,20 @@ func findRollout(sessionsRoot, parentThreadID, taskIdentity string) (completedRo
 
 type record struct {
 	Timestamp json.RawMessage `json:"timestamp"`
+	Ordinal   json.RawMessage `json:"ordinal"`
 	Type      string          `json:"type"`
 	Payload   json.RawMessage `json:"payload"`
 }
 
 type sessionMeta struct {
-	ID             string          `json:"id"`
-	SessionID      string          `json:"session_id"`
-	ParentThreadID string          `json:"parent_thread_id"`
-	ThreadSource   string          `json:"thread_source"`
-	AgentPath      string          `json:"agent_path"`
-	Source         json.RawMessage `json:"source"`
+	ID                          string          `json:"id"`
+	SessionID                   string          `json:"session_id"`
+	ParentThreadID              string          `json:"parent_thread_id"`
+	ThreadSource                string          `json:"thread_source"`
+	AgentPath                   string          `json:"agent_path"`
+	Source                      json.RawMessage `json:"source"`
+	ForkedFromID                json.RawMessage `json:"forked_from_id"`
+	SubagentHistoryStartOrdinal json.RawMessage `json:"subagent_history_start_ordinal"`
 }
 
 type subagentSource struct {
@@ -202,7 +205,9 @@ type event struct {
 // only becomes a candidate once its session metadata identifies it as that
 // child; until then any read or format failure means the file is unidentified,
 // so it is not this capture's rollout and is left out of the result entirely.
-// Once identified, every remaining check is fail-closed.
+// Once identified, every remaining check is fail-closed. A declared fork may
+// contain one parent metadata record at ordinal 1; its validated inherited
+// prefix never supplies child terminal records or changes physical positions.
 func readRollout(path, parentThreadID, taskIdentity string) (out completedRollout, candidate, valid bool) {
 	f, err := os.Open(path)
 	if err != nil {
@@ -214,6 +219,7 @@ func readRollout(path, parentThreadID, taskIdentity string) (out completedRollou
 	scanner.Buffer(make([]byte, 64*1024), maxJSONLRecord)
 
 	var identified bool
+	var historyStart int64
 	for scanner.Scan() {
 		line := bytes.TrimSpace(scanner.Bytes())
 		if len(line) == 0 {
@@ -225,14 +231,19 @@ func readRollout(path, parentThreadID, taskIdentity string) (out completedRollou
 		if err := json.Unmarshal(line, &current); err != nil {
 			return out, identified, false
 		}
+		if historyStart > 0 && !hasOrdinal(current, out.sequence-1) {
+			return out, true, false
+		}
 		if current.Type == "session_meta" {
-			if identified {
-				return out, true, false
-			}
-
 			var meta sessionMeta
 			if err := json.Unmarshal(current.Payload, &meta); err != nil {
-				return out, false, false
+				return out, identified, false
+			}
+			if identified {
+				if historyStart == 0 || out.sequence != 2 || !inheritedParent(meta, parentThreadID) {
+					return out, true, false
+				}
+				continue
 			}
 			if !identifies(meta, parentThreadID, taskIdentity) {
 				return out, false, false
@@ -240,11 +251,44 @@ func readRollout(path, parentThreadID, taskIdentity string) (out completedRollou
 			if !validSessionMeta(meta) || !sourceNamesParent(meta, parentThreadID) {
 				return out, true, false
 			}
+			if len(meta.ForkedFromID) > 0 || len(meta.SubagentHistoryStartOrdinal) > 0 {
+				var forkID string
+				var start *int64
+				var source subagentSource
+				if out.sequence != 1 || !hasOrdinal(current, 0) ||
+					json.Unmarshal(meta.ForkedFromID, &forkID) != nil || forkID != parentThreadID ||
+					json.Unmarshal(meta.SubagentHistoryStartOrdinal, &start) != nil || start == nil || *start < 2 ||
+					json.Unmarshal(meta.Source, &source) != nil ||
+					(source.Subagent.ThreadSpawn.AgentPath != nil && *source.Subagent.ThreadSpawn.AgentPath != taskIdentity) {
+					return out, true, false
+				}
+				historyStart = *start
+			}
 			identified = true
 			out.meta = meta
 			continue
 		}
 		if identified {
+			if historyStart > 0 {
+				if out.sequence == 2 {
+					return out, true, false // The inherited metadata must be at ordinal 1.
+				}
+				if out.sequence-1 < historyStart {
+					continue
+				}
+				if offset := out.sequence - 1 - historyStart; offset < 2 {
+					var start struct {
+						Type string `json:"type"`
+					}
+					want := "thread_settings_applied"
+					if offset == 1 {
+						want = "task_started"
+					}
+					if current.Type != "event_msg" || json.Unmarshal(current.Payload, &start) != nil || start.Type != want {
+						return out, true, false
+					}
+				}
+			}
 			out.previous = out.last
 			out.last = current
 		}
@@ -258,6 +302,18 @@ func readRollout(path, parentThreadID, taskIdentity string) (out completedRollou
 
 	_, valid = finalUsage(out.previous, out.last)
 	return out, true, valid
+}
+
+func hasOrdinal(current record, want int64) bool {
+	var ordinal *int64
+	return json.Unmarshal(current.Ordinal, &ordinal) == nil && ordinal != nil && *ordinal == want
+}
+
+func inheritedParent(meta sessionMeta, parentThreadID string) bool {
+	_, spawned, valid := parseSessionSource(meta.Source)
+	return valid && !spawned && meta.ID == parentThreadID && meta.SessionID == parentThreadID &&
+		meta.ThreadSource == "user" && meta.ParentThreadID == "" && meta.AgentPath == "" &&
+		len(meta.ForkedFromID) == 0 && len(meta.SubagentHistoryStartOrdinal) == 0
 }
 
 func finalUsage(previous, last record) (json.RawMessage, bool) {

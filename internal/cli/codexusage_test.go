@@ -55,6 +55,32 @@ func writeCodexRollout(t *testing.T, sessions, name, data string) {
 	}
 }
 
+func forkedCodexRollout(t *testing.T) string {
+	t.Helper()
+	data, err := os.ReadFile("../codexusage/testdata/forked/executor.jsonl")
+	if err != nil {
+		t.Fatal(err)
+	}
+	return string(data)
+}
+
+func captureCodexLegacy(t *testing.T, req codexSubagentUsageRequest) codexSubagentUsageResponse {
+	t.Helper()
+	data, err := json.Marshal(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var out, stderr bytes.Buffer
+	if code := Run([]string{"hook", "codex", "subagent-usage"}, Env{Stdin: bytes.NewReader(data), Stdout: &out, Stderr: &stderr}); code != ExitOK {
+		t.Fatalf("legacy capture: exit %d: %s", code, &stderr)
+	}
+	var response codexSubagentUsageResponse
+	if err := json.Unmarshal(out.Bytes(), &response); err != nil {
+		t.Fatalf("legacy capture response: %v %s", err, &out)
+	}
+	return response
+}
+
 func TestCodexCaptureProcess(t *testing.T) {
 	if os.Getenv("ORCH_TEST_CODEX_CAPTURE") != "1" {
 		return
@@ -230,5 +256,115 @@ func TestCodexCaptureVersionAndRequestValidation(t *testing.T) {
 		if code := Run([]string{"hook", "codex", "subagent-usage"}, env); code == ExitOK {
 			t.Fatalf("accepted unsupported request: %s", request)
 		}
+	}
+}
+
+func TestForkedCodexCaptureContractsAndRecorderReplay(t *testing.T) {
+	env, req, sessions := codexMetricFixture(t)
+	rollout := forkedCodexRollout(t)
+	writeCodexRollout(t, sessions, "executor", rollout)
+	legacy := codexSubagentUsageRequest{ParentThreadID: req.ParentThreadID, TaskIdentity: req.TaskIdentity}
+	if got := captureCodexLegacy(t, legacy); got.TotalTokens == nil || *got.TotalTokens != 123 {
+		t.Fatalf("legacy child total: %+v", got)
+	}
+	for _, tc := range []struct {
+		previous, want int64
+		available      bool
+	}{
+		{previous: 100, want: 23, available: true},
+		{previous: 123, available: true},
+		{previous: 124},
+		{previous: -1},
+	} {
+		legacy.PreviousTotalTokens = &tc.previous
+		got := captureCodexLegacy(t, legacy)
+		if (got.TotalTokens != nil) != tc.available || (got.TotalTokens != nil && *got.TotalTokens != tc.want) {
+			t.Fatalf("legacy delta from %d: %+v, want %d/%t", tc.previous, got, tc.want, tc.available)
+		}
+	}
+	initial := captureCodexProcess(t, req)
+	o := initial.Observation
+	if o.Sample == nil || o.ID != "codex:child-executor:tokens:8" || o.Sample.Sequence != 8 ||
+		o.Session != "child-executor" || o.At != "2026-10-02T12:00:00Z" ||
+		!strings.Contains(string(initial.NativeSource), `"agent_role":"orch-specialist"`) {
+		t.Fatalf("forked child attribution or physical position lost: %+v", initial)
+	}
+	recordCodexProcess(t, env, o, true)
+	replayed := captureCodexProcess(t, req).Observation
+	if replayed.Sample == nil || replayed.ID != o.ID || replayed.At != o.At || replayed.Sample.Sequence != o.Sample.Sequence {
+		t.Fatalf("forked capture identity changed on restart: %+v", replayed)
+	}
+	recordCodexProcess(t, env, replayed, false)
+	rollout += "\n" + `{"ordinal":9,"type":"event_msg","payload":{"type":"task_started"}}` + "\n" +
+		`{"ordinal":10,"timestamp":"2026-10-02T12:05:00Z","type":"event_msg","payload":{"type":"token_count","info":{"total_token_usage":{"input_tokens":110,"cached_input_tokens":0,"output_tokens":40,"reasoning_output_tokens":7,"total_tokens":150}}}}` + "\n" +
+		`{"ordinal":11,"type":"event_msg","payload":{"type":"task_complete"}}` + "\n"
+	writeCodexRollout(t, sessions, "executor", rollout)
+	req.Attempt = "repair-1"
+	repair := captureCodexProcess(t, req).Observation
+	if repair.Sample == nil || repair.ID != "codex:child-executor:tokens:11" || repair.Sample.Sequence != 11 ||
+		repair.At != "2026-10-02T12:05:00Z" || repair.Session != o.Session || repair.Attempt != "repair-1" {
+		t.Fatalf("forked repair attribution lost: %+v", repair)
+	}
+	recordCodexProcess(t, env, repair, true)
+	recordCodexProcess(t, env, captureCodexProcess(t, req).Observation, false)
+	legacy.PreviousTotalTokens = o.Sample.Counters.TotalTokens
+	if got := captureCodexLegacy(t, legacy); got.TotalTokens == nil || *got.TotalTokens != 27 {
+		t.Fatalf("legacy repair delta: %+v", got)
+	}
+	docs, err := metrics.LoadAll(env.RepoRoot)
+	if err != nil || len(docs) != 1 || len(docs[0].Observations) != 2 || len(docs[0].Events) != 0 {
+		t.Fatalf("forked history duplicated or legacy evidence recorded: %v %+v", err, docs)
+	}
+	deltas, err := metrics.CounterContributions(docs[0].Observations)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for i, want := range []struct{ total, input, output, reasoning int64 }{{123, 100, 23, 5}, {27, 10, 17, 2}} {
+		c := deltas[i]
+		if c.TotalTokens == nil || *c.TotalTokens != want.total || c.InputTokens == nil || *c.InputTokens != want.input ||
+			c.OutputTokens == nil || *c.OutputTokens != want.output || c.ReasoningOutputTokens == nil || *c.ReasoningOutputTokens != want.reasoning ||
+			c.CacheReadTokens == nil || *c.CacheReadTokens != 0 || c.CacheCreationTokens != nil {
+			t.Fatalf("forked contribution %d lost presence or included parent: %+v", i, c)
+		}
+	}
+}
+
+func TestForkedCodexCaptureBoundaryAndCounterFailures(t *testing.T) {
+	base := forkedCodexRollout(t)
+	for _, tc := range []struct {
+		name, rollout, reason string
+		total                 int64
+		legacyAvailable       bool
+	}{
+		{name: "inherited terminal only", rollout: strings.Split(base, `{"ordinal":5`)[0], reason: "identified-rollout-invalid-or-unfinished"},
+		{name: "boundary at inherited token", rollout: strings.Replace(base, `"subagent_history_start_ordinal":5`, `"subagent_history_start_ordinal":3`, 1), reason: "identified-rollout-invalid-or-unfinished"},
+		{name: "malformed boundary", rollout: strings.Replace(base, `"subagent_history_start_ordinal":5`, `"subagent_history_start_ordinal":"5"`, 1), reason: "identified-rollout-invalid-or-unfinished"},
+		{name: "malformed child tail", rollout: base + "not-json\n", reason: "identified-rollout-invalid-or-unfinished"},
+		{name: "malformed child counter", rollout: strings.Replace(base, `"total_tokens":123`, `"total_tokens":"123"`, 1), reason: "invalid-terminal-usage"},
+		{name: "absent child counters", rollout: strings.Replace(base, `"input_tokens":100,"cached_input_tokens":0,"cache_write_input_tokens":null,"output_tokens":23,"reasoning_output_tokens":5,"total_tokens":123`, "", 1), reason: "native-counters-absent"},
+		{name: "absent child timestamp", rollout: strings.Replace(base, `"timestamp":"2026-10-02T12:00:00Z",`, "", 1), reason: "native-timestamp-unavailable", total: 123, legacyAvailable: true},
+		{name: "measured zero", rollout: strings.Replace(base, `"total_tokens":123`, `"total_tokens":0`, 1), legacyAvailable: true},
+		{name: "absent aggregate", rollout: strings.Replace(base, `"total_tokens":123`, `"total_tokens":null`, 1)},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			_, req, sessions := codexMetricFixture(t)
+			writeCodexRollout(t, sessions, "executor", tc.rollout)
+			legacy := captureCodexLegacy(t, codexSubagentUsageRequest{ParentThreadID: req.ParentThreadID, TaskIdentity: req.TaskIdentity})
+			if (legacy.TotalTokens != nil) != tc.legacyAvailable || (legacy.TotalTokens != nil && *legacy.TotalTokens != tc.total) {
+				t.Fatalf("legacy response: %+v, want %d/%t", legacy, tc.total, tc.legacyAvailable)
+			}
+			o := captureCodexProcess(t, req).Observation
+			if tc.reason != "" {
+				if o.Unavailable == nil || o.Unavailable.Reason != tc.reason || o.Sample != nil || o.Session != "" {
+					t.Fatalf("forked unavailable response: %+v, want %s", o, tc.reason)
+				}
+			} else if o.Sample == nil || o.Unavailable != nil {
+				t.Fatalf("forked zero/partial counters lost: %+v", o)
+			} else if tc.name == "measured zero" && (o.Sample.Counters.TotalTokens == nil || *o.Sample.Counters.TotalTokens != 0) {
+				t.Fatalf("forked aggregate zero lost: %+v", o.Sample.Counters)
+			} else if tc.name == "absent aggregate" && (o.Sample.Counters.TotalTokens != nil || o.Sample.Counters.InputTokens == nil || *o.Sample.Counters.InputTokens != 100) {
+				t.Fatalf("forked aggregate inferred from child or parent: %+v", o.Sample.Counters)
+			}
+		})
 	}
 }
