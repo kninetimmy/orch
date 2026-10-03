@@ -1,0 +1,43 @@
+{
+  "version": 2,
+  "previous_author_history": "author-history.json",
+  "previous_head": "12129e42b0dbcaeb7f283c166de3671defaab79c",
+  "previous_manifest": "manifest-12129e4.json",
+  "previous_results": "author-results.json",
+  "previous_outputs": "control-output.json",
+  "review": {
+    "identity": "/root/review_310_c1",
+    "record": "https://github.com/kninetimmy/orch/pull/311",
+    "verdict": "request-changes",
+    "observed": "Independently reproduced twelve packets, 58 controls and 80 hashes; found the supplied-answer-preservation false negative. That numerical pass did not validate criterion 5.",
+    "exposure_record": "../exposure-v2.json"
+  },
+  "ci": {
+    "prior_failure": "https://github.com/kninetimmy/orch/actions/runs/37148511162/job/111277281811",
+    "error": "TestExportRejections and TestHistoricalExportRejections: require existing directory without links: /var: <nil>",
+    "cause": "Trusted macOS TempDir aliases were supplied literally to an exporter that deliberately rejects link ancestors.",
+    "repair": "Canonicalize only trusted test roots with filepath.EvalSymlinks; deliberate source/destination links remain rejected and exporter code is unchanged.",
+    "reverification": "Local ordinary tests passed without skips; actual macOS CI must be checked after push."
+  },
+  "grader_repair": {
+    "cases": [
+      "scout-held-question v2",
+      "review-held-question-defective v2"
+    ],
+    "before": "An always-empty non-nil answers map passed the conditional len>0 supplied-entry check.",
+    "after": "The supplied q=yes input must retain q=yes regardless of returned map length. The always-empty-map control fails TestCorpus/map in both cases.",
+    "invalidated": "Previous answer-wire v1 supplied-answer-preservation control sufficiency and preparation validation. No evaluated model outputs or comparison endpoints exist.",
+    "unchanged": "Other ten case versions, role/partition/lineage assignments, every historical source pin, worker tasks/instructions and all twelve packet digests."
+  },
+  "author_attempt": {
+    "attempt": 4,
+    "manifest_sha256": "2c3724026d5dc586c01c628bc103670eeb084a1abd173b28342c7372aa9a8ddd",
+    "command": "go test -tags=corpus_validation -count=1 ./internal/evalcorpus",
+    "control_count": 60,
+    "verified_count": 60,
+    "results": "author-results-repair-1.json",
+    "outputs": "control-output-repair-1.json",
+    "elapsed_seconds": 84.727,
+    "status": "Author controls passed; revised material pending fresh independent review; execution blocked."
+  }
+}

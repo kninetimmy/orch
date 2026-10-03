@@ -1,0 +1,63 @@
+package attributes
+
+import (
+	"bytes"
+	"context"
+	"os"
+	"os/exec"
+	"path/filepath"
+	"testing"
+	"time"
+)
+
+func TestCorpus(t *testing.T) {
+	run := func(t *testing.T, dir string, stdin []byte, args ...string) []byte {
+		t.Helper()
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		args = append([]string{"-c", "core.autocrlf=true", "-c", "core.safecrlf=false"}, args...)
+		cmd := exec.CommandContext(ctx, "git", args...)
+		cmd.Dir = dir
+		cmd.Stdin = bytes.NewReader(stdin)
+		out, err := cmd.CombinedOutput()
+		if err != nil {
+			t.Fatalf("git %v: %v: %s", args, err, out)
+		}
+		return out
+	}
+	fixture := func(t *testing.T) string {
+		t.Helper()
+		dir := t.TempDir()
+		b, err := os.ReadFile(".gitattributes")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(dir, ".gitattributes"), b, 0600); err != nil {
+			t.Fatal(err)
+		}
+		run(t, dir, nil, "init", "--quiet")
+		return dir
+	}
+	t.Run("ignore-lf", func(t *testing.T) {
+		dir := fixture(t)
+		oid := bytes.TrimSpace(run(t, dir, []byte("generated/\r\n"), "hash-object", "-w", "--path=.gitignore", "--stdin"))
+		run(t, dir, nil, "update-index", "--add", "--cacheinfo", "100644,"+string(oid)+",.gitignore")
+		run(t, dir, nil, "checkout-index", "--", ".gitignore")
+		b, err := os.ReadFile(filepath.Join(dir, ".gitignore"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !bytes.Equal(b, []byte("generated/\n")) {
+			t.Fatalf("checked-out ignore bytes: %q", b)
+		}
+	})
+	t.Run("preserved", func(t *testing.T) {
+		dir := fixture(t)
+		for _, p := range []string{"sample.go", "sample.sh", "sample.md"} {
+			out := run(t, dir, nil, "check-attr", "eol", "--", p)
+			if !bytes.Contains(out, []byte(": eol: lf")) {
+				t.Errorf("existing LF policy lost: %s", out)
+			}
+		}
+	})
+}

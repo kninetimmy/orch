@@ -1,0 +1,60 @@
+package paths
+
+import (
+	"errors"
+	"os"
+	"path/filepath"
+	"testing"
+)
+
+func TestCorpus(t *testing.T) {
+	t.Run("segments", func(t *testing.T) {
+		root := t.TempDir()
+		for _, tc := range []struct {
+			path string
+			want bool
+		}{
+			{root, true}, {filepath.Join(root, "child"), true},
+			{root + "-sibling", false}, {filepath.Join(root, "..", "outside"), false},
+		} {
+			got, err := Inside(root, tc.path)
+			if err != nil || got != tc.want {
+				t.Errorf("Inside(%q) = %v, %v; want %v", tc.path, got, err, tc.want)
+			}
+		}
+	})
+	t.Run("missing-tail", func(t *testing.T) {
+		root := t.TempDir()
+		input := filepath.Join(root, "missing", "child")
+		resolved, err := filepath.EvalSymlinks(root)
+		if err != nil {
+			t.Fatal(err)
+		}
+		want := filepath.Join(resolved, "missing", "child")
+		got, err := Canonical(input)
+		if err != nil || got != want {
+			t.Fatalf("Canonical = %q, %v; want %q", got, err, want)
+		}
+	})
+	t.Run("nearest-root", func(t *testing.T) {
+		root := t.TempDir()
+		nested := filepath.Join(root, "nested")
+		for _, p := range []string{filepath.Join(root, ".orchestrator"), filepath.Join(nested, ".orchestrator")} {
+			if err := os.MkdirAll(p, 0700); err != nil {
+				t.Fatal(err)
+			}
+		}
+		want, err := filepath.EvalSymlinks(nested)
+		if err != nil {
+			t.Fatal(err)
+		}
+		got, err := FindRoot(nested)
+		if err != nil || got != want {
+			t.Fatalf("FindRoot = %q, %v; want nearest %q", got, err, want)
+		}
+		missing := t.TempDir()
+		if _, err := FindRoot(missing); !errors.Is(err, ErrNotFound) {
+			t.Fatalf("missing root: %v", err)
+		}
+	})
+}

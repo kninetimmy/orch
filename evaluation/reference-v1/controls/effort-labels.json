@@ -1,0 +1,7 @@
+[
+  {
+    "path": "internal/interview/sequence.go",
+    "old": "Label: e, Recommended: e == def",
+    "new": "Label: \"effort\", Recommended: e == def"
+  }
+]

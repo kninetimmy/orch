@@ -1,0 +1,7 @@
+[
+  {
+    "path": "internal/instructions/scan.go",
+    "old": "strings.HasPrefix(d.Name(), \".\")",
+    "new": "d.Name() == \".git\""
+  }
+]

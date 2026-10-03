@@ -1,0 +1,7 @@
+[
+  {
+    "path": "internal/codexusage/capture.go",
+    "old": "func TotalTokens(sessionsRoot, parentThreadID, taskIdentity string, previousTotal *int64) (int64, bool) {",
+    "new": "func TotalTokens(sessionsRoot, parentThreadID, taskIdentity string, previousTotal *int64) (int64, bool) {\n\tparentThreadID, taskIdentity = \"parent\", \"/root/worker\""
+  }
+]

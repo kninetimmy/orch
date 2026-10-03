@@ -1,0 +1,7 @@
+[
+  {
+    "path": "internal/question/decode.go",
+    "old": "a.Answers = map[string]string{}",
+    "new": "a.Answers = nil"
+  }
+]

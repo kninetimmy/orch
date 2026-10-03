@@ -1,0 +1,7 @@
+[
+  {
+    "path": "internal/gitops/branch.go",
+    "old": "if wt.Branch == branch {",
+    "new": "if false {"
+  }
+]

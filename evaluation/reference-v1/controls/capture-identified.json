@@ -1,0 +1,7 @@
+[
+  {
+    "path": "internal/codexusage/capture.go",
+    "old": "if !valid {\n\t\t\treturn errInvalidRollout\n\t\t}",
+    "new": "if !valid {\n\t\t\treturn nil\n\t\t}"
+  }
+]

@@ -1,0 +1,7 @@
+[
+  {
+    "path": ".gitattributes",
+    "old": ".gitignore text eol=lf",
+    "new": "/.gitignore text eol=lf"
+  }
+]

@@ -1,0 +1,2058 @@
+{
+  "author": "Codex /root/implement_310; gpt-6.1-sol @ max; Delivery run run-20261003T181029Z-9e5e94f5",
+  "environment": [
+    "GOWORK=off",
+    "GOTOOLCHAIN=local",
+    "GOPROXY=off",
+    "GOSUMDB=off",
+    "GOFLAGS=",
+    "CGO_ENABLED=0"
+  ],
+  "git_version": "git version 2.53.0.windows.1",
+  "go_version": "go version go1.26.5 windows/amd64",
+  "independent_validator": null,
+  "invocation": "go test -tags=corpus_validation -count=1 ./internal/evalcorpus",
+  "limitations": [
+    "No semantic prose grading; fresh independent review is required.",
+    "Controller source in the repository is not protected runtime storage.",
+    "Packet inspection is not operating-system or model-tool isolation.",
+    "Effort-window controls compile declared AST components, not the full interviews.",
+    "No evaluation model trials, measured baseline or Phase 1 completion."
+  ],
+  "manifest_sha256": "2c3724026d5dc586c01c628bc103670eeb084a1abd173b28342c7372aa9a8ddd",
+  "overall_limit_seconds": 540,
+  "packet_sha256": {
+    "implement-dev-ci-empty": "624d3244874b576354046b5e626f688befb58148410c42c3741c48ec3822173e",
+    "implement-dev-ignore-lf": "f5e8eda0fa1554f4d549b6607155d2be4da77c0778cdec1186e22584097a9b1d",
+    "implement-held-capture": "c099e8b187c1b94282487839ff602b777cd9eb41458f9c96f5dfc07c451c14a3",
+    "implement-held-effort-window": "4de2f4589aa6b226d326bbf81b10bc54239958fc2ac413953d4a8ad100210323",
+    "review-dev-ci-defective": "93d2965f7d91e9a79faf6494a50a867f1669a64dacb9e2e55b82233592673026",
+    "review-dev-risk-clean": "4b2d3a9407ee18094aa5f4fb4d33dedb266863ebc1d3d8c2acc58fa9ea4204a7",
+    "review-held-effort-clean": "c99ed59e9e1f77fe59bd9ef3d343772d9208c1c8eb94227fd781f8073bd07ad2",
+    "review-held-question-defective": "0454cd26d8022ca38790f9c2943fe8b91af039ae5781a170b4c11f77265ca512",
+    "scout-dev-paths": "e8fe824090302946bf5e93788062bbe9989edef33f042b164f50a5b7c6dc4bf8",
+    "scout-dev-scan": "26c6d316fd0d2f42d63e1befbb438f8f35853286d69d223ca06c47e63c2a43cd",
+    "scout-held-git-gates": "6e3931316f37d5af248c1f12d475f3096f4ced55f836db06e043061d75eb0b63",
+    "scout-held-question": "7a88725b6dd704171b465b1f42ed765edad0e4ac16bc1e6929509e1031c83968"
+  },
+  "status": "author-controls-passed; independent validation pending; execution blocked",
+  "version": 1,
+  "case_versions": {
+    "scout-dev-paths": 1,
+    "scout-dev-scan": 1,
+    "scout-held-git-gates": 1,
+    "scout-held-question": 2,
+    "implement-dev-ci-empty": 1,
+    "implement-dev-ignore-lf": 1,
+    "implement-held-capture": 1,
+    "implement-held-effort-window": 1,
+    "review-dev-risk-clean": 1,
+    "review-dev-ci-defective": 1,
+    "review-held-effort-clean": 1,
+    "review-held-question-defective": 2
+  },
+  "controls": [
+    {
+      "case": "scout-dev-paths",
+      "control": "reference",
+      "command": [
+        "go",
+        "test",
+        "-json",
+        "-count=1",
+        "-timeout=30s",
+        "-run=^TestCorpus$",
+        "./..."
+      ],
+      "directory": "controller/scout-dev-paths/reference",
+      "limit_seconds": 120,
+      "expected_failures": [],
+      "observed_failures": [],
+      "observed_passes": [
+        "TestCorpus/missing-tail",
+        "TestCorpus/nearest-root",
+        "TestCorpus/segments"
+      ],
+      "verified": true,
+      "output_sha256": "39c25b92ec22b7d40f6361fb336ba8ec0724a087d5f1cd967173456449c9d849",
+      "artifact_sha256": {
+        "go.mod": "ab35cad14d574f7e762603357ed0cdb4a8cd8a1b9e70d31ecf566a2bfccdb208",
+        "internal/paths/corpus_test.go": "c4afd36bf2bf0703e14a86fded5ed57ccf0ffff0d0f4c6a58c66d84e2dc284c4",
+        "internal/paths/paths.go": "79d0eae9406bdf9a2544203fe5b2aa40f8f1fb1750f9a17feb7da87418738ccb"
+      }
+    },
+    {
+      "case": "scout-dev-paths",
+      "control": "bad-segments",
+      "command": [
+        "go",
+        "test",
+        "-json",
+        "-count=1",
+        "-timeout=30s",
+        "-run=^TestCorpus$",
+        "./..."
+      ],
+      "directory": "controller/scout-dev-paths/bad-segments",
+      "limit_seconds": 120,
+      "expected_failures": [
+        "TestCorpus/segments"
+      ],
+      "observed_failures": [
+        "TestCorpus/segments"
+      ],
+      "observed_passes": [
+        "TestCorpus/missing-tail",
+        "TestCorpus/nearest-root"
+      ],
+      "verified": true,
+      "output_sha256": "785f4b856c749523d23c73e8976242fbef07d6bfb492dd3ac110af3a1e169b82",
+      "artifact_sha256": {
+        "go.mod": "ab35cad14d574f7e762603357ed0cdb4a8cd8a1b9e70d31ecf566a2bfccdb208",
+        "internal/paths/corpus_test.go": "c4afd36bf2bf0703e14a86fded5ed57ccf0ffff0d0f4c6a58c66d84e2dc284c4",
+        "internal/paths/paths.go": "72d63d48d5077f9d82804f48b85cbf052ad7038539bc2b4c4993f9a71516881c"
+      }
+    },
+    {
+      "case": "scout-dev-paths",
+      "control": "bad-missing-tail",
+      "command": [
+        "go",
+        "test",
+        "-json",
+        "-count=1",
+        "-timeout=30s",
+        "-run=^TestCorpus$",
+        "./..."
+      ],
+      "directory": "controller/scout-dev-paths/bad-missing-tail",
+      "limit_seconds": 120,
+      "expected_failures": [
+        "TestCorpus/missing-tail"
+      ],
+      "observed_failures": [
+        "TestCorpus/missing-tail"
+      ],
+      "observed_passes": [
+        "TestCorpus/nearest-root",
+        "TestCorpus/segments"
+      ],
+      "verified": true,
+      "output_sha256": "2179e279a6a68f18fa00558ecc1cd8d7a51ede057689cbbef115d00c310edecd",
+      "artifact_sha256": {
+        "go.mod": "ab35cad14d574f7e762603357ed0cdb4a8cd8a1b9e70d31ecf566a2bfccdb208",
+        "internal/paths/corpus_test.go": "c4afd36bf2bf0703e14a86fded5ed57ccf0ffff0d0f4c6a58c66d84e2dc284c4",
+        "internal/paths/paths.go": "13727520ecdebe699bd6809e5b734fb6b18e85731c6160dfc6861900b1a26164"
+      }
+    },
+    {
+      "case": "scout-dev-paths",
+      "control": "bad-nearest-root",
+      "command": [
+        "go",
+        "test",
+        "-json",
+        "-count=1",
+        "-timeout=30s",
+        "-run=^TestCorpus$",
+        "./..."
+      ],
+      "directory": "controller/scout-dev-paths/bad-nearest-root",
+      "limit_seconds": 120,
+      "expected_failures": [
+        "TestCorpus/nearest-root"
+      ],
+      "observed_failures": [
+        "TestCorpus/nearest-root"
+      ],
+      "observed_passes": [
+        "TestCorpus/missing-tail",
+        "TestCorpus/segments"
+      ],
+      "verified": true,
+      "output_sha256": "7648a9fcf36027b37937c0f87cba31a59be5b24d03b0358f62ba16b58c19b4db",
+      "artifact_sha256": {
+        "go.mod": "ab35cad14d574f7e762603357ed0cdb4a8cd8a1b9e70d31ecf566a2bfccdb208",
+        "internal/paths/corpus_test.go": "c4afd36bf2bf0703e14a86fded5ed57ccf0ffff0d0f4c6a58c66d84e2dc284c4",
+        "internal/paths/paths.go": "166ebd13d0da0b8d4f515abcb7edae12ba4154dd6187b0a31a55a639e7295ae0"
+      }
+    },
+    {
+      "case": "scout-dev-scan",
+      "control": "reference",
+      "command": [
+        "go",
+        "test",
+        "-json",
+        "-count=1",
+        "-timeout=30s",
+        "-run=^TestCorpus$",
+        "./..."
+      ],
+      "directory": "controller/scout-dev-scan/reference",
+      "limit_seconds": 120,
+      "expected_failures": [],
+      "observed_failures": [],
+      "observed_passes": [
+        "TestCorpus/hidden",
+        "TestCorpus/names",
+        "TestCorpus/root-pair"
+      ],
+      "verified": true,
+      "output_sha256": "3cde89e57d79922b95e5b6567628cc7f2f2c95117aa4773c2ce0d42f0f01b738",
+      "artifact_sha256": {
+        "go.mod": "ab35cad14d574f7e762603357ed0cdb4a8cd8a1b9e70d31ecf566a2bfccdb208",
+        "internal/instructions/block.go": "2305b02230ca5fc400972f2089357c55fc8a752b97bc36f874b2a130b393445a",
+        "internal/instructions/corpus_test.go": "1a670c845c3f90d006b73ff2a03642d9e75e36ea7ab03eea847e06f531618586",
+        "internal/instructions/errors.go": "7e93d7985d219fb8dd89b3cac5cbc63df977878b4cafcf52a611837c840d7cea",
+        "internal/instructions/instructions.go": "0fef44dccb31173ccb98ab7a364bb0a6d01ef75ba75043b4c233fce308294e95",
+        "internal/instructions/marker.go": "15958b53ff92b162eb3e871e6cfd23ffc4a3bd0a18e7de7fbbf80475fcfc49cb",
+        "internal/instructions/scan.go": "a15dded6b3bd037abd1c0e2ab8b78833d995d3c872788af085408e5662bd1ce0"
+      }
+    },
+    {
+      "case": "scout-dev-scan",
+      "control": "bad-hidden",
+      "command": [
+        "go",
+        "test",
+        "-json",
+        "-count=1",
+        "-timeout=30s",
+        "-run=^TestCorpus$",
+        "./..."
+      ],
+      "directory": "controller/scout-dev-scan/bad-hidden",
+      "limit_seconds": 120,
+      "expected_failures": [
+        "TestCorpus/hidden"
+      ],
+      "observed_failures": [
+        "TestCorpus/hidden"
+      ],
+      "observed_passes": [
+        "TestCorpus/names",
+        "TestCorpus/root-pair"
+      ],
+      "verified": true,
+      "output_sha256": "25a2d2bbb8c71184b738693b9389015d99e1249a92c5de1328c309a134d1e392",
+      "artifact_sha256": {
+        "go.mod": "ab35cad14d574f7e762603357ed0cdb4a8cd8a1b9e70d31ecf566a2bfccdb208",
+        "internal/instructions/block.go": "2305b02230ca5fc400972f2089357c55fc8a752b97bc36f874b2a130b393445a",
+        "internal/instructions/corpus_test.go": "1a670c845c3f90d006b73ff2a03642d9e75e36ea7ab03eea847e06f531618586",
+        "internal/instructions/errors.go": "7e93d7985d219fb8dd89b3cac5cbc63df977878b4cafcf52a611837c840d7cea",
+        "internal/instructions/instructions.go": "0fef44dccb31173ccb98ab7a364bb0a6d01ef75ba75043b4c233fce308294e95",
+        "internal/instructions/marker.go": "15958b53ff92b162eb3e871e6cfd23ffc4a3bd0a18e7de7fbbf80475fcfc49cb",
+        "internal/instructions/scan.go": "0a1c1ec3ff0eaa09b262ed64f28f1801e41896853f3a1fe8bfe97dc5cd2465d6"
+      }
+    },
+    {
+      "case": "scout-dev-scan",
+      "control": "bad-root",
+      "command": [
+        "go",
+        "test",
+        "-json",
+        "-count=1",
+        "-timeout=30s",
+        "-run=^TestCorpus$",
+        "./..."
+      ],
+      "directory": "controller/scout-dev-scan/bad-root",
+      "limit_seconds": 120,
+      "expected_failures": [
+        "TestCorpus/root-pair"
+      ],
+      "observed_failures": [
+        "TestCorpus/root-pair"
+      ],
+      "observed_passes": [
+        "TestCorpus/hidden",
+        "TestCorpus/names"
+      ],
+      "verified": true,
+      "output_sha256": "53af0b2185f03c1e6f2de63b723c5137d686bbf623fbc0b346b0d64bebf6fca3",
+      "artifact_sha256": {
+        "go.mod": "ab35cad14d574f7e762603357ed0cdb4a8cd8a1b9e70d31ecf566a2bfccdb208",
+        "internal/instructions/block.go": "2305b02230ca5fc400972f2089357c55fc8a752b97bc36f874b2a130b393445a",
+        "internal/instructions/corpus_test.go": "1a670c845c3f90d006b73ff2a03642d9e75e36ea7ab03eea847e06f531618586",
+        "internal/instructions/errors.go": "7e93d7985d219fb8dd89b3cac5cbc63df977878b4cafcf52a611837c840d7cea",
+        "internal/instructions/instructions.go": "0fef44dccb31173ccb98ab7a364bb0a6d01ef75ba75043b4c233fce308294e95",
+        "internal/instructions/marker.go": "15958b53ff92b162eb3e871e6cfd23ffc4a3bd0a18e7de7fbbf80475fcfc49cb",
+        "internal/instructions/scan.go": "82d225965a26954e45f02ee6b68542785bbd13b31ccee326f1fe8f173676d298"
+      }
+    },
+    {
+      "case": "scout-dev-scan",
+      "control": "bad-names",
+      "command": [
+        "go",
+        "test",
+        "-json",
+        "-count=1",
+        "-timeout=30s",
+        "-run=^TestCorpus$",
+        "./..."
+      ],
+      "directory": "controller/scout-dev-scan/bad-names",
+      "limit_seconds": 120,
+      "expected_failures": [
+        "TestCorpus/names"
+      ],
+      "observed_failures": [
+        "TestCorpus/names"
+      ],
+      "observed_passes": [
+        "TestCorpus/hidden",
+        "TestCorpus/root-pair"
+      ],
+      "verified": true,
+      "output_sha256": "39bb9afb78a15171ff56dd51f5b6863672c91fad76c033babd4a3eb5fa3f4c10",
+      "artifact_sha256": {
+        "go.mod": "ab35cad14d574f7e762603357ed0cdb4a8cd8a1b9e70d31ecf566a2bfccdb208",
+        "internal/instructions/block.go": "2305b02230ca5fc400972f2089357c55fc8a752b97bc36f874b2a130b393445a",
+        "internal/instructions/corpus_test.go": "1a670c845c3f90d006b73ff2a03642d9e75e36ea7ab03eea847e06f531618586",
+        "internal/instructions/errors.go": "7e93d7985d219fb8dd89b3cac5cbc63df977878b4cafcf52a611837c840d7cea",
+        "internal/instructions/instructions.go": "0fef44dccb31173ccb98ab7a364bb0a6d01ef75ba75043b4c233fce308294e95",
+        "internal/instructions/marker.go": "15958b53ff92b162eb3e871e6cfd23ffc4a3bd0a18e7de7fbbf80475fcfc49cb",
+        "internal/instructions/scan.go": "714d041e849c2eca17cc4d4f5ae768a1e0348b37cc59af60baf24707bd639289"
+      }
+    },
+    {
+      "case": "scout-held-git-gates",
+      "control": "reference",
+      "command": [
+        "go",
+        "test",
+        "-json",
+        "-count=1",
+        "-timeout=30s",
+        "-run=^TestCorpus$",
+        "./..."
+      ],
+      "directory": "controller/scout-held-git-gates/reference",
+      "limit_seconds": 120,
+      "expected_failures": [],
+      "observed_failures": [],
+      "observed_passes": [
+        "TestCorpus/checked-out",
+        "TestCorpus/confirmation",
+        "TestCorpus/fast-forward"
+      ],
+      "verified": true,
+      "output_sha256": "91ea6d2250b007fc6fd36eb0f6c6f041d1fe9a370b7160fa4c7d71809484c45a",
+      "artifact_sha256": {
+        "go.mod": "ab35cad14d574f7e762603357ed0cdb4a8cd8a1b9e70d31ecf566a2bfccdb208",
+        "internal/execx/execx.go": "57795e61d33f5cc92e6fdd705a6327a0fbc176c5b350d22c096f5bade5154d00",
+        "internal/gitops/branch.go": "e64f9458d78c355c545c06da3c19b563b3dedd066340dad4e310e16012e7e36a",
+        "internal/gitops/checks.go": "92edd1d74fb9ac38026ca36a4e885f2a6ba5853d6945b1580d825feb72ab0082",
+        "internal/gitops/corpus_test.go": "47816bd15061245892681d5be208ae32483bbe386b8f3d27ccc95808c1917356",
+        "internal/gitops/errors.go": "ed181ddeaeb8b90b0f643d6c462e467f91571eee82b2b51ca2f2abe90cda9af4",
+        "internal/gitops/gitops.go": "b40eca796857315dde1befbf25692ae0c8f3815c05a3cca259b399ea15131219",
+        "internal/gitops/worktree.go": "001f298e1944d9a024ab0f9098e415aee2356d90e50822bac6c1764a5a2734cc",
+        "internal/paths/paths.go": "79d0eae9406bdf9a2544203fe5b2aa40f8f1fb1750f9a17feb7da87418738ccb"
+      }
+    },
+    {
+      "case": "scout-held-git-gates",
+      "control": "bad-confirmation",
+      "command": [
+        "go",
+        "test",
+        "-json",
+        "-count=1",
+        "-timeout=30s",
+        "-run=^TestCorpus$",
+        "./..."
+      ],
+      "directory": "controller/scout-held-git-gates/bad-confirmation",
+      "limit_seconds": 120,
+      "expected_failures": [
+        "TestCorpus/confirmation"
+      ],
+      "observed_failures": [
+        "TestCorpus/confirmation"
+      ],
+      "observed_passes": [
+        "TestCorpus/checked-out",
+        "TestCorpus/fast-forward"
+      ],
+      "verified": true,
+      "output_sha256": "866ad63f24e19d1b9e9dc1544f19ad581bf267223c47a137fd69f33d78c2c90a",
+      "artifact_sha256": {
+        "go.mod": "ab35cad14d574f7e762603357ed0cdb4a8cd8a1b9e70d31ecf566a2bfccdb208",
+        "internal/execx/execx.go": "57795e61d33f5cc92e6fdd705a6327a0fbc176c5b350d22c096f5bade5154d00",
+        "internal/gitops/branch.go": "2549e3fb6316077f03bd02e4b791cd0bb8518c50907bcfb3fde4105246566c59",
+        "internal/gitops/checks.go": "92edd1d74fb9ac38026ca36a4e885f2a6ba5853d6945b1580d825feb72ab0082",
+        "internal/gitops/corpus_test.go": "47816bd15061245892681d5be208ae32483bbe386b8f3d27ccc95808c1917356",
+        "internal/gitops/errors.go": "ed181ddeaeb8b90b0f643d6c462e467f91571eee82b2b51ca2f2abe90cda9af4",
+        "internal/gitops/gitops.go": "b40eca796857315dde1befbf25692ae0c8f3815c05a3cca259b399ea15131219",
+        "internal/gitops/worktree.go": "001f298e1944d9a024ab0f9098e415aee2356d90e50822bac6c1764a5a2734cc",
+        "internal/paths/paths.go": "79d0eae9406bdf9a2544203fe5b2aa40f8f1fb1750f9a17feb7da87418738ccb"
+      }
+    },
+    {
+      "case": "scout-held-git-gates",
+      "control": "bad-worktree",
+      "command": [
+        "go",
+        "test",
+        "-json",
+        "-count=1",
+        "-timeout=30s",
+        "-run=^TestCorpus$",
+        "./..."
+      ],
+      "directory": "controller/scout-held-git-gates/bad-worktree",
+      "limit_seconds": 120,
+      "expected_failures": [
+        "TestCorpus/checked-out"
+      ],
+      "observed_failures": [
+        "TestCorpus/checked-out"
+      ],
+      "observed_passes": [
+        "TestCorpus/confirmation",
+        "TestCorpus/fast-forward"
+      ],
+      "verified": true,
+      "output_sha256": "c7f264afcdb4d1005f24f99ebdf716ac6dd068cfdce5771d9524cb226241ef51",
+      "artifact_sha256": {
+        "go.mod": "ab35cad14d574f7e762603357ed0cdb4a8cd8a1b9e70d31ecf566a2bfccdb208",
+        "internal/execx/execx.go": "57795e61d33f5cc92e6fdd705a6327a0fbc176c5b350d22c096f5bade5154d00",
+        "internal/gitops/branch.go": "8b851a466e9e8751728d4ad9c60ec6bfda0b849eaeccd8bdb54178fd84a5261f",
+        "internal/gitops/checks.go": "92edd1d74fb9ac38026ca36a4e885f2a6ba5853d6945b1580d825feb72ab0082",
+        "internal/gitops/corpus_test.go": "47816bd15061245892681d5be208ae32483bbe386b8f3d27ccc95808c1917356",
+        "internal/gitops/errors.go": "ed181ddeaeb8b90b0f643d6c462e467f91571eee82b2b51ca2f2abe90cda9af4",
+        "internal/gitops/gitops.go": "b40eca796857315dde1befbf25692ae0c8f3815c05a3cca259b399ea15131219",
+        "internal/gitops/worktree.go": "001f298e1944d9a024ab0f9098e415aee2356d90e50822bac6c1764a5a2734cc",
+        "internal/paths/paths.go": "79d0eae9406bdf9a2544203fe5b2aa40f8f1fb1750f9a17feb7da87418738ccb"
+      }
+    },
+    {
+      "case": "scout-held-git-gates",
+      "control": "bad-forward",
+      "command": [
+        "go",
+        "test",
+        "-json",
+        "-count=1",
+        "-timeout=30s",
+        "-run=^TestCorpus$",
+        "./..."
+      ],
+      "directory": "controller/scout-held-git-gates/bad-forward",
+      "limit_seconds": 120,
+      "expected_failures": [
+        "TestCorpus/fast-forward"
+      ],
+      "observed_failures": [
+        "TestCorpus/fast-forward"
+      ],
+      "observed_passes": [
+        "TestCorpus/checked-out",
+        "TestCorpus/confirmation"
+      ],
+      "verified": true,
+      "output_sha256": "23dae8f10fe28ab166bf4f8b8ab85234e646236ae3550ae13aadf80c9a094a87",
+      "artifact_sha256": {
+        "go.mod": "ab35cad14d574f7e762603357ed0cdb4a8cd8a1b9e70d31ecf566a2bfccdb208",
+        "internal/execx/execx.go": "57795e61d33f5cc92e6fdd705a6327a0fbc176c5b350d22c096f5bade5154d00",
+        "internal/gitops/branch.go": "6e2d0890c0245a4232d794d6943760c287b027ce385c59ce20d361401117b439",
+        "internal/gitops/checks.go": "92edd1d74fb9ac38026ca36a4e885f2a6ba5853d6945b1580d825feb72ab0082",
+        "internal/gitops/corpus_test.go": "47816bd15061245892681d5be208ae32483bbe386b8f3d27ccc95808c1917356",
+        "internal/gitops/errors.go": "ed181ddeaeb8b90b0f643d6c462e467f91571eee82b2b51ca2f2abe90cda9af4",
+        "internal/gitops/gitops.go": "b40eca796857315dde1befbf25692ae0c8f3815c05a3cca259b399ea15131219",
+        "internal/gitops/worktree.go": "001f298e1944d9a024ab0f9098e415aee2356d90e50822bac6c1764a5a2734cc",
+        "internal/paths/paths.go": "79d0eae9406bdf9a2544203fe5b2aa40f8f1fb1750f9a17feb7da87418738ccb"
+      }
+    },
+    {
+      "case": "scout-held-question",
+      "control": "reference",
+      "command": [
+        "go",
+        "test",
+        "-json",
+        "-count=1",
+        "-timeout=30s",
+        "-run=^TestCorpus$",
+        "./..."
+      ],
+      "directory": "controller/scout-held-question/reference",
+      "limit_seconds": 120,
+      "expected_failures": [
+        "TestCorpus/tail"
+      ],
+      "observed_failures": [
+        "TestCorpus/tail"
+      ],
+      "observed_passes": [
+        "TestCorpus/fields",
+        "TestCorpus/map",
+        "TestCorpus/schema"
+      ],
+      "verified": true,
+      "output_sha256": "aa322cf9f18a89875d639d5446f25b3257402f8db1f45ece0f7974460e2ace76",
+      "artifact_sha256": {
+        "go.mod": "ab35cad14d574f7e762603357ed0cdb4a8cd8a1b9e70d31ecf566a2bfccdb208",
+        "internal/question/corpus_test.go": "9e2af9363df4ff37331604650366c53676873c48f98365fb0d97a22df81bd2ec",
+        "internal/question/decode.go": "b11f677641a401f5ddb8328ba4fd96e2e22745ab2df30854e78b6179117da15e",
+        "internal/question/question.go": "f555a0d2edfb828327ca6d55494d626f228e006e3bfc3efe72ab4a52026456a2"
+      }
+    },
+    {
+      "case": "scout-held-question",
+      "control": "bad-fields",
+      "command": [
+        "go",
+        "test",
+        "-json",
+        "-count=1",
+        "-timeout=30s",
+        "-run=^TestCorpus$",
+        "./..."
+      ],
+      "directory": "controller/scout-held-question/bad-fields",
+      "limit_seconds": 120,
+      "expected_failures": [
+        "TestCorpus/tail",
+        "TestCorpus/fields"
+      ],
+      "observed_failures": [
+        "TestCorpus/fields",
+        "TestCorpus/tail"
+      ],
+      "observed_passes": [
+        "TestCorpus/map",
+        "TestCorpus/schema"
+      ],
+      "verified": true,
+      "output_sha256": "dd9f5607fccc4e84c0e57aea32de4fd42d056341d78815efa76b02ad6c628470",
+      "artifact_sha256": {
+        "go.mod": "ab35cad14d574f7e762603357ed0cdb4a8cd8a1b9e70d31ecf566a2bfccdb208",
+        "internal/question/corpus_test.go": "9e2af9363df4ff37331604650366c53676873c48f98365fb0d97a22df81bd2ec",
+        "internal/question/decode.go": "950f8b00c959b3c5e120b5fbb39c91411187d0df3f14fe6de0655c0fd411b08c",
+        "internal/question/question.go": "f555a0d2edfb828327ca6d55494d626f228e006e3bfc3efe72ab4a52026456a2"
+      }
+    },
+    {
+      "case": "scout-held-question",
+      "control": "bad-schema",
+      "command": [
+        "go",
+        "test",
+        "-json",
+        "-count=1",
+        "-timeout=30s",
+        "-run=^TestCorpus$",
+        "./..."
+      ],
+      "directory": "controller/scout-held-question/bad-schema",
+      "limit_seconds": 120,
+      "expected_failures": [
+        "TestCorpus/tail",
+        "TestCorpus/schema"
+      ],
+      "observed_failures": [
+        "TestCorpus/schema",
+        "TestCorpus/tail"
+      ],
+      "observed_passes": [
+        "TestCorpus/fields",
+        "TestCorpus/map"
+      ],
+      "verified": true,
+      "output_sha256": "fb3e393445ed29f2e4f3b28f5dd4712f2b223cacb48efebec7e2cbee6bf3a3f4",
+      "artifact_sha256": {
+        "go.mod": "ab35cad14d574f7e762603357ed0cdb4a8cd8a1b9e70d31ecf566a2bfccdb208",
+        "internal/question/corpus_test.go": "9e2af9363df4ff37331604650366c53676873c48f98365fb0d97a22df81bd2ec",
+        "internal/question/decode.go": "8f97d893e1864275187ef2cf8fc2fdf7de982912c3394bbe291e982a67b47509",
+        "internal/question/question.go": "f555a0d2edfb828327ca6d55494d626f228e006e3bfc3efe72ab4a52026456a2"
+      }
+    },
+    {
+      "case": "scout-held-question",
+      "control": "bad-map",
+      "command": [
+        "go",
+        "test",
+        "-json",
+        "-count=1",
+        "-timeout=30s",
+        "-run=^TestCorpus$",
+        "./..."
+      ],
+      "directory": "controller/scout-held-question/bad-map",
+      "limit_seconds": 120,
+      "expected_failures": [
+        "TestCorpus/tail",
+        "TestCorpus/map"
+      ],
+      "observed_failures": [
+        "TestCorpus/map",
+        "TestCorpus/tail"
+      ],
+      "observed_passes": [
+        "TestCorpus/fields",
+        "TestCorpus/schema"
+      ],
+      "verified": true,
+      "output_sha256": "dd03f30cb75bd722c60933192dc70eb5531c627040de3601e8c466840b254afc",
+      "artifact_sha256": {
+        "go.mod": "ab35cad14d574f7e762603357ed0cdb4a8cd8a1b9e70d31ecf566a2bfccdb208",
+        "internal/question/corpus_test.go": "9e2af9363df4ff37331604650366c53676873c48f98365fb0d97a22df81bd2ec",
+        "internal/question/decode.go": "65e95ab2ce77b7d74be2f121056c4f67fbdd0c9ac421dbcea30b76aed72365b2",
+        "internal/question/question.go": "f555a0d2edfb828327ca6d55494d626f228e006e3bfc3efe72ab4a52026456a2"
+      }
+    },
+    {
+      "case": "scout-held-question",
+      "control": "strict-repair",
+      "command": [
+        "go",
+        "test",
+        "-json",
+        "-count=1",
+        "-timeout=30s",
+        "-run=^TestCorpus$",
+        "./..."
+      ],
+      "directory": "controller/scout-held-question/strict-repair",
+      "limit_seconds": 120,
+      "expected_failures": [],
+      "observed_failures": [],
+      "observed_passes": [
+        "TestCorpus/fields",
+        "TestCorpus/map",
+        "TestCorpus/schema",
+        "TestCorpus/tail"
+      ],
+      "verified": true,
+      "output_sha256": "62464468945acbfde8c2165fcdd9fb0b54c2aaca98d4518da35a2d5abd97ff93",
+      "artifact_sha256": {
+        "go.mod": "ab35cad14d574f7e762603357ed0cdb4a8cd8a1b9e70d31ecf566a2bfccdb208",
+        "internal/question/corpus_test.go": "9e2af9363df4ff37331604650366c53676873c48f98365fb0d97a22df81bd2ec",
+        "internal/question/decode.go": "05923bfddc2fdb95c197d36db74743bef81b11b2d06cc5074697c1fa5a88b2f4",
+        "internal/question/question.go": "f555a0d2edfb828327ca6d55494d626f228e006e3bfc3efe72ab4a52026456a2"
+      }
+    },
+    {
+      "case": "scout-held-question",
+      "control": "alternative-repair",
+      "command": [
+        "go",
+        "test",
+        "-json",
+        "-count=1",
+        "-timeout=30s",
+        "-run=^TestCorpus$",
+        "./..."
+      ],
+      "directory": "controller/scout-held-question/alternative-repair",
+      "limit_seconds": 120,
+      "expected_failures": [],
+      "observed_failures": [],
+      "observed_passes": [
+        "TestCorpus/fields",
+        "TestCorpus/map",
+        "TestCorpus/schema",
+        "TestCorpus/tail"
+      ],
+      "verified": true,
+      "output_sha256": "55e4e03c6bdec9977f3b253c8538982047463518bea25609a16f50c08d9459dd",
+      "artifact_sha256": {
+        "go.mod": "ab35cad14d574f7e762603357ed0cdb4a8cd8a1b9e70d31ecf566a2bfccdb208",
+        "internal/question/corpus_test.go": "9e2af9363df4ff37331604650366c53676873c48f98365fb0d97a22df81bd2ec",
+        "internal/question/decode.go": "44cbbd0663df48f44a5d1154596ea00b0e80b4a0e534689bf79637a2db75d182",
+        "internal/question/question.go": "f555a0d2edfb828327ca6d55494d626f228e006e3bfc3efe72ab4a52026456a2"
+      }
+    },
+    {
+      "case": "scout-held-question",
+      "control": "bad-supplied-answer",
+      "command": [
+        "go",
+        "test",
+        "-json",
+        "-count=1",
+        "-timeout=30s",
+        "-run=^TestCorpus$",
+        "./..."
+      ],
+      "directory": "controller/scout-held-question/bad-supplied-answer",
+      "limit_seconds": 120,
+      "expected_failures": [
+        "TestCorpus/tail",
+        "TestCorpus/map"
+      ],
+      "observed_failures": [
+        "TestCorpus/map",
+        "TestCorpus/tail"
+      ],
+      "observed_passes": [
+        "TestCorpus/fields",
+        "TestCorpus/schema"
+      ],
+      "verified": true,
+      "output_sha256": "fbe973056a614bb3d27544432b6bcb9e0be0f2e2657e6e4fc82f4910a8245718",
+      "artifact_sha256": {
+        "go.mod": "ab35cad14d574f7e762603357ed0cdb4a8cd8a1b9e70d31ecf566a2bfccdb208",
+        "internal/question/corpus_test.go": "9e2af9363df4ff37331604650366c53676873c48f98365fb0d97a22df81bd2ec",
+        "internal/question/decode.go": "8b06539c09102aaf02fdb7f9b887e82852f9309895787dfc759a4fa39959c94e",
+        "internal/question/question.go": "f555a0d2edfb828327ca6d55494d626f228e006e3bfc3efe72ab4a52026456a2"
+      }
+    },
+    {
+      "case": "implement-dev-ci-empty",
+      "control": "reference",
+      "command": [
+        "go",
+        "test",
+        "-json",
+        "-count=1",
+        "-timeout=30s",
+        "-run=^TestCorpus$",
+        "./..."
+      ],
+      "directory": "controller/implement-dev-ci-empty/reference",
+      "limit_seconds": 120,
+      "expected_failures": [],
+      "observed_failures": [],
+      "observed_passes": [
+        "TestCorpus/empty",
+        "TestCorpus/malformed",
+        "TestCorpus/states"
+      ],
+      "verified": true,
+      "output_sha256": "d56097b71e3b215a44674ad0b7e8ca36fc8a7dda6665c8cfba319047bcc259a4",
+      "artifact_sha256": {
+        "go.mod": "ab35cad14d574f7e762603357ed0cdb4a8cd8a1b9e70d31ecf566a2bfccdb208",
+        "internal/execx/execx.go": "57795e61d33f5cc92e6fdd705a6327a0fbc176c5b350d22c096f5bade5154d00",
+        "internal/ghops/checks.go": "40302da1d180b45808222866bbbb747d9cec897c806c388119ddb35c404a2783",
+        "internal/ghops/corpus_test.go": "7dad82f4b499cc5654717934c03a4f0d9094aead6337dfad4aef12c883cab4b4",
+        "internal/ghops/errors.go": "afb812cbfd772e31933ee79d91906ebdc8c32e188b45da7445c995b6a685e3b5",
+        "internal/ghops/ghops.go": "6d1261d787dd0212a99da33e57a97576855412eda369065450a8c36cc4f59335",
+        "internal/paths/paths.go": "95e0f3ef69379705041d1595d11cc3f0cf414ae65046c31070120f511eb1078a"
+      }
+    },
+    {
+      "case": "implement-dev-ci-empty",
+      "control": "unfixed",
+      "command": [
+        "go",
+        "test",
+        "-json",
+        "-count=1",
+        "-timeout=30s",
+        "-run=^TestCorpus$",
+        "./..."
+      ],
+      "directory": "controller/implement-dev-ci-empty/unfixed",
+      "limit_seconds": 120,
+      "expected_failures": [
+        "TestCorpus/empty"
+      ],
+      "observed_failures": [
+        "TestCorpus/empty"
+      ],
+      "observed_passes": [
+        "TestCorpus/malformed",
+        "TestCorpus/states"
+      ],
+      "verified": true,
+      "output_sha256": "e5b4d551acc3f340e65e2411e7f51c8b96177429d4e6e61303c6b886765539ff",
+      "artifact_sha256": {
+        "go.mod": "ab35cad14d574f7e762603357ed0cdb4a8cd8a1b9e70d31ecf566a2bfccdb208",
+        "internal/execx/execx.go": "57795e61d33f5cc92e6fdd705a6327a0fbc176c5b350d22c096f5bade5154d00",
+        "internal/ghops/checks.go": "c50d2dfcf0706e312c81840873d9d8253c0f5bb4b26a0ad17048ce33ec1e1dc1",
+        "internal/ghops/corpus_test.go": "7dad82f4b499cc5654717934c03a4f0d9094aead6337dfad4aef12c883cab4b4",
+        "internal/ghops/errors.go": "afb812cbfd772e31933ee79d91906ebdc8c32e188b45da7445c995b6a685e3b5",
+        "internal/ghops/ghops.go": "6d1261d787dd0212a99da33e57a97576855412eda369065450a8c36cc4f59335",
+        "internal/paths/paths.go": "95e0f3ef69379705041d1595d11cc3f0cf414ae65046c31070120f511eb1078a"
+      }
+    },
+    {
+      "case": "implement-dev-ci-empty",
+      "control": "bad-malformed",
+      "command": [
+        "go",
+        "test",
+        "-json",
+        "-count=1",
+        "-timeout=30s",
+        "-run=^TestCorpus$",
+        "./..."
+      ],
+      "directory": "controller/implement-dev-ci-empty/bad-malformed",
+      "limit_seconds": 120,
+      "expected_failures": [
+        "TestCorpus/malformed"
+      ],
+      "observed_failures": [
+        "TestCorpus/malformed"
+      ],
+      "observed_passes": [
+        "TestCorpus/empty",
+        "TestCorpus/states"
+      ],
+      "verified": true,
+      "output_sha256": "f9f66f2824767312fe5caf416d3cec4e84d3be1acec58fc6506556b655729c23",
+      "artifact_sha256": {
+        "go.mod": "ab35cad14d574f7e762603357ed0cdb4a8cd8a1b9e70d31ecf566a2bfccdb208",
+        "internal/execx/execx.go": "57795e61d33f5cc92e6fdd705a6327a0fbc176c5b350d22c096f5bade5154d00",
+        "internal/ghops/checks.go": "f3dcc18349d986b018549342ad4a16a47df1c4ee7dcba626ad61dd25ede482c3",
+        "internal/ghops/corpus_test.go": "7dad82f4b499cc5654717934c03a4f0d9094aead6337dfad4aef12c883cab4b4",
+        "internal/ghops/errors.go": "afb812cbfd772e31933ee79d91906ebdc8c32e188b45da7445c995b6a685e3b5",
+        "internal/ghops/ghops.go": "6d1261d787dd0212a99da33e57a97576855412eda369065450a8c36cc4f59335",
+        "internal/paths/paths.go": "95e0f3ef69379705041d1595d11cc3f0cf414ae65046c31070120f511eb1078a"
+      }
+    },
+    {
+      "case": "implement-dev-ci-empty",
+      "control": "bad-states",
+      "command": [
+        "go",
+        "test",
+        "-json",
+        "-count=1",
+        "-timeout=30s",
+        "-run=^TestCorpus$",
+        "./..."
+      ],
+      "directory": "controller/implement-dev-ci-empty/bad-states",
+      "limit_seconds": 120,
+      "expected_failures": [
+        "TestCorpus/states"
+      ],
+      "observed_failures": [
+        "TestCorpus/states"
+      ],
+      "observed_passes": [
+        "TestCorpus/empty",
+        "TestCorpus/malformed"
+      ],
+      "verified": true,
+      "output_sha256": "c69c7af226b02672187319c9237d77128cb88de468c1ab7902e805d6d7c6c2d8",
+      "artifact_sha256": {
+        "go.mod": "ab35cad14d574f7e762603357ed0cdb4a8cd8a1b9e70d31ecf566a2bfccdb208",
+        "internal/execx/execx.go": "57795e61d33f5cc92e6fdd705a6327a0fbc176c5b350d22c096f5bade5154d00",
+        "internal/ghops/checks.go": "787194043c936f6a3f01b918a20a188bd4608ac1fac97565c965a6ebacfbc87d",
+        "internal/ghops/corpus_test.go": "7dad82f4b499cc5654717934c03a4f0d9094aead6337dfad4aef12c883cab4b4",
+        "internal/ghops/errors.go": "afb812cbfd772e31933ee79d91906ebdc8c32e188b45da7445c995b6a685e3b5",
+        "internal/ghops/ghops.go": "6d1261d787dd0212a99da33e57a97576855412eda369065450a8c36cc4f59335",
+        "internal/paths/paths.go": "95e0f3ef69379705041d1595d11cc3f0cf414ae65046c31070120f511eb1078a"
+      }
+    },
+    {
+      "case": "implement-dev-ci-empty",
+      "control": "alternative",
+      "command": [
+        "go",
+        "test",
+        "-json",
+        "-count=1",
+        "-timeout=30s",
+        "-run=^TestCorpus$",
+        "./..."
+      ],
+      "directory": "controller/implement-dev-ci-empty/alternative",
+      "limit_seconds": 120,
+      "expected_failures": [],
+      "observed_failures": [],
+      "observed_passes": [
+        "TestCorpus/empty",
+        "TestCorpus/malformed",
+        "TestCorpus/states"
+      ],
+      "verified": true,
+      "output_sha256": "ccf64252e75709b03f4b450c2950bd7358e7fe077cf265dc2411f131520e7a70",
+      "artifact_sha256": {
+        "go.mod": "ab35cad14d574f7e762603357ed0cdb4a8cd8a1b9e70d31ecf566a2bfccdb208",
+        "internal/execx/execx.go": "57795e61d33f5cc92e6fdd705a6327a0fbc176c5b350d22c096f5bade5154d00",
+        "internal/ghops/checks.go": "df062fcb8c1aa7ae38bc3a475d9ea0e970e32db1f0a2f776ef7ad6372855a007",
+        "internal/ghops/corpus_test.go": "7dad82f4b499cc5654717934c03a4f0d9094aead6337dfad4aef12c883cab4b4",
+        "internal/ghops/errors.go": "afb812cbfd772e31933ee79d91906ebdc8c32e188b45da7445c995b6a685e3b5",
+        "internal/ghops/ghops.go": "6d1261d787dd0212a99da33e57a97576855412eda369065450a8c36cc4f59335",
+        "internal/paths/paths.go": "95e0f3ef69379705041d1595d11cc3f0cf414ae65046c31070120f511eb1078a"
+      }
+    },
+    {
+      "case": "implement-dev-ignore-lf",
+      "control": "reference",
+      "command": [
+        "go",
+        "test",
+        "-json",
+        "-count=1",
+        "-timeout=30s",
+        "-run=^TestCorpus$",
+        "./..."
+      ],
+      "directory": "controller/implement-dev-ignore-lf/reference",
+      "limit_seconds": 120,
+      "expected_failures": [],
+      "observed_failures": [],
+      "observed_passes": [
+        "TestCorpus/ignore-lf",
+        "TestCorpus/preserved"
+      ],
+      "verified": true,
+      "output_sha256": "3a0a0a2d7b700588a6baae81bb984aec7368fbdc0d50d39bb94d240592fcd1d1",
+      "artifact_sha256": {
+        ".gitattributes": "45d4e2bd0ab04d5e042067360eec5c377fdc79d00859d7f4dc5b17777159f990",
+        ".gitignore": "b6e79578f8327aa87774f8f449f18ed36d9e621c499e178d269df5feae433ce2",
+        "corpus_test.go": "aa9d3c13ecf6bb67f259cc638d1cbbf40cbeb6490f48bc6b8e9e994a18537509",
+        "go.mod": "ab35cad14d574f7e762603357ed0cdb4a8cd8a1b9e70d31ecf566a2bfccdb208"
+      }
+    },
+    {
+      "case": "implement-dev-ignore-lf",
+      "control": "unfixed",
+      "command": [
+        "go",
+        "test",
+        "-json",
+        "-count=1",
+        "-timeout=30s",
+        "-run=^TestCorpus$",
+        "./..."
+      ],
+      "directory": "controller/implement-dev-ignore-lf/unfixed",
+      "limit_seconds": 120,
+      "expected_failures": [
+        "TestCorpus/ignore-lf"
+      ],
+      "observed_failures": [
+        "TestCorpus/ignore-lf"
+      ],
+      "observed_passes": [
+        "TestCorpus/preserved"
+      ],
+      "verified": true,
+      "output_sha256": "525659badea8191175c42eef07afb79e9ced278ee0d53893ad7c73b45d244df9",
+      "artifact_sha256": {
+        ".gitattributes": "e667ca4e0e9415d56351b3c21651bb749da074c5b125fc4e45e33ec8723e63e7",
+        ".gitignore": "b6e79578f8327aa87774f8f449f18ed36d9e621c499e178d269df5feae433ce2",
+        "corpus_test.go": "aa9d3c13ecf6bb67f259cc638d1cbbf40cbeb6490f48bc6b8e9e994a18537509",
+        "go.mod": "ab35cad14d574f7e762603357ed0cdb4a8cd8a1b9e70d31ecf566a2bfccdb208"
+      }
+    },
+    {
+      "case": "implement-dev-ignore-lf",
+      "control": "bad-preserved",
+      "command": [
+        "go",
+        "test",
+        "-json",
+        "-count=1",
+        "-timeout=30s",
+        "-run=^TestCorpus$",
+        "./..."
+      ],
+      "directory": "controller/implement-dev-ignore-lf/bad-preserved",
+      "limit_seconds": 120,
+      "expected_failures": [
+        "TestCorpus/preserved"
+      ],
+      "observed_failures": [
+        "TestCorpus/preserved"
+      ],
+      "observed_passes": [
+        "TestCorpus/ignore-lf"
+      ],
+      "verified": true,
+      "output_sha256": "88ae669d49892166173215494b6e4373bb7f47aa777136cc1dc4efa50f2493cb",
+      "artifact_sha256": {
+        ".gitattributes": "4fa5d1c7cf544f44fe3b66c3c86dfe4e60184141a5678112eb755286e0104336",
+        ".gitignore": "b6e79578f8327aa87774f8f449f18ed36d9e621c499e178d269df5feae433ce2",
+        "corpus_test.go": "aa9d3c13ecf6bb67f259cc638d1cbbf40cbeb6490f48bc6b8e9e994a18537509",
+        "go.mod": "ab35cad14d574f7e762603357ed0cdb4a8cd8a1b9e70d31ecf566a2bfccdb208"
+      }
+    },
+    {
+      "case": "implement-dev-ignore-lf",
+      "control": "alternative",
+      "command": [
+        "go",
+        "test",
+        "-json",
+        "-count=1",
+        "-timeout=30s",
+        "-run=^TestCorpus$",
+        "./..."
+      ],
+      "directory": "controller/implement-dev-ignore-lf/alternative",
+      "limit_seconds": 120,
+      "expected_failures": [],
+      "observed_failures": [],
+      "observed_passes": [
+        "TestCorpus/ignore-lf",
+        "TestCorpus/preserved"
+      ],
+      "verified": true,
+      "output_sha256": "81c61ae234579c7fe492805274b2b058e3966228c3871df92ee1053d558c55d3",
+      "artifact_sha256": {
+        ".gitattributes": "a1c0dff9126f06dc9c22fecbe0d8d10063601891efb9b22b8ab26a6252097523",
+        ".gitignore": "b6e79578f8327aa87774f8f449f18ed36d9e621c499e178d269df5feae433ce2",
+        "corpus_test.go": "aa9d3c13ecf6bb67f259cc638d1cbbf40cbeb6490f48bc6b8e9e994a18537509",
+        "go.mod": "ab35cad14d574f7e762603357ed0cdb4a8cd8a1b9e70d31ecf566a2bfccdb208"
+      }
+    },
+    {
+      "case": "implement-held-capture",
+      "control": "reference",
+      "command": [
+        "go",
+        "test",
+        "-json",
+        "-count=1",
+        "-timeout=30s",
+        "-run=^TestCorpus$",
+        "./..."
+      ],
+      "directory": "controller/implement-held-capture/reference",
+      "limit_seconds": 120,
+      "expected_failures": [],
+      "observed_failures": [],
+      "observed_passes": [
+        "TestCorpus/delta",
+        "TestCorpus/identified",
+        "TestCorpus/unique",
+        "TestCorpus/unrelated"
+      ],
+      "verified": true,
+      "output_sha256": "4a813a2d523b185dadf68e6a9c281b348f8da2ac0ac12218edb9c1d289bf0a24",
+      "artifact_sha256": {
+        "go.mod": "ab35cad14d574f7e762603357ed0cdb4a8cd8a1b9e70d31ecf566a2bfccdb208",
+        "internal/codexusage/capture.go": "9d23d1f0d2329556377185dc882f8a0d5902286b17ce79401799f68e8b73dfef",
+        "internal/codexusage/corpus_test.go": "fc4ff7bb624ecd2cf3f8c26138f1ab5eb7ebdfcc74f150cd0ac6154b00de4770"
+      }
+    },
+    {
+      "case": "implement-held-capture",
+      "control": "unfixed",
+      "command": [
+        "go",
+        "test",
+        "-json",
+        "-count=1",
+        "-timeout=30s",
+        "-run=^TestCorpus$",
+        "./..."
+      ],
+      "directory": "controller/implement-held-capture/unfixed",
+      "limit_seconds": 120,
+      "expected_failures": [
+        "TestCorpus/unrelated"
+      ],
+      "observed_failures": [
+        "TestCorpus/unrelated"
+      ],
+      "observed_passes": [
+        "TestCorpus/delta",
+        "TestCorpus/identified",
+        "TestCorpus/unique"
+      ],
+      "verified": true,
+      "output_sha256": "8c88f103a609c54bf5d436566a9f60d5fecc09ef6c01e7b3f582c881adb57b46",
+      "artifact_sha256": {
+        "go.mod": "ab35cad14d574f7e762603357ed0cdb4a8cd8a1b9e70d31ecf566a2bfccdb208",
+        "internal/codexusage/capture.go": "c2a8db09ffb7201223982be7c69c0fee380ee004460acb009f705e34c33e3011",
+        "internal/codexusage/corpus_test.go": "fc4ff7bb624ecd2cf3f8c26138f1ab5eb7ebdfcc74f150cd0ac6154b00de4770"
+      }
+    },
+    {
+      "case": "implement-held-capture",
+      "control": "bad-identified",
+      "command": [
+        "go",
+        "test",
+        "-json",
+        "-count=1",
+        "-timeout=30s",
+        "-run=^TestCorpus$",
+        "./..."
+      ],
+      "directory": "controller/implement-held-capture/bad-identified",
+      "limit_seconds": 120,
+      "expected_failures": [
+        "TestCorpus/identified"
+      ],
+      "observed_failures": [
+        "TestCorpus/identified"
+      ],
+      "observed_passes": [
+        "TestCorpus/delta",
+        "TestCorpus/unique",
+        "TestCorpus/unrelated"
+      ],
+      "verified": true,
+      "output_sha256": "732bf597f125ff6e2c05f45dd937c1bc8a7d90b502fa30fc296423932a431c61",
+      "artifact_sha256": {
+        "go.mod": "ab35cad14d574f7e762603357ed0cdb4a8cd8a1b9e70d31ecf566a2bfccdb208",
+        "internal/codexusage/capture.go": "9ebb88f35690757ea3e6b7acd517836a41dc255138419997db9595c068aab001",
+        "internal/codexusage/corpus_test.go": "fc4ff7bb624ecd2cf3f8c26138f1ab5eb7ebdfcc74f150cd0ac6154b00de4770"
+      }
+    },
+    {
+      "case": "implement-held-capture",
+      "control": "bad-unique",
+      "command": [
+        "go",
+        "test",
+        "-json",
+        "-count=1",
+        "-timeout=30s",
+        "-run=^TestCorpus$",
+        "./..."
+      ],
+      "directory": "controller/implement-held-capture/bad-unique",
+      "limit_seconds": 120,
+      "expected_failures": [
+        "TestCorpus/unique"
+      ],
+      "observed_failures": [
+        "TestCorpus/unique"
+      ],
+      "observed_passes": [
+        "TestCorpus/delta",
+        "TestCorpus/identified",
+        "TestCorpus/unrelated"
+      ],
+      "verified": true,
+      "output_sha256": "5ba150a9ef8a64a1f6b3d28f412c43fd0ddc7a9114059533e285cd39c75d7993",
+      "artifact_sha256": {
+        "go.mod": "ab35cad14d574f7e762603357ed0cdb4a8cd8a1b9e70d31ecf566a2bfccdb208",
+        "internal/codexusage/capture.go": "6d3c1acec551272fc79359351f36854a746d38d9635d50268a38a53e60d7a6dd",
+        "internal/codexusage/corpus_test.go": "fc4ff7bb624ecd2cf3f8c26138f1ab5eb7ebdfcc74f150cd0ac6154b00de4770"
+      }
+    },
+    {
+      "case": "implement-held-capture",
+      "control": "bad-attribution",
+      "command": [
+        "go",
+        "test",
+        "-json",
+        "-count=1",
+        "-timeout=30s",
+        "-run=^TestCorpus$",
+        "./..."
+      ],
+      "directory": "controller/implement-held-capture/bad-attribution",
+      "limit_seconds": 120,
+      "expected_failures": [
+        "TestCorpus/unique"
+      ],
+      "observed_failures": [
+        "TestCorpus/unique"
+      ],
+      "observed_passes": [
+        "TestCorpus/delta",
+        "TestCorpus/identified",
+        "TestCorpus/unrelated"
+      ],
+      "verified": true,
+      "output_sha256": "4cd297738fd62dee66c3cdb96af5ae454425c876d447fc2ecc9dd77e52d9e5e4",
+      "artifact_sha256": {
+        "go.mod": "ab35cad14d574f7e762603357ed0cdb4a8cd8a1b9e70d31ecf566a2bfccdb208",
+        "internal/codexusage/capture.go": "b793045f888fb04105b27e4b7d88087a09c87cac8ea4262abf6831627cf6654a",
+        "internal/codexusage/corpus_test.go": "fc4ff7bb624ecd2cf3f8c26138f1ab5eb7ebdfcc74f150cd0ac6154b00de4770"
+      }
+    },
+    {
+      "case": "implement-held-capture",
+      "control": "bad-delta",
+      "command": [
+        "go",
+        "test",
+        "-json",
+        "-count=1",
+        "-timeout=30s",
+        "-run=^TestCorpus$",
+        "./..."
+      ],
+      "directory": "controller/implement-held-capture/bad-delta",
+      "limit_seconds": 120,
+      "expected_failures": [
+        "TestCorpus/delta"
+      ],
+      "observed_failures": [
+        "TestCorpus/delta"
+      ],
+      "observed_passes": [
+        "TestCorpus/identified",
+        "TestCorpus/unique",
+        "TestCorpus/unrelated"
+      ],
+      "verified": true,
+      "output_sha256": "ef58270e10f9a405d4f1dd766c4f40631cfbf3fc99a6405539e6bcda7e9a29fb",
+      "artifact_sha256": {
+        "go.mod": "ab35cad14d574f7e762603357ed0cdb4a8cd8a1b9e70d31ecf566a2bfccdb208",
+        "internal/codexusage/capture.go": "6c0c847f9c9541e2ad6f88a79c803c9f5867b4b317f7b9ca978a75c70c7d3e94",
+        "internal/codexusage/corpus_test.go": "fc4ff7bb624ecd2cf3f8c26138f1ab5eb7ebdfcc74f150cd0ac6154b00de4770"
+      }
+    },
+    {
+      "case": "implement-held-capture",
+      "control": "alternative",
+      "command": [
+        "go",
+        "test",
+        "-json",
+        "-count=1",
+        "-timeout=30s",
+        "-run=^TestCorpus$",
+        "./..."
+      ],
+      "directory": "controller/implement-held-capture/alternative",
+      "limit_seconds": 120,
+      "expected_failures": [],
+      "observed_failures": [],
+      "observed_passes": [
+        "TestCorpus/delta",
+        "TestCorpus/identified",
+        "TestCorpus/unique",
+        "TestCorpus/unrelated"
+      ],
+      "verified": true,
+      "output_sha256": "ada29d8150e95a5c303bcee08d5008fffcfe4ce5aa41cb7e65bfa6c19217ff12",
+      "artifact_sha256": {
+        "go.mod": "ab35cad14d574f7e762603357ed0cdb4a8cd8a1b9e70d31ecf566a2bfccdb208",
+        "internal/codexusage/capture.go": "ebe36ad6eca4b2f9c7cb94cdfbb681691525e323c99cb259da4acf826bbe16e6",
+        "internal/codexusage/corpus_test.go": "fc4ff7bb624ecd2cf3f8c26138f1ab5eb7ebdfcc74f150cd0ac6154b00de4770"
+      }
+    },
+    {
+      "case": "implement-held-effort-window",
+      "control": "reference",
+      "command": [
+        "go",
+        "test",
+        "-json",
+        "-count=1",
+        "-timeout=30s",
+        "-run=^TestCorpus$",
+        "./..."
+      ],
+      "directory": "controller/implement-held-effort-window/reference",
+      "limit_seconds": 120,
+      "expected_failures": [],
+      "observed_failures": [],
+      "observed_passes": [
+        "TestCorpus/labels",
+        "TestCorpus/typed",
+        "TestCorpus/window"
+      ],
+      "verified": true,
+      "output_sha256": "043e7c13823a4dd3dd4bbdf590a6349359c3ed5552dabd3c266349957d3853e0",
+      "artifact_sha256": {
+        "go.mod": "ab35cad14d574f7e762603357ed0cdb4a8cd8a1b9e70d31ecf566a2bfccdb208",
+        "internal/interview/configurelocal.go": "6fa8f6eeefa083546b8b896192487d14ccddf39745dd5d7ff4be6986acdc2d9f",
+        "internal/interview/corpus_test.go": "ec0b05a550a51ca5194faea8c5666ddb3525b4f5a6655c374fec97ba4c116750",
+        "internal/interview/sequence.go": "570fe6f261b6029894b3dde29aef6b3e142ddfdd01e7cafec924a6a424c94e35",
+        "internal/question/question.go": "4a8df63865058bc11ee1af0a7b4b19d8e867cbb4ca8fc37ad76e927b58afddcf"
+      }
+    },
+    {
+      "case": "implement-held-effort-window",
+      "control": "unfixed",
+      "command": [
+        "go",
+        "test",
+        "-json",
+        "-count=1",
+        "-timeout=30s",
+        "-run=^TestCorpus$",
+        "./..."
+      ],
+      "directory": "controller/implement-held-effort-window/unfixed",
+      "limit_seconds": 120,
+      "expected_failures": [
+        "TestCorpus/window",
+        "TestCorpus/labels"
+      ],
+      "observed_failures": [
+        "TestCorpus/labels",
+        "TestCorpus/window"
+      ],
+      "observed_passes": [
+        "TestCorpus/typed"
+      ],
+      "verified": true,
+      "output_sha256": "bbb7691dfe2fa53a359868ad4a870221606958e763e92a4904a7a07f9cc4212f",
+      "artifact_sha256": {
+        "go.mod": "ab35cad14d574f7e762603357ed0cdb4a8cd8a1b9e70d31ecf566a2bfccdb208",
+        "internal/interview/configurelocal.go": "6fa8f6eeefa083546b8b896192487d14ccddf39745dd5d7ff4be6986acdc2d9f",
+        "internal/interview/corpus_test.go": "ec0b05a550a51ca5194faea8c5666ddb3525b4f5a6655c374fec97ba4c116750",
+        "internal/interview/sequence.go": "6d23f5fb0ab3802ca783e915c11d32677aa73d3c383503c447a955535b6e4cd1",
+        "internal/question/question.go": "4a8df63865058bc11ee1af0a7b4b19d8e867cbb4ca8fc37ad76e927b58afddcf"
+      }
+    },
+    {
+      "case": "implement-held-effort-window",
+      "control": "bad-labels",
+      "command": [
+        "go",
+        "test",
+        "-json",
+        "-count=1",
+        "-timeout=30s",
+        "-run=^TestCorpus$",
+        "./..."
+      ],
+      "directory": "controller/implement-held-effort-window/bad-labels",
+      "limit_seconds": 120,
+      "expected_failures": [
+        "TestCorpus/labels"
+      ],
+      "observed_failures": [
+        "TestCorpus/labels"
+      ],
+      "observed_passes": [
+        "TestCorpus/typed",
+        "TestCorpus/window"
+      ],
+      "verified": true,
+      "output_sha256": "8592925307e117645842abf1532e5992c20ca4ec6e6f8f8f3e6b5cef7741df21",
+      "artifact_sha256": {
+        "go.mod": "ab35cad14d574f7e762603357ed0cdb4a8cd8a1b9e70d31ecf566a2bfccdb208",
+        "internal/interview/configurelocal.go": "6fa8f6eeefa083546b8b896192487d14ccddf39745dd5d7ff4be6986acdc2d9f",
+        "internal/interview/corpus_test.go": "ec0b05a550a51ca5194faea8c5666ddb3525b4f5a6655c374fec97ba4c116750",
+        "internal/interview/sequence.go": "7d3a6b94958c0128ab2c333b92a6a2e9fa0c74f2a4e530b51d5d3b134441e92b",
+        "internal/question/question.go": "4a8df63865058bc11ee1af0a7b4b19d8e867cbb4ca8fc37ad76e927b58afddcf"
+      }
+    },
+    {
+      "case": "implement-held-effort-window",
+      "control": "bad-typed",
+      "command": [
+        "go",
+        "test",
+        "-json",
+        "-count=1",
+        "-timeout=30s",
+        "-run=^TestCorpus$",
+        "./..."
+      ],
+      "directory": "controller/implement-held-effort-window/bad-typed",
+      "limit_seconds": 120,
+      "expected_failures": [
+        "TestCorpus/typed"
+      ],
+      "observed_failures": [
+        "TestCorpus/typed"
+      ],
+      "observed_passes": [
+        "TestCorpus/labels",
+        "TestCorpus/window"
+      ],
+      "verified": true,
+      "output_sha256": "d3f2c98ac09bfc3920ba7c567db1dc6d66f17a2ffc3bb45869283ecb410af43e",
+      "artifact_sha256": {
+        "go.mod": "ab35cad14d574f7e762603357ed0cdb4a8cd8a1b9e70d31ecf566a2bfccdb208",
+        "internal/interview/configurelocal.go": "aa90cc285d38beae3a30fedf38a90d07d4e4ca72e6f44f7bf006f19fc9fc0cb6",
+        "internal/interview/corpus_test.go": "ec0b05a550a51ca5194faea8c5666ddb3525b4f5a6655c374fec97ba4c116750",
+        "internal/interview/sequence.go": "570fe6f261b6029894b3dde29aef6b3e142ddfdd01e7cafec924a6a424c94e35",
+        "internal/question/question.go": "4a8df63865058bc11ee1af0a7b4b19d8e867cbb4ca8fc37ad76e927b58afddcf"
+      }
+    },
+    {
+      "case": "implement-held-effort-window",
+      "control": "alternative",
+      "command": [
+        "go",
+        "test",
+        "-json",
+        "-count=1",
+        "-timeout=30s",
+        "-run=^TestCorpus$",
+        "./..."
+      ],
+      "directory": "controller/implement-held-effort-window/alternative",
+      "limit_seconds": 120,
+      "expected_failures": [],
+      "observed_failures": [],
+      "observed_passes": [
+        "TestCorpus/labels",
+        "TestCorpus/typed",
+        "TestCorpus/window"
+      ],
+      "verified": true,
+      "output_sha256": "6d536d589cdbbe84787bdfe290999f8d17bdee6a112392dab96c0d4ec7e643f1",
+      "artifact_sha256": {
+        "go.mod": "ab35cad14d574f7e762603357ed0cdb4a8cd8a1b9e70d31ecf566a2bfccdb208",
+        "internal/interview/configurelocal.go": "6fa8f6eeefa083546b8b896192487d14ccddf39745dd5d7ff4be6986acdc2d9f",
+        "internal/interview/corpus_test.go": "ec0b05a550a51ca5194faea8c5666ddb3525b4f5a6655c374fec97ba4c116750",
+        "internal/interview/sequence.go": "9d36856168b54dd2f53626aa9ba7702300a29c08978923279078ab7a7205d6c2",
+        "internal/question/question.go": "4a8df63865058bc11ee1af0a7b4b19d8e867cbb4ca8fc37ad76e927b58afddcf"
+      }
+    },
+    {
+      "case": "review-dev-risk-clean",
+      "control": "reference",
+      "command": [
+        "go",
+        "test",
+        "-json",
+        "-count=1",
+        "-timeout=30s",
+        "-run=^TestCorpus$",
+        "./..."
+      ],
+      "directory": "controller/review-dev-risk-clean/reference",
+      "limit_seconds": 120,
+      "expected_failures": [],
+      "observed_failures": [],
+      "observed_passes": [
+        "TestCorpus/closed",
+        "TestCorpus/copy",
+        "TestCorpus/order"
+      ],
+      "verified": true,
+      "output_sha256": "0c7a94f2c2906cfd50f65c8be5a906b2c3abb23e8d1aca726da30081b9e6a9fb",
+      "artifact_sha256": {
+        "go.mod": "ab35cad14d574f7e762603357ed0cdb4a8cd8a1b9e70d31ecf566a2bfccdb208",
+        "internal/routing/corpus_test.go": "0f56dee5f7cb5f51eb333b2f2c2fb35deb85800eef79d729d3171a2f976fdd9c",
+        "internal/routing/risk.go": "dc84e8a07cc40f7c08644c150cff56bbe258b7595b91b2c7a7b5ef55ab3501aa"
+      }
+    },
+    {
+      "case": "review-dev-risk-clean",
+      "control": "contrast-unknown",
+      "command": [
+        "go",
+        "test",
+        "-json",
+        "-count=1",
+        "-timeout=30s",
+        "-run=^TestCorpus$",
+        "./..."
+      ],
+      "directory": "controller/review-dev-risk-clean/contrast-unknown",
+      "limit_seconds": 120,
+      "expected_failures": [
+        "TestCorpus/closed"
+      ],
+      "observed_failures": [
+        "TestCorpus/closed"
+      ],
+      "observed_passes": [
+        "TestCorpus/copy",
+        "TestCorpus/order"
+      ],
+      "verified": true,
+      "output_sha256": "c14eea6e356717629ef8d9d941b7a49bbc0efc3aafb3522934316651de63b699",
+      "artifact_sha256": {
+        "go.mod": "ab35cad14d574f7e762603357ed0cdb4a8cd8a1b9e70d31ecf566a2bfccdb208",
+        "internal/routing/corpus_test.go": "0f56dee5f7cb5f51eb333b2f2c2fb35deb85800eef79d729d3171a2f976fdd9c",
+        "internal/routing/risk.go": "f971255a486670c1fbc76816b7119434f01e06185f58fb53de23cec34c4e0806"
+      }
+    },
+    {
+      "case": "review-dev-risk-clean",
+      "control": "contrast-order",
+      "command": [
+        "go",
+        "test",
+        "-json",
+        "-count=1",
+        "-timeout=30s",
+        "-run=^TestCorpus$",
+        "./..."
+      ],
+      "directory": "controller/review-dev-risk-clean/contrast-order",
+      "limit_seconds": 120,
+      "expected_failures": [
+        "TestCorpus/order"
+      ],
+      "observed_failures": [
+        "TestCorpus/order"
+      ],
+      "observed_passes": [
+        "TestCorpus/closed",
+        "TestCorpus/copy"
+      ],
+      "verified": true,
+      "output_sha256": "b4a31c9f25b42a161f46dd060046bd21eac10e1fc7e27bbd2c5ace1fc4c38ce0",
+      "artifact_sha256": {
+        "go.mod": "ab35cad14d574f7e762603357ed0cdb4a8cd8a1b9e70d31ecf566a2bfccdb208",
+        "internal/routing/corpus_test.go": "0f56dee5f7cb5f51eb333b2f2c2fb35deb85800eef79d729d3171a2f976fdd9c",
+        "internal/routing/risk.go": "6290efeca7277cf5d446b236d8fe026bcb347d5d68173f07d989acf39130a865"
+      }
+    },
+    {
+      "case": "review-dev-risk-clean",
+      "control": "contrast-shared",
+      "command": [
+        "go",
+        "test",
+        "-json",
+        "-count=1",
+        "-timeout=30s",
+        "-run=^TestCorpus$",
+        "./..."
+      ],
+      "directory": "controller/review-dev-risk-clean/contrast-shared",
+      "limit_seconds": 120,
+      "expected_failures": [
+        "TestCorpus/copy"
+      ],
+      "observed_failures": [
+        "TestCorpus/copy"
+      ],
+      "observed_passes": [
+        "TestCorpus/closed",
+        "TestCorpus/order"
+      ],
+      "verified": true,
+      "output_sha256": "f99efa96a86594f1634d664ac09254bb6dd6ba4d10b1df5fcad87f0ec5dda4c6",
+      "artifact_sha256": {
+        "go.mod": "ab35cad14d574f7e762603357ed0cdb4a8cd8a1b9e70d31ecf566a2bfccdb208",
+        "internal/routing/corpus_test.go": "0f56dee5f7cb5f51eb333b2f2c2fb35deb85800eef79d729d3171a2f976fdd9c",
+        "internal/routing/risk.go": "df50978cdae7a5881b3285edc9879ce331a4f07ee3bf45224c380e2eb85894ae"
+      }
+    },
+    {
+      "case": "review-dev-ci-defective",
+      "control": "reference",
+      "command": [
+        "go",
+        "test",
+        "-json",
+        "-count=1",
+        "-timeout=30s",
+        "-run=^TestCorpus$",
+        "./..."
+      ],
+      "directory": "controller/review-dev-ci-defective/reference",
+      "limit_seconds": 120,
+      "expected_failures": [
+        "TestCorpus/empty"
+      ],
+      "observed_failures": [
+        "TestCorpus/empty"
+      ],
+      "observed_passes": [
+        "TestCorpus/malformed",
+        "TestCorpus/states"
+      ],
+      "verified": true,
+      "output_sha256": "28e2e02a9aebac66d4402cc75f048e35ecdcc25ad3763f12931c7ff4287a7c26",
+      "artifact_sha256": {
+        "go.mod": "ab35cad14d574f7e762603357ed0cdb4a8cd8a1b9e70d31ecf566a2bfccdb208",
+        "internal/execx/execx.go": "57795e61d33f5cc92e6fdd705a6327a0fbc176c5b350d22c096f5bade5154d00",
+        "internal/ghops/checks.go": "b913ba8ecd63bb8af3e3d5a7821aeadf3f2691b1382929e002fec7094259d56d",
+        "internal/ghops/corpus_test.go": "7dad82f4b499cc5654717934c03a4f0d9094aead6337dfad4aef12c883cab4b4",
+        "internal/ghops/errors.go": "afb812cbfd772e31933ee79d91906ebdc8c32e188b45da7445c995b6a685e3b5",
+        "internal/ghops/ghops.go": "6d1261d787dd0212a99da33e57a97576855412eda369065450a8c36cc4f59335",
+        "internal/paths/paths.go": "79d0eae9406bdf9a2544203fe5b2aa40f8f1fb1750f9a17feb7da87418738ccb"
+      }
+    },
+    {
+      "case": "review-dev-ci-defective",
+      "control": "repair",
+      "command": [
+        "go",
+        "test",
+        "-json",
+        "-count=1",
+        "-timeout=30s",
+        "-run=^TestCorpus$",
+        "./..."
+      ],
+      "directory": "controller/review-dev-ci-defective/repair",
+      "limit_seconds": 120,
+      "expected_failures": [],
+      "observed_failures": [],
+      "observed_passes": [
+        "TestCorpus/empty",
+        "TestCorpus/malformed",
+        "TestCorpus/states"
+      ],
+      "verified": true,
+      "output_sha256": "473c59e5b5368f1686029dcd1b76371c4c2bb273e235e58c451b6eb0ec213321",
+      "artifact_sha256": {
+        "go.mod": "ab35cad14d574f7e762603357ed0cdb4a8cd8a1b9e70d31ecf566a2bfccdb208",
+        "internal/execx/execx.go": "57795e61d33f5cc92e6fdd705a6327a0fbc176c5b350d22c096f5bade5154d00",
+        "internal/ghops/checks.go": "40302da1d180b45808222866bbbb747d9cec897c806c388119ddb35c404a2783",
+        "internal/ghops/corpus_test.go": "7dad82f4b499cc5654717934c03a4f0d9094aead6337dfad4aef12c883cab4b4",
+        "internal/ghops/errors.go": "afb812cbfd772e31933ee79d91906ebdc8c32e188b45da7445c995b6a685e3b5",
+        "internal/ghops/ghops.go": "6d1261d787dd0212a99da33e57a97576855412eda369065450a8c36cc4f59335",
+        "internal/paths/paths.go": "95e0f3ef69379705041d1595d11cc3f0cf414ae65046c31070120f511eb1078a"
+      }
+    },
+    {
+      "case": "review-dev-ci-defective",
+      "control": "bad-malformed",
+      "command": [
+        "go",
+        "test",
+        "-json",
+        "-count=1",
+        "-timeout=30s",
+        "-run=^TestCorpus$",
+        "./..."
+      ],
+      "directory": "controller/review-dev-ci-defective/bad-malformed",
+      "limit_seconds": 120,
+      "expected_failures": [
+        "TestCorpus/malformed"
+      ],
+      "observed_failures": [
+        "TestCorpus/malformed"
+      ],
+      "observed_passes": [
+        "TestCorpus/empty",
+        "TestCorpus/states"
+      ],
+      "verified": true,
+      "output_sha256": "9c51e62983be089173fdca5e7f1c7e4a4001bd042aaedaab6f85263c775cf245",
+      "artifact_sha256": {
+        "go.mod": "ab35cad14d574f7e762603357ed0cdb4a8cd8a1b9e70d31ecf566a2bfccdb208",
+        "internal/execx/execx.go": "57795e61d33f5cc92e6fdd705a6327a0fbc176c5b350d22c096f5bade5154d00",
+        "internal/ghops/checks.go": "f3dcc18349d986b018549342ad4a16a47df1c4ee7dcba626ad61dd25ede482c3",
+        "internal/ghops/corpus_test.go": "7dad82f4b499cc5654717934c03a4f0d9094aead6337dfad4aef12c883cab4b4",
+        "internal/ghops/errors.go": "afb812cbfd772e31933ee79d91906ebdc8c32e188b45da7445c995b6a685e3b5",
+        "internal/ghops/ghops.go": "6d1261d787dd0212a99da33e57a97576855412eda369065450a8c36cc4f59335",
+        "internal/paths/paths.go": "95e0f3ef69379705041d1595d11cc3f0cf414ae65046c31070120f511eb1078a"
+      }
+    },
+    {
+      "case": "review-dev-ci-defective",
+      "control": "bad-states",
+      "command": [
+        "go",
+        "test",
+        "-json",
+        "-count=1",
+        "-timeout=30s",
+        "-run=^TestCorpus$",
+        "./..."
+      ],
+      "directory": "controller/review-dev-ci-defective/bad-states",
+      "limit_seconds": 120,
+      "expected_failures": [
+        "TestCorpus/states"
+      ],
+      "observed_failures": [
+        "TestCorpus/states"
+      ],
+      "observed_passes": [
+        "TestCorpus/empty",
+        "TestCorpus/malformed"
+      ],
+      "verified": true,
+      "output_sha256": "87f578e2c827bf33d7a7f78c886a4d1ae4a97c8386ed500158763477833379ac",
+      "artifact_sha256": {
+        "go.mod": "ab35cad14d574f7e762603357ed0cdb4a8cd8a1b9e70d31ecf566a2bfccdb208",
+        "internal/execx/execx.go": "57795e61d33f5cc92e6fdd705a6327a0fbc176c5b350d22c096f5bade5154d00",
+        "internal/ghops/checks.go": "787194043c936f6a3f01b918a20a188bd4608ac1fac97565c965a6ebacfbc87d",
+        "internal/ghops/corpus_test.go": "7dad82f4b499cc5654717934c03a4f0d9094aead6337dfad4aef12c883cab4b4",
+        "internal/ghops/errors.go": "afb812cbfd772e31933ee79d91906ebdc8c32e188b45da7445c995b6a685e3b5",
+        "internal/ghops/ghops.go": "6d1261d787dd0212a99da33e57a97576855412eda369065450a8c36cc4f59335",
+        "internal/paths/paths.go": "95e0f3ef69379705041d1595d11cc3f0cf414ae65046c31070120f511eb1078a"
+      }
+    },
+    {
+      "case": "review-dev-ci-defective",
+      "control": "alternative-repair",
+      "command": [
+        "go",
+        "test",
+        "-json",
+        "-count=1",
+        "-timeout=30s",
+        "-run=^TestCorpus$",
+        "./..."
+      ],
+      "directory": "controller/review-dev-ci-defective/alternative-repair",
+      "limit_seconds": 120,
+      "expected_failures": [],
+      "observed_failures": [],
+      "observed_passes": [
+        "TestCorpus/empty",
+        "TestCorpus/malformed",
+        "TestCorpus/states"
+      ],
+      "verified": true,
+      "output_sha256": "ef9cd96ddd435d5c4498d9240f7fb9564303ccb75a86d7458dac8fb03b8a12f0",
+      "artifact_sha256": {
+        "go.mod": "ab35cad14d574f7e762603357ed0cdb4a8cd8a1b9e70d31ecf566a2bfccdb208",
+        "internal/execx/execx.go": "57795e61d33f5cc92e6fdd705a6327a0fbc176c5b350d22c096f5bade5154d00",
+        "internal/ghops/checks.go": "df062fcb8c1aa7ae38bc3a475d9ea0e970e32db1f0a2f776ef7ad6372855a007",
+        "internal/ghops/corpus_test.go": "7dad82f4b499cc5654717934c03a4f0d9094aead6337dfad4aef12c883cab4b4",
+        "internal/ghops/errors.go": "afb812cbfd772e31933ee79d91906ebdc8c32e188b45da7445c995b6a685e3b5",
+        "internal/ghops/ghops.go": "6d1261d787dd0212a99da33e57a97576855412eda369065450a8c36cc4f59335",
+        "internal/paths/paths.go": "95e0f3ef69379705041d1595d11cc3f0cf414ae65046c31070120f511eb1078a"
+      }
+    },
+    {
+      "case": "review-held-effort-clean",
+      "control": "reference",
+      "command": [
+        "go",
+        "test",
+        "-json",
+        "-count=1",
+        "-timeout=30s",
+        "-run=^TestCorpus$",
+        "./..."
+      ],
+      "directory": "controller/review-held-effort-clean/reference",
+      "limit_seconds": 120,
+      "expected_failures": [],
+      "observed_failures": [],
+      "observed_passes": [
+        "TestCorpus/allowed",
+        "TestCorpus/rejected",
+        "TestCorpus/roles"
+      ],
+      "verified": true,
+      "output_sha256": "7c93cdb1e592c8acb95ecfbb3ec6cf3b88cb65bcce3cb9ab0dc628c443109604",
+      "artifact_sha256": {
+        "go.mod": "ab35cad14d574f7e762603357ed0cdb4a8cd8a1b9e70d31ecf566a2bfccdb208",
+        "internal/config/config.go": "39867a525b99fcabcffd0f5b05446084b9cc4f3338df731d68c7e30be42113c5",
+        "internal/config/corpus_test.go": "2a17759f9ed2046e35961bd81ccf1204c7ec1f6cc020f3c9a47940502f337c16",
+        "internal/config/validate.go": "f8610700c450fc82f5e9eceb80129f8705c84cbe82dbd9dfde188f4677f0942c"
+      }
+    },
+    {
+      "case": "review-held-effort-clean",
+      "control": "contrast-allowed",
+      "command": [
+        "go",
+        "test",
+        "-json",
+        "-count=1",
+        "-timeout=30s",
+        "-run=^TestCorpus$",
+        "./..."
+      ],
+      "directory": "controller/review-held-effort-clean/contrast-allowed",
+      "limit_seconds": 120,
+      "expected_failures": [
+        "TestCorpus/allowed"
+      ],
+      "observed_failures": [
+        "TestCorpus/allowed"
+      ],
+      "observed_passes": [
+        "TestCorpus/rejected",
+        "TestCorpus/roles"
+      ],
+      "verified": true,
+      "output_sha256": "1850deddba55edadfde879d32e377bc5e9b0342a2e3cd350940d41175400a402",
+      "artifact_sha256": {
+        "go.mod": "ab35cad14d574f7e762603357ed0cdb4a8cd8a1b9e70d31ecf566a2bfccdb208",
+        "internal/config/config.go": "39867a525b99fcabcffd0f5b05446084b9cc4f3338df731d68c7e30be42113c5",
+        "internal/config/corpus_test.go": "2a17759f9ed2046e35961bd81ccf1204c7ec1f6cc020f3c9a47940502f337c16",
+        "internal/config/validate.go": "57de389ed2ed5a484de55382d7ba34ad0a0351abb7a4ccad7b3588ced4e2f700"
+      }
+    },
+    {
+      "case": "review-held-effort-clean",
+      "control": "contrast-rejected",
+      "command": [
+        "go",
+        "test",
+        "-json",
+        "-count=1",
+        "-timeout=30s",
+        "-run=^TestCorpus$",
+        "./..."
+      ],
+      "directory": "controller/review-held-effort-clean/contrast-rejected",
+      "limit_seconds": 120,
+      "expected_failures": [
+        "TestCorpus/rejected"
+      ],
+      "observed_failures": [
+        "TestCorpus/rejected"
+      ],
+      "observed_passes": [
+        "TestCorpus/allowed",
+        "TestCorpus/roles"
+      ],
+      "verified": true,
+      "output_sha256": "1fc844baf292e47da43128999c037813ef477b671e6729a5e2243ab38d15a20a",
+      "artifact_sha256": {
+        "go.mod": "ab35cad14d574f7e762603357ed0cdb4a8cd8a1b9e70d31ecf566a2bfccdb208",
+        "internal/config/config.go": "39867a525b99fcabcffd0f5b05446084b9cc4f3338df731d68c7e30be42113c5",
+        "internal/config/corpus_test.go": "2a17759f9ed2046e35961bd81ccf1204c7ec1f6cc020f3c9a47940502f337c16",
+        "internal/config/validate.go": "beac8b6aadc60434c6f3324ef5ce77d76d84c1b1be538976304b9ebd9a525c58"
+      }
+    },
+    {
+      "case": "review-held-effort-clean",
+      "control": "contrast-roles",
+      "command": [
+        "go",
+        "test",
+        "-json",
+        "-count=1",
+        "-timeout=30s",
+        "-run=^TestCorpus$",
+        "./..."
+      ],
+      "directory": "controller/review-held-effort-clean/contrast-roles",
+      "limit_seconds": 120,
+      "expected_failures": [
+        "TestCorpus/roles"
+      ],
+      "observed_failures": [
+        "TestCorpus/roles"
+      ],
+      "observed_passes": [
+        "TestCorpus/allowed",
+        "TestCorpus/rejected"
+      ],
+      "verified": true,
+      "output_sha256": "ed5a132cd320b669535d1f07bc504dcd331f0404ca14fbcf274e89cd6f6b45de",
+      "artifact_sha256": {
+        "go.mod": "ab35cad14d574f7e762603357ed0cdb4a8cd8a1b9e70d31ecf566a2bfccdb208",
+        "internal/config/config.go": "39867a525b99fcabcffd0f5b05446084b9cc4f3338df731d68c7e30be42113c5",
+        "internal/config/corpus_test.go": "2a17759f9ed2046e35961bd81ccf1204c7ec1f6cc020f3c9a47940502f337c16",
+        "internal/config/validate.go": "46f7d159c9d344888f69b2c512e941fa5076c0eb62f47af7abfa388021a680ef"
+      }
+    },
+    {
+      "case": "review-held-question-defective",
+      "control": "reference",
+      "command": [
+        "go",
+        "test",
+        "-json",
+        "-count=1",
+        "-timeout=30s",
+        "-run=^TestCorpus$",
+        "./..."
+      ],
+      "directory": "controller/review-held-question-defective/reference",
+      "limit_seconds": 120,
+      "expected_failures": [
+        "TestCorpus/tail"
+      ],
+      "observed_failures": [
+        "TestCorpus/tail"
+      ],
+      "observed_passes": [
+        "TestCorpus/fields",
+        "TestCorpus/map",
+        "TestCorpus/schema"
+      ],
+      "verified": true,
+      "output_sha256": "09de388539470f7160ee7ef21de78ccc297209cc926dbf446d947c6aff9d4dbb",
+      "artifact_sha256": {
+        "go.mod": "ab35cad14d574f7e762603357ed0cdb4a8cd8a1b9e70d31ecf566a2bfccdb208",
+        "internal/question/corpus_test.go": "9e2af9363df4ff37331604650366c53676873c48f98365fb0d97a22df81bd2ec",
+        "internal/question/decode.go": "b11f677641a401f5ddb8328ba4fd96e2e22745ab2df30854e78b6179117da15e",
+        "internal/question/question.go": "f555a0d2edfb828327ca6d55494d626f228e006e3bfc3efe72ab4a52026456a2"
+      }
+    },
+    {
+      "case": "review-held-question-defective",
+      "control": "strict-repair",
+      "command": [
+        "go",
+        "test",
+        "-json",
+        "-count=1",
+        "-timeout=30s",
+        "-run=^TestCorpus$",
+        "./..."
+      ],
+      "directory": "controller/review-held-question-defective/strict-repair",
+      "limit_seconds": 120,
+      "expected_failures": [],
+      "observed_failures": [],
+      "observed_passes": [
+        "TestCorpus/fields",
+        "TestCorpus/map",
+        "TestCorpus/schema",
+        "TestCorpus/tail"
+      ],
+      "verified": true,
+      "output_sha256": "6098c2c15c85034806601c40d47f6986a56caa0135b6683f014cb84905a84ec4",
+      "artifact_sha256": {
+        "go.mod": "ab35cad14d574f7e762603357ed0cdb4a8cd8a1b9e70d31ecf566a2bfccdb208",
+        "internal/question/corpus_test.go": "9e2af9363df4ff37331604650366c53676873c48f98365fb0d97a22df81bd2ec",
+        "internal/question/decode.go": "05923bfddc2fdb95c197d36db74743bef81b11b2d06cc5074697c1fa5a88b2f4",
+        "internal/question/question.go": "f555a0d2edfb828327ca6d55494d626f228e006e3bfc3efe72ab4a52026456a2"
+      }
+    },
+    {
+      "case": "review-held-question-defective",
+      "control": "alternative-repair",
+      "command": [
+        "go",
+        "test",
+        "-json",
+        "-count=1",
+        "-timeout=30s",
+        "-run=^TestCorpus$",
+        "./..."
+      ],
+      "directory": "controller/review-held-question-defective/alternative-repair",
+      "limit_seconds": 120,
+      "expected_failures": [],
+      "observed_failures": [],
+      "observed_passes": [
+        "TestCorpus/fields",
+        "TestCorpus/map",
+        "TestCorpus/schema",
+        "TestCorpus/tail"
+      ],
+      "verified": true,
+      "output_sha256": "f2d1921e8aed91eb2c7545677b17a3c99cf062fa228c2823aab500862ff64f28",
+      "artifact_sha256": {
+        "go.mod": "ab35cad14d574f7e762603357ed0cdb4a8cd8a1b9e70d31ecf566a2bfccdb208",
+        "internal/question/corpus_test.go": "9e2af9363df4ff37331604650366c53676873c48f98365fb0d97a22df81bd2ec",
+        "internal/question/decode.go": "44cbbd0663df48f44a5d1154596ea00b0e80b4a0e534689bf79637a2db75d182",
+        "internal/question/question.go": "f555a0d2edfb828327ca6d55494d626f228e006e3bfc3efe72ab4a52026456a2"
+      }
+    },
+    {
+      "case": "review-held-question-defective",
+      "control": "bad-fields",
+      "command": [
+        "go",
+        "test",
+        "-json",
+        "-count=1",
+        "-timeout=30s",
+        "-run=^TestCorpus$",
+        "./..."
+      ],
+      "directory": "controller/review-held-question-defective/bad-fields",
+      "limit_seconds": 120,
+      "expected_failures": [
+        "TestCorpus/tail",
+        "TestCorpus/fields"
+      ],
+      "observed_failures": [
+        "TestCorpus/fields",
+        "TestCorpus/tail"
+      ],
+      "observed_passes": [
+        "TestCorpus/map",
+        "TestCorpus/schema"
+      ],
+      "verified": true,
+      "output_sha256": "7754dad15d1c0a086c7e4195a7f6c4b2aa8baceb5fb8e6022faac994bd232b6e",
+      "artifact_sha256": {
+        "go.mod": "ab35cad14d574f7e762603357ed0cdb4a8cd8a1b9e70d31ecf566a2bfccdb208",
+        "internal/question/corpus_test.go": "9e2af9363df4ff37331604650366c53676873c48f98365fb0d97a22df81bd2ec",
+        "internal/question/decode.go": "950f8b00c959b3c5e120b5fbb39c91411187d0df3f14fe6de0655c0fd411b08c",
+        "internal/question/question.go": "f555a0d2edfb828327ca6d55494d626f228e006e3bfc3efe72ab4a52026456a2"
+      }
+    },
+    {
+      "case": "review-held-question-defective",
+      "control": "bad-schema",
+      "command": [
+        "go",
+        "test",
+        "-json",
+        "-count=1",
+        "-timeout=30s",
+        "-run=^TestCorpus$",
+        "./..."
+      ],
+      "directory": "controller/review-held-question-defective/bad-schema",
+      "limit_seconds": 120,
+      "expected_failures": [
+        "TestCorpus/tail",
+        "TestCorpus/schema"
+      ],
+      "observed_failures": [
+        "TestCorpus/schema",
+        "TestCorpus/tail"
+      ],
+      "observed_passes": [
+        "TestCorpus/fields",
+        "TestCorpus/map"
+      ],
+      "verified": true,
+      "output_sha256": "69f559c5a5afdac31a525a22f26e464bba166cf0f8323773b79cb8402b1250b6",
+      "artifact_sha256": {
+        "go.mod": "ab35cad14d574f7e762603357ed0cdb4a8cd8a1b9e70d31ecf566a2bfccdb208",
+        "internal/question/corpus_test.go": "9e2af9363df4ff37331604650366c53676873c48f98365fb0d97a22df81bd2ec",
+        "internal/question/decode.go": "8f97d893e1864275187ef2cf8fc2fdf7de982912c3394bbe291e982a67b47509",
+        "internal/question/question.go": "f555a0d2edfb828327ca6d55494d626f228e006e3bfc3efe72ab4a52026456a2"
+      }
+    },
+    {
+      "case": "review-held-question-defective",
+      "control": "bad-map",
+      "command": [
+        "go",
+        "test",
+        "-json",
+        "-count=1",
+        "-timeout=30s",
+        "-run=^TestCorpus$",
+        "./..."
+      ],
+      "directory": "controller/review-held-question-defective/bad-map",
+      "limit_seconds": 120,
+      "expected_failures": [
+        "TestCorpus/tail",
+        "TestCorpus/map"
+      ],
+      "observed_failures": [
+        "TestCorpus/map",
+        "TestCorpus/tail"
+      ],
+      "observed_passes": [
+        "TestCorpus/fields",
+        "TestCorpus/schema"
+      ],
+      "verified": true,
+      "output_sha256": "7055ce1dfb924c14e7363e650ab9b0b09aee8f6c94a90efbe376a259a8566cd5",
+      "artifact_sha256": {
+        "go.mod": "ab35cad14d574f7e762603357ed0cdb4a8cd8a1b9e70d31ecf566a2bfccdb208",
+        "internal/question/corpus_test.go": "9e2af9363df4ff37331604650366c53676873c48f98365fb0d97a22df81bd2ec",
+        "internal/question/decode.go": "65e95ab2ce77b7d74be2f121056c4f67fbdd0c9ac421dbcea30b76aed72365b2",
+        "internal/question/question.go": "f555a0d2edfb828327ca6d55494d626f228e006e3bfc3efe72ab4a52026456a2"
+      }
+    },
+    {
+      "case": "review-held-question-defective",
+      "control": "bad-supplied-answer",
+      "command": [
+        "go",
+        "test",
+        "-json",
+        "-count=1",
+        "-timeout=30s",
+        "-run=^TestCorpus$",
+        "./..."
+      ],
+      "directory": "controller/review-held-question-defective/bad-supplied-answer",
+      "limit_seconds": 120,
+      "expected_failures": [
+        "TestCorpus/tail",
+        "TestCorpus/map"
+      ],
+      "observed_failures": [
+        "TestCorpus/map",
+        "TestCorpus/tail"
+      ],
+      "observed_passes": [
+        "TestCorpus/fields",
+        "TestCorpus/schema"
+      ],
+      "verified": true,
+      "output_sha256": "bff6cdd376bbee7b8677a161da86a770cc34ff8380c34564e2522bf664a595d6",
+      "artifact_sha256": {
+        "go.mod": "ab35cad14d574f7e762603357ed0cdb4a8cd8a1b9e70d31ecf566a2bfccdb208",
+        "internal/question/corpus_test.go": "9e2af9363df4ff37331604650366c53676873c48f98365fb0d97a22df81bd2ec",
+        "internal/question/decode.go": "8b06539c09102aaf02fdb7f9b887e82852f9309895787dfc759a4fa39959c94e",
+        "internal/question/question.go": "f555a0d2edfb828327ca6d55494d626f228e006e3bfc3efe72ab4a52026456a2"
+      }
+    }
+  ],
+  "scope_note": "Repair-1 author controls only; cycle-1 semantic false negative remains invalidated and fresh independent validation is pending."
+}

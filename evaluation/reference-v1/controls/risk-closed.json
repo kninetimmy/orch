@@ -1,0 +1,7 @@
+[
+  {
+    "path": "internal/routing/risk.go",
+    "old": "default:\n\t\treturn false",
+    "new": "default:\n\t\treturn true"
+  }
+]

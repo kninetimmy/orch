@@ -1,0 +1,7 @@
+[
+  {
+    "path": "internal/ghops/checks.go",
+    "old": "return CISummary{}, fmt.Errorf(\"gh pr checks in %s returned unparsable JSON: %w\", g.root, err)",
+    "new": "return CISummary{State: CINoChecks}, nil"
+  }
+]

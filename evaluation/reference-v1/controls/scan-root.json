@@ -1,0 +1,7 @@
+[
+  {
+    "path": "internal/instructions/scan.go",
+    "old": "if isRootPair(root, path) {",
+    "new": "if false {"
+  }
+]

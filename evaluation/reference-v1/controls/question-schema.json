@@ -1,0 +1,7 @@
+[
+  {
+    "path": "internal/question/decode.go",
+    "old": "if a.SchemaVersion != SchemaVersion {",
+    "new": "if false {"
+  }
+]

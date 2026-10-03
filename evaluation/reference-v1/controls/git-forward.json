@@ -1,0 +1,7 @@
+[
+  {
+    "path": "internal/gitops/branch.go",
+    "old": "case 1:\n\t\t// Local commits missing from the remote tip mean either a\n\t\t// diverged history or a locally-ahead branch; both are\n\t\t// suspicious in Delivery, so both fail closed.\n\t\treturn fmt.Errorf(\"%w: local %s has commits not on %s/%s\", ErrNotFastForward, branch, remote, branch)",
+    "new": "case 1:\n\t\t// Deliberate external bad control: allow divergence."
+  }
+]

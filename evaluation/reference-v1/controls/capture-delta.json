@@ -1,0 +1,7 @@
+[
+  {
+    "path": "internal/codexusage/capture.go",
+    "old": "if total < *previousTotal {\n\t\t\treturn 0, false\n\t\t}",
+    "new": "if total < *previousTotal {\n\t\t\treturn 0, true\n\t\t}"
+  }
+]

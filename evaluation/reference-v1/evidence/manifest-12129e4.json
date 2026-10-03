@@ -1,0 +1,2948 @@
+{
+  "version": 1,
+  "author": "Codex /root/implement_310; gpt-6.1-sol @ max; Delivery run run-20261003T181029Z-9e5e94f5",
+  "prepared_date": "2026-10-03",
+  "prerequisites": [
+    "Go >=1.26 with local toolchain; authored and checked with go1.26.5 windows/amd64.",
+    "Git >=2.53; authored and checked with 2.53.0.windows.1; all pinned source objects must exist locally.",
+    "Only Go standard-library code is compiled by corpus controls; no evaluation models, network, real session files or production GitHub writes.",
+    "Existing disposable parents; 60s export / 120s command / 30s test / 10s Git read / 5s fixture Git / 2s pipe cleanup / 540s overall; one attempt, no retries.",
+    "Controller source and worker packets are separate. The repository is not a protected runtime store; evaluated worker access is unimplemented and blocked."
+  ],
+  "cases": [
+    {
+      "id": "scout-dev-paths",
+      "version": 1,
+      "role": "scout",
+      "partition": "development",
+      "lineage": "path-containment",
+      "difficulty": "ordinary",
+      "source_commit": "af42351c6df37dba025a24927c7c9f0d1a62d126",
+      "upstream": [
+        "https://github.com/kninetimmy/orch/pull/4",
+        "https://github.com/kninetimmy/orch/commit/af42351c6df37dba025a24927c7c9f0d1a62d126"
+      ],
+      "selection": "Segment-aware path containment and missing-tail/root discovery; no model performance informed selection.",
+      "inputs": [
+        {
+          "path": "internal/paths/paths.go",
+          "source": "internal/paths/paths.go",
+          "commit": "af42351c6df37dba025a24927c7c9f0d1a62d126",
+          "sha256": "79d0eae9406bdf9a2544203fe5b2aa40f8f1fb1750f9a17feb7da87418738ccb"
+        },
+        {
+          "path": "go.mod",
+          "source": "public/go.mod.txt",
+          "sha256": "ab35cad14d574f7e762603357ed0cdb4a8cd8a1b9e70d31ecf566a2bfccdb208"
+        },
+        {
+          "path": "TASK.md",
+          "source": "cases/scout-dev-paths/task.md",
+          "sha256": "a815eb3e25dc491f226c21617fe57e2405918f80726a47796721cddebf42e3ce"
+        },
+        {
+          "path": "ROLE.md",
+          "source": "roles/scout.md",
+          "sha256": "7ba37f0deb68ee23d04e032a6b2935b4fae96655b42a1aea9dca364968b575dd"
+        },
+        {
+          "path": "CONTEXT.md",
+          "source": "public/context.md",
+          "sha256": "6751f3a675b8d23d9f4932fc78201726c4c7d3c2b99c59c4238f4af2530875d3"
+        }
+      ],
+      "packet_sha256": "e8fe824090302946bf5e93788062bbe9989edef33f042b164f50a5b7c6dc4bf8",
+      "key": {
+        "path": "key.md",
+        "source": "cases/scout-dev-paths/key.md",
+        "sha256": "4266296125bc050b3ebad82d97f784410fc3600416989a0bd8a7475d2de55a53"
+      },
+      "probe": {
+        "path": "internal/paths/corpus_test.go",
+        "source": "controls/paths_test.go.txt",
+        "sha256": "c4afd36bf2bf0703e14a86fded5ed57ccf0ffff0d0f4c6a58c66d84e2dc284c4"
+      },
+      "command": [
+        "go",
+        "test",
+        "-json",
+        "-count=1",
+        "-timeout=30s",
+        "-run=^TestCorpus$",
+        "./..."
+      ],
+      "check_seconds": 120,
+      "alternative": "The facts are fixed by the supplied source, so a different correct conclusion is not meaningful. An independently written trace using filepath.Rel, the rest stack and the upward loop, or the three reproductions, is an acceptable alternative evidence route.",
+      "controls": [
+        {
+          "name": "reference",
+          "purpose": "Pinned source backing the known-good supported conclusions/approval.",
+          "files": [
+            {
+              "path": "internal/paths/paths.go",
+              "source": "internal/paths/paths.go",
+              "commit": "af42351c6df37dba025a24927c7c9f0d1a62d126",
+              "sha256": "79d0eae9406bdf9a2544203fe5b2aa40f8f1fb1750f9a17feb7da87418738ccb"
+            },
+            {
+              "path": "go.mod",
+              "source": "public/go.mod.txt",
+              "sha256": "ab35cad14d574f7e762603357ed0cdb4a8cd8a1b9e70d31ecf566a2bfccdb208"
+            }
+          ],
+          "expected_failures": []
+        },
+        {
+          "name": "bad-segments",
+          "purpose": "External behavioral contrast for the keyed outcome distinction; semantic answer validity remains independently reviewed.",
+          "files": [
+            {
+              "path": "internal/paths/paths.go",
+              "source": "internal/paths/paths.go",
+              "commit": "af42351c6df37dba025a24927c7c9f0d1a62d126",
+              "sha256": "79d0eae9406bdf9a2544203fe5b2aa40f8f1fb1750f9a17feb7da87418738ccb"
+            },
+            {
+              "path": "go.mod",
+              "source": "public/go.mod.txt",
+              "sha256": "ab35cad14d574f7e762603357ed0cdb4a8cd8a1b9e70d31ecf566a2bfccdb208"
+            }
+          ],
+          "patch": {
+            "path": "patch.json",
+            "source": "controls/paths-segments.json",
+            "sha256": "f634837a205eb5738cfca9cf31b280bb8d987725bd2a054e30287d2b7576a20a"
+          },
+          "expected_failures": [
+            "TestCorpus/segments"
+          ]
+        },
+        {
+          "name": "bad-missing-tail",
+          "purpose": "External behavioral contrast for the keyed outcome distinction; semantic answer validity remains independently reviewed.",
+          "files": [
+            {
+              "path": "internal/paths/paths.go",
+              "source": "internal/paths/paths.go",
+              "commit": "af42351c6df37dba025a24927c7c9f0d1a62d126",
+              "sha256": "79d0eae9406bdf9a2544203fe5b2aa40f8f1fb1750f9a17feb7da87418738ccb"
+            },
+            {
+              "path": "go.mod",
+              "source": "public/go.mod.txt",
+              "sha256": "ab35cad14d574f7e762603357ed0cdb4a8cd8a1b9e70d31ecf566a2bfccdb208"
+            }
+          ],
+          "patch": {
+            "path": "patch.json",
+            "source": "controls/paths-tail.json",
+            "sha256": "2eefe076f630006ab5d76cfe29b29b06626cba09e95d01ab19d93a5186a284f6"
+          },
+          "expected_failures": [
+            "TestCorpus/missing-tail"
+          ]
+        },
+        {
+          "name": "bad-nearest-root",
+          "purpose": "External behavioral contrast for the keyed outcome distinction; semantic answer validity remains independently reviewed.",
+          "files": [
+            {
+              "path": "internal/paths/paths.go",
+              "source": "internal/paths/paths.go",
+              "commit": "af42351c6df37dba025a24927c7c9f0d1a62d126",
+              "sha256": "79d0eae9406bdf9a2544203fe5b2aa40f8f1fb1750f9a17feb7da87418738ccb"
+            },
+            {
+              "path": "go.mod",
+              "source": "public/go.mod.txt",
+              "sha256": "ab35cad14d574f7e762603357ed0cdb4a8cd8a1b9e70d31ecf566a2bfccdb208"
+            }
+          ],
+          "patch": {
+            "path": "patch.json",
+            "source": "controls/paths-root.json",
+            "sha256": "0fc18531dd73bcac3637a14e53004189fe77e1bbdda182fe36422b82e0fc640a"
+          },
+          "expected_failures": [
+            "TestCorpus/nearest-root"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "scout-dev-scan",
+      "version": 1,
+      "role": "scout",
+      "partition": "development",
+      "lineage": "managed-instruction-scan",
+      "difficulty": "ordinary",
+      "source_commit": "68f6a36715a3070a61c7576d54690a4163b852b7",
+      "upstream": [
+        "https://github.com/kninetimmy/orch/pull/15",
+        "https://github.com/kninetimmy/orch/commit/68f6a36715a3070a61c7576d54690a4163b852b7"
+      ],
+      "selection": "Filesystem discovery scope: hidden directories, root exclusions and case-insensitive target names.",
+      "inputs": [
+        {
+          "path": "internal/instructions/instructions.go",
+          "source": "internal/instructions/instructions.go",
+          "commit": "68f6a36715a3070a61c7576d54690a4163b852b7",
+          "sha256": "0fef44dccb31173ccb98ab7a364bb0a6d01ef75ba75043b4c233fce308294e95"
+        },
+        {
+          "path": "internal/instructions/block.go",
+          "source": "internal/instructions/block.go",
+          "commit": "68f6a36715a3070a61c7576d54690a4163b852b7",
+          "sha256": "2305b02230ca5fc400972f2089357c55fc8a752b97bc36f874b2a130b393445a"
+        },
+        {
+          "path": "internal/instructions/marker.go",
+          "source": "internal/instructions/marker.go",
+          "commit": "68f6a36715a3070a61c7576d54690a4163b852b7",
+          "sha256": "15958b53ff92b162eb3e871e6cfd23ffc4a3bd0a18e7de7fbbf80475fcfc49cb"
+        },
+        {
+          "path": "internal/instructions/errors.go",
+          "source": "internal/instructions/errors.go",
+          "commit": "68f6a36715a3070a61c7576d54690a4163b852b7",
+          "sha256": "7e93d7985d219fb8dd89b3cac5cbc63df977878b4cafcf52a611837c840d7cea"
+        },
+        {
+          "path": "internal/instructions/scan.go",
+          "source": "internal/instructions/scan.go",
+          "commit": "68f6a36715a3070a61c7576d54690a4163b852b7",
+          "sha256": "a15dded6b3bd037abd1c0e2ab8b78833d995d3c872788af085408e5662bd1ce0"
+        },
+        {
+          "path": "go.mod",
+          "source": "public/go.mod.txt",
+          "sha256": "ab35cad14d574f7e762603357ed0cdb4a8cd8a1b9e70d31ecf566a2bfccdb208"
+        },
+        {
+          "path": "TASK.md",
+          "source": "cases/scout-dev-scan/task.md",
+          "sha256": "20d0daf244241db17faf0cdd8065e1bb22d0b0f03a29b716f0b71b9040d16018"
+        },
+        {
+          "path": "ROLE.md",
+          "source": "roles/scout.md",
+          "sha256": "7ba37f0deb68ee23d04e032a6b2935b4fae96655b42a1aea9dca364968b575dd"
+        },
+        {
+          "path": "CONTEXT.md",
+          "source": "public/context.md",
+          "sha256": "6751f3a675b8d23d9f4932fc78201726c4c7d3c2b99c59c4238f4af2530875d3"
+        }
+      ],
+      "packet_sha256": "26c6d316fd0d2f42d63e1befbb438f8f35853286d69d223ca06c47e63c2a43cd",
+      "key": {
+        "path": "key.md",
+        "source": "cases/scout-dev-scan/key.md",
+        "sha256": "2eaaafc4c2aa33880e78226e95a47b135c056a6fef8f85ebd1b36f5acd1ee998"
+      },
+      "probe": {
+        "path": "internal/instructions/corpus_test.go",
+        "source": "controls/scan_test.go.txt",
+        "sha256": "1a670c845c3f90d006b73ff2a03642d9e75e36ea7ab03eea847e06f531618586"
+      },
+      "command": [
+        "go",
+        "test",
+        "-json",
+        "-count=1",
+        "-timeout=30s",
+        "-run=^TestCorpus$",
+        "./..."
+      ],
+      "check_seconds": 120,
+      "alternative": "Different source-defined behavior is not meaningful. An independently constructed directory fixture and the three subtests are acceptable in place of a line-by-line trace; symlink and unreadable-file behavior lies outside this case's required distinctions.",
+      "controls": [
+        {
+          "name": "reference",
+          "purpose": "Pinned source backing the known-good supported conclusions/approval.",
+          "files": [
+            {
+              "path": "internal/instructions/instructions.go",
+              "source": "internal/instructions/instructions.go",
+              "commit": "68f6a36715a3070a61c7576d54690a4163b852b7",
+              "sha256": "0fef44dccb31173ccb98ab7a364bb0a6d01ef75ba75043b4c233fce308294e95"
+            },
+            {
+              "path": "internal/instructions/block.go",
+              "source": "internal/instructions/block.go",
+              "commit": "68f6a36715a3070a61c7576d54690a4163b852b7",
+              "sha256": "2305b02230ca5fc400972f2089357c55fc8a752b97bc36f874b2a130b393445a"
+            },
+            {
+              "path": "internal/instructions/marker.go",
+              "source": "internal/instructions/marker.go",
+              "commit": "68f6a36715a3070a61c7576d54690a4163b852b7",
+              "sha256": "15958b53ff92b162eb3e871e6cfd23ffc4a3bd0a18e7de7fbbf80475fcfc49cb"
+            },
+            {
+              "path": "internal/instructions/errors.go",
+              "source": "internal/instructions/errors.go",
+              "commit": "68f6a36715a3070a61c7576d54690a4163b852b7",
+              "sha256": "7e93d7985d219fb8dd89b3cac5cbc63df977878b4cafcf52a611837c840d7cea"
+            },
+            {
+              "path": "internal/instructions/scan.go",
+              "source": "internal/instructions/scan.go",
+              "commit": "68f6a36715a3070a61c7576d54690a4163b852b7",
+              "sha256": "a15dded6b3bd037abd1c0e2ab8b78833d995d3c872788af085408e5662bd1ce0"
+            },
+            {
+              "path": "go.mod",
+              "source": "public/go.mod.txt",
+              "sha256": "ab35cad14d574f7e762603357ed0cdb4a8cd8a1b9e70d31ecf566a2bfccdb208"
+            }
+          ],
+          "expected_failures": []
+        },
+        {
+          "name": "bad-hidden",
+          "purpose": "External behavioral contrast for the keyed outcome distinction; semantic answer validity remains independently reviewed.",
+          "files": [
+            {
+              "path": "internal/instructions/instructions.go",
+              "source": "internal/instructions/instructions.go",
+              "commit": "68f6a36715a3070a61c7576d54690a4163b852b7",
+              "sha256": "0fef44dccb31173ccb98ab7a364bb0a6d01ef75ba75043b4c233fce308294e95"
+            },
+            {
+              "path": "internal/instructions/block.go",
+              "source": "internal/instructions/block.go",
+              "commit": "68f6a36715a3070a61c7576d54690a4163b852b7",
+              "sha256": "2305b02230ca5fc400972f2089357c55fc8a752b97bc36f874b2a130b393445a"
+            },
+            {
+              "path": "internal/instructions/marker.go",
+              "source": "internal/instructions/marker.go",
+              "commit": "68f6a36715a3070a61c7576d54690a4163b852b7",
+              "sha256": "15958b53ff92b162eb3e871e6cfd23ffc4a3bd0a18e7de7fbbf80475fcfc49cb"
+            },
+            {
+              "path": "internal/instructions/errors.go",
+              "source": "internal/instructions/errors.go",
+              "commit": "68f6a36715a3070a61c7576d54690a4163b852b7",
+              "sha256": "7e93d7985d219fb8dd89b3cac5cbc63df977878b4cafcf52a611837c840d7cea"
+            },
+            {
+              "path": "internal/instructions/scan.go",
+              "source": "internal/instructions/scan.go",
+              "commit": "68f6a36715a3070a61c7576d54690a4163b852b7",
+              "sha256": "a15dded6b3bd037abd1c0e2ab8b78833d995d3c872788af085408e5662bd1ce0"
+            },
+            {
+              "path": "go.mod",
+              "source": "public/go.mod.txt",
+              "sha256": "ab35cad14d574f7e762603357ed0cdb4a8cd8a1b9e70d31ecf566a2bfccdb208"
+            }
+          ],
+          "patch": {
+            "path": "patch.json",
+            "source": "controls/scan-hidden.json",
+            "sha256": "669f3d88b00e828556846ab909678c29dbc207458f768c84a5ddd93b621ccd1a"
+          },
+          "expected_failures": [
+            "TestCorpus/hidden"
+          ]
+        },
+        {
+          "name": "bad-root",
+          "purpose": "External behavioral contrast for the keyed outcome distinction; semantic answer validity remains independently reviewed.",
+          "files": [
+            {
+              "path": "internal/instructions/instructions.go",
+              "source": "internal/instructions/instructions.go",
+              "commit": "68f6a36715a3070a61c7576d54690a4163b852b7",
+              "sha256": "0fef44dccb31173ccb98ab7a364bb0a6d01ef75ba75043b4c233fce308294e95"
+            },
+            {
+              "path": "internal/instructions/block.go",
+              "source": "internal/instructions/block.go",
+              "commit": "68f6a36715a3070a61c7576d54690a4163b852b7",
+              "sha256": "2305b02230ca5fc400972f2089357c55fc8a752b97bc36f874b2a130b393445a"
+            },
+            {
+              "path": "internal/instructions/marker.go",
+              "source": "internal/instructions/marker.go",
+              "commit": "68f6a36715a3070a61c7576d54690a4163b852b7",
+              "sha256": "15958b53ff92b162eb3e871e6cfd23ffc4a3bd0a18e7de7fbbf80475fcfc49cb"
+            },
+            {
+              "path": "internal/instructions/errors.go",
+              "source": "internal/instructions/errors.go",
+              "commit": "68f6a36715a3070a61c7576d54690a4163b852b7",
+              "sha256": "7e93d7985d219fb8dd89b3cac5cbc63df977878b4cafcf52a611837c840d7cea"
+            },
+            {
+              "path": "internal/instructions/scan.go",
+              "source": "internal/instructions/scan.go",
+              "commit": "68f6a36715a3070a61c7576d54690a4163b852b7",
+              "sha256": "a15dded6b3bd037abd1c0e2ab8b78833d995d3c872788af085408e5662bd1ce0"
+            },
+            {
+              "path": "go.mod",
+              "source": "public/go.mod.txt",
+              "sha256": "ab35cad14d574f7e762603357ed0cdb4a8cd8a1b9e70d31ecf566a2bfccdb208"
+            }
+          ],
+          "patch": {
+            "path": "patch.json",
+            "source": "controls/scan-root.json",
+            "sha256": "e4f6108d2583c3e65a8036f54a025c203e806d6c868530c2a213e7cc6e1a64d6"
+          },
+          "expected_failures": [
+            "TestCorpus/root-pair"
+          ]
+        },
+        {
+          "name": "bad-names",
+          "purpose": "External behavioral contrast for the keyed outcome distinction; semantic answer validity remains independently reviewed.",
+          "files": [
+            {
+              "path": "internal/instructions/instructions.go",
+              "source": "internal/instructions/instructions.go",
+              "commit": "68f6a36715a3070a61c7576d54690a4163b852b7",
+              "sha256": "0fef44dccb31173ccb98ab7a364bb0a6d01ef75ba75043b4c233fce308294e95"
+            },
+            {
+              "path": "internal/instructions/block.go",
+              "source": "internal/instructions/block.go",
+              "commit": "68f6a36715a3070a61c7576d54690a4163b852b7",
+              "sha256": "2305b02230ca5fc400972f2089357c55fc8a752b97bc36f874b2a130b393445a"
+            },
+            {
+              "path": "internal/instructions/marker.go",
+              "source": "internal/instructions/marker.go",
+              "commit": "68f6a36715a3070a61c7576d54690a4163b852b7",
+              "sha256": "15958b53ff92b162eb3e871e6cfd23ffc4a3bd0a18e7de7fbbf80475fcfc49cb"
+            },
+            {
+              "path": "internal/instructions/errors.go",
+              "source": "internal/instructions/errors.go",
+              "commit": "68f6a36715a3070a61c7576d54690a4163b852b7",
+              "sha256": "7e93d7985d219fb8dd89b3cac5cbc63df977878b4cafcf52a611837c840d7cea"
+            },
+            {
+              "path": "internal/instructions/scan.go",
+              "source": "internal/instructions/scan.go",
+              "commit": "68f6a36715a3070a61c7576d54690a4163b852b7",
+              "sha256": "a15dded6b3bd037abd1c0e2ab8b78833d995d3c872788af085408e5662bd1ce0"
+            },
+            {
+              "path": "go.mod",
+              "source": "public/go.mod.txt",
+              "sha256": "ab35cad14d574f7e762603357ed0cdb4a8cd8a1b9e70d31ecf566a2bfccdb208"
+            }
+          ],
+          "patch": {
+            "path": "patch.json",
+            "source": "controls/scan-names.json",
+            "sha256": "9e0d18cb0d57dbb5685a7aa08b7fa0bde51155b74cf239db0871efdaf070b96b"
+          },
+          "expected_failures": [
+            "TestCorpus/names"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "scout-held-git-gates",
+      "version": 1,
+      "role": "scout",
+      "partition": "held-out",
+      "lineage": "git-mechanical-gates",
+      "difficulty": "demanding",
+      "source_commit": "dc985482d404e8ea84db501d6d32b7bb0e741371",
+      "upstream": [
+        "https://github.com/kninetimmy/orch/pull/5",
+        "https://github.com/kninetimmy/orch/commit/dc985482d404e8ea84db501d6d32b7bb0e741371"
+      ],
+      "selection": "Deletion confirmation and command ordering without touching a real branch or remote.",
+      "inputs": [
+        {
+          "path": "internal/gitops/gitops.go",
+          "source": "internal/gitops/gitops.go",
+          "commit": "dc985482d404e8ea84db501d6d32b7bb0e741371",
+          "sha256": "b40eca796857315dde1befbf25692ae0c8f3815c05a3cca259b399ea15131219"
+        },
+        {
+          "path": "internal/gitops/checks.go",
+          "source": "internal/gitops/checks.go",
+          "commit": "dc985482d404e8ea84db501d6d32b7bb0e741371",
+          "sha256": "92edd1d74fb9ac38026ca36a4e885f2a6ba5853d6945b1580d825feb72ab0082"
+        },
+        {
+          "path": "internal/gitops/branch.go",
+          "source": "internal/gitops/branch.go",
+          "commit": "dc985482d404e8ea84db501d6d32b7bb0e741371",
+          "sha256": "e64f9458d78c355c545c06da3c19b563b3dedd066340dad4e310e16012e7e36a"
+        },
+        {
+          "path": "internal/gitops/worktree.go",
+          "source": "internal/gitops/worktree.go",
+          "commit": "dc985482d404e8ea84db501d6d32b7bb0e741371",
+          "sha256": "001f298e1944d9a024ab0f9098e415aee2356d90e50822bac6c1764a5a2734cc"
+        },
+        {
+          "path": "internal/gitops/errors.go",
+          "source": "internal/gitops/errors.go",
+          "commit": "dc985482d404e8ea84db501d6d32b7bb0e741371",
+          "sha256": "ed181ddeaeb8b90b0f643d6c462e467f91571eee82b2b51ca2f2abe90cda9af4"
+        },
+        {
+          "path": "internal/paths/paths.go",
+          "source": "internal/paths/paths.go",
+          "commit": "dc985482d404e8ea84db501d6d32b7bb0e741371",
+          "sha256": "79d0eae9406bdf9a2544203fe5b2aa40f8f1fb1750f9a17feb7da87418738ccb"
+        },
+        {
+          "path": "internal/execx/execx.go",
+          "source": "internal/execx/execx.go",
+          "commit": "dc985482d404e8ea84db501d6d32b7bb0e741371",
+          "sha256": "57795e61d33f5cc92e6fdd705a6327a0fbc176c5b350d22c096f5bade5154d00"
+        },
+        {
+          "path": "go.mod",
+          "source": "public/go.mod.txt",
+          "sha256": "ab35cad14d574f7e762603357ed0cdb4a8cd8a1b9e70d31ecf566a2bfccdb208"
+        },
+        {
+          "path": "TASK.md",
+          "source": "cases/scout-held-git-gates/task.md",
+          "sha256": "ba08e3d061e0b9cc994337acd18fdbec531d1adddadc42e59c25f88f9a3b115c"
+        },
+        {
+          "path": "ROLE.md",
+          "source": "roles/scout.md",
+          "sha256": "7ba37f0deb68ee23d04e032a6b2935b4fae96655b42a1aea9dca364968b575dd"
+        },
+        {
+          "path": "CONTEXT.md",
+          "source": "public/context.md",
+          "sha256": "6751f3a675b8d23d9f4932fc78201726c4c7d3c2b99c59c4238f4af2530875d3"
+        }
+      ],
+      "packet_sha256": "6e3931316f37d5af248c1f12d475f3096f4ced55f836db06e043061d75eb0b63",
+      "key": {
+        "path": "key.md",
+        "source": "cases/scout-held-git-gates/key.md",
+        "sha256": "f0fffe6dca27531299e177f62b632aac5f4483ca022fe8bbb79e434a6c18b2c3"
+      },
+      "probe": {
+        "path": "internal/gitops/corpus_test.go",
+        "source": "controls/git_test.go.txt",
+        "sha256": "47816bd15061245892681d5be208ae32483bbe386b8f3d27ccc95808c1917356"
+      },
+      "command": [
+        "go",
+        "test",
+        "-json",
+        "-count=1",
+        "-timeout=30s",
+        "-run=^TestCorpus$",
+        "./..."
+      ],
+      "check_seconds": 120,
+      "alternative": "The mechanical gates have one source-defined meaning. Independently tracing all four entry points or supplying the injected-runner command sequences is an acceptable alternate outcome. Claims of GitHub verification or universal concurrency isolation are excluded.",
+      "controls": [
+        {
+          "name": "reference",
+          "purpose": "Pinned source backing the known-good supported conclusions/approval.",
+          "files": [
+            {
+              "path": "internal/gitops/gitops.go",
+              "source": "internal/gitops/gitops.go",
+              "commit": "dc985482d404e8ea84db501d6d32b7bb0e741371",
+              "sha256": "b40eca796857315dde1befbf25692ae0c8f3815c05a3cca259b399ea15131219"
+            },
+            {
+              "path": "internal/gitops/checks.go",
+              "source": "internal/gitops/checks.go",
+              "commit": "dc985482d404e8ea84db501d6d32b7bb0e741371",
+              "sha256": "92edd1d74fb9ac38026ca36a4e885f2a6ba5853d6945b1580d825feb72ab0082"
+            },
+            {
+              "path": "internal/gitops/branch.go",
+              "source": "internal/gitops/branch.go",
+              "commit": "dc985482d404e8ea84db501d6d32b7bb0e741371",
+              "sha256": "e64f9458d78c355c545c06da3c19b563b3dedd066340dad4e310e16012e7e36a"
+            },
+            {
+              "path": "internal/gitops/worktree.go",
+              "source": "internal/gitops/worktree.go",
+              "commit": "dc985482d404e8ea84db501d6d32b7bb0e741371",
+              "sha256": "001f298e1944d9a024ab0f9098e415aee2356d90e50822bac6c1764a5a2734cc"
+            },
+            {
+              "path": "internal/gitops/errors.go",
+              "source": "internal/gitops/errors.go",
+              "commit": "dc985482d404e8ea84db501d6d32b7bb0e741371",
+              "sha256": "ed181ddeaeb8b90b0f643d6c462e467f91571eee82b2b51ca2f2abe90cda9af4"
+            },
+            {
+              "path": "internal/paths/paths.go",
+              "source": "internal/paths/paths.go",
+              "commit": "dc985482d404e8ea84db501d6d32b7bb0e741371",
+              "sha256": "79d0eae9406bdf9a2544203fe5b2aa40f8f1fb1750f9a17feb7da87418738ccb"
+            },
+            {
+              "path": "internal/execx/execx.go",
+              "source": "internal/execx/execx.go",
+              "commit": "dc985482d404e8ea84db501d6d32b7bb0e741371",
+              "sha256": "57795e61d33f5cc92e6fdd705a6327a0fbc176c5b350d22c096f5bade5154d00"
+            },
+            {
+              "path": "go.mod",
+              "source": "public/go.mod.txt",
+              "sha256": "ab35cad14d574f7e762603357ed0cdb4a8cd8a1b9e70d31ecf566a2bfccdb208"
+            }
+          ],
+          "expected_failures": []
+        },
+        {
+          "name": "bad-confirmation",
+          "purpose": "External behavioral contrast for the keyed outcome distinction; semantic answer validity remains independently reviewed.",
+          "files": [
+            {
+              "path": "internal/gitops/gitops.go",
+              "source": "internal/gitops/gitops.go",
+              "commit": "dc985482d404e8ea84db501d6d32b7bb0e741371",
+              "sha256": "b40eca796857315dde1befbf25692ae0c8f3815c05a3cca259b399ea15131219"
+            },
+            {
+              "path": "internal/gitops/checks.go",
+              "source": "internal/gitops/checks.go",
+              "commit": "dc985482d404e8ea84db501d6d32b7bb0e741371",
+              "sha256": "92edd1d74fb9ac38026ca36a4e885f2a6ba5853d6945b1580d825feb72ab0082"
+            },
+            {
+              "path": "internal/gitops/branch.go",
+              "source": "internal/gitops/branch.go",
+              "commit": "dc985482d404e8ea84db501d6d32b7bb0e741371",
+              "sha256": "e64f9458d78c355c545c06da3c19b563b3dedd066340dad4e310e16012e7e36a"
+            },
+            {
+              "path": "internal/gitops/worktree.go",
+              "source": "internal/gitops/worktree.go",
+              "commit": "dc985482d404e8ea84db501d6d32b7bb0e741371",
+              "sha256": "001f298e1944d9a024ab0f9098e415aee2356d90e50822bac6c1764a5a2734cc"
+            },
+            {
+              "path": "internal/gitops/errors.go",
+              "source": "internal/gitops/errors.go",
+              "commit": "dc985482d404e8ea84db501d6d32b7bb0e741371",
+              "sha256": "ed181ddeaeb8b90b0f643d6c462e467f91571eee82b2b51ca2f2abe90cda9af4"
+            },
+            {
+              "path": "internal/paths/paths.go",
+              "source": "internal/paths/paths.go",
+              "commit": "dc985482d404e8ea84db501d6d32b7bb0e741371",
+              "sha256": "79d0eae9406bdf9a2544203fe5b2aa40f8f1fb1750f9a17feb7da87418738ccb"
+            },
+            {
+              "path": "internal/execx/execx.go",
+              "source": "internal/execx/execx.go",
+              "commit": "dc985482d404e8ea84db501d6d32b7bb0e741371",
+              "sha256": "57795e61d33f5cc92e6fdd705a6327a0fbc176c5b350d22c096f5bade5154d00"
+            },
+            {
+              "path": "go.mod",
+              "source": "public/go.mod.txt",
+              "sha256": "ab35cad14d574f7e762603357ed0cdb4a8cd8a1b9e70d31ecf566a2bfccdb208"
+            }
+          ],
+          "patch": {
+            "path": "patch.json",
+            "source": "controls/git-confirm.json",
+            "sha256": "41f8659908c360d3c2e46077c1c5e145a4df6b3545347328f4943ee2a1bd2982"
+          },
+          "expected_failures": [
+            "TestCorpus/confirmation"
+          ]
+        },
+        {
+          "name": "bad-worktree",
+          "purpose": "External behavioral contrast for the keyed outcome distinction; semantic answer validity remains independently reviewed.",
+          "files": [
+            {
+              "path": "internal/gitops/gitops.go",
+              "source": "internal/gitops/gitops.go",
+              "commit": "dc985482d404e8ea84db501d6d32b7bb0e741371",
+              "sha256": "b40eca796857315dde1befbf25692ae0c8f3815c05a3cca259b399ea15131219"
+            },
+            {
+              "path": "internal/gitops/checks.go",
+              "source": "internal/gitops/checks.go",
+              "commit": "dc985482d404e8ea84db501d6d32b7bb0e741371",
+              "sha256": "92edd1d74fb9ac38026ca36a4e885f2a6ba5853d6945b1580d825feb72ab0082"
+            },
+            {
+              "path": "internal/gitops/branch.go",
+              "source": "internal/gitops/branch.go",
+              "commit": "dc985482d404e8ea84db501d6d32b7bb0e741371",
+              "sha256": "e64f9458d78c355c545c06da3c19b563b3dedd066340dad4e310e16012e7e36a"
+            },
+            {
+              "path": "internal/gitops/worktree.go",
+              "source": "internal/gitops/worktree.go",
+              "commit": "dc985482d404e8ea84db501d6d32b7bb0e741371",
+              "sha256": "001f298e1944d9a024ab0f9098e415aee2356d90e50822bac6c1764a5a2734cc"
+            },
+            {
+              "path": "internal/gitops/errors.go",
+              "source": "internal/gitops/errors.go",
+              "commit": "dc985482d404e8ea84db501d6d32b7bb0e741371",
+              "sha256": "ed181ddeaeb8b90b0f643d6c462e467f91571eee82b2b51ca2f2abe90cda9af4"
+            },
+            {
+              "path": "internal/paths/paths.go",
+              "source": "internal/paths/paths.go",
+              "commit": "dc985482d404e8ea84db501d6d32b7bb0e741371",
+              "sha256": "79d0eae9406bdf9a2544203fe5b2aa40f8f1fb1750f9a17feb7da87418738ccb"
+            },
+            {
+              "path": "internal/execx/execx.go",
+              "source": "internal/execx/execx.go",
+              "commit": "dc985482d404e8ea84db501d6d32b7bb0e741371",
+              "sha256": "57795e61d33f5cc92e6fdd705a6327a0fbc176c5b350d22c096f5bade5154d00"
+            },
+            {
+              "path": "go.mod",
+              "source": "public/go.mod.txt",
+              "sha256": "ab35cad14d574f7e762603357ed0cdb4a8cd8a1b9e70d31ecf566a2bfccdb208"
+            }
+          ],
+          "patch": {
+            "path": "patch.json",
+            "source": "controls/git-worktree.json",
+            "sha256": "2f353fce36a53736a41bc63286ad9f15c55827bff71bcecd785ef65ef76448a7"
+          },
+          "expected_failures": [
+            "TestCorpus/checked-out"
+          ]
+        },
+        {
+          "name": "bad-forward",
+          "purpose": "External behavioral contrast for the keyed outcome distinction; semantic answer validity remains independently reviewed.",
+          "files": [
+            {
+              "path": "internal/gitops/gitops.go",
+              "source": "internal/gitops/gitops.go",
+              "commit": "dc985482d404e8ea84db501d6d32b7bb0e741371",
+              "sha256": "b40eca796857315dde1befbf25692ae0c8f3815c05a3cca259b399ea15131219"
+            },
+            {
+              "path": "internal/gitops/checks.go",
+              "source": "internal/gitops/checks.go",
+              "commit": "dc985482d404e8ea84db501d6d32b7bb0e741371",
+              "sha256": "92edd1d74fb9ac38026ca36a4e885f2a6ba5853d6945b1580d825feb72ab0082"
+            },
+            {
+              "path": "internal/gitops/branch.go",
+              "source": "internal/gitops/branch.go",
+              "commit": "dc985482d404e8ea84db501d6d32b7bb0e741371",
+              "sha256": "e64f9458d78c355c545c06da3c19b563b3dedd066340dad4e310e16012e7e36a"
+            },
+            {
+              "path": "internal/gitops/worktree.go",
+              "source": "internal/gitops/worktree.go",
+              "commit": "dc985482d404e8ea84db501d6d32b7bb0e741371",
+              "sha256": "001f298e1944d9a024ab0f9098e415aee2356d90e50822bac6c1764a5a2734cc"
+            },
+            {
+              "path": "internal/gitops/errors.go",
+              "source": "internal/gitops/errors.go",
+              "commit": "dc985482d404e8ea84db501d6d32b7bb0e741371",
+              "sha256": "ed181ddeaeb8b90b0f643d6c462e467f91571eee82b2b51ca2f2abe90cda9af4"
+            },
+            {
+              "path": "internal/paths/paths.go",
+              "source": "internal/paths/paths.go",
+              "commit": "dc985482d404e8ea84db501d6d32b7bb0e741371",
+              "sha256": "79d0eae9406bdf9a2544203fe5b2aa40f8f1fb1750f9a17feb7da87418738ccb"
+            },
+            {
+              "path": "internal/execx/execx.go",
+              "source": "internal/execx/execx.go",
+              "commit": "dc985482d404e8ea84db501d6d32b7bb0e741371",
+              "sha256": "57795e61d33f5cc92e6fdd705a6327a0fbc176c5b350d22c096f5bade5154d00"
+            },
+            {
+              "path": "go.mod",
+              "source": "public/go.mod.txt",
+              "sha256": "ab35cad14d574f7e762603357ed0cdb4a8cd8a1b9e70d31ecf566a2bfccdb208"
+            }
+          ],
+          "patch": {
+            "path": "patch.json",
+            "source": "controls/git-forward.json",
+            "sha256": "957ad86bfe4436424ce8f2492ef7220af56e4dbfcc1bb5cdce2b17161f7f37e2"
+          },
+          "expected_failures": [
+            "TestCorpus/fast-forward"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "scout-held-question",
+      "version": 1,
+      "role": "scout",
+      "partition": "held-out",
+      "lineage": "answer-wire",
+      "difficulty": "ordinary",
+      "source_commit": "1c934cebc9d1707ceb3134d29906dc2563cc6ce8",
+      "upstream": [
+        "https://github.com/kninetimmy/orch/pull/16",
+        "https://github.com/kninetimmy/orch/commit/1c934cebc9d1707ceb3134d29906dc2563cc6ce8"
+      ],
+      "selection": "Strict-wire intent versus actual decoder behavior; linked to the defective review in the same partition.",
+      "inputs": [
+        {
+          "path": "internal/question/question.go",
+          "source": "internal/question/question.go",
+          "commit": "1c934cebc9d1707ceb3134d29906dc2563cc6ce8",
+          "sha256": "f555a0d2edfb828327ca6d55494d626f228e006e3bfc3efe72ab4a52026456a2"
+        },
+        {
+          "path": "internal/question/decode.go",
+          "source": "internal/question/decode.go",
+          "commit": "1c934cebc9d1707ceb3134d29906dc2563cc6ce8",
+          "sha256": "b11f677641a401f5ddb8328ba4fd96e2e22745ab2df30854e78b6179117da15e"
+        },
+        {
+          "path": "go.mod",
+          "source": "public/go.mod.txt",
+          "sha256": "ab35cad14d574f7e762603357ed0cdb4a8cd8a1b9e70d31ecf566a2bfccdb208"
+        },
+        {
+          "path": "TASK.md",
+          "source": "cases/scout-held-question/task.md",
+          "sha256": "ad75915947e0269eb5f2714eea1d00ff9ab446b3fd0cef7b759466ae74890205"
+        },
+        {
+          "path": "ROLE.md",
+          "source": "roles/scout.md",
+          "sha256": "7ba37f0deb68ee23d04e032a6b2935b4fae96655b42a1aea9dca364968b575dd"
+        },
+        {
+          "path": "CONTEXT.md",
+          "source": "public/context.md",
+          "sha256": "6751f3a675b8d23d9f4932fc78201726c4c7d3c2b99c59c4238f4af2530875d3"
+        }
+      ],
+      "packet_sha256": "7a88725b6dd704171b465b1f42ed765edad0e4ac16bc1e6929509e1031c83968",
+      "key": {
+        "path": "key.md",
+        "source": "cases/scout-held-question/key.md",
+        "sha256": "0f3a1746844e508ae759f759fdf85eb6dedfb1a6e8ddd3fcd089f21af6ea114b"
+      },
+      "probe": {
+        "path": "internal/question/corpus_test.go",
+        "source": "controls/question_test.go.txt",
+        "sha256": "b2e3ea2453cc05143a5c2835a44075ca6d2e647d677bcde86bb87ad0e940e8aa"
+      },
+      "command": [
+        "go",
+        "test",
+        "-json",
+        "-count=1",
+        "-timeout=30s",
+        "-run=^TestCorpus$",
+        "./..."
+      ],
+      "check_seconds": 120,
+      "alternative": "A different factual answer is not meaningful. An independently written source trace or the concrete accepted-closing-delimiter reproduction is acceptable. Both EOF-decoding and remaining-byte validation repair controls corroborate the defect, but implementing a repair is outside the scout task.",
+      "controls": [
+        {
+          "name": "reference",
+          "purpose": "Pinned source backing the known-good supported conclusions/approval.",
+          "files": [
+            {
+              "path": "internal/question/question.go",
+              "source": "internal/question/question.go",
+              "commit": "1c934cebc9d1707ceb3134d29906dc2563cc6ce8",
+              "sha256": "f555a0d2edfb828327ca6d55494d626f228e006e3bfc3efe72ab4a52026456a2"
+            },
+            {
+              "path": "internal/question/decode.go",
+              "source": "internal/question/decode.go",
+              "commit": "1c934cebc9d1707ceb3134d29906dc2563cc6ce8",
+              "sha256": "b11f677641a401f5ddb8328ba4fd96e2e22745ab2df30854e78b6179117da15e"
+            },
+            {
+              "path": "go.mod",
+              "source": "public/go.mod.txt",
+              "sha256": "ab35cad14d574f7e762603357ed0cdb4a8cd8a1b9e70d31ecf566a2bfccdb208"
+            }
+          ],
+          "expected_failures": [
+            "TestCorpus/tail"
+          ]
+        },
+        {
+          "name": "bad-fields",
+          "purpose": "External behavioral contrast for the keyed outcome distinction; semantic answer validity remains independently reviewed.",
+          "files": [
+            {
+              "path": "internal/question/question.go",
+              "source": "internal/question/question.go",
+              "commit": "1c934cebc9d1707ceb3134d29906dc2563cc6ce8",
+              "sha256": "f555a0d2edfb828327ca6d55494d626f228e006e3bfc3efe72ab4a52026456a2"
+            },
+            {
+              "path": "internal/question/decode.go",
+              "source": "internal/question/decode.go",
+              "commit": "1c934cebc9d1707ceb3134d29906dc2563cc6ce8",
+              "sha256": "b11f677641a401f5ddb8328ba4fd96e2e22745ab2df30854e78b6179117da15e"
+            },
+            {
+              "path": "go.mod",
+              "source": "public/go.mod.txt",
+              "sha256": "ab35cad14d574f7e762603357ed0cdb4a8cd8a1b9e70d31ecf566a2bfccdb208"
+            }
+          ],
+          "patch": {
+            "path": "patch.json",
+            "source": "controls/question-fields.json",
+            "sha256": "59839487aa52cb761dde3cf3cd1aaa0b574a0914c77a6e0880ad5c206e592879"
+          },
+          "expected_failures": [
+            "TestCorpus/tail",
+            "TestCorpus/fields"
+          ]
+        },
+        {
+          "name": "bad-schema",
+          "purpose": "External behavioral contrast for the keyed outcome distinction; semantic answer validity remains independently reviewed.",
+          "files": [
+            {
+              "path": "internal/question/question.go",
+              "source": "internal/question/question.go",
+              "commit": "1c934cebc9d1707ceb3134d29906dc2563cc6ce8",
+              "sha256": "f555a0d2edfb828327ca6d55494d626f228e006e3bfc3efe72ab4a52026456a2"
+            },
+            {
+              "path": "internal/question/decode.go",
+              "source": "internal/question/decode.go",
+              "commit": "1c934cebc9d1707ceb3134d29906dc2563cc6ce8",
+              "sha256": "b11f677641a401f5ddb8328ba4fd96e2e22745ab2df30854e78b6179117da15e"
+            },
+            {
+              "path": "go.mod",
+              "source": "public/go.mod.txt",
+              "sha256": "ab35cad14d574f7e762603357ed0cdb4a8cd8a1b9e70d31ecf566a2bfccdb208"
+            }
+          ],
+          "patch": {
+            "path": "patch.json",
+            "source": "controls/question-schema.json",
+            "sha256": "a7954dfccc20402eeb567f955c18453afb835112a634a1d2533fb7960ce14396"
+          },
+          "expected_failures": [
+            "TestCorpus/tail",
+            "TestCorpus/schema"
+          ]
+        },
+        {
+          "name": "bad-map",
+          "purpose": "External behavioral contrast for the keyed outcome distinction; semantic answer validity remains independently reviewed.",
+          "files": [
+            {
+              "path": "internal/question/question.go",
+              "source": "internal/question/question.go",
+              "commit": "1c934cebc9d1707ceb3134d29906dc2563cc6ce8",
+              "sha256": "f555a0d2edfb828327ca6d55494d626f228e006e3bfc3efe72ab4a52026456a2"
+            },
+            {
+              "path": "internal/question/decode.go",
+              "source": "internal/question/decode.go",
+              "commit": "1c934cebc9d1707ceb3134d29906dc2563cc6ce8",
+              "sha256": "b11f677641a401f5ddb8328ba4fd96e2e22745ab2df30854e78b6179117da15e"
+            },
+            {
+              "path": "go.mod",
+              "source": "public/go.mod.txt",
+              "sha256": "ab35cad14d574f7e762603357ed0cdb4a8cd8a1b9e70d31ecf566a2bfccdb208"
+            }
+          ],
+          "patch": {
+            "path": "patch.json",
+            "source": "controls/question-map.json",
+            "sha256": "d37697e3a27929000195c4d244e8b24a131a5da599d3ed0d31dba4fa9daff1fc"
+          },
+          "expected_failures": [
+            "TestCorpus/tail",
+            "TestCorpus/map"
+          ]
+        },
+        {
+          "name": "strict-repair",
+          "purpose": "External behavioral contrast for the keyed outcome distinction; semantic answer validity remains independently reviewed.",
+          "files": [
+            {
+              "path": "internal/question/question.go",
+              "source": "internal/question/question.go",
+              "commit": "1c934cebc9d1707ceb3134d29906dc2563cc6ce8",
+              "sha256": "f555a0d2edfb828327ca6d55494d626f228e006e3bfc3efe72ab4a52026456a2"
+            },
+            {
+              "path": "internal/question/decode.go",
+              "source": "internal/question/decode.go",
+              "commit": "1c934cebc9d1707ceb3134d29906dc2563cc6ce8",
+              "sha256": "b11f677641a401f5ddb8328ba4fd96e2e22745ab2df30854e78b6179117da15e"
+            },
+            {
+              "path": "go.mod",
+              "source": "public/go.mod.txt",
+              "sha256": "ab35cad14d574f7e762603357ed0cdb4a8cd8a1b9e70d31ecf566a2bfccdb208"
+            }
+          ],
+          "patch": {
+            "path": "patch.json",
+            "source": "controls/question-repair.json",
+            "sha256": "f4673c441443c94e301870c2b896285b29507b0b05a4816f89995ccb80c8d41f"
+          },
+          "expected_failures": []
+        },
+        {
+          "name": "alternative-repair",
+          "purpose": "External behavioral contrast for the keyed outcome distinction; semantic answer validity remains independently reviewed.",
+          "files": [
+            {
+              "path": "internal/question/question.go",
+              "source": "internal/question/question.go",
+              "commit": "1c934cebc9d1707ceb3134d29906dc2563cc6ce8",
+              "sha256": "f555a0d2edfb828327ca6d55494d626f228e006e3bfc3efe72ab4a52026456a2"
+            },
+            {
+              "path": "internal/question/decode.go",
+              "source": "internal/question/decode.go",
+              "commit": "1c934cebc9d1707ceb3134d29906dc2563cc6ce8",
+              "sha256": "b11f677641a401f5ddb8328ba4fd96e2e22745ab2df30854e78b6179117da15e"
+            },
+            {
+              "path": "go.mod",
+              "source": "public/go.mod.txt",
+              "sha256": "ab35cad14d574f7e762603357ed0cdb4a8cd8a1b9e70d31ecf566a2bfccdb208"
+            }
+          ],
+          "patch": {
+            "path": "patch.json",
+            "source": "controls/question-alternative.json",
+            "sha256": "e413ae99c76947dbfac84e2c064d30f7f2c08beaa4c45bf7df5834344c0ffcd2"
+          },
+          "expected_failures": []
+        }
+      ]
+    },
+    {
+      "id": "implement-dev-ci-empty",
+      "version": 1,
+      "role": "implementation",
+      "partition": "development",
+      "lineage": "required-ci-empty",
+      "difficulty": "ordinary",
+      "source_commit": "279bf5b05547e45e78c596a322f685cc54ed80c6",
+      "upstream": [
+        "https://github.com/kninetimmy/orch/pull/44",
+        "https://github.com/kninetimmy/orch/commit/279bf5b05547e45e78c596a322f685cc54ed80c6"
+      ],
+      "selection": "Existing CLI adapter bug with a small root-cause fix; shares CI-answer lineage with development defective review.",
+      "inputs": [
+        {
+          "path": "internal/ghops/ghops.go",
+          "source": "internal/ghops/ghops.go",
+          "commit": "279bf5b05547e45e78c596a322f685cc54ed80c6",
+          "sha256": "6d1261d787dd0212a99da33e57a97576855412eda369065450a8c36cc4f59335"
+        },
+        {
+          "path": "internal/ghops/checks.go",
+          "source": "internal/ghops/checks.go",
+          "commit": "279bf5b05547e45e78c596a322f685cc54ed80c6",
+          "sha256": "c50d2dfcf0706e312c81840873d9d8253c0f5bb4b26a0ad17048ce33ec1e1dc1"
+        },
+        {
+          "path": "internal/ghops/errors.go",
+          "source": "internal/ghops/errors.go",
+          "commit": "279bf5b05547e45e78c596a322f685cc54ed80c6",
+          "sha256": "afb812cbfd772e31933ee79d91906ebdc8c32e188b45da7445c995b6a685e3b5"
+        },
+        {
+          "path": "internal/paths/paths.go",
+          "source": "internal/paths/paths.go",
+          "commit": "279bf5b05547e45e78c596a322f685cc54ed80c6",
+          "sha256": "95e0f3ef69379705041d1595d11cc3f0cf414ae65046c31070120f511eb1078a"
+        },
+        {
+          "path": "internal/execx/execx.go",
+          "source": "internal/execx/execx.go",
+          "commit": "279bf5b05547e45e78c596a322f685cc54ed80c6",
+          "sha256": "57795e61d33f5cc92e6fdd705a6327a0fbc176c5b350d22c096f5bade5154d00"
+        },
+        {
+          "path": "go.mod",
+          "source": "public/go.mod.txt",
+          "sha256": "ab35cad14d574f7e762603357ed0cdb4a8cd8a1b9e70d31ecf566a2bfccdb208"
+        },
+        {
+          "path": "TASK.md",
+          "source": "cases/implement-dev-ci-empty/task.md",
+          "sha256": "079cd8307fe108acfa6083c51c2aa0378d4d28abe8432ad952f2da9ed67f38d5"
+        },
+        {
+          "path": "ROLE.md",
+          "source": "roles/implementation.md",
+          "sha256": "ddb182ca0dd262da829a04d01b126cc88fcd485b0d95b40ed2381336df64ab5f"
+        },
+        {
+          "path": "CONTEXT.md",
+          "source": "public/context.md",
+          "sha256": "6751f3a675b8d23d9f4932fc78201726c4c7d3c2b99c59c4238f4af2530875d3"
+        }
+      ],
+      "packet_sha256": "624d3244874b576354046b5e626f688befb58148410c42c3741c48ec3822173e",
+      "key": {
+        "path": "key.md",
+        "source": "cases/implement-dev-ci-empty/key.md",
+        "sha256": "5fad9d8ce86f17300d843c924c2b400ffb29bdac4cf88a00c4c37ecfd5e75c29"
+      },
+      "probe": {
+        "path": "internal/ghops/corpus_test.go",
+        "source": "controls/ci_test.go.txt",
+        "sha256": "7dad82f4b499cc5654717934c03a4f0d9094aead6337dfad4aef12c883cab4b4"
+      },
+      "command": [
+        "go",
+        "test",
+        "-json",
+        "-count=1",
+        "-timeout=30s",
+        "-run=^TestCorpus$",
+        "./..."
+      ],
+      "check_seconds": 120,
+      "alternative": "The author separately constructed normalization of empty stdout to [] before decoding. It preserves the same required behavior and passes all probes. Construction is separate from the reference function body, not independent-person validation; the fresh reviewer must check it.",
+      "controls": [
+        {
+          "name": "reference",
+          "purpose": "Known-good historical code outcome; behavior must be reproduced, merge alone is not correctness.",
+          "files": [
+            {
+              "path": "internal/ghops/ghops.go",
+              "source": "internal/ghops/ghops.go",
+              "commit": "fa8bcc474cef610e38b2ec76c57ed843e3db4782",
+              "sha256": "6d1261d787dd0212a99da33e57a97576855412eda369065450a8c36cc4f59335"
+            },
+            {
+              "path": "internal/ghops/checks.go",
+              "source": "internal/ghops/checks.go",
+              "commit": "fa8bcc474cef610e38b2ec76c57ed843e3db4782",
+              "sha256": "40302da1d180b45808222866bbbb747d9cec897c806c388119ddb35c404a2783"
+            },
+            {
+              "path": "internal/ghops/errors.go",
+              "source": "internal/ghops/errors.go",
+              "commit": "fa8bcc474cef610e38b2ec76c57ed843e3db4782",
+              "sha256": "afb812cbfd772e31933ee79d91906ebdc8c32e188b45da7445c995b6a685e3b5"
+            },
+            {
+              "path": "internal/paths/paths.go",
+              "source": "internal/paths/paths.go",
+              "commit": "fa8bcc474cef610e38b2ec76c57ed843e3db4782",
+              "sha256": "95e0f3ef69379705041d1595d11cc3f0cf414ae65046c31070120f511eb1078a"
+            },
+            {
+              "path": "internal/execx/execx.go",
+              "source": "internal/execx/execx.go",
+              "commit": "fa8bcc474cef610e38b2ec76c57ed843e3db4782",
+              "sha256": "57795e61d33f5cc92e6fdd705a6327a0fbc176c5b350d22c096f5bade5154d00"
+            },
+            {
+              "path": "go.mod",
+              "source": "public/go.mod.txt",
+              "sha256": "ab35cad14d574f7e762603357ed0cdb4a8cd8a1b9e70d31ecf566a2bfccdb208"
+            }
+          ],
+          "expected_failures": []
+        },
+        {
+          "name": "unfixed",
+          "purpose": "Pinned historical unfixed predecessor.",
+          "files": [
+            {
+              "path": "internal/ghops/ghops.go",
+              "source": "internal/ghops/ghops.go",
+              "commit": "279bf5b05547e45e78c596a322f685cc54ed80c6",
+              "sha256": "6d1261d787dd0212a99da33e57a97576855412eda369065450a8c36cc4f59335"
+            },
+            {
+              "path": "internal/ghops/checks.go",
+              "source": "internal/ghops/checks.go",
+              "commit": "279bf5b05547e45e78c596a322f685cc54ed80c6",
+              "sha256": "c50d2dfcf0706e312c81840873d9d8253c0f5bb4b26a0ad17048ce33ec1e1dc1"
+            },
+            {
+              "path": "internal/ghops/errors.go",
+              "source": "internal/ghops/errors.go",
+              "commit": "279bf5b05547e45e78c596a322f685cc54ed80c6",
+              "sha256": "afb812cbfd772e31933ee79d91906ebdc8c32e188b45da7445c995b6a685e3b5"
+            },
+            {
+              "path": "internal/paths/paths.go",
+              "source": "internal/paths/paths.go",
+              "commit": "279bf5b05547e45e78c596a322f685cc54ed80c6",
+              "sha256": "95e0f3ef69379705041d1595d11cc3f0cf414ae65046c31070120f511eb1078a"
+            },
+            {
+              "path": "internal/execx/execx.go",
+              "source": "internal/execx/execx.go",
+              "commit": "279bf5b05547e45e78c596a322f685cc54ed80c6",
+              "sha256": "57795e61d33f5cc92e6fdd705a6327a0fbc176c5b350d22c096f5bade5154d00"
+            },
+            {
+              "path": "go.mod",
+              "source": "public/go.mod.txt",
+              "sha256": "ab35cad14d574f7e762603357ed0cdb4a8cd8a1b9e70d31ecf566a2bfccdb208"
+            }
+          ],
+          "expected_failures": [
+            "TestCorpus/empty"
+          ]
+        },
+        {
+          "name": "bad-malformed",
+          "purpose": "External behavioral contrast for the keyed outcome distinction; semantic answer validity remains independently reviewed.",
+          "files": [
+            {
+              "path": "internal/ghops/ghops.go",
+              "source": "internal/ghops/ghops.go",
+              "commit": "fa8bcc474cef610e38b2ec76c57ed843e3db4782",
+              "sha256": "6d1261d787dd0212a99da33e57a97576855412eda369065450a8c36cc4f59335"
+            },
+            {
+              "path": "internal/ghops/checks.go",
+              "source": "internal/ghops/checks.go",
+              "commit": "fa8bcc474cef610e38b2ec76c57ed843e3db4782",
+              "sha256": "40302da1d180b45808222866bbbb747d9cec897c806c388119ddb35c404a2783"
+            },
+            {
+              "path": "internal/ghops/errors.go",
+              "source": "internal/ghops/errors.go",
+              "commit": "fa8bcc474cef610e38b2ec76c57ed843e3db4782",
+              "sha256": "afb812cbfd772e31933ee79d91906ebdc8c32e188b45da7445c995b6a685e3b5"
+            },
+            {
+              "path": "internal/paths/paths.go",
+              "source": "internal/paths/paths.go",
+              "commit": "fa8bcc474cef610e38b2ec76c57ed843e3db4782",
+              "sha256": "95e0f3ef69379705041d1595d11cc3f0cf414ae65046c31070120f511eb1078a"
+            },
+            {
+              "path": "internal/execx/execx.go",
+              "source": "internal/execx/execx.go",
+              "commit": "fa8bcc474cef610e38b2ec76c57ed843e3db4782",
+              "sha256": "57795e61d33f5cc92e6fdd705a6327a0fbc176c5b350d22c096f5bade5154d00"
+            },
+            {
+              "path": "go.mod",
+              "source": "public/go.mod.txt",
+              "sha256": "ab35cad14d574f7e762603357ed0cdb4a8cd8a1b9e70d31ecf566a2bfccdb208"
+            }
+          ],
+          "patch": {
+            "path": "patch.json",
+            "source": "controls/ci-malformed.json",
+            "sha256": "e66551b35a43a77d8a08e22ffbb4bf8e5066170d96e0c0c8d5dce2fef606d2ec"
+          },
+          "expected_failures": [
+            "TestCorpus/malformed"
+          ]
+        },
+        {
+          "name": "bad-states",
+          "purpose": "External behavioral contrast for the keyed outcome distinction; semantic answer validity remains independently reviewed.",
+          "files": [
+            {
+              "path": "internal/ghops/ghops.go",
+              "source": "internal/ghops/ghops.go",
+              "commit": "fa8bcc474cef610e38b2ec76c57ed843e3db4782",
+              "sha256": "6d1261d787dd0212a99da33e57a97576855412eda369065450a8c36cc4f59335"
+            },
+            {
+              "path": "internal/ghops/checks.go",
+              "source": "internal/ghops/checks.go",
+              "commit": "fa8bcc474cef610e38b2ec76c57ed843e3db4782",
+              "sha256": "40302da1d180b45808222866bbbb747d9cec897c806c388119ddb35c404a2783"
+            },
+            {
+              "path": "internal/ghops/errors.go",
+              "source": "internal/ghops/errors.go",
+              "commit": "fa8bcc474cef610e38b2ec76c57ed843e3db4782",
+              "sha256": "afb812cbfd772e31933ee79d91906ebdc8c32e188b45da7445c995b6a685e3b5"
+            },
+            {
+              "path": "internal/paths/paths.go",
+              "source": "internal/paths/paths.go",
+              "commit": "fa8bcc474cef610e38b2ec76c57ed843e3db4782",
+              "sha256": "95e0f3ef69379705041d1595d11cc3f0cf414ae65046c31070120f511eb1078a"
+            },
+            {
+              "path": "internal/execx/execx.go",
+              "source": "internal/execx/execx.go",
+              "commit": "fa8bcc474cef610e38b2ec76c57ed843e3db4782",
+              "sha256": "57795e61d33f5cc92e6fdd705a6327a0fbc176c5b350d22c096f5bade5154d00"
+            },
+            {
+              "path": "go.mod",
+              "source": "public/go.mod.txt",
+              "sha256": "ab35cad14d574f7e762603357ed0cdb4a8cd8a1b9e70d31ecf566a2bfccdb208"
+            }
+          ],
+          "patch": {
+            "path": "patch.json",
+            "source": "controls/ci-states.json",
+            "sha256": "3b498e53ee3a0d0deb0424becef067bfeb191be538eff2a8da349f81a504588a"
+          },
+          "expected_failures": [
+            "TestCorpus/states"
+          ]
+        },
+        {
+          "name": "alternative",
+          "purpose": "External behavioral contrast for the keyed outcome distinction; semantic answer validity remains independently reviewed.",
+          "files": [
+            {
+              "path": "internal/ghops/ghops.go",
+              "source": "internal/ghops/ghops.go",
+              "commit": "fa8bcc474cef610e38b2ec76c57ed843e3db4782",
+              "sha256": "6d1261d787dd0212a99da33e57a97576855412eda369065450a8c36cc4f59335"
+            },
+            {
+              "path": "internal/ghops/checks.go",
+              "source": "internal/ghops/checks.go",
+              "commit": "fa8bcc474cef610e38b2ec76c57ed843e3db4782",
+              "sha256": "40302da1d180b45808222866bbbb747d9cec897c806c388119ddb35c404a2783"
+            },
+            {
+              "path": "internal/ghops/errors.go",
+              "source": "internal/ghops/errors.go",
+              "commit": "fa8bcc474cef610e38b2ec76c57ed843e3db4782",
+              "sha256": "afb812cbfd772e31933ee79d91906ebdc8c32e188b45da7445c995b6a685e3b5"
+            },
+            {
+              "path": "internal/paths/paths.go",
+              "source": "internal/paths/paths.go",
+              "commit": "fa8bcc474cef610e38b2ec76c57ed843e3db4782",
+              "sha256": "95e0f3ef69379705041d1595d11cc3f0cf414ae65046c31070120f511eb1078a"
+            },
+            {
+              "path": "internal/execx/execx.go",
+              "source": "internal/execx/execx.go",
+              "commit": "fa8bcc474cef610e38b2ec76c57ed843e3db4782",
+              "sha256": "57795e61d33f5cc92e6fdd705a6327a0fbc176c5b350d22c096f5bade5154d00"
+            },
+            {
+              "path": "go.mod",
+              "source": "public/go.mod.txt",
+              "sha256": "ab35cad14d574f7e762603357ed0cdb4a8cd8a1b9e70d31ecf566a2bfccdb208"
+            }
+          ],
+          "patch": {
+            "path": "patch.json",
+            "source": "controls/ci-alternative.json",
+            "sha256": "f62973699b376b8f16140571e28f53dc6d54274ab5991bc3c32e3553402c4518"
+          },
+          "expected_failures": []
+        }
+      ]
+    },
+    {
+      "id": "implement-dev-ignore-lf",
+      "version": 1,
+      "role": "implementation",
+      "partition": "development",
+      "lineage": "gitignore-lf",
+      "difficulty": "mechanical",
+      "source_commit": "b02f61379c3132207ee511317d776eda2ccee84b",
+      "upstream": [
+        "https://github.com/kninetimmy/orch/pull/110",
+        "https://github.com/kninetimmy/orch/commit/b02f61379c3132207ee511317d776eda2ccee84b"
+      ],
+      "selection": "Mechanical native Git policy change, validated by actual checkout bytes rather than text matching.",
+      "inputs": [
+        {
+          "path": ".gitattributes",
+          "source": ".gitattributes",
+          "commit": "b02f61379c3132207ee511317d776eda2ccee84b",
+          "sha256": "e667ca4e0e9415d56351b3c21651bb749da074c5b125fc4e45e33ec8723e63e7"
+        },
+        {
+          "path": ".gitignore",
+          "source": ".gitignore",
+          "commit": "b02f61379c3132207ee511317d776eda2ccee84b",
+          "sha256": "b6e79578f8327aa87774f8f449f18ed36d9e621c499e178d269df5feae433ce2"
+        },
+        {
+          "path": "go.mod",
+          "source": "public/go.mod.txt",
+          "sha256": "ab35cad14d574f7e762603357ed0cdb4a8cd8a1b9e70d31ecf566a2bfccdb208"
+        },
+        {
+          "path": "TASK.md",
+          "source": "cases/implement-dev-ignore-lf/task.md",
+          "sha256": "37cd8d054644d80cf490b42321c6c6f692b76f6ba28b0fbf6657aae5be1f2a63"
+        },
+        {
+          "path": "ROLE.md",
+          "source": "roles/implementation.md",
+          "sha256": "ddb182ca0dd262da829a04d01b126cc88fcd485b0d95b40ed2381336df64ab5f"
+        },
+        {
+          "path": "CONTEXT.md",
+          "source": "public/context.md",
+          "sha256": "6751f3a675b8d23d9f4932fc78201726c4c7d3c2b99c59c4238f4af2530875d3"
+        }
+      ],
+      "packet_sha256": "f5e8eda0fa1554f4d549b6607155d2be4da77c0778cdec1186e22584097a9b1d",
+      "key": {
+        "path": "key.md",
+        "source": "cases/implement-dev-ignore-lf/key.md",
+        "sha256": "292aa3a4350b017c64a8165ca153d77820be2f5d74060851e037aaa0bee73833"
+      },
+      "probe": {
+        "path": "corpus_test.go",
+        "source": "controls/attributes_test.go.txt",
+        "sha256": "aa9d3c13ecf6bb67f259cc638d1cbbf40cbeb6490f48bc6b8e9e994a18537509"
+      },
+      "command": [
+        "go",
+        "test",
+        "-json",
+        "-count=1",
+        "-timeout=30s",
+        "-run=^TestCorpus$",
+        "./..."
+      ],
+      "check_seconds": 120,
+      "alternative": "A separately constructed anchored /.gitignore text eol=lf rule passes for this root-scoped task. Broader nested .gitignore coverage is not required by this packet. Both variants rely on Git, not a custom newline converter.",
+      "controls": [
+        {
+          "name": "reference",
+          "purpose": "Known-good historical code outcome; behavior must be reproduced, merge alone is not correctness.",
+          "files": [
+            {
+              "path": ".gitattributes",
+              "source": ".gitattributes",
+              "commit": "96caec1fcbc52f6ebaa079a2ff1f4c8315a20410",
+              "sha256": "45d4e2bd0ab04d5e042067360eec5c377fdc79d00859d7f4dc5b17777159f990"
+            },
+            {
+              "path": ".gitignore",
+              "source": ".gitignore",
+              "commit": "96caec1fcbc52f6ebaa079a2ff1f4c8315a20410",
+              "sha256": "b6e79578f8327aa87774f8f449f18ed36d9e621c499e178d269df5feae433ce2"
+            },
+            {
+              "path": "go.mod",
+              "source": "public/go.mod.txt",
+              "sha256": "ab35cad14d574f7e762603357ed0cdb4a8cd8a1b9e70d31ecf566a2bfccdb208"
+            }
+          ],
+          "expected_failures": []
+        },
+        {
+          "name": "unfixed",
+          "purpose": "Pinned historical unfixed predecessor.",
+          "files": [
+            {
+              "path": ".gitattributes",
+              "source": ".gitattributes",
+              "commit": "b02f61379c3132207ee511317d776eda2ccee84b",
+              "sha256": "e667ca4e0e9415d56351b3c21651bb749da074c5b125fc4e45e33ec8723e63e7"
+            },
+            {
+              "path": ".gitignore",
+              "source": ".gitignore",
+              "commit": "b02f61379c3132207ee511317d776eda2ccee84b",
+              "sha256": "b6e79578f8327aa87774f8f449f18ed36d9e621c499e178d269df5feae433ce2"
+            },
+            {
+              "path": "go.mod",
+              "source": "public/go.mod.txt",
+              "sha256": "ab35cad14d574f7e762603357ed0cdb4a8cd8a1b9e70d31ecf566a2bfccdb208"
+            }
+          ],
+          "expected_failures": [
+            "TestCorpus/ignore-lf"
+          ]
+        },
+        {
+          "name": "bad-preserved",
+          "purpose": "External behavioral contrast for the keyed outcome distinction; semantic answer validity remains independently reviewed.",
+          "files": [
+            {
+              "path": ".gitattributes",
+              "source": ".gitattributes",
+              "commit": "96caec1fcbc52f6ebaa079a2ff1f4c8315a20410",
+              "sha256": "45d4e2bd0ab04d5e042067360eec5c377fdc79d00859d7f4dc5b17777159f990"
+            },
+            {
+              "path": ".gitignore",
+              "source": ".gitignore",
+              "commit": "96caec1fcbc52f6ebaa079a2ff1f4c8315a20410",
+              "sha256": "b6e79578f8327aa87774f8f449f18ed36d9e621c499e178d269df5feae433ce2"
+            },
+            {
+              "path": "go.mod",
+              "source": "public/go.mod.txt",
+              "sha256": "ab35cad14d574f7e762603357ed0cdb4a8cd8a1b9e70d31ecf566a2bfccdb208"
+            }
+          ],
+          "patch": {
+            "path": "patch.json",
+            "source": "controls/attributes-preserved.json",
+            "sha256": "f90a774033ac1e0703e8cfc67f9bf42c3a0f77a3903d5466b4c0d1c9e0e619fb"
+          },
+          "expected_failures": [
+            "TestCorpus/preserved"
+          ]
+        },
+        {
+          "name": "alternative",
+          "purpose": "External behavioral contrast for the keyed outcome distinction; semantic answer validity remains independently reviewed.",
+          "files": [
+            {
+              "path": ".gitattributes",
+              "source": ".gitattributes",
+              "commit": "96caec1fcbc52f6ebaa079a2ff1f4c8315a20410",
+              "sha256": "45d4e2bd0ab04d5e042067360eec5c377fdc79d00859d7f4dc5b17777159f990"
+            },
+            {
+              "path": ".gitignore",
+              "source": ".gitignore",
+              "commit": "96caec1fcbc52f6ebaa079a2ff1f4c8315a20410",
+              "sha256": "b6e79578f8327aa87774f8f449f18ed36d9e621c499e178d269df5feae433ce2"
+            },
+            {
+              "path": "go.mod",
+              "source": "public/go.mod.txt",
+              "sha256": "ab35cad14d574f7e762603357ed0cdb4a8cd8a1b9e70d31ecf566a2bfccdb208"
+            }
+          ],
+          "patch": {
+            "path": "patch.json",
+            "source": "controls/attributes-alternative.json",
+            "sha256": "15e9b0793384fcf26025e22d61bc97c40a2ea88c699ce00d2e93c419fc403816"
+          },
+          "expected_failures": []
+        }
+      ]
+    },
+    {
+      "id": "implement-held-capture",
+      "version": 1,
+      "role": "implementation",
+      "partition": "held-out",
+      "lineage": "exact-child-rollout",
+      "difficulty": "demanding",
+      "source_commit": "8e0945835db36d2634bc07bd4a2fcc4804ec3324",
+      "upstream": [
+        "https://github.com/kninetimmy/orch/pull/148",
+        "https://github.com/kninetimmy/orch/commit/8e0945835db36d2634bc07bd4a2fcc4804ec3324"
+      ],
+      "selection": "Identity-first parsing with fail-closed matched-child validation, uniqueness and resume-delta invariants.",
+      "inputs": [
+        {
+          "path": "internal/codexusage/capture.go",
+          "source": "internal/codexusage/capture.go",
+          "commit": "8e0945835db36d2634bc07bd4a2fcc4804ec3324",
+          "sha256": "c2a8db09ffb7201223982be7c69c0fee380ee004460acb009f705e34c33e3011"
+        },
+        {
+          "path": "go.mod",
+          "source": "public/go.mod.txt",
+          "sha256": "ab35cad14d574f7e762603357ed0cdb4a8cd8a1b9e70d31ecf566a2bfccdb208"
+        },
+        {
+          "path": "TASK.md",
+          "source": "cases/implement-held-capture/task.md",
+          "sha256": "e98860002dc5dc68ef1654e2a3e740f948a9d74f6e5c48ad28a76fedfc11dad2"
+        },
+        {
+          "path": "ROLE.md",
+          "source": "roles/implementation.md",
+          "sha256": "ddb182ca0dd262da829a04d01b126cc88fcd485b0d95b40ed2381336df64ab5f"
+        },
+        {
+          "path": "CONTEXT.md",
+          "source": "public/context.md",
+          "sha256": "6751f3a675b8d23d9f4932fc78201726c4c7d3c2b99c59c4238f4af2530875d3"
+        }
+      ],
+      "packet_sha256": "c099e8b187c1b94282487839ff602b777cd9eb41458f9c96f5dfc07c451c14a3",
+      "key": {
+        "path": "key.md",
+        "source": "cases/implement-held-capture/key.md",
+        "sha256": "6ef57972d9751f61d59eaceb89d03d510165ec1e171ebfac1033d4ca849e81bb"
+      },
+      "probe": {
+        "path": "internal/codexusage/corpus_test.go",
+        "source": "controls/capture_test.go.txt",
+        "sha256": "fc4ff7bb624ecd2cf3f8c26138f1ab5eb7ebdfcc74f150cd0ac6154b00de4770"
+      },
+      "command": [
+        "go",
+        "test",
+        "-json",
+        "-count=1",
+        "-timeout=30s",
+        "-run=^TestCorpus$",
+        "./..."
+      ],
+      "check_seconds": 120,
+      "alternative": "A separately constructed collection-based TotalTokens walks the same pinned parser, rejects any identified-invalid input, then accepts exactly one total and validates the baseline before subtraction. This changes the aggregation strategy while preserving the required behavior; it does not independently revalidate every parser branch.",
+      "controls": [
+        {
+          "name": "reference",
+          "purpose": "Known-good historical code outcome; behavior must be reproduced, merge alone is not correctness.",
+          "files": [
+            {
+              "path": "internal/codexusage/capture.go",
+              "source": "internal/codexusage/capture.go",
+              "commit": "46f9023375a7d051d5c721b8787603e8622199b0",
+              "sha256": "9d23d1f0d2329556377185dc882f8a0d5902286b17ce79401799f68e8b73dfef"
+            },
+            {
+              "path": "go.mod",
+              "source": "public/go.mod.txt",
+              "sha256": "ab35cad14d574f7e762603357ed0cdb4a8cd8a1b9e70d31ecf566a2bfccdb208"
+            }
+          ],
+          "expected_failures": []
+        },
+        {
+          "name": "unfixed",
+          "purpose": "Pinned historical unfixed predecessor.",
+          "files": [
+            {
+              "path": "internal/codexusage/capture.go",
+              "source": "internal/codexusage/capture.go",
+              "commit": "8e0945835db36d2634bc07bd4a2fcc4804ec3324",
+              "sha256": "c2a8db09ffb7201223982be7c69c0fee380ee004460acb009f705e34c33e3011"
+            },
+            {
+              "path": "go.mod",
+              "source": "public/go.mod.txt",
+              "sha256": "ab35cad14d574f7e762603357ed0cdb4a8cd8a1b9e70d31ecf566a2bfccdb208"
+            }
+          ],
+          "expected_failures": [
+            "TestCorpus/unrelated"
+          ]
+        },
+        {
+          "name": "bad-identified",
+          "purpose": "External behavioral contrast for the keyed outcome distinction; semantic answer validity remains independently reviewed.",
+          "files": [
+            {
+              "path": "internal/codexusage/capture.go",
+              "source": "internal/codexusage/capture.go",
+              "commit": "46f9023375a7d051d5c721b8787603e8622199b0",
+              "sha256": "9d23d1f0d2329556377185dc882f8a0d5902286b17ce79401799f68e8b73dfef"
+            },
+            {
+              "path": "go.mod",
+              "source": "public/go.mod.txt",
+              "sha256": "ab35cad14d574f7e762603357ed0cdb4a8cd8a1b9e70d31ecf566a2bfccdb208"
+            }
+          ],
+          "patch": {
+            "path": "patch.json",
+            "source": "controls/capture-identified.json",
+            "sha256": "116b5aa97dda8dc4dfe8aeecbcdcf0c430da640c2924773ab91c00d444484c16"
+          },
+          "expected_failures": [
+            "TestCorpus/identified"
+          ]
+        },
+        {
+          "name": "bad-unique",
+          "purpose": "External behavioral contrast for the keyed outcome distinction; semantic answer validity remains independently reviewed.",
+          "files": [
+            {
+              "path": "internal/codexusage/capture.go",
+              "source": "internal/codexusage/capture.go",
+              "commit": "46f9023375a7d051d5c721b8787603e8622199b0",
+              "sha256": "9d23d1f0d2329556377185dc882f8a0d5902286b17ce79401799f68e8b73dfef"
+            },
+            {
+              "path": "go.mod",
+              "source": "public/go.mod.txt",
+              "sha256": "ab35cad14d574f7e762603357ed0cdb4a8cd8a1b9e70d31ecf566a2bfccdb208"
+            }
+          ],
+          "patch": {
+            "path": "patch.json",
+            "source": "controls/capture-unique.json",
+            "sha256": "8b8fae8912d416044e9c6c5afa4ad2536f88b38266720514c99bd8355d1cf596"
+          },
+          "expected_failures": [
+            "TestCorpus/unique"
+          ]
+        },
+        {
+          "name": "bad-attribution",
+          "purpose": "External bad control ignores the requested parent/task and reports the fixture child's total. This is not an alternative correct solution.",
+          "files": [
+            {
+              "path": "internal/codexusage/capture.go",
+              "source": "internal/codexusage/capture.go",
+              "commit": "46f9023375a7d051d5c721b8787603e8622199b0",
+              "sha256": "9d23d1f0d2329556377185dc882f8a0d5902286b17ce79401799f68e8b73dfef"
+            },
+            {
+              "path": "go.mod",
+              "source": "public/go.mod.txt",
+              "sha256": "ab35cad14d574f7e762603357ed0cdb4a8cd8a1b9e70d31ecf566a2bfccdb208"
+            }
+          ],
+          "patch": {
+            "path": "patch.json",
+            "source": "controls/capture-attribution.json",
+            "sha256": "1ee72ebc10fec4ad9479a1b36c742a3e4d472035676291f393fdb3743bfbc79f"
+          },
+          "expected_failures": [
+            "TestCorpus/unique"
+          ]
+        },
+        {
+          "name": "bad-delta",
+          "purpose": "External behavioral contrast for the keyed outcome distinction; semantic answer validity remains independently reviewed.",
+          "files": [
+            {
+              "path": "internal/codexusage/capture.go",
+              "source": "internal/codexusage/capture.go",
+              "commit": "46f9023375a7d051d5c721b8787603e8622199b0",
+              "sha256": "9d23d1f0d2329556377185dc882f8a0d5902286b17ce79401799f68e8b73dfef"
+            },
+            {
+              "path": "go.mod",
+              "source": "public/go.mod.txt",
+              "sha256": "ab35cad14d574f7e762603357ed0cdb4a8cd8a1b9e70d31ecf566a2bfccdb208"
+            }
+          ],
+          "patch": {
+            "path": "patch.json",
+            "source": "controls/capture-delta.json",
+            "sha256": "c70e8c9eb8fea1f8e920c109e7c789077297b733bc21741bd8504fcfe1919d9e"
+          },
+          "expected_failures": [
+            "TestCorpus/delta"
+          ]
+        },
+        {
+          "name": "alternative",
+          "purpose": "External behavioral contrast for the keyed outcome distinction; semantic answer validity remains independently reviewed.",
+          "files": [
+            {
+              "path": "internal/codexusage/capture.go",
+              "source": "internal/codexusage/capture.go",
+              "commit": "46f9023375a7d051d5c721b8787603e8622199b0",
+              "sha256": "9d23d1f0d2329556377185dc882f8a0d5902286b17ce79401799f68e8b73dfef"
+            },
+            {
+              "path": "go.mod",
+              "source": "public/go.mod.txt",
+              "sha256": "ab35cad14d574f7e762603357ed0cdb4a8cd8a1b9e70d31ecf566a2bfccdb208"
+            }
+          ],
+          "patch": {
+            "path": "patch.json",
+            "source": "controls/capture-alternative.json",
+            "sha256": "76c6d114c0742620ce7f48298da8dc95290e649ed44aee83e65ede3e6e882daf"
+          },
+          "expected_failures": []
+        }
+      ]
+    },
+    {
+      "id": "implement-held-effort-window",
+      "version": 1,
+      "role": "implementation",
+      "partition": "held-out",
+      "lineage": "effort-policy",
+      "difficulty": "ordinary",
+      "source_commit": "fc9780380e5c9f99da720e3f7ec532d5e84ea9c4",
+      "upstream": [
+        "https://github.com/kninetimmy/orch/pull/210",
+        "https://github.com/kninetimmy/orch/commit/fc9780380e5c9f99da720e3f7ec532d5e84ea9c4"
+      ],
+      "selection": "Bounded default-containing option window with unchanged typed-value domain; conservative effort-policy grouping.",
+      "inputs": [
+        {
+          "path": "internal/interview/sequence.go",
+          "source": "internal/interview/sequence.go",
+          "commit": "fc9780380e5c9f99da720e3f7ec532d5e84ea9c4",
+          "sha256": "659d9a19ebbde7ff4bbd4c9edce0e3691d979a88be2a1fe5e2f3208bb0fd42db"
+        },
+        {
+          "path": "internal/interview/configurelocal.go",
+          "source": "internal/interview/configurelocal.go",
+          "commit": "fc9780380e5c9f99da720e3f7ec532d5e84ea9c4",
+          "sha256": "190e07cf75cac3f4eab9ee1539fd687450c23e3fea49cce8c2be66089ffb7db4"
+        },
+        {
+          "path": "internal/question/question.go",
+          "source": "internal/question/question.go",
+          "commit": "fc9780380e5c9f99da720e3f7ec532d5e84ea9c4",
+          "sha256": "4a8df63865058bc11ee1af0a7b4b19d8e867cbb4ca8fc37ad76e927b58afddcf"
+        },
+        {
+          "path": "go.mod",
+          "source": "public/go.mod.txt",
+          "sha256": "ab35cad14d574f7e762603357ed0cdb4a8cd8a1b9e70d31ecf566a2bfccdb208"
+        },
+        {
+          "path": "TASK.md",
+          "source": "cases/implement-held-effort-window/task.md",
+          "sha256": "8bc0a53c46b07b1a2587dc8e3ac0b8abe0fda08d3ae1073cd374ae4990bcbdef"
+        },
+        {
+          "path": "ROLE.md",
+          "source": "roles/implementation.md",
+          "sha256": "ddb182ca0dd262da829a04d01b126cc88fcd485b0d95b40ed2381336df64ab5f"
+        },
+        {
+          "path": "CONTEXT.md",
+          "source": "public/context.md",
+          "sha256": "6751f3a675b8d23d9f4932fc78201726c4c7d3c2b99c59c4238f4af2530875d3"
+        }
+      ],
+      "packet_sha256": "4de2f4589aa6b226d326bbf81b10bc54239958fc2ac413953d4a8ad100210323",
+      "key": {
+        "path": "key.md",
+        "source": "cases/implement-held-effort-window/key.md",
+        "sha256": "39d9cb7666f86c08925ab961088a4ba39ed612f79e0d3d631cb132815490f60d"
+      },
+      "probe": {
+        "path": "internal/interview/corpus_test.go",
+        "source": "controls/effort_test.go.txt",
+        "sha256": "ec0b05a550a51ca5194faea8c5666ddb3525b4f5a6655c374fec97ba4c116750"
+      },
+      "command": [
+        "go",
+        "test",
+        "-json",
+        "-count=1",
+        "-timeout=30s",
+        "-run=^TestCorpus$",
+        "./..."
+      ],
+      "check_seconds": 120,
+      "alternative": "A separately constructed start-index algorithm uses max(0,index-4+1) and a bounded end. The controls compile exact AST declarations from the two full pinned context files and the real question types; declaration extraction and omitted whole-interview behavior are disclosed.",
+      "controls": [
+        {
+          "name": "reference",
+          "purpose": "Known-good historical code outcome; behavior must be reproduced, merge alone is not correctness.",
+          "files": [
+            {
+              "path": "internal/interview/sequence.go",
+              "source": "internal/interview/sequence.go",
+              "commit": "cfd5807fc5d3ccd4bf400b1965facda339710567",
+              "sha256": "80ead0fb3e5a9da50018848a0dc1d1cd752e4e5e966e2bec6063249f390d1581"
+            },
+            {
+              "path": "internal/interview/configurelocal.go",
+              "source": "internal/interview/configurelocal.go",
+              "commit": "cfd5807fc5d3ccd4bf400b1965facda339710567",
+              "sha256": "d3dcc8ef951fce1f012a42752d090c2b67be5e495109a9b9956eba7ed691eb48"
+            },
+            {
+              "path": "internal/question/question.go",
+              "source": "internal/question/question.go",
+              "commit": "cfd5807fc5d3ccd4bf400b1965facda339710567",
+              "sha256": "4a8df63865058bc11ee1af0a7b4b19d8e867cbb4ca8fc37ad76e927b58afddcf"
+            },
+            {
+              "path": "go.mod",
+              "source": "public/go.mod.txt",
+              "sha256": "ab35cad14d574f7e762603357ed0cdb4a8cd8a1b9e70d31ecf566a2bfccdb208"
+            }
+          ],
+          "expected_failures": []
+        },
+        {
+          "name": "unfixed",
+          "purpose": "Pinned historical unfixed predecessor.",
+          "files": [
+            {
+              "path": "internal/interview/sequence.go",
+              "source": "internal/interview/sequence.go",
+              "commit": "fc9780380e5c9f99da720e3f7ec532d5e84ea9c4",
+              "sha256": "659d9a19ebbde7ff4bbd4c9edce0e3691d979a88be2a1fe5e2f3208bb0fd42db"
+            },
+            {
+              "path": "internal/interview/configurelocal.go",
+              "source": "internal/interview/configurelocal.go",
+              "commit": "fc9780380e5c9f99da720e3f7ec532d5e84ea9c4",
+              "sha256": "190e07cf75cac3f4eab9ee1539fd687450c23e3fea49cce8c2be66089ffb7db4"
+            },
+            {
+              "path": "internal/question/question.go",
+              "source": "internal/question/question.go",
+              "commit": "fc9780380e5c9f99da720e3f7ec532d5e84ea9c4",
+              "sha256": "4a8df63865058bc11ee1af0a7b4b19d8e867cbb4ca8fc37ad76e927b58afddcf"
+            },
+            {
+              "path": "go.mod",
+              "source": "public/go.mod.txt",
+              "sha256": "ab35cad14d574f7e762603357ed0cdb4a8cd8a1b9e70d31ecf566a2bfccdb208"
+            }
+          ],
+          "expected_failures": [
+            "TestCorpus/window",
+            "TestCorpus/labels"
+          ]
+        },
+        {
+          "name": "bad-labels",
+          "purpose": "External behavioral contrast for the keyed outcome distinction; semantic answer validity remains independently reviewed.",
+          "files": [
+            {
+              "path": "internal/interview/sequence.go",
+              "source": "internal/interview/sequence.go",
+              "commit": "cfd5807fc5d3ccd4bf400b1965facda339710567",
+              "sha256": "80ead0fb3e5a9da50018848a0dc1d1cd752e4e5e966e2bec6063249f390d1581"
+            },
+            {
+              "path": "internal/interview/configurelocal.go",
+              "source": "internal/interview/configurelocal.go",
+              "commit": "cfd5807fc5d3ccd4bf400b1965facda339710567",
+              "sha256": "d3dcc8ef951fce1f012a42752d090c2b67be5e495109a9b9956eba7ed691eb48"
+            },
+            {
+              "path": "internal/question/question.go",
+              "source": "internal/question/question.go",
+              "commit": "cfd5807fc5d3ccd4bf400b1965facda339710567",
+              "sha256": "4a8df63865058bc11ee1af0a7b4b19d8e867cbb4ca8fc37ad76e927b58afddcf"
+            },
+            {
+              "path": "go.mod",
+              "source": "public/go.mod.txt",
+              "sha256": "ab35cad14d574f7e762603357ed0cdb4a8cd8a1b9e70d31ecf566a2bfccdb208"
+            }
+          ],
+          "patch": {
+            "path": "patch.json",
+            "source": "controls/effort-labels.json",
+            "sha256": "f5a1fa4e82d4a5a1c20782d1845709740e31befaeaa5a112f056722548a2216a"
+          },
+          "expected_failures": [
+            "TestCorpus/labels"
+          ]
+        },
+        {
+          "name": "bad-typed",
+          "purpose": "External behavioral contrast for the keyed outcome distinction; semantic answer validity remains independently reviewed.",
+          "files": [
+            {
+              "path": "internal/interview/sequence.go",
+              "source": "internal/interview/sequence.go",
+              "commit": "cfd5807fc5d3ccd4bf400b1965facda339710567",
+              "sha256": "80ead0fb3e5a9da50018848a0dc1d1cd752e4e5e966e2bec6063249f390d1581"
+            },
+            {
+              "path": "internal/interview/configurelocal.go",
+              "source": "internal/interview/configurelocal.go",
+              "commit": "cfd5807fc5d3ccd4bf400b1965facda339710567",
+              "sha256": "d3dcc8ef951fce1f012a42752d090c2b67be5e495109a9b9956eba7ed691eb48"
+            },
+            {
+              "path": "internal/question/question.go",
+              "source": "internal/question/question.go",
+              "commit": "cfd5807fc5d3ccd4bf400b1965facda339710567",
+              "sha256": "4a8df63865058bc11ee1af0a7b4b19d8e867cbb4ca8fc37ad76e927b58afddcf"
+            },
+            {
+              "path": "go.mod",
+              "source": "public/go.mod.txt",
+              "sha256": "ab35cad14d574f7e762603357ed0cdb4a8cd8a1b9e70d31ecf566a2bfccdb208"
+            }
+          ],
+          "patch": {
+            "path": "patch.json",
+            "source": "controls/effort-typed.json",
+            "sha256": "9e7a3ea77f74c75ed89b8f599cc5f17497f9ea218369ad23319bd3e0fe210c62"
+          },
+          "expected_failures": [
+            "TestCorpus/typed"
+          ]
+        },
+        {
+          "name": "alternative",
+          "purpose": "External behavioral contrast for the keyed outcome distinction; semantic answer validity remains independently reviewed.",
+          "files": [
+            {
+              "path": "internal/interview/sequence.go",
+              "source": "internal/interview/sequence.go",
+              "commit": "cfd5807fc5d3ccd4bf400b1965facda339710567",
+              "sha256": "80ead0fb3e5a9da50018848a0dc1d1cd752e4e5e966e2bec6063249f390d1581"
+            },
+            {
+              "path": "internal/interview/configurelocal.go",
+              "source": "internal/interview/configurelocal.go",
+              "commit": "cfd5807fc5d3ccd4bf400b1965facda339710567",
+              "sha256": "d3dcc8ef951fce1f012a42752d090c2b67be5e495109a9b9956eba7ed691eb48"
+            },
+            {
+              "path": "internal/question/question.go",
+              "source": "internal/question/question.go",
+              "commit": "cfd5807fc5d3ccd4bf400b1965facda339710567",
+              "sha256": "4a8df63865058bc11ee1af0a7b4b19d8e867cbb4ca8fc37ad76e927b58afddcf"
+            },
+            {
+              "path": "go.mod",
+              "source": "public/go.mod.txt",
+              "sha256": "ab35cad14d574f7e762603357ed0cdb4a8cd8a1b9e70d31ecf566a2bfccdb208"
+            }
+          ],
+          "patch": {
+            "path": "patch.json",
+            "source": "controls/effort-alternative.json",
+            "sha256": "2e8fb4915d2feedab3f5f1781b6eeac977a6f22046ca5a18c2694edfbaec995a"
+          },
+          "expected_failures": []
+        }
+      ]
+    },
+    {
+      "id": "review-dev-risk-clean",
+      "version": 1,
+      "role": "review",
+      "partition": "development",
+      "lineage": "risk-domain-api",
+      "difficulty": "ordinary",
+      "classification": "clean",
+      "source_commit": "82f88806aa8f86369e6b26ecabd5109798a8036f",
+      "upstream": [
+        "https://github.com/kninetimmy/orch/pull/9",
+        "https://github.com/kninetimmy/orch/commit/82f88806aa8f86369e6b26ecabd5109798a8036f"
+      ],
+      "selection": "Clean closed-enum API with ordering and slice ownership; scoped to risk.go rather than all of routing.",
+      "inputs": [
+        {
+          "path": "internal/routing/risk.go",
+          "source": "internal/routing/risk.go",
+          "commit": "82f88806aa8f86369e6b26ecabd5109798a8036f",
+          "sha256": "dc84e8a07cc40f7c08644c150cff56bbe258b7595b91b2c7a7b5ef55ab3501aa"
+        },
+        {
+          "path": "go.mod",
+          "source": "public/go.mod.txt",
+          "sha256": "ab35cad14d574f7e762603357ed0cdb4a8cd8a1b9e70d31ecf566a2bfccdb208"
+        },
+        {
+          "path": "TASK.md",
+          "source": "cases/review-dev-risk-clean/task.md",
+          "sha256": "69a300045e4f9940907ac8fbdfa285c9400187e9873ebed2cf57b55b64ee845d"
+        },
+        {
+          "path": "ROLE.md",
+          "source": "roles/review.md",
+          "sha256": "c8f7d1640aa600509fad07c1fa832320645e7a082e0e328f51f5b407815c61ac"
+        },
+        {
+          "path": "CONTEXT.md",
+          "source": "public/context.md",
+          "sha256": "6751f3a675b8d23d9f4932fc78201726c4c7d3c2b99c59c4238f4af2530875d3"
+        }
+      ],
+      "packet_sha256": "4b2d3a9407ee18094aa5f4fb4d33dedb266863ebc1d3d8c2acc58fa9ea4204a7",
+      "key": {
+        "path": "key.md",
+        "source": "cases/review-dev-risk-clean/key.md",
+        "sha256": "f4cdd2f55afbcb82d1a879077eeea549f95611d6f8334e1a6efe634fa059b0cb"
+      },
+      "probe": {
+        "path": "internal/routing/corpus_test.go",
+        "source": "controls/risk_test.go.txt",
+        "sha256": "0f56dee5f7cb5f51eb333b2f2c2fb35deb85800eef79d729d3171a2f976fdd9c"
+      },
+      "command": [
+        "go",
+        "test",
+        "-json",
+        "-count=1",
+        "-timeout=30s",
+        "-run=^TestCorpus$",
+        "./..."
+      ],
+      "check_seconds": 120,
+      "alternative": "A differently written approval using source analysis rather than reproduction is acceptable. A nonblocking suggestion to keep ordering tests is advisory, not a blocker. The fixed source has one correct verdict; a different implementation is not meaningful for this review packet.",
+      "controls": [
+        {
+          "name": "reference",
+          "purpose": "Pinned source backing the known-good supported conclusions/approval.",
+          "files": [
+            {
+              "path": "internal/routing/risk.go",
+              "source": "internal/routing/risk.go",
+              "commit": "82f88806aa8f86369e6b26ecabd5109798a8036f",
+              "sha256": "dc84e8a07cc40f7c08644c150cff56bbe258b7595b91b2c7a7b5ef55ab3501aa"
+            },
+            {
+              "path": "go.mod",
+              "source": "public/go.mod.txt",
+              "sha256": "ab35cad14d574f7e762603357ed0cdb4a8cd8a1b9e70d31ecf566a2bfccdb208"
+            }
+          ],
+          "expected_failures": []
+        },
+        {
+          "name": "contrast-unknown",
+          "purpose": "External behavioral contrast for the keyed outcome distinction; semantic answer validity remains independently reviewed.",
+          "files": [
+            {
+              "path": "internal/routing/risk.go",
+              "source": "internal/routing/risk.go",
+              "commit": "82f88806aa8f86369e6b26ecabd5109798a8036f",
+              "sha256": "dc84e8a07cc40f7c08644c150cff56bbe258b7595b91b2c7a7b5ef55ab3501aa"
+            },
+            {
+              "path": "go.mod",
+              "source": "public/go.mod.txt",
+              "sha256": "ab35cad14d574f7e762603357ed0cdb4a8cd8a1b9e70d31ecf566a2bfccdb208"
+            }
+          ],
+          "patch": {
+            "path": "patch.json",
+            "source": "controls/risk-closed.json",
+            "sha256": "f9ed92de1eec20c2754d196b4f3af1505627de3426b62b4a0cac8b2bd9c0007f"
+          },
+          "expected_failures": [
+            "TestCorpus/closed"
+          ]
+        },
+        {
+          "name": "contrast-order",
+          "purpose": "External behavioral contrast for the keyed outcome distinction; semantic answer validity remains independently reviewed.",
+          "files": [
+            {
+              "path": "internal/routing/risk.go",
+              "source": "internal/routing/risk.go",
+              "commit": "82f88806aa8f86369e6b26ecabd5109798a8036f",
+              "sha256": "dc84e8a07cc40f7c08644c150cff56bbe258b7595b91b2c7a7b5ef55ab3501aa"
+            },
+            {
+              "path": "go.mod",
+              "source": "public/go.mod.txt",
+              "sha256": "ab35cad14d574f7e762603357ed0cdb4a8cd8a1b9e70d31ecf566a2bfccdb208"
+            }
+          ],
+          "patch": {
+            "path": "patch.json",
+            "source": "controls/risk-order.json",
+            "sha256": "7da4c2d34737a966a3942048d44b08c5ff3c6d5a64920e3a986631a3f95ea19c"
+          },
+          "expected_failures": [
+            "TestCorpus/order"
+          ]
+        },
+        {
+          "name": "contrast-shared",
+          "purpose": "External behavioral contrast for the keyed outcome distinction; semantic answer validity remains independently reviewed.",
+          "files": [
+            {
+              "path": "internal/routing/risk.go",
+              "source": "internal/routing/risk.go",
+              "commit": "82f88806aa8f86369e6b26ecabd5109798a8036f",
+              "sha256": "dc84e8a07cc40f7c08644c150cff56bbe258b7595b91b2c7a7b5ef55ab3501aa"
+            },
+            {
+              "path": "go.mod",
+              "source": "public/go.mod.txt",
+              "sha256": "ab35cad14d574f7e762603357ed0cdb4a8cd8a1b9e70d31ecf566a2bfccdb208"
+            }
+          ],
+          "patch": {
+            "path": "patch.json",
+            "source": "controls/risk-copy.json",
+            "sha256": "9fcb6702b2242b16c23c27aff7f00a015ad0f7f3f9531849e3951f28f424cc4f"
+          },
+          "expected_failures": [
+            "TestCorpus/copy"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "review-dev-ci-defective",
+      "version": 1,
+      "role": "review",
+      "partition": "development",
+      "lineage": "required-ci-empty",
+      "difficulty": "ordinary",
+      "classification": "defective",
+      "source_commit": "51d04dbd786a5645b513493af15485a11f88666a",
+      "upstream": [
+        "https://github.com/kninetimmy/orch/pull/6",
+        "https://github.com/kninetimmy/orch/commit/51d04dbd786a5645b513493af15485a11f88666a"
+      ],
+      "selection": "Historical new required-CI adapter with an observable empty-output defect; same lineage as development implementation.",
+      "inputs": [
+        {
+          "path": "internal/ghops/ghops.go",
+          "source": "internal/ghops/ghops.go",
+          "commit": "51d04dbd786a5645b513493af15485a11f88666a",
+          "sha256": "6d1261d787dd0212a99da33e57a97576855412eda369065450a8c36cc4f59335"
+        },
+        {
+          "path": "internal/ghops/checks.go",
+          "source": "internal/ghops/checks.go",
+          "commit": "51d04dbd786a5645b513493af15485a11f88666a",
+          "sha256": "b913ba8ecd63bb8af3e3d5a7821aeadf3f2691b1382929e002fec7094259d56d"
+        },
+        {
+          "path": "internal/ghops/errors.go",
+          "source": "internal/ghops/errors.go",
+          "commit": "51d04dbd786a5645b513493af15485a11f88666a",
+          "sha256": "afb812cbfd772e31933ee79d91906ebdc8c32e188b45da7445c995b6a685e3b5"
+        },
+        {
+          "path": "internal/paths/paths.go",
+          "source": "internal/paths/paths.go",
+          "commit": "51d04dbd786a5645b513493af15485a11f88666a",
+          "sha256": "79d0eae9406bdf9a2544203fe5b2aa40f8f1fb1750f9a17feb7da87418738ccb"
+        },
+        {
+          "path": "internal/execx/execx.go",
+          "source": "internal/execx/execx.go",
+          "commit": "51d04dbd786a5645b513493af15485a11f88666a",
+          "sha256": "57795e61d33f5cc92e6fdd705a6327a0fbc176c5b350d22c096f5bade5154d00"
+        },
+        {
+          "path": "go.mod",
+          "source": "public/go.mod.txt",
+          "sha256": "ab35cad14d574f7e762603357ed0cdb4a8cd8a1b9e70d31ecf566a2bfccdb208"
+        },
+        {
+          "path": "TASK.md",
+          "source": "cases/review-dev-ci-defective/task.md",
+          "sha256": "e087f99928c8663f84c93f2bbbeaa39561907e40146375c6ddfe4cfecfb7772a"
+        },
+        {
+          "path": "ROLE.md",
+          "source": "roles/review.md",
+          "sha256": "c8f7d1640aa600509fad07c1fa832320645e7a082e0e328f51f5b407815c61ac"
+        },
+        {
+          "path": "CONTEXT.md",
+          "source": "public/context.md",
+          "sha256": "6751f3a675b8d23d9f4932fc78201726c4c7d3c2b99c59c4238f4af2530875d3"
+        }
+      ],
+      "packet_sha256": "93d2965f7d91e9a79faf6494a50a867f1669a64dacb9e2e55b82233592673026",
+      "key": {
+        "path": "key.md",
+        "source": "cases/review-dev-ci-defective/key.md",
+        "sha256": "52e3a247c3dcd75d5f4a0007a647b9c6b590a51f96516dbe9367d6b2c17c96fa"
+      },
+      "probe": {
+        "path": "internal/ghops/corpus_test.go",
+        "source": "controls/ci_test.go.txt",
+        "sha256": "7dad82f4b499cc5654717934c03a4f0d9094aead6337dfad4aef12c883cab4b4"
+      },
+      "command": [
+        "go",
+        "test",
+        "-json",
+        "-count=1",
+        "-timeout=30s",
+        "-run=^TestCorpus$",
+        "./..."
+      ],
+      "check_seconds": 120,
+      "alternative": "A report that describes the empty and whitespace triggers as one defect, with either the exact source or injected-runner evidence, is acceptable. A suggested guard or [] normalization can be advisory. The repaired historical and alternative controls establish that blocking CI-EMPTY is justified.",
+      "controls": [
+        {
+          "name": "reference",
+          "purpose": "Pinned defective change backing the known-good rejecting review and refuting a false approval.",
+          "files": [
+            {
+              "path": "internal/ghops/ghops.go",
+              "source": "internal/ghops/ghops.go",
+              "commit": "51d04dbd786a5645b513493af15485a11f88666a",
+              "sha256": "6d1261d787dd0212a99da33e57a97576855412eda369065450a8c36cc4f59335"
+            },
+            {
+              "path": "internal/ghops/checks.go",
+              "source": "internal/ghops/checks.go",
+              "commit": "51d04dbd786a5645b513493af15485a11f88666a",
+              "sha256": "b913ba8ecd63bb8af3e3d5a7821aeadf3f2691b1382929e002fec7094259d56d"
+            },
+            {
+              "path": "internal/ghops/errors.go",
+              "source": "internal/ghops/errors.go",
+              "commit": "51d04dbd786a5645b513493af15485a11f88666a",
+              "sha256": "afb812cbfd772e31933ee79d91906ebdc8c32e188b45da7445c995b6a685e3b5"
+            },
+            {
+              "path": "internal/paths/paths.go",
+              "source": "internal/paths/paths.go",
+              "commit": "51d04dbd786a5645b513493af15485a11f88666a",
+              "sha256": "79d0eae9406bdf9a2544203fe5b2aa40f8f1fb1750f9a17feb7da87418738ccb"
+            },
+            {
+              "path": "internal/execx/execx.go",
+              "source": "internal/execx/execx.go",
+              "commit": "51d04dbd786a5645b513493af15485a11f88666a",
+              "sha256": "57795e61d33f5cc92e6fdd705a6327a0fbc176c5b350d22c096f5bade5154d00"
+            },
+            {
+              "path": "go.mod",
+              "source": "public/go.mod.txt",
+              "sha256": "ab35cad14d574f7e762603357ed0cdb4a8cd8a1b9e70d31ecf566a2bfccdb208"
+            }
+          ],
+          "expected_failures": [
+            "TestCorpus/empty"
+          ]
+        },
+        {
+          "name": "repair",
+          "purpose": "Pinned historical repair.",
+          "files": [
+            {
+              "path": "internal/ghops/ghops.go",
+              "source": "internal/ghops/ghops.go",
+              "commit": "fa8bcc474cef610e38b2ec76c57ed843e3db4782",
+              "sha256": "6d1261d787dd0212a99da33e57a97576855412eda369065450a8c36cc4f59335"
+            },
+            {
+              "path": "internal/ghops/checks.go",
+              "source": "internal/ghops/checks.go",
+              "commit": "fa8bcc474cef610e38b2ec76c57ed843e3db4782",
+              "sha256": "40302da1d180b45808222866bbbb747d9cec897c806c388119ddb35c404a2783"
+            },
+            {
+              "path": "internal/ghops/errors.go",
+              "source": "internal/ghops/errors.go",
+              "commit": "fa8bcc474cef610e38b2ec76c57ed843e3db4782",
+              "sha256": "afb812cbfd772e31933ee79d91906ebdc8c32e188b45da7445c995b6a685e3b5"
+            },
+            {
+              "path": "internal/paths/paths.go",
+              "source": "internal/paths/paths.go",
+              "commit": "fa8bcc474cef610e38b2ec76c57ed843e3db4782",
+              "sha256": "95e0f3ef69379705041d1595d11cc3f0cf414ae65046c31070120f511eb1078a"
+            },
+            {
+              "path": "internal/execx/execx.go",
+              "source": "internal/execx/execx.go",
+              "commit": "fa8bcc474cef610e38b2ec76c57ed843e3db4782",
+              "sha256": "57795e61d33f5cc92e6fdd705a6327a0fbc176c5b350d22c096f5bade5154d00"
+            },
+            {
+              "path": "go.mod",
+              "source": "public/go.mod.txt",
+              "sha256": "ab35cad14d574f7e762603357ed0cdb4a8cd8a1b9e70d31ecf566a2bfccdb208"
+            }
+          ],
+          "expected_failures": []
+        },
+        {
+          "name": "bad-malformed",
+          "purpose": "External behavioral contrast for the keyed outcome distinction; semantic answer validity remains independently reviewed.",
+          "files": [
+            {
+              "path": "internal/ghops/ghops.go",
+              "source": "internal/ghops/ghops.go",
+              "commit": "fa8bcc474cef610e38b2ec76c57ed843e3db4782",
+              "sha256": "6d1261d787dd0212a99da33e57a97576855412eda369065450a8c36cc4f59335"
+            },
+            {
+              "path": "internal/ghops/checks.go",
+              "source": "internal/ghops/checks.go",
+              "commit": "fa8bcc474cef610e38b2ec76c57ed843e3db4782",
+              "sha256": "40302da1d180b45808222866bbbb747d9cec897c806c388119ddb35c404a2783"
+            },
+            {
+              "path": "internal/ghops/errors.go",
+              "source": "internal/ghops/errors.go",
+              "commit": "fa8bcc474cef610e38b2ec76c57ed843e3db4782",
+              "sha256": "afb812cbfd772e31933ee79d91906ebdc8c32e188b45da7445c995b6a685e3b5"
+            },
+            {
+              "path": "internal/paths/paths.go",
+              "source": "internal/paths/paths.go",
+              "commit": "fa8bcc474cef610e38b2ec76c57ed843e3db4782",
+              "sha256": "95e0f3ef69379705041d1595d11cc3f0cf414ae65046c31070120f511eb1078a"
+            },
+            {
+              "path": "internal/execx/execx.go",
+              "source": "internal/execx/execx.go",
+              "commit": "fa8bcc474cef610e38b2ec76c57ed843e3db4782",
+              "sha256": "57795e61d33f5cc92e6fdd705a6327a0fbc176c5b350d22c096f5bade5154d00"
+            },
+            {
+              "path": "go.mod",
+              "source": "public/go.mod.txt",
+              "sha256": "ab35cad14d574f7e762603357ed0cdb4a8cd8a1b9e70d31ecf566a2bfccdb208"
+            }
+          ],
+          "patch": {
+            "path": "patch.json",
+            "source": "controls/ci-malformed.json",
+            "sha256": "e66551b35a43a77d8a08e22ffbb4bf8e5066170d96e0c0c8d5dce2fef606d2ec"
+          },
+          "expected_failures": [
+            "TestCorpus/malformed"
+          ]
+        },
+        {
+          "name": "bad-states",
+          "purpose": "External behavioral contrast for the keyed outcome distinction; semantic answer validity remains independently reviewed.",
+          "files": [
+            {
+              "path": "internal/ghops/ghops.go",
+              "source": "internal/ghops/ghops.go",
+              "commit": "fa8bcc474cef610e38b2ec76c57ed843e3db4782",
+              "sha256": "6d1261d787dd0212a99da33e57a97576855412eda369065450a8c36cc4f59335"
+            },
+            {
+              "path": "internal/ghops/checks.go",
+              "source": "internal/ghops/checks.go",
+              "commit": "fa8bcc474cef610e38b2ec76c57ed843e3db4782",
+              "sha256": "40302da1d180b45808222866bbbb747d9cec897c806c388119ddb35c404a2783"
+            },
+            {
+              "path": "internal/ghops/errors.go",
+              "source": "internal/ghops/errors.go",
+              "commit": "fa8bcc474cef610e38b2ec76c57ed843e3db4782",
+              "sha256": "afb812cbfd772e31933ee79d91906ebdc8c32e188b45da7445c995b6a685e3b5"
+            },
+            {
+              "path": "internal/paths/paths.go",
+              "source": "internal/paths/paths.go",
+              "commit": "fa8bcc474cef610e38b2ec76c57ed843e3db4782",
+              "sha256": "95e0f3ef69379705041d1595d11cc3f0cf414ae65046c31070120f511eb1078a"
+            },
+            {
+              "path": "internal/execx/execx.go",
+              "source": "internal/execx/execx.go",
+              "commit": "fa8bcc474cef610e38b2ec76c57ed843e3db4782",
+              "sha256": "57795e61d33f5cc92e6fdd705a6327a0fbc176c5b350d22c096f5bade5154d00"
+            },
+            {
+              "path": "go.mod",
+              "source": "public/go.mod.txt",
+              "sha256": "ab35cad14d574f7e762603357ed0cdb4a8cd8a1b9e70d31ecf566a2bfccdb208"
+            }
+          ],
+          "patch": {
+            "path": "patch.json",
+            "source": "controls/ci-states.json",
+            "sha256": "3b498e53ee3a0d0deb0424becef067bfeb191be538eff2a8da349f81a504588a"
+          },
+          "expected_failures": [
+            "TestCorpus/states"
+          ]
+        },
+        {
+          "name": "alternative-repair",
+          "purpose": "External behavioral contrast for the keyed outcome distinction; semantic answer validity remains independently reviewed.",
+          "files": [
+            {
+              "path": "internal/ghops/ghops.go",
+              "source": "internal/ghops/ghops.go",
+              "commit": "fa8bcc474cef610e38b2ec76c57ed843e3db4782",
+              "sha256": "6d1261d787dd0212a99da33e57a97576855412eda369065450a8c36cc4f59335"
+            },
+            {
+              "path": "internal/ghops/checks.go",
+              "source": "internal/ghops/checks.go",
+              "commit": "fa8bcc474cef610e38b2ec76c57ed843e3db4782",
+              "sha256": "40302da1d180b45808222866bbbb747d9cec897c806c388119ddb35c404a2783"
+            },
+            {
+              "path": "internal/ghops/errors.go",
+              "source": "internal/ghops/errors.go",
+              "commit": "fa8bcc474cef610e38b2ec76c57ed843e3db4782",
+              "sha256": "afb812cbfd772e31933ee79d91906ebdc8c32e188b45da7445c995b6a685e3b5"
+            },
+            {
+              "path": "internal/paths/paths.go",
+              "source": "internal/paths/paths.go",
+              "commit": "fa8bcc474cef610e38b2ec76c57ed843e3db4782",
+              "sha256": "95e0f3ef69379705041d1595d11cc3f0cf414ae65046c31070120f511eb1078a"
+            },
+            {
+              "path": "internal/execx/execx.go",
+              "source": "internal/execx/execx.go",
+              "commit": "fa8bcc474cef610e38b2ec76c57ed843e3db4782",
+              "sha256": "57795e61d33f5cc92e6fdd705a6327a0fbc176c5b350d22c096f5bade5154d00"
+            },
+            {
+              "path": "go.mod",
+              "source": "public/go.mod.txt",
+              "sha256": "ab35cad14d574f7e762603357ed0cdb4a8cd8a1b9e70d31ecf566a2bfccdb208"
+            }
+          ],
+          "patch": {
+            "path": "patch.json",
+            "source": "controls/ci-alternative.json",
+            "sha256": "f62973699b376b8f16140571e28f53dc6d54274ab5991bc3c32e3553402c4518"
+          },
+          "expected_failures": []
+        }
+      ]
+    },
+    {
+      "id": "review-held-effort-clean",
+      "version": 1,
+      "role": "review",
+      "partition": "held-out",
+      "lineage": "effort-policy",
+      "difficulty": "ordinary",
+      "classification": "clean",
+      "source_commit": "ebf1be82b5cabda9915112da6a18853cda906d8b",
+      "upstream": [
+        "https://github.com/kninetimmy/orch/pull/126",
+        "https://github.com/kninetimmy/orch/commit/ebf1be82b5cabda9915112da6a18853cda906d8b"
+      ],
+      "selection": "Clean effort-enum extension checked for host boundaries and every role, grouped with effort-window lineage.",
+      "inputs": [
+        {
+          "path": "internal/config/config.go",
+          "source": "internal/config/config.go",
+          "commit": "ebf1be82b5cabda9915112da6a18853cda906d8b",
+          "sha256": "39867a525b99fcabcffd0f5b05446084b9cc4f3338df731d68c7e30be42113c5"
+        },
+        {
+          "path": "internal/config/validate.go",
+          "source": "internal/config/validate.go",
+          "commit": "ebf1be82b5cabda9915112da6a18853cda906d8b",
+          "sha256": "f8610700c450fc82f5e9eceb80129f8705c84cbe82dbd9dfde188f4677f0942c"
+        },
+        {
+          "path": "go.mod",
+          "source": "public/go.mod.txt",
+          "sha256": "ab35cad14d574f7e762603357ed0cdb4a8cd8a1b9e70d31ecf566a2bfccdb208"
+        },
+        {
+          "path": "TASK.md",
+          "source": "cases/review-held-effort-clean/task.md",
+          "sha256": "3e9d26c1b94fcb1eb66a0a422986ba16f8fae991f11c64e2048ef85df451566c"
+        },
+        {
+          "path": "ROLE.md",
+          "source": "roles/review.md",
+          "sha256": "c8f7d1640aa600509fad07c1fa832320645e7a082e0e328f51f5b407815c61ac"
+        },
+        {
+          "path": "CONTEXT.md",
+          "source": "public/context.md",
+          "sha256": "6751f3a675b8d23d9f4932fc78201726c4c7d3c2b99c59c4238f4af2530875d3"
+        }
+      ],
+      "packet_sha256": "c99ed59e9e1f77fe59bd9ef3d343772d9208c1c8eb94227fd781f8073bd07ad2",
+      "key": {
+        "path": "key.md",
+        "source": "cases/review-held-effort-clean/key.md",
+        "sha256": "ea8cf6d6b6708dbb78e2df0f270b8e2fe5663c1d84fea967e9c58e8317051c65"
+      },
+      "probe": {
+        "path": "internal/config/corpus_test.go",
+        "source": "controls/config_test.go.txt",
+        "sha256": "2a17759f9ed2046e35961bd81ccf1204c7ec1f6cc020f3c9a47940502f337c16"
+      },
+      "command": [
+        "go",
+        "test",
+        "-json",
+        "-count=1",
+        "-timeout=30s",
+        "-run=^TestCorpus$",
+        "./..."
+      ],
+      "check_seconds": 120,
+      "alternative": "An independent source-based approval with the same scoped guarantees is acceptable; a nonblocking suggestion for additional future model compatibility testing remains advisory. The verdict is fixed for the supplied change, so a different code implementation is not required.",
+      "controls": [
+        {
+          "name": "reference",
+          "purpose": "Pinned source backing the known-good supported conclusions/approval.",
+          "files": [
+            {
+              "path": "internal/config/config.go",
+              "source": "internal/config/config.go",
+              "commit": "ebf1be82b5cabda9915112da6a18853cda906d8b",
+              "sha256": "39867a525b99fcabcffd0f5b05446084b9cc4f3338df731d68c7e30be42113c5"
+            },
+            {
+              "path": "internal/config/validate.go",
+              "source": "internal/config/validate.go",
+              "commit": "ebf1be82b5cabda9915112da6a18853cda906d8b",
+              "sha256": "f8610700c450fc82f5e9eceb80129f8705c84cbe82dbd9dfde188f4677f0942c"
+            },
+            {
+              "path": "go.mod",
+              "source": "public/go.mod.txt",
+              "sha256": "ab35cad14d574f7e762603357ed0cdb4a8cd8a1b9e70d31ecf566a2bfccdb208"
+            }
+          ],
+          "expected_failures": []
+        },
+        {
+          "name": "contrast-allowed",
+          "purpose": "External behavioral contrast for the keyed outcome distinction; semantic answer validity remains independently reviewed.",
+          "files": [
+            {
+              "path": "internal/config/config.go",
+              "source": "internal/config/config.go",
+              "commit": "ebf1be82b5cabda9915112da6a18853cda906d8b",
+              "sha256": "39867a525b99fcabcffd0f5b05446084b9cc4f3338df731d68c7e30be42113c5"
+            },
+            {
+              "path": "internal/config/validate.go",
+              "source": "internal/config/validate.go",
+              "commit": "ebf1be82b5cabda9915112da6a18853cda906d8b",
+              "sha256": "f8610700c450fc82f5e9eceb80129f8705c84cbe82dbd9dfde188f4677f0942c"
+            },
+            {
+              "path": "go.mod",
+              "source": "public/go.mod.txt",
+              "sha256": "ab35cad14d574f7e762603357ed0cdb4a8cd8a1b9e70d31ecf566a2bfccdb208"
+            }
+          ],
+          "patch": {
+            "path": "patch.json",
+            "source": "controls/config-allowed.json",
+            "sha256": "6656150c1e6ee25d4422c31f4fba0255ce3370d14312fa7f7827ce249b4a4518"
+          },
+          "expected_failures": [
+            "TestCorpus/allowed"
+          ]
+        },
+        {
+          "name": "contrast-rejected",
+          "purpose": "External behavioral contrast for the keyed outcome distinction; semantic answer validity remains independently reviewed.",
+          "files": [
+            {
+              "path": "internal/config/config.go",
+              "source": "internal/config/config.go",
+              "commit": "ebf1be82b5cabda9915112da6a18853cda906d8b",
+              "sha256": "39867a525b99fcabcffd0f5b05446084b9cc4f3338df731d68c7e30be42113c5"
+            },
+            {
+              "path": "internal/config/validate.go",
+              "source": "internal/config/validate.go",
+              "commit": "ebf1be82b5cabda9915112da6a18853cda906d8b",
+              "sha256": "f8610700c450fc82f5e9eceb80129f8705c84cbe82dbd9dfde188f4677f0942c"
+            },
+            {
+              "path": "go.mod",
+              "source": "public/go.mod.txt",
+              "sha256": "ab35cad14d574f7e762603357ed0cdb4a8cd8a1b9e70d31ecf566a2bfccdb208"
+            }
+          ],
+          "patch": {
+            "path": "patch.json",
+            "source": "controls/config-rejected.json",
+            "sha256": "564b881f477a9b7ca8315c6b8669358b0b089a0ee8b1b9a399a9eeae9b4e29e2"
+          },
+          "expected_failures": [
+            "TestCorpus/rejected"
+          ]
+        },
+        {
+          "name": "contrast-roles",
+          "purpose": "External behavioral contrast for the keyed outcome distinction; semantic answer validity remains independently reviewed.",
+          "files": [
+            {
+              "path": "internal/config/config.go",
+              "source": "internal/config/config.go",
+              "commit": "ebf1be82b5cabda9915112da6a18853cda906d8b",
+              "sha256": "39867a525b99fcabcffd0f5b05446084b9cc4f3338df731d68c7e30be42113c5"
+            },
+            {
+              "path": "internal/config/validate.go",
+              "source": "internal/config/validate.go",
+              "commit": "ebf1be82b5cabda9915112da6a18853cda906d8b",
+              "sha256": "f8610700c450fc82f5e9eceb80129f8705c84cbe82dbd9dfde188f4677f0942c"
+            },
+            {
+              "path": "go.mod",
+              "source": "public/go.mod.txt",
+              "sha256": "ab35cad14d574f7e762603357ed0cdb4a8cd8a1b9e70d31ecf566a2bfccdb208"
+            }
+          ],
+          "patch": {
+            "path": "patch.json",
+            "source": "controls/config-roles.json",
+            "sha256": "1a7f96db32d0f62f0fb48627c33d8dd8f4847e1732a3e15d8a0fc553699b8c5a"
+          },
+          "expected_failures": [
+            "TestCorpus/roles"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "review-held-question-defective",
+      "version": 1,
+      "role": "review",
+      "partition": "held-out",
+      "lineage": "answer-wire",
+      "difficulty": "ordinary",
+      "classification": "defective",
+      "source_commit": "1c934cebc9d1707ceb3134d29906dc2563cc6ce8",
+      "upstream": [
+        "https://github.com/kninetimmy/orch/pull/16",
+        "https://github.com/kninetimmy/orch/commit/1c934cebc9d1707ceb3134d29906dc2563cc6ce8"
+      ],
+      "selection": "Historical strict-decoder claim disproved by closing-delimiter input; related scout remains held-out.",
+      "inputs": [
+        {
+          "path": "internal/question/question.go",
+          "source": "internal/question/question.go",
+          "commit": "1c934cebc9d1707ceb3134d29906dc2563cc6ce8",
+          "sha256": "f555a0d2edfb828327ca6d55494d626f228e006e3bfc3efe72ab4a52026456a2"
+        },
+        {
+          "path": "internal/question/decode.go",
+          "source": "internal/question/decode.go",
+          "commit": "1c934cebc9d1707ceb3134d29906dc2563cc6ce8",
+          "sha256": "b11f677641a401f5ddb8328ba4fd96e2e22745ab2df30854e78b6179117da15e"
+        },
+        {
+          "path": "go.mod",
+          "source": "public/go.mod.txt",
+          "sha256": "ab35cad14d574f7e762603357ed0cdb4a8cd8a1b9e70d31ecf566a2bfccdb208"
+        },
+        {
+          "path": "TASK.md",
+          "source": "cases/review-held-question-defective/task.md",
+          "sha256": "eb063c25fb6de283388105de8bceee7e114186e108da3b964379eb104eae5e4e"
+        },
+        {
+          "path": "ROLE.md",
+          "source": "roles/review.md",
+          "sha256": "c8f7d1640aa600509fad07c1fa832320645e7a082e0e328f51f5b407815c61ac"
+        },
+        {
+          "path": "CONTEXT.md",
+          "source": "public/context.md",
+          "sha256": "6751f3a675b8d23d9f4932fc78201726c4c7d3c2b99c59c4238f4af2530875d3"
+        }
+      ],
+      "packet_sha256": "0454cd26d8022ca38790f9c2943fe8b91af039ae5781a170b4c11f77265ca512",
+      "key": {
+        "path": "key.md",
+        "source": "cases/review-held-question-defective/key.md",
+        "sha256": "52b8d15077b67e6d2da1a067e4dfe796c43d13bddfed865bded8a8199024a025"
+      },
+      "probe": {
+        "path": "internal/question/corpus_test.go",
+        "source": "controls/question_test.go.txt",
+        "sha256": "b2e3ea2453cc05143a5c2835a44075ca6d2e647d677bcde86bb87ad0e940e8aa"
+      },
+      "command": [
+        "go",
+        "test",
+        "-json",
+        "-count=1",
+        "-timeout=30s",
+        "-run=^TestCorpus$",
+        "./..."
+      ],
+      "check_seconds": 120,
+      "alternative": "A single deduplicated finding may use } or ] as the trigger, source analysis or reproduction, and suggest a second Decode requiring io.EOF or non-whitespace remaining-byte validation. Both repair controls pass the same tests. Blocking based only on an agent's claim is unsupported.",
+      "controls": [
+        {
+          "name": "reference",
+          "purpose": "Pinned defective change backing the known-good rejecting review and refuting a false approval.",
+          "files": [
+            {
+              "path": "internal/question/question.go",
+              "source": "internal/question/question.go",
+              "commit": "1c934cebc9d1707ceb3134d29906dc2563cc6ce8",
+              "sha256": "f555a0d2edfb828327ca6d55494d626f228e006e3bfc3efe72ab4a52026456a2"
+            },
+            {
+              "path": "internal/question/decode.go",
+              "source": "internal/question/decode.go",
+              "commit": "1c934cebc9d1707ceb3134d29906dc2563cc6ce8",
+              "sha256": "b11f677641a401f5ddb8328ba4fd96e2e22745ab2df30854e78b6179117da15e"
+            },
+            {
+              "path": "go.mod",
+              "source": "public/go.mod.txt",
+              "sha256": "ab35cad14d574f7e762603357ed0cdb4a8cd8a1b9e70d31ecf566a2bfccdb208"
+            }
+          ],
+          "expected_failures": [
+            "TestCorpus/tail"
+          ]
+        },
+        {
+          "name": "strict-repair",
+          "purpose": "External behavioral contrast for the keyed outcome distinction; semantic answer validity remains independently reviewed.",
+          "files": [
+            {
+              "path": "internal/question/question.go",
+              "source": "internal/question/question.go",
+              "commit": "1c934cebc9d1707ceb3134d29906dc2563cc6ce8",
+              "sha256": "f555a0d2edfb828327ca6d55494d626f228e006e3bfc3efe72ab4a52026456a2"
+            },
+            {
+              "path": "internal/question/decode.go",
+              "source": "internal/question/decode.go",
+              "commit": "1c934cebc9d1707ceb3134d29906dc2563cc6ce8",
+              "sha256": "b11f677641a401f5ddb8328ba4fd96e2e22745ab2df30854e78b6179117da15e"
+            },
+            {
+              "path": "go.mod",
+              "source": "public/go.mod.txt",
+              "sha256": "ab35cad14d574f7e762603357ed0cdb4a8cd8a1b9e70d31ecf566a2bfccdb208"
+            }
+          ],
+          "patch": {
+            "path": "patch.json",
+            "source": "controls/question-repair.json",
+            "sha256": "f4673c441443c94e301870c2b896285b29507b0b05a4816f89995ccb80c8d41f"
+          },
+          "expected_failures": []
+        },
+        {
+          "name": "alternative-repair",
+          "purpose": "External behavioral contrast for the keyed outcome distinction; semantic answer validity remains independently reviewed.",
+          "files": [
+            {
+              "path": "internal/question/question.go",
+              "source": "internal/question/question.go",
+              "commit": "1c934cebc9d1707ceb3134d29906dc2563cc6ce8",
+              "sha256": "f555a0d2edfb828327ca6d55494d626f228e006e3bfc3efe72ab4a52026456a2"
+            },
+            {
+              "path": "internal/question/decode.go",
+              "source": "internal/question/decode.go",
+              "commit": "1c934cebc9d1707ceb3134d29906dc2563cc6ce8",
+              "sha256": "b11f677641a401f5ddb8328ba4fd96e2e22745ab2df30854e78b6179117da15e"
+            },
+            {
+              "path": "go.mod",
+              "source": "public/go.mod.txt",
+              "sha256": "ab35cad14d574f7e762603357ed0cdb4a8cd8a1b9e70d31ecf566a2bfccdb208"
+            }
+          ],
+          "patch": {
+            "path": "patch.json",
+            "source": "controls/question-alternative.json",
+            "sha256": "e413ae99c76947dbfac84e2c064d30f7f2c08beaa4c45bf7df5834344c0ffcd2"
+          },
+          "expected_failures": []
+        },
+        {
+          "name": "bad-fields",
+          "purpose": "External behavioral contrast for the keyed outcome distinction; semantic answer validity remains independently reviewed.",
+          "files": [
+            {
+              "path": "internal/question/question.go",
+              "source": "internal/question/question.go",
+              "commit": "1c934cebc9d1707ceb3134d29906dc2563cc6ce8",
+              "sha256": "f555a0d2edfb828327ca6d55494d626f228e006e3bfc3efe72ab4a52026456a2"
+            },
+            {
+              "path": "internal/question/decode.go",
+              "source": "internal/question/decode.go",
+              "commit": "1c934cebc9d1707ceb3134d29906dc2563cc6ce8",
+              "sha256": "b11f677641a401f5ddb8328ba4fd96e2e22745ab2df30854e78b6179117da15e"
+            },
+            {
+              "path": "go.mod",
+              "source": "public/go.mod.txt",
+              "sha256": "ab35cad14d574f7e762603357ed0cdb4a8cd8a1b9e70d31ecf566a2bfccdb208"
+            }
+          ],
+          "patch": {
+            "path": "patch.json",
+            "source": "controls/question-fields.json",
+            "sha256": "59839487aa52cb761dde3cf3cd1aaa0b574a0914c77a6e0880ad5c206e592879"
+          },
+          "expected_failures": [
+            "TestCorpus/tail",
+            "TestCorpus/fields"
+          ]
+        },
+        {
+          "name": "bad-schema",
+          "purpose": "External behavioral contrast for the keyed outcome distinction; semantic answer validity remains independently reviewed.",
+          "files": [
+            {
+              "path": "internal/question/question.go",
+              "source": "internal/question/question.go",
+              "commit": "1c934cebc9d1707ceb3134d29906dc2563cc6ce8",
+              "sha256": "f555a0d2edfb828327ca6d55494d626f228e006e3bfc3efe72ab4a52026456a2"
+            },
+            {
+              "path": "internal/question/decode.go",
+              "source": "internal/question/decode.go",
+              "commit": "1c934cebc9d1707ceb3134d29906dc2563cc6ce8",
+              "sha256": "b11f677641a401f5ddb8328ba4fd96e2e22745ab2df30854e78b6179117da15e"
+            },
+            {
+              "path": "go.mod",
+              "source": "public/go.mod.txt",
+              "sha256": "ab35cad14d574f7e762603357ed0cdb4a8cd8a1b9e70d31ecf566a2bfccdb208"
+            }
+          ],
+          "patch": {
+            "path": "patch.json",
+            "source": "controls/question-schema.json",
+            "sha256": "a7954dfccc20402eeb567f955c18453afb835112a634a1d2533fb7960ce14396"
+          },
+          "expected_failures": [
+            "TestCorpus/tail",
+            "TestCorpus/schema"
+          ]
+        },
+        {
+          "name": "bad-map",
+          "purpose": "External behavioral contrast for the keyed outcome distinction; semantic answer validity remains independently reviewed.",
+          "files": [
+            {
+              "path": "internal/question/question.go",
+              "source": "internal/question/question.go",
+              "commit": "1c934cebc9d1707ceb3134d29906dc2563cc6ce8",
+              "sha256": "f555a0d2edfb828327ca6d55494d626f228e006e3bfc3efe72ab4a52026456a2"
+            },
+            {
+              "path": "internal/question/decode.go",
+              "source": "internal/question/decode.go",
+              "commit": "1c934cebc9d1707ceb3134d29906dc2563cc6ce8",
+              "sha256": "b11f677641a401f5ddb8328ba4fd96e2e22745ab2df30854e78b6179117da15e"
+            },
+            {
+              "path": "go.mod",
+              "source": "public/go.mod.txt",
+              "sha256": "ab35cad14d574f7e762603357ed0cdb4a8cd8a1b9e70d31ecf566a2bfccdb208"
+            }
+          ],
+          "patch": {
+            "path": "patch.json",
+            "source": "controls/question-map.json",
+            "sha256": "d37697e3a27929000195c4d244e8b24a131a5da599d3ed0d31dba4fa9daff1fc"
+          },
+          "expected_failures": [
+            "TestCorpus/tail",
+            "TestCorpus/map"
+          ]
+        }
+      ]
+    }
+  ]
+}

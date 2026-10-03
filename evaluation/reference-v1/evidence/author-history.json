@@ -1,0 +1,187 @@
+{
+  "version": 1,
+  "scope": "Author preparation attempts only. No evaluated workers, model trials, tuning comparisons or measured baseline.",
+  "attempts": [
+    {
+      "author": "Codex /root/implement_310; gpt-6.1-sol @ max; Delivery run run-20261003T181029Z-9e5e94f5",
+      "environment": [
+        "GOWORK=off",
+        "GOTOOLCHAIN=local",
+        "GOPROXY=off",
+        "GOSUMDB=off",
+        "GOFLAGS=",
+        "CGO_ENABLED=0"
+      ],
+      "git_version": "git version 2.53.0.windows.1",
+      "go_version": "go version go1.26.5 windows/amd64",
+      "independent_validator": null,
+      "invocation": "go test -tags=corpus_validation -count=1 ./internal/evalcorpus",
+      "limitations": [
+        "No semantic prose grading; fresh independent review is required.",
+        "Controller source in the repository is not protected runtime storage.",
+        "Packet inspection is not operating-system or model-tool isolation.",
+        "Effort-window controls compile declared AST components, not the full interviews.",
+        "No evaluation model trials, measured baseline or Phase 1 completion."
+      ],
+      "manifest_sha256": "ec47de51a10defed489ed1c4be6840789fe34aefe594fd3cf44fea8456621466",
+      "overall_limit_seconds": 540,
+      "packet_sha256": {
+        "implement-dev-ci-empty": "624d3244874b576354046b5e626f688befb58148410c42c3741c48ec3822173e",
+        "implement-dev-ignore-lf": "f5e8eda0fa1554f4d549b6607155d2be4da77c0778cdec1186e22584097a9b1d",
+        "implement-held-capture": "c099e8b187c1b94282487839ff602b777cd9eb41458f9c96f5dfc07c451c14a3",
+        "implement-held-effort-window": "4de2f4589aa6b226d326bbf81b10bc54239958fc2ac413953d4a8ad100210323",
+        "review-dev-ci-defective": "93d2965f7d91e9a79faf6494a50a867f1669a64dacb9e2e55b82233592673026",
+        "review-dev-risk-clean": "4b2d3a9407ee18094aa5f4fb4d33dedb266863ebc1d3d8c2acc58fa9ea4204a7",
+        "review-held-effort-clean": "c99ed59e9e1f77fe59bd9ef3d343772d9208c1c8eb94227fd781f8073bd07ad2",
+        "review-held-question-defective": "0454cd26d8022ca38790f9c2943fe8b91af039ae5781a170b4c11f77265ca512",
+        "scout-dev-paths": "e8fe824090302946bf5e93788062bbe9989edef33f042b164f50a5b7c6dc4bf8",
+        "scout-dev-scan": "26c6d316fd0d2f42d63e1befbb438f8f35853286d69d223ca06c47e63c2a43cd",
+        "scout-held-git-gates": "6e3931316f37d5af248c1f12d475f3096f4ced55f836db06e043061d75eb0b63",
+        "scout-held-question": "7a88725b6dd704171b465b1f42ed765edad0e4ac16bc1e6929509e1031c83968"
+      },
+      "status": "preparation incomplete: author controls failed",
+      "version": 1,
+      "workspace": ".orchestrator/worktrees/corpus-v1-1435113370",
+      "control_count": 57,
+      "verified_count": 50,
+      "failures": [
+        {
+          "case": "scout-dev-paths",
+          "control": "reference",
+          "error": "expected failures []; observed [TestCorpus/missing-tail TestCorpus/nearest-root]; process error exit status 1",
+          "output_sha256": "999b24d894d73c4421c553b0343fa922e5b70070921bbfc90c96f3a35b54ad0b"
+        },
+        {
+          "case": "scout-dev-paths",
+          "control": "bad-segments",
+          "error": "expected failures [TestCorpus/segments]; observed [TestCorpus/missing-tail TestCorpus/nearest-root TestCorpus/segments]; process error exit status 1",
+          "output_sha256": "03f5f56c3544d066a24c10d50a4955d4cc31be4c23f73a8c8ce9796f60c4f239"
+        },
+        {
+          "case": "scout-dev-paths",
+          "control": "bad-missing-tail",
+          "error": "expected failures [TestCorpus/missing-tail]; observed [TestCorpus/missing-tail TestCorpus/nearest-root]; process error exit status 1",
+          "output_sha256": "28a86ce958658511b76d60b2142bfd10c1610ed167ce614ca03b9fd8010e4e4d"
+        },
+        {
+          "case": "scout-dev-paths",
+          "control": "bad-nearest-root",
+          "error": "expected failures [TestCorpus/nearest-root]; observed [TestCorpus/missing-tail TestCorpus/nearest-root]; process error exit status 1",
+          "output_sha256": "db804c6888ff144fdc41033ed44477c467ef81404cbfeade3116d3524072ade9"
+        },
+        {
+          "case": "implement-held-capture",
+          "control": "bad-unique",
+          "error": "expected failures [TestCorpus/unique]; observed []; process error <nil>",
+          "output_sha256": "8f03f99cf6f035d85299d65e973b41aa60950f0ffeb66624dc20f3b6daafbd03"
+        },
+        {
+          "case": "review-dev-risk-clean",
+          "control": "contrast-order",
+          "error": "expected failures [TestCorpus/order]; observed [TestCorpus/copy TestCorpus/order]; process error exit status 1",
+          "output_sha256": "e87f528b16df42e18fa2665d6b4371494651d681dc556c09d9de1ab6859d9842"
+        },
+        {
+          "case": "review-held-effort-clean",
+          "control": "contrast-roles",
+          "error": "expected failures [TestCorpus/roles]; observed [TestCorpus/rejected TestCorpus/roles]; process error exit status 1",
+          "output_sha256": "2f5197aef0974a8ff35ca4c33ff0e14e29d4d12e8f91fa5e704f08974108c423"
+        }
+      ],
+      "attempt": 1,
+      "resolution": "Correct independent expected paths using filepath.EvalSymlinks on the fixture ancestor; isolate copy ownership from ordering and role coverage from enum rejection; relax both uniqueness guards in the bad control so it actually violates uniqueness."
+    },
+    {
+      "author": "Codex /root/implement_310; gpt-6.1-sol @ max; Delivery run run-20261003T181029Z-9e5e94f5",
+      "environment": [
+        "GOWORK=off",
+        "GOTOOLCHAIN=local",
+        "GOPROXY=off",
+        "GOSUMDB=off",
+        "GOFLAGS=",
+        "CGO_ENABLED=0"
+      ],
+      "git_version": "git version 2.53.0.windows.1",
+      "go_version": "go version go1.26.5 windows/amd64",
+      "independent_validator": null,
+      "invocation": "go test -tags=corpus_validation -count=1 ./internal/evalcorpus",
+      "limitations": [
+        "No semantic prose grading; fresh independent review is required.",
+        "Controller source in the repository is not protected runtime storage.",
+        "Packet inspection is not operating-system or model-tool isolation.",
+        "Effort-window controls compile declared AST components, not the full interviews.",
+        "No evaluation model trials, measured baseline or Phase 1 completion."
+      ],
+      "manifest_sha256": "1d771a34966d079cda482e49692f227168eb9175e4688ca44729e1a3104d8233",
+      "overall_limit_seconds": 540,
+      "packet_sha256": {
+        "implement-dev-ci-empty": "624d3244874b576354046b5e626f688befb58148410c42c3741c48ec3822173e",
+        "implement-dev-ignore-lf": "f5e8eda0fa1554f4d549b6607155d2be4da77c0778cdec1186e22584097a9b1d",
+        "implement-held-capture": "c099e8b187c1b94282487839ff602b777cd9eb41458f9c96f5dfc07c451c14a3",
+        "implement-held-effort-window": "4de2f4589aa6b226d326bbf81b10bc54239958fc2ac413953d4a8ad100210323",
+        "review-dev-ci-defective": "93d2965f7d91e9a79faf6494a50a867f1669a64dacb9e2e55b82233592673026",
+        "review-dev-risk-clean": "4b2d3a9407ee18094aa5f4fb4d33dedb266863ebc1d3d8c2acc58fa9ea4204a7",
+        "review-held-effort-clean": "c99ed59e9e1f77fe59bd9ef3d343772d9208c1c8eb94227fd781f8073bd07ad2",
+        "review-held-question-defective": "0454cd26d8022ca38790f9c2943fe8b91af039ae5781a170b4c11f77265ca512",
+        "scout-dev-paths": "e8fe824090302946bf5e93788062bbe9989edef33f042b164f50a5b7c6dc4bf8",
+        "scout-dev-scan": "26c6d316fd0d2f42d63e1befbb438f8f35853286d69d223ca06c47e63c2a43cd",
+        "scout-held-git-gates": "6e3931316f37d5af248c1f12d475f3096f4ced55f836db06e043061d75eb0b63",
+        "scout-held-question": "7a88725b6dd704171b465b1f42ed765edad0e4ac16bc1e6929509e1031c83968"
+      },
+      "status": "author-controls-passed; independent validation pending; execution blocked",
+      "version": 1,
+      "workspace": ".orchestrator/worktrees/corpus-v1-3992416228",
+      "control_count": 57,
+      "verified_count": 57,
+      "failures": [],
+      "attempt": 2,
+      "resolution": "All 57 controls passed; before freeze, add explicit wrong-parent/task attribution contrast and repair an escaped illustrative JSON example in the external review key."
+    },
+    {
+      "author": "Codex /root/implement_310; gpt-6.1-sol @ max; Delivery run run-20261003T181029Z-9e5e94f5",
+      "environment": [
+        "GOWORK=off",
+        "GOTOOLCHAIN=local",
+        "GOPROXY=off",
+        "GOSUMDB=off",
+        "GOFLAGS=",
+        "CGO_ENABLED=0"
+      ],
+      "git_version": "git version 2.53.0.windows.1",
+      "go_version": "go version go1.26.5 windows/amd64",
+      "independent_validator": null,
+      "invocation": "go test -tags=corpus_validation -count=1 ./internal/evalcorpus",
+      "limitations": [
+        "No semantic prose grading; fresh independent review is required.",
+        "Controller source in the repository is not protected runtime storage.",
+        "Packet inspection is not operating-system or model-tool isolation.",
+        "Effort-window controls compile declared AST components, not the full interviews.",
+        "No evaluation model trials, measured baseline or Phase 1 completion."
+      ],
+      "manifest_sha256": "2a97c1cfa381f6f1c9c6e93d9c98827c105e31109712c826e6436a905571b78d",
+      "overall_limit_seconds": 540,
+      "packet_sha256": {
+        "implement-dev-ci-empty": "624d3244874b576354046b5e626f688befb58148410c42c3741c48ec3822173e",
+        "implement-dev-ignore-lf": "f5e8eda0fa1554f4d549b6607155d2be4da77c0778cdec1186e22584097a9b1d",
+        "implement-held-capture": "c099e8b187c1b94282487839ff602b777cd9eb41458f9c96f5dfc07c451c14a3",
+        "implement-held-effort-window": "4de2f4589aa6b226d326bbf81b10bc54239958fc2ac413953d4a8ad100210323",
+        "review-dev-ci-defective": "93d2965f7d91e9a79faf6494a50a867f1669a64dacb9e2e55b82233592673026",
+        "review-dev-risk-clean": "4b2d3a9407ee18094aa5f4fb4d33dedb266863ebc1d3d8c2acc58fa9ea4204a7",
+        "review-held-effort-clean": "c99ed59e9e1f77fe59bd9ef3d343772d9208c1c8eb94227fd781f8073bd07ad2",
+        "review-held-question-defective": "0454cd26d8022ca38790f9c2943fe8b91af039ae5781a170b4c11f77265ca512",
+        "scout-dev-paths": "e8fe824090302946bf5e93788062bbe9989edef33f042b164f50a5b7c6dc4bf8",
+        "scout-dev-scan": "26c6d316fd0d2f42d63e1befbb438f8f35853286d69d223ca06c47e63c2a43cd",
+        "scout-held-git-gates": "6e3931316f37d5af248c1f12d475f3096f4ced55f836db06e043061d75eb0b63",
+        "scout-held-question": "7a88725b6dd704171b465b1f42ed765edad0e4ac16bc1e6929509e1031c83968"
+      },
+      "status": "author-controls-passed; independent validation pending; execution blocked",
+      "version": 1,
+      "workspace": ".orchestrator/worktrees/corpus-v1-4081211359",
+      "control_count": 58,
+      "verified_count": 58,
+      "failures": [],
+      "attempt": 3,
+      "resolution": "All 58 final controls passed; independent semantic validation still pending."
+    }
+  ]
+}

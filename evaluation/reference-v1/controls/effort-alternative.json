@@ -1,0 +1,7 @@
+[
+  {
+    "path": "internal/interview/sequence.go",
+    "old": "func effortsOffered(host, def string) []string {\n\tefforts := hostEfforts[host]\n\tif len(efforts) <= maxOfferedEfforts {\n\t\treturn efforts\n\t}\n\tend := maxOfferedEfforts\n\tif i := slices.Index(efforts, def); i >= end {\n\t\tend = i + 1\n\t}\n\treturn efforts[end-maxOfferedEfforts : end]\n}",
+    "new": "func effortsOffered(host, def string) []string {\n\tvalues := hostEfforts[host]\n\tstart := max(0, slices.Index(values, def)-maxOfferedEfforts+1)\n\tend := min(len(values), start+maxOfferedEfforts)\n\treturn values[start:end]\n}"
+  }
+]

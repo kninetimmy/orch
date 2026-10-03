@@ -1,0 +1,39 @@
+package config
+
+import "testing"
+
+func corpusHost(effort string) *Host {
+	p := RoleProfile{Model: "fixed-model", Effort: effort}
+	return &Host{Roles: Roles{Architect: p, Scout: p, Implementer: p, Specialist: p, Reviewer: p, ReviewDowngrade: p}}
+}
+func corpusProblems(host string, h *Host) int {
+	n := 0
+	validateHost(host, h, func(string, ...any) { n++ })
+	return n
+}
+func TestCorpus(t *testing.T) {
+	t.Run("allowed", func(t *testing.T) {
+		for _, tc := range []struct{ host, effort string }{{"codex", "max"}, {"codex", "ultra"}, {"claude", "xhigh"}, {"claude", "max"}, {"codex", "low"}, {"claude", "medium"}} {
+			if n := corpusProblems(tc.host, corpusHost(tc.effort)); n != 0 {
+				t.Errorf("%s %s rejected by %d checks", tc.host, tc.effort, n)
+			}
+		}
+	})
+	t.Run("rejected", func(t *testing.T) {
+		for _, tc := range []struct{ host, effort string }{{"claude", "ultra"}, {"codex", "none"}, {"codex", "minimal"}, {"codex", "MAX"}, {"claude", "unknown"}} {
+			if n := corpusProblems(tc.host, corpusHost(tc.effort)); n == 0 {
+				t.Errorf("%s %s was accepted", tc.host, tc.effort)
+			}
+		}
+	})
+	t.Run("roles", func(t *testing.T) {
+		for i := 0; i < 6; i++ {
+			h := corpusHost("high")
+			roles := []*RoleProfile{&h.Roles.Architect, &h.Roles.Scout, &h.Roles.Implementer, &h.Roles.Specialist, &h.Roles.Reviewer, &h.Roles.ReviewDowngrade}
+			roles[i].Effort = "invalid"
+			if n := corpusProblems("codex", h); n != 1 {
+				t.Errorf("role %d: %d errors, want one", i, n)
+			}
+		}
+	})
+}

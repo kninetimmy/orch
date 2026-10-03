@@ -1,0 +1,148 @@
+{
+  "version": 1,
+  "author": "Codex /root/implement_310; gpt-6.1-sol @ max; Delivery run run-20261003T181029Z-9e5e94f5",
+  "date": "2026-10-03",
+  "selection_method": "Choose scoped real historical components with reproducible distinct behavior; no evaluation model outcomes, favored-profile performance or tuning evidence were used.",
+  "counts": {
+    "development": 6,
+    "held-out": 6,
+    "scout": 4,
+    "implementation": 4,
+    "review": 4,
+    "clean-review": 2,
+    "defective-review": 2
+  },
+  "lineage_count": 9,
+  "cases": [
+    {
+      "id": "scout-dev-paths",
+      "version": 1,
+      "role": "scout",
+      "partition": "development",
+      "lineage": "path-containment",
+      "difficulty": "ordinary",
+      "source_commit": "af42351c6df37dba025a24927c7c9f0d1a62d126",
+      "selection": "Segment-aware path containment and missing-tail/root discovery; no model performance informed selection."
+    },
+    {
+      "id": "scout-dev-scan",
+      "version": 1,
+      "role": "scout",
+      "partition": "development",
+      "lineage": "managed-instruction-scan",
+      "difficulty": "ordinary",
+      "source_commit": "68f6a36715a3070a61c7576d54690a4163b852b7",
+      "selection": "Filesystem discovery scope: hidden directories, root exclusions and case-insensitive target names."
+    },
+    {
+      "id": "scout-held-git-gates",
+      "version": 1,
+      "role": "scout",
+      "partition": "held-out",
+      "lineage": "git-mechanical-gates",
+      "difficulty": "demanding",
+      "source_commit": "dc985482d404e8ea84db501d6d32b7bb0e741371",
+      "selection": "Deletion confirmation and command ordering without touching a real branch or remote."
+    },
+    {
+      "id": "scout-held-question",
+      "version": 1,
+      "role": "scout",
+      "partition": "held-out",
+      "lineage": "answer-wire",
+      "difficulty": "ordinary",
+      "source_commit": "1c934cebc9d1707ceb3134d29906dc2563cc6ce8",
+      "selection": "Strict-wire intent versus actual decoder behavior; linked to the defective review in the same partition."
+    },
+    {
+      "id": "implement-dev-ci-empty",
+      "version": 1,
+      "role": "implementation",
+      "partition": "development",
+      "lineage": "required-ci-empty",
+      "difficulty": "ordinary",
+      "source_commit": "279bf5b05547e45e78c596a322f685cc54ed80c6",
+      "selection": "Existing CLI adapter bug with a small root-cause fix; shares CI-answer lineage with development defective review."
+    },
+    {
+      "id": "implement-dev-ignore-lf",
+      "version": 1,
+      "role": "implementation",
+      "partition": "development",
+      "lineage": "gitignore-lf",
+      "difficulty": "mechanical",
+      "source_commit": "b02f61379c3132207ee511317d776eda2ccee84b",
+      "selection": "Mechanical native Git policy change, validated by actual checkout bytes rather than text matching."
+    },
+    {
+      "id": "implement-held-capture",
+      "version": 1,
+      "role": "implementation",
+      "partition": "held-out",
+      "lineage": "exact-child-rollout",
+      "difficulty": "demanding",
+      "source_commit": "8e0945835db36d2634bc07bd4a2fcc4804ec3324",
+      "selection": "Identity-first parsing with fail-closed matched-child validation, uniqueness and resume-delta invariants."
+    },
+    {
+      "id": "implement-held-effort-window",
+      "version": 1,
+      "role": "implementation",
+      "partition": "held-out",
+      "lineage": "effort-policy",
+      "difficulty": "ordinary",
+      "source_commit": "fc9780380e5c9f99da720e3f7ec532d5e84ea9c4",
+      "selection": "Bounded default-containing option window with unchanged typed-value domain; conservative effort-policy grouping."
+    },
+    {
+      "id": "review-dev-risk-clean",
+      "version": 1,
+      "role": "review",
+      "partition": "development",
+      "lineage": "risk-domain-api",
+      "difficulty": "ordinary",
+      "classification": "clean",
+      "source_commit": "82f88806aa8f86369e6b26ecabd5109798a8036f",
+      "selection": "Clean closed-enum API with ordering and slice ownership; scoped to risk.go rather than all of routing."
+    },
+    {
+      "id": "review-dev-ci-defective",
+      "version": 1,
+      "role": "review",
+      "partition": "development",
+      "lineage": "required-ci-empty",
+      "difficulty": "ordinary",
+      "classification": "defective",
+      "source_commit": "51d04dbd786a5645b513493af15485a11f88666a",
+      "selection": "Historical new required-CI adapter with an observable empty-output defect; same lineage as development implementation."
+    },
+    {
+      "id": "review-held-effort-clean",
+      "version": 1,
+      "role": "review",
+      "partition": "held-out",
+      "lineage": "effort-policy",
+      "difficulty": "ordinary",
+      "classification": "clean",
+      "source_commit": "ebf1be82b5cabda9915112da6a18853cda906d8b",
+      "selection": "Clean effort-enum extension checked for host boundaries and every role, grouped with effort-window lineage."
+    },
+    {
+      "id": "review-held-question-defective",
+      "version": 1,
+      "role": "review",
+      "partition": "held-out",
+      "lineage": "answer-wire",
+      "difficulty": "ordinary",
+      "classification": "defective",
+      "source_commit": "1c934cebc9d1707ceb3134d29906dc2563cc6ce8",
+      "selection": "Historical strict-decoder claim disproved by closing-delimiter input; related scout remains held-out."
+    }
+  ],
+  "rules": [
+    "Related repaired/bad controls and source variants inherit the parent case's partition.",
+    "required-ci-empty, answer-wire and effort-policy cases share answer/context lineages and stay together; twelve cases represent nine lineages, not twelve independent clusters.",
+    "The six/six split is frozen before tuning. Held-out means withheld from this evaluation's tuning, not absent from public history or model training.",
+    "Changes after freeze require a new artifact version/digest and retained prior results; no silent amendments to evaluated evidence."
+  ]
+}

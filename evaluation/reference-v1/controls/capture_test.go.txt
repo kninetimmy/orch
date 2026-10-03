@@ -1,0 +1,65 @@
+package codexusage
+
+import (
+	"os"
+	"path/filepath"
+	"testing"
+)
+
+const corpusMeta = `{"type":"session_meta","payload":{"id":"child","session_id":"parent","parent_thread_id":"parent","thread_source":"subagent","agent_path":"/root/worker","source":{"subagent":{"thread_spawn":{"parent_thread_id":"parent","depth":1,"agent_path":"/root/worker","agent_role":"default"}}}}}` + "\n"
+const corpusExact = corpusMeta + `{"type":"event_msg","payload":{"type":"token_count","info":{"total_token_usage":{"total_tokens":17}}}}` + "\n" + `{"type":"event_msg","payload":{"type":"task_complete"}}` + "\n"
+
+func TestCorpus(t *testing.T) {
+	dirWith := func(t *testing.T, extra string) string {
+		t.Helper()
+		dir := t.TempDir()
+		if err := os.WriteFile(filepath.Join(dir, "exact.jsonl"), []byte(corpusExact), 0600); err != nil {
+			t.Fatal(err)
+		}
+		if extra != "absent" {
+			if err := os.WriteFile(filepath.Join(dir, "other.jsonl"), []byte(extra), 0600); err != nil {
+				t.Fatal(err)
+			}
+		}
+		return dir
+	}
+	t.Run("unrelated", func(t *testing.T) {
+		for _, extra := range []string{"", "not json\n", `{"type":"session_meta","payload":{"id":"unrelated"}}` + "\n"} {
+			got, ok := TotalTokens(dirWith(t, extra), "parent", "/root/worker", nil)
+			if !ok || got != 17 {
+				t.Errorf("unrelated file poisoned capture: total %d, available %v", got, ok)
+			}
+		}
+	})
+	t.Run("identified", func(t *testing.T) {
+		for _, extra := range []string{corpusMeta + "not json\n", corpusMeta, corpusExact + corpusMeta} {
+			if _, ok := TotalTokens(dirWith(t, extra), "parent", "/root/worker", nil); ok {
+				t.Error("invalid identified child was ignored")
+			}
+		}
+	})
+	t.Run("unique", func(t *testing.T) {
+		if _, ok := TotalTokens(dirWith(t, corpusExact), "parent", "/root/worker", nil); ok {
+			t.Error("ambiguous children reported a total")
+		}
+		if _, ok := TotalTokens(dirWith(t, "absent"), "parent", "/root/other", nil); ok {
+			t.Error("nonmatching task reported a total")
+		}
+		if _, ok := TotalTokens(dirWith(t, "absent"), "other-parent", "/root/worker", nil); ok {
+			t.Error("nonmatching parent reported a total")
+		}
+	})
+	t.Run("delta", func(t *testing.T) {
+		dir := dirWith(t, "absent")
+		for _, tc := range []struct {
+			previous  int64
+			want      int64
+			available bool
+		}{{12, 5, true}, {17, 0, true}, {18, 0, false}, {-1, 0, false}} {
+			got, ok := TotalTokens(dir, "parent", "/root/worker", &tc.previous)
+			if ok != tc.available || ok && got != tc.want {
+				t.Errorf("previous %d: %d, %v", tc.previous, got, ok)
+			}
+		}
+	})
+}

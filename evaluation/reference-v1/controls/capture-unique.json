@@ -1,0 +1,12 @@
+[
+  {
+    "path": "internal/codexusage/capture.go",
+    "old": "if matches > 1 {",
+    "new": "if false {"
+  },
+  {
+    "path": "internal/codexusage/capture.go",
+    "old": "if err != nil || matches != 1 {",
+    "new": "if err != nil || matches == 0 {"
+  }
+]

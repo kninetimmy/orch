@@ -1,0 +1,7 @@
+[
+  {
+    "path": ".gitattributes",
+    "old": "*.go text eol=lf\n",
+    "new": ""
+  }
+]

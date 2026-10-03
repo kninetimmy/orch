@@ -1,0 +1,7 @@
+[
+  {
+    "path": "internal/interview/configurelocal.go",
+    "old": "for _, e := range hostEfforts[host] {",
+    "new": "for _, e := range effortsOffered(host, \"max\") {"
+  }
+]

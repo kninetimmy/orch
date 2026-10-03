@@ -1,0 +1,62 @@
+package interview
+
+import (
+	"slices"
+	"testing"
+)
+
+func TestCorpus(t *testing.T) {
+	t.Run("window", func(t *testing.T) {
+		for _, tc := range []struct {
+			host, def string
+			want      []string
+		}{
+			{"codex", "max", []string{"medium", "high", "xhigh", "max"}},
+			{"codex", "ultra", []string{"high", "xhigh", "max", "ultra"}},
+			{"codex", "low", []string{"low", "medium", "high", "xhigh"}},
+			{"claude", "max", []string{"medium", "high", "xhigh", "max"}},
+		} {
+			opts := effortOptions(tc.host, tc.def)
+			var got []string
+			recommended := 0
+			for _, opt := range opts {
+				got = append(got, opt.Value)
+				if opt.Recommended {
+					recommended++
+					if opt.Value != tc.def {
+						t.Error("wrong recommendation")
+					}
+				}
+			}
+			if !slices.Equal(got, tc.want) || recommended != 1 {
+				t.Errorf("%s %s: %v, %d recommended", tc.host, tc.def, got, recommended)
+			}
+		}
+	})
+	t.Run("labels", func(t *testing.T) {
+		for _, host := range []string{"claude", "codex"} {
+			for _, opt := range effortOptions(host, "max") {
+				if opt.Label != opt.Value {
+					t.Errorf("label %q differs from submitted %q", opt.Label, opt.Value)
+				}
+			}
+		}
+	})
+	t.Run("typed", func(t *testing.T) {
+		for _, host := range []string{"claude", "codex"} {
+			for _, value := range hostEfforts[host] {
+				if !validEffort(host, value) {
+					t.Errorf("full enum lost %s %s", host, value)
+				}
+			}
+			for _, value := range []string{"none", "minimal", "MAX", "invalid"} {
+				if validEffort(host, value) {
+					t.Errorf("invalid typed effort accepted %s", value)
+				}
+			}
+		}
+		if validEffort("claude", "ultra") {
+			t.Error("Claude ultra accepted")
+		}
+	})
+}

@@ -1,11 +1,16 @@
 # P1-C evaluation contract
 
 This is the specification for preparing a historical replay corpus and comparing
-Orch changes. It defines proposed procedures, not observed results. No corpus,
-validated grader or measured baseline is delivered here. Twelve cases can screen
-a change; they cannot establish general superiority across repositories, hosts
-or tasks. Recovery tests and a later live pilot supply separate evidence about
-the complete delivery workflow.
+Orch changes. Before reference-v1 preparation it stated: "It defines proposed
+procedures, not observed results. No corpus, validated grader or measured baseline
+is delivered here." After issue #310, the twelve-case
+[reference-v1 corpus](../evaluation/reference-v1/preparation-report.md) supplies
+versioned inputs, external keys and deterministic preparation controls. Its
+report distinguishes author evidence from pending independent validation. No
+validated semantic grader, protected runtime store or measured baseline is
+claimed. Twelve cases can screen a change; they cannot establish general
+superiority across repositories, hosts or tasks. Recovery tests and a later live
+pilot supply separate evidence about the complete delivery workflow.
 
 The companion [evaluation workflow](evaluation-workflow.md) defines discovery,
 preview, approval, progress and saved results. Its `orch eval` commands are
@@ -58,9 +63,18 @@ from this evaluation's tuning, not necessarily from model training.
 
 ## Grades and independent validation
 
-The external answer key specifies behavior, not a required code shape. A person
-other than the case author checks source/reproduction evidence and the rubric
-before any candidate is graded. Validate the grader on the pinned snapshot:
+The external answer key specifies behavior, not a required code shape. Before
+issue #310 this required "A person other than the case author" to check
+source/reproduction evidence and the rubric. After the approved clarification,
+ordinary approved Orch agents may author corpus artifacts and a fresh person or
+agent other than the author may independently validate them. The validator
+checks source and control evidence independently, reproduces the controls and
+checks the semantic rubric before any candidate is graded. Record the author's
+and validator's identities, source access and unavoidable prior exposure. Agent
+agreement alone is not validation. Disputes remain unresolved or go to a fresh
+independent adjudicator; authoring access is distinct from tuning. This permission
+applies to preparation for all three roles, not evaluation model trials.
+Validate the grader on the pinned snapshot:
 
 - Known-good reference outcomes must pass every required check.
 - Known-bad controls must fail for their intended defect, not an unrelated
@@ -293,7 +307,11 @@ refuses execution rather than widening permissions or substituting a manual run.
 
 The stages are separate:
 
-1. Prepare and independently validate the corpus/grader without model execution.
+1. Prepare and independently validate the corpus/grader without evaluation model
+   trials. Ordinary approved authoring/review agents may do this work. The prior
+   wording "without model execution" did not distinguish those agents from
+   evaluated workers; after issue #310 the prohibition is on evaluation model
+   trials, not approved preparation agents.
 2. Obtain separate approval for the finite one-task model/tool isolation smoke
    in the [native protocol](codex-native-protocol.md#separately-approved-live-modeltool-smoke).
    Its prerequisites include supported native enforcement, an approved reviewed
@@ -304,18 +322,36 @@ The stages are separate:
    screening/baseline plan and execute it under the same verified boundary.
    Smoke success alone does not authorize further tasks or unattended delivery.
 
+The production turn restriction covers both `RunSession` and `Session.Resume`
+through `IsolationPreflight`, for every task role using those entry points. It
+is not limited to one caller of `ErrIsolationUnavailable`, nor a claim that every
+native API returns that sentinel: read-only metadata and bounded command
+diagnostics have their own checks and do not establish model-tool readiness.
+
 The deferred native model-tool validation and other isolation follow-ups are
 not reopened here. No model/tool smoke, replay trial, runtime change or permission
 change is authorized or performed by this specification.
 
 ## Readiness and baseline deliverables
 
-A later corpus-readiness record must contain all twelve versioned case packets
-and protected keys; the frozen partition/equivalence/exposure register;
-independent validation and control outputs; reproducible verification commands
-and prerequisites; artifact digests and access-boundary inspection evidence;
-and unresolved disputes or excluded cases. It identifies which preparation
-checks actually ran. Corpus readiness does not imply native execution readiness.
+The retained [preparation report](../evaluation/reference-v1/preparation-report.md)
+links all twelve versioned input declarations, external keys/controls, frozen
+partition/lineage/exposure records, reproducible commands, artifact digests,
+author outputs and independently retained review evidence. It can declare
+preparation validated only when the fresh validator's evidence is complete and
+disputes are resolved. Controller-source material in `evaluation/reference-v1`
+is in the maintainer repository, not a protected runtime store. It must never be
+mounted or made reachable by evaluated workers. Reconstructed controller
+artifacts and worker packets are separate. Export inspection and negative tests
+establish contents and destination containment only. Protected runtime access
+enforcement remains unimplemented and blocks execution readiness.
+
+Before this increment, a later corpus-readiness record was required to contain
+"all twelve versioned case packets and protected keys" with independent/control
+evidence and access-boundary inspection. After this increment, controller-source
+keys and preparation evidence exist, while the protected runtime copy and its
+access boundary are still required separately. Corpus readiness does not imply
+native execution readiness.
 
 A later baseline report must preserve the frozen plan and revisions; case and
 partition coverage; requested and observed profiles with evidence limitations;
@@ -329,11 +365,14 @@ recovery/live-pilot evidence. A baseline records observations even if it cannot
 support an improvement claim; it must never disguise incomplete coverage as
 completed validation.
 
-Still to decide in subsequent approved work: the actual historical cases and
-lineage groups, independent validators/adjudicator, concrete checks and controls,
-artifact location and access enforcement, trial profiles and resource scopes,
-numeric deadlines/retry budgets, quality tolerances/targets and uncertainty
-rule. No corpus control checks, grader validation, isolation validation or model
-trials have been executed for this document. There is no measured P1-C baseline.
-Phase 1 remains open until its baseline/report exit requirements are satisfied
-with coverage limitations stated; this document alone does not close it.
+Before reference-v1 preparation, the actual cases, lineage groups, concrete
+checks/controls and artifact locations were undecided, and "No corpus control
+checks, grader validation, isolation validation or model trials have been
+executed for this document." After issue #310, the preparation report records
+the selected cases and checks actually performed. Independent semantic
+validation/adjudication, protected runtime storage/access enforcement, trial
+profiles/resource scopes, numeric execution/retry budgets, quality targets and
+the uncertainty rule still require their own evidence or approved work. There
+is no measured P1-C baseline. Phase 1 remains open until its baseline/report exit
+requirements are satisfied with coverage limitations stated; preparation does
+not close it or authorize models.

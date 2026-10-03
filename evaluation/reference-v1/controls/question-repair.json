@@ -1,0 +1,12 @@
+[
+  {
+    "path": "internal/question/decode.go",
+    "old": "if dec.More() {\n\t\treturn AnswerSet{}, fmt.Errorf(\"decode answer set: trailing data after document\")\n\t}",
+    "new": "var tail any\n\tif err := dec.Decode(&tail); err != io.EOF {\n\t\treturn AnswerSet{}, fmt.Errorf(\"decode answer set: trailing data after document\")\n\t}"
+  },
+  {
+    "path": "internal/question/decode.go",
+    "old": "\"fmt\"",
+    "new": "\"fmt\"\n\t\"io\""
+  }
+]

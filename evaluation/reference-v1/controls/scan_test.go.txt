@@ -1,0 +1,48 @@
+package instructions
+
+import (
+	"os"
+	"path/filepath"
+	"testing"
+)
+
+func TestCorpus(t *testing.T) {
+	write := func(t *testing.T, root, p string) {
+		t.Helper()
+		p = filepath.Join(root, p)
+		if err := os.MkdirAll(filepath.Dir(p), 0700); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(p, []byte("<!-- orchestrator:managed:start version=1 -->\nchanged\n<!-- orchestrator:managed:end -->\n"), 0600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	t.Run("hidden", func(t *testing.T) {
+		root := t.TempDir()
+		write(t, root, ".hidden/AGENTS.md")
+		write(t, root, "visible/AGENTS.md")
+		conflicts, err := Scan(root)
+		if err != nil || len(conflicts) != 1 || conflicts[0].Path != filepath.Join(root, "visible/AGENTS.md") {
+			t.Fatalf("Scan = %+v, %v", conflicts, err)
+		}
+	})
+	t.Run("root-pair", func(t *testing.T) {
+		root := t.TempDir()
+		write(t, root, "AGENTS.md")
+		write(t, root, "CLAUDE.md")
+		conflicts, err := Scan(root)
+		if err != nil || len(conflicts) != 0 {
+			t.Fatalf("root pair: %+v, %v", conflicts, err)
+		}
+	})
+	t.Run("names", func(t *testing.T) {
+		root := t.TempDir()
+		write(t, root, "nested/agents.MD")
+		write(t, root, "nested/claude.MD")
+		write(t, root, "nested/README.md")
+		conflicts, err := Scan(root)
+		if err != nil || len(conflicts) != 2 {
+			t.Fatalf("case-insensitive pair: %+v, %v", conflicts, err)
+		}
+	})
+}

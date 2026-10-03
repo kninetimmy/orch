@@ -1,0 +1,7 @@
+[
+  {
+    "path": "internal/routing/risk.go",
+    "old": "func Domains() []RiskDomain {\n\treturn []RiskDomain{\n\t\tRiskSecurity,\n\t\tRiskAuthentication,\n\t\tRiskAuthorization,\n\t\tRiskSecrets,\n\t\tRiskCryptography,\n\t\tRiskMigrations,\n\t\tRiskConcurrency,\n\t\tRiskDataIntegrity,\n\t\tRiskDestructiveOperations,\n\t}\n}",
+    "new": "var corpusSharedDomains = []RiskDomain{\n\t\tRiskSecurity,\n\t\tRiskAuthentication,\n\t\tRiskAuthorization,\n\t\tRiskSecrets,\n\t\tRiskCryptography,\n\t\tRiskMigrations,\n\t\tRiskConcurrency,\n\t\tRiskDataIntegrity,\n\t\tRiskDestructiveOperations,\n\t}\nfunc Domains() []RiskDomain { return corpusSharedDomains }"
+  }
+]
