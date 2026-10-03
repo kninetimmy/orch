@@ -13,25 +13,26 @@
       "kind": "select",
       "options": [
         {
-          "value": "gpt-5.6-sol",
-          "label": "gpt-5.6-sol (committed)",
-          "recommended": true
+          "value": "gpt-6-astra",
+          "label": "gpt-6-astra"
         },
         {
-          "value": "gpt-5.6-terra",
-          "label": "gpt-5.6-terra"
+          "value": "gpt-6.1-sol",
+          "label": "gpt-6.1-sol"
         },
         {
           "value": "gpt-5.6-luna",
           "label": "gpt-5.6-luna"
         },
         {
-          "value": "x-preview-f-free",
-          "label": "x-preview-f-free"
+          "value": "gpt-5.6-sol",
+          "label": "gpt-5.6-sol (committed)",
+          "recommended": true
         }
       ],
       "free_text": true,
-      "default": "gpt-5.6-sol"
+      "default": "gpt-5.6-sol",
+      "hint": "Use Other for any exact model ID, including gpt-5.6-sol, gpt-5.6-terra and x-preview-f-free."
     },
     {
       "id": "hosts.codex.roles.reviewer.effort",

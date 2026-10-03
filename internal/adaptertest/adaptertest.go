@@ -74,10 +74,10 @@ func Profile(host string) map[string]RoleSpec {
 	case "codex":
 		return map[string]RoleSpec{
 			"scout":         {Model: "gpt-5.6-luna", Effort: "max"},
-			"implementer":   {Model: "gpt-5.6-terra", Effort: "max"},
-			"specialist":    {Model: "gpt-5.6-sol", Effort: "max"},
-			"reviewer":      {Model: "gpt-5.6-sol", Effort: "xhigh"},
-			"reviewer-safe": {Model: "gpt-5.6-sol", Effort: "high"},
+			"implementer":   {Model: "gpt-6.1-sol", Effort: "xhigh"},
+			"specialist":    {Model: "gpt-6.1-sol", Effort: "max"},
+			"reviewer":      {Model: "gpt-6-astra", Effort: "medium"},
+			"reviewer-safe": {Model: "gpt-6.1-sol", Effort: "high"},
 		}
 	case "opencode":
 		return map[string]RoleSpec{

@@ -240,12 +240,12 @@ All entries use exact model versions.
 
 | Role | Model | Effort |
 |---|---|---|
-| Architect | `gpt-5.6-sol` | `xhigh` |
+| Architect | `gpt-6-astra` | `xhigh` |
 | Scout | `gpt-5.6-luna` | `max` |
-| Implementer | `gpt-5.6-terra` | `max` |
-| Specialist | `gpt-5.6-sol` | `max` |
-| Reviewer | `gpt-5.6-sol` | `xhigh` |
-| Safe review downgrade | `gpt-5.6-sol` | `high` |
+| Implementer | `gpt-6.1-sol` | `xhigh` |
+| Specialist | `gpt-6.1-sol` | `max` |
+| Reviewer | `gpt-6-astra` | `medium` |
+| Safe review downgrade | `gpt-6.1-sol` | `high` |
 
 ### OpenCode V2
 

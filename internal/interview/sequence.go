@@ -77,12 +77,12 @@ type profile struct{ model, execution string }
 // PRD table verbatim.
 var defaultProfiles = map[string]map[string]profile{
 	"codex": {
-		"architect":        {"gpt-5.6-sol", "xhigh"},
+		"architect":        {"gpt-6-astra", "xhigh"},
 		"scout":            {"gpt-5.6-luna", "max"},
-		"implementer":      {"gpt-5.6-terra", "max"},
-		"specialist":       {"gpt-5.6-sol", "max"},
-		"reviewer":         {"gpt-5.6-sol", "xhigh"},
-		"review_downgrade": {"gpt-5.6-sol", "high"},
+		"implementer":      {"gpt-6.1-sol", "xhigh"},
+		"specialist":       {"gpt-6.1-sol", "max"},
+		"reviewer":         {"gpt-6-astra", "medium"},
+		"review_downgrade": {"gpt-6.1-sol", "high"},
 	},
 	"claude": {
 		"architect":        {"claude-opus-5", "high"},
@@ -119,9 +119,11 @@ func defaultProfileFor(host string) func(string) profile {
 // local-override-only third Claude model (claude-fable-5, PRD §10): the
 // committed configuration this interview writes never defaults to it.
 var hostModels = map[string][]string{
-	"codex":  {"gpt-5.6-sol", "gpt-5.6-terra", "gpt-5.6-luna", "x-preview-f-free"},
+	"codex":  {"gpt-6-astra", "gpt-6.1-sol", "gpt-5.6-luna", "gpt-5.6-sol", "gpt-5.6-terra", "x-preview-f-free"},
 	"claude": {"claude-opus-5", "claude-sonnet-5"},
 }
+
+const codexModelHint = "Use Other for any exact model ID, including gpt-5.6-sol, gpt-5.6-terra and x-preview-f-free."
 
 // hostEfforts lists Claude and Codex's full closed effort enums — every value
 // internal/config's effortsByHost accepts for that host, in the same
@@ -317,6 +319,9 @@ func roleDocSpecs(host string, showExplain bool, defaults func(string) profile) 
 			FreeText: true,
 			Default:  def.model,
 		}
+		if host == "codex" {
+			modelQ.Hint = codexModelHint
+		}
 		if showExplain {
 			modelQ.Preamble = rs.explain
 		}
@@ -460,10 +465,22 @@ func openCodeVariantQuestion(id string, rs roleSpec, variants []string, def, com
 	return q
 }
 
-// modelOptions lists host's committed-config model choices, marking
-// def as Recommended.
+// modelsOffered keeps unpaginated model questions within four choices while
+// retaining the current default. Other known and custom IDs remain FreeText.
+func modelsOffered(models []string, def string) []string {
+	if len(models) <= 4 {
+		return models
+	}
+	offered := append([]string{}, models[:4]...)
+	if !slices.Contains(offered, def) {
+		offered[len(offered)-1] = def
+	}
+	return offered
+}
+
+// modelOptions lists host's offered model choices, marking def as Recommended.
 func modelOptions(host, def string) []question.Option {
-	models := hostModels[host]
+	models := modelsOffered(hostModels[host], def)
 	opts := make([]question.Option, len(models))
 	for i, m := range models {
 		opts[i] = question.Option{Value: m, Label: m, Recommended: m == def}

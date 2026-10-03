@@ -349,9 +349,9 @@ OpenCode manual usage contracts are unchanged.
    project `orch-*` agent TOML exactly**. The project TOMLs are the
    authority for what that match requires, not this list: by default
    they pin `orch-scout` gpt-5.6-luna/max, `orch-implementer`
-   gpt-5.6-terra/max, `orch-specialist` gpt-5.6-sol/max,
-   `orch-reviewer` gpt-5.6-sol/xhigh, `orch-reviewer-safe`
-   gpt-5.6-sol/high, but a repository that overrides
+   gpt-6.1-sol/xhigh, `orch-specialist` gpt-6.1-sol/max,
+   `orch-reviewer` gpt-6-astra/medium, `orch-reviewer-safe`
+   gpt-6.1-sol/high, but a repository that overrides
    `hosts.codex.roles` and re-renders with `orch render-agents` gets
    different pins. **If no project TOML matches the routed selection,
    stop and tell the human — never dispatch a mismatched agent, and
