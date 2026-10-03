@@ -13,9 +13,13 @@ superiority across repositories, hosts or tasks. Recovery tests and a later live
 pilot supply separate evidence about the complete delivery workflow.
 
 The companion [evaluation workflow](evaluation-workflow.md) defines discovery,
-preview, approval, progress and saved results. Its `orch eval` commands are
-proposed and unimplemented; they are not part of current `orch help` output.
-Existing metrics remain available under their own recording and reporting rules.
+preview, approval, progress and saved results. Before issue #312, its `orch eval`
+commands were proposed and unimplemented, absent from `orch help`. After that
+increment, only `orch eval preview --plan FILE [--json]` is implemented: bounded
+local validation, a frozen schedule and immutable public preparation metadata.
+Execution, stop/status/report and protected worker-access enforcement remain
+unimplemented. Preparation records and digests grant no approval. Existing
+metrics remain available under their own recording and reporting rules.
 
 The [metrics contract](metric-observations.md) governs native usage, provenance,
 missingness and timing. The [native session contract](codex-native-protocol.md)
