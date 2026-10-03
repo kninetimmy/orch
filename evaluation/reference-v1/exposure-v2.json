@@ -1,0 +1,103 @@
+{
+  "version": 2,
+  "author": "Codex /root/implement_310; gpt-6.1-sol @ max; Delivery run run-20261003T181029Z-9e5e94f5",
+  "date": "2026-10-03",
+  "published_history": true,
+  "training_unseen_claim": false,
+  "scope": "Corpus authoring/control preparation only; no evaluation model trial or configuration tuning.",
+  "access": [
+    {
+      "identity": "Codex /root/implement_310; gpt-6.1-sol @ max",
+      "relationship": "author",
+      "case_ids": [
+        "scout-dev-paths",
+        "scout-dev-scan",
+        "scout-held-git-gates",
+        "scout-held-question",
+        "implement-dev-ci-empty",
+        "implement-dev-ignore-lf",
+        "implement-held-capture",
+        "implement-held-effort-window",
+        "review-dev-risk-clean",
+        "review-dev-ci-defective",
+        "review-held-effort-clean",
+        "review-held-question-defective"
+      ],
+      "material": "All selected historical source, tasks, role/context instructions, partitions, external keys, probes, control patches and author outputs.",
+      "reason": "Approved issue #310 authoring and deterministic preparation.",
+      "tuning": false,
+      "prior_exposure": "Dispatch supplied PR44, PR110, PR148 and PR210 candidates. Other selected published history was inspected during authoring. Model-training familiarity is unknown; no training-unseen claim."
+    },
+    {
+      "identity": "Orch Architect /root; parent thread 01a102e1-0567-7d23-abaf-6eb8ded0befe",
+      "relationship": "preparation coordinator",
+      "case_ids": [
+        "scout-dev-paths",
+        "scout-dev-scan",
+        "scout-held-git-gates",
+        "scout-held-question",
+        "implement-dev-ci-empty",
+        "implement-dev-ignore-lf",
+        "implement-held-capture",
+        "implement-held-effort-window",
+        "review-dev-risk-clean",
+        "review-dev-ci-defective",
+        "review-held-effort-clean",
+        "review-held-question-defective"
+      ],
+      "material": "Selected family/partition summaries and author-check progress sent by the author; deeper prior repository familiarity is not inferred.",
+      "reason": "Approved Delivery coordination for run-20261003T181029Z-9e5e94f5.",
+      "tuning": false,
+      "prior_exposure": "Published historical candidates were investigated before dispatch; exact extent of prior personal/model recall is unknown."
+    },
+    {
+      "identity": "Fresh Orch reviewer /root/review_310_c1",
+      "relationship": "independent reviewer, cycle 1",
+      "case_ids": [
+        "scout-dev-paths",
+        "scout-dev-scan",
+        "scout-held-git-gates",
+        "scout-held-question",
+        "implement-dev-ci-empty",
+        "implement-dev-ignore-lf",
+        "implement-held-capture",
+        "implement-held-effort-window",
+        "review-dev-risk-clean",
+        "review-dev-ci-defective",
+        "review-held-effort-clean",
+        "review-held-question-defective"
+      ],
+      "material": "Pinned head 12129e42b0dbcaeb7f283c166de3671defaab79c: all twelve case packets, source/key/control evidence, author outputs and 80 artifact digests.",
+      "reason": "Approved independent preparation review; reviewer reproduced 12 packets and 58 controls, then found a supplied-answer-preservation false negative.",
+      "tuning": false,
+      "prior_exposure": "Fresh identity supplied by the Architect; unavoidable source/key/author-report access during review. Additional familiarity is recorded in the retained PR engine review, not inferred here.",
+      "record": "https://github.com/kninetimmy/orch/pull/311"
+    },
+    {
+      "identity": "Codex /root/implement_310; gpt-6.1-sol @ max",
+      "relationship": "author repair after independent review",
+      "case_ids": [
+        "scout-held-question",
+        "review-held-question-defective"
+      ],
+      "material": "Consolidated cycle-1 review findings and the reviewer-constructed always-empty non-nil map counterexample, plus macOS /var fixture-alias CI failure.",
+      "reason": "Repair approved corpus controls and test fixtures; preserve prior evidence and role cases.",
+      "tuning": false,
+      "prior_exposure": "Original authoring exposure plus the independent reviewer findings; no Orch model/profile/instruction tuning."
+    }
+  ],
+  "independent_validation": {
+    "status": "Cycle 1 request-changes: semantic false negative; revised material pending fresh review",
+    "record": "https://github.com/kninetimmy/orch/pull/311",
+    "required_record_fields": [
+      "Validator identity and date, with proof it is a fresh person/agent other than the author.",
+      "Case versions and manifest/head digests reviewed.",
+      "Prior familiarity, author-report exposure, source/key access and other unavoidable exposure.",
+      "Exact commands run, source/control evidence independently checked, outcomes and artifact digests.",
+      "Semantic assessment of every known-good/bad/alternative outcome, clean/defective classification and severity.",
+      "Unresolved disputes, limitations and any independent adjudicator identity/rationale."
+    ]
+  },
+  "future_confirmation_rule": "Authoring and independent validation access are recorded without treating them as tuning. If any held-out prompt, output, key or result informs configuration/instruction/candidate selection, mark the affected lineage tuning-exposed, retain the access and prior results, and replace that lineage with newly independently checked held-out cases before future confirmation. This rule applies to every person/agent and every held-out lineage, not only the named author.",
+  "previous_record": "exposure.json"
+}

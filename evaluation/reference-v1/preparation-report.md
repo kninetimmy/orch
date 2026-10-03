@@ -1,14 +1,17 @@
 # Reference-v1 preparation report
 
 Status: **author preparation controls passed; fresh independent validation
-pending; evaluation execution blocked**. This is not a measured baseline, a
+pending after cycle-1 request-changes; evaluation execution blocked**. This is not a measured baseline, a
 model trial, a protected runtime store or completion of Phase 1.
 
 Author: Codex `/root/implement_310`, routed gpt-6.1-sol @ max, 2026-10-03,
 Delivery `run-20261003T181029Z-9e5e94f5`. The approved scope is
-[issue #310](https://github.com/kninetimmy/orch/issues/310). The eventual PR and
-engine review audit linked from that issue are the stable independent-evidence
-location; no validator identity, result or prior exposure is invented here.
+[issue #310](https://github.com/kninetimmy/orch/issues/310). The [PR #311 engine review audit](https://github.com/kninetimmy/orch/pull/311)
+retains the fresh cycle-1 reviewer identity and request-changes result. That
+review reproduced the original controls but found a semantic false negative;
+it did not validate preparation. Revised material remains pending fresh review.
+The prior report is retained at
+[head 12129e4](https://github.com/kninetimmy/orch/blob/12129e42b0dbcaeb7f283c166de3671defaab79c/evaluation/reference-v1/preparation-report.md).
 
 ## Frozen material and scope
 
@@ -17,7 +20,7 @@ commits and upstream PR/commit provenance, every exported byte digest, exact
 worker tasks/instructions, snapshot packet digests, external key/probe/patch
 digests, control source commits, commands and expected failure IDs. Its SHA-256
 for the final author run is
-`2a97c1cfa381f6f1c9c6e93d9c98827c105e31109712c826e6436a905571b78d`.
+`2c3724026d5dc586c01c628bc103670eeb084a1abd173b28342c7372aa9a8ddd`.
 [artifact-digests.json](artifact-digests.json) covers the versioned corpus,
 including this report, registers and retained outputs; it excludes itself.
 
@@ -36,7 +39,7 @@ historical defect. The source comments are real pinned permitted context.
 | [scout-dev-paths v1](cases/scout-dev-paths/task.md) | scout | development | path-containment | [external key](cases/scout-dev-paths/key.md), [probe](controls/paths_test.go.txt) |
 | [scout-dev-scan v1](cases/scout-dev-scan/task.md) | scout | development | managed-instruction-scan | [external key](cases/scout-dev-scan/key.md), [probe](controls/scan_test.go.txt) |
 | [scout-held-git-gates v1](cases/scout-held-git-gates/task.md) | scout | held-out | git-mechanical-gates | [external key](cases/scout-held-git-gates/key.md), [probe](controls/git_test.go.txt) |
-| [scout-held-question v1](cases/scout-held-question/task.md) | scout | held-out | answer-wire | [external key](cases/scout-held-question/key.md), [probe](controls/question_test.go.txt) |
+| [scout-held-question v2 / task v1](cases/scout-held-question/task.md) | scout | held-out | answer-wire | [external key](cases/scout-held-question/key-v2.md), [probe](controls/question_test-v2.go.txt) |
 | [implement-dev-ci-empty v1](cases/implement-dev-ci-empty/task.md) | implementation | development | required-ci-empty | [external key](cases/implement-dev-ci-empty/key.md), [probe](controls/ci_test.go.txt) |
 | [implement-dev-ignore-lf v1](cases/implement-dev-ignore-lf/task.md) | implementation | development | gitignore-lf | [external key](cases/implement-dev-ignore-lf/key.md), [probe](controls/attributes_test.go.txt) |
 | [implement-held-capture v1](cases/implement-held-capture/task.md) | implementation | held-out | exact-child-rollout | [external key](cases/implement-held-capture/key.md), [probe](controls/capture_test.go.txt) |
@@ -44,7 +47,7 @@ historical defect. The source comments are real pinned permitted context.
 | [review-dev-risk-clean v1](cases/review-dev-risk-clean/task.md) | review / clean | development | risk-domain-api | [external key](cases/review-dev-risk-clean/key.md), [probe](controls/risk_test.go.txt) |
 | [review-dev-ci-defective v1](cases/review-dev-ci-defective/task.md) | review / defective | development | required-ci-empty | [external key](cases/review-dev-ci-defective/key.md), [probe](controls/ci_test.go.txt) |
 | [review-held-effort-clean v1](cases/review-held-effort-clean/task.md) | review / clean | held-out | effort-policy | [external key](cases/review-held-effort-clean/key.md), [probe](controls/config_test.go.txt) |
-| [review-held-question-defective v1](cases/review-held-question-defective/task.md) | review / defective | held-out | answer-wire | [external key](cases/review-held-question-defective/key.md), [probe](controls/question_test.go.txt) |
+| [review-held-question-defective v2 / task v1](cases/review-held-question-defective/task.md) | review / defective | held-out | answer-wire | [external key](cases/review-held-question-defective/key-v2.md), [probe](controls/question_test-v2.go.txt) |
 
 All twelve are real historical Orch components, with complete tasks and keys;
 they are not invented example IDs or unfinished placeholders. Historical merge
@@ -56,14 +59,14 @@ Clean reviews cover only their declared predicates/APIs. Scouting is source or
 reproduction supported; implementation controls execute pinned code behavior.
 The cases do not validate whole historical PRs or the entire delivery workflow.
 
-[selection.json](selection.json) freezes six development and six held-out cases,
+[selection-v2.json](selection-v2.json) freezes six development and six held-out cases,
 two of each role per partition, with one clean and one defective review in each.
 Implementation difficulty includes mechanical, ordinary and demanding work.
 The CI, answer-wire and effort-policy variants stay together: twelve cases cover
 nine answer lineages, not twelve independent clusters. Selection used the
 availability of source-backed behavioral controls, not any model's performance.
 
-[exposure.json](exposure.json) records the author's complete authoring access,
+[exposure-v2.json](exposure-v2.json) records the author's complete authoring access,
 the coordinator's reported preparation access and the independent review record
 requirements. Published history and the dispatch's known candidate exposure
 are disclosed; training-unseen is never claimed. No tuning occurred here.
@@ -124,17 +127,19 @@ hash/index/checkout behavior in a separately created controller fixture.
 
 ## Author observations and independent evidence
 
-[evidence/author-results.json](evidence/author-results.json) records the final
-command, prerequisites/environment, all twelve packet digests and all 58
+[evidence/author-results-repair-1.json](evidence/author-results-repair-1.json)
+records the revised final
+command, prerequisites/environment, all twelve packet digests and all 60
 controls with exact commands, limits, expected versus observed failures/passes,
 controller artifact digests and raw-output digests.
-[evidence/control-output.json](evidence/control-output.json) retains the actual
+[evidence/control-output-repair-1.json](evidence/control-output-repair-1.json)
+retains the actual
 Go JSON event output for every final control. Timestamps, fixture paths and
 elapsed fields are ordinary preparation logs, not model measurements; their
 raw byte digests will vary on reproduction. Input/output artifacts and normalized
 behavioral pass/fail distinctions are the reproducible comparison points.
 
-The final tagged command passed in 95.143 seconds: twelve packets and **58/58
+The revised tagged command passed in 84.727 seconds: twelve packets and **60/60
 control outcomes matched**. Expected historical/bad-control failing subtests
 remain failures in the raw output; the enclosing suite passes only when the
 declared failures occur and all other behavioral subtests pass. Compiler failure,
@@ -156,8 +161,29 @@ are retained with raw digests. Corrections used independent native path
 resolution, separate assertions and an actually defective uniqueness contrast.
 Attempt 2 matched 57/57. Before freezing v1, an explicit wrong-parent/task
 attribution contrast and an illustrative JSON key correction led to the final
-58/58 attempt. There were no evaluated outputs or hidden unfavorable trial
-results to amend or discard.
+58/58 pre-review attempt. These original attempts/results are unchanged.
+There were no evaluated outputs or hidden unfavorable trial results to amend
+or discard.
+
+Cycle-1 independent review found that the supplied-answer assertion ran only
+when the returned map was nonempty: an always-empty non-nil decoder passed.
+[Repair history](evidence/repair-history.json) records the finding, review
+exposure, original CI failure, invalidated control sufficiency and fourth author
+preparation attempt. The two answer-wire cases and external keys/probe advance
+to revision 2; the strengthened assertion requires the supplied q=yes entry,
+and each case adds an effective always-empty-map bad control. Their v1 keys,
+probe and original outputs remain retained, alongside the
+[prior manifest](evidence/manifest-12129e4.json). Only the two affected case
+versions change: the other ten cases, partition/lineage assignments, worker
+tasks/instructions, historical source and all twelve packet digests are unchanged.
+The existing manifest schema remains version 1; Load previously accepted only
+case version 1 and now accepts positive case revision counters.
+
+The macOS CI fixture failure at the prior head came from the trusted /var alias.
+Ordinary test roots now use filepath.EvalSymlinks before export; intentional
+source/destination links remain literal and rejected. Export itself is unchanged.
+Local ordinary tests passed without skips. Actual repaired macOS CI must be
+verified at the pushed head before completion; a Windows pass is not that proof.
 
 Required repository checks run by the author: `go build ./...`,
 `go test ./...`, `go vet ./...`, `gofmt -l .`,
@@ -169,7 +195,7 @@ prerequisite and the retry passed 6/6. A focused
 symlink-privilege skip. Formatter/whitespace checks are recorded over the final
 tree after disposable reconstruction cleanup. No dependency or lockfile changed.
 
-The fresh validator must independently inspect all twelve pinned source/key
+Fresh validation of the repaired head must independently inspect all twelve pinned source/key
 pairs and reproduce the control suite; check the semantics of every good, bad
 and alternative outcome, blocking severity, source/reproduction support, clean
 classification and missed/unjustified-blocker examples; and record identity,
@@ -212,15 +238,17 @@ change, adoption or Phase 1 completion is authorized or delivered.
 | --- | --- |
 | `docs/evaluation-contract.md` | Preparation formerly described an absent corpus and a validator as another person, and said "without model execution." Those prior statements remain explicitly historical in the same document. After this change, approved authoring agents and fresh validation agents are allowed; evaluation trials remain prohibited. Comparison, measurement, isolation, approval and Phase 1 rules still hold. |
 | `docs/evaluation-workflow.md` | The absent-corpus and "without model calls" statements remain as before/after history in that guide. Maintainer preparation is now documented; every proposed `orch eval` command and protected runtime store remains unimplemented. Existing approval, metrics and adoption behavior still holds. |
-| `evaluation/reference-v1/manifest.json`, `public/`, `roles/` and all twelve `cases/*/task.md` | New versioned declarations and supplied instructions. No prior product behavior existed here; current role/configuration policy is unchanged. Historical files are read from pinned objects, not rewritten. |
-| All twelve `cases/*/key.md`, ten `controls/*_test.go.txt` probes and contrast patches | New external behavioral material; affects maintainer checks only. Historical current-source behavior is preserved, including replayed defects; controls do not mutate product packages. No runtime grader or worker access permission is added. |
-| `selection.json` and `exposure.json` | New frozen partition/lineage/actor records. Held-out tuning/replacement restrictions continue to apply to every actor and lineage, not only the named author. Public or prior exposure is disclosed. |
+| Active `evaluation/reference-v1/manifest.json`, retained `evidence/manifest-12129e4.json`, `public/`, `roles/` and all twelve `cases/*/task.md` | Active manifest advances only the two answer-wire case revisions; the prior manifest is retained. Every public input, task, instruction, source pin and packet digest is unchanged. No product role/configuration policy changes. Historical files are read from pinned objects, not rewritten. |
+| All twelve retained `cases/*/key.md`, two active answer-wire `cases/*/key-v2.md`, ten component probe families including retained `controls/question_test.go.txt` and active `controls/question_test-v2.go.txt`, and contrast patches including `question-empty-map.json` | Prior key/probe evidence remains retained. The two v2 keys/probe require supplied-answer preservation and each adds the effective empty-map control. Other case controls are unchanged. Historical source behavior, including replayed defects, is preserved; no product package, runtime grader or worker access permission changes. |
+| Retained `selection.json`/`exposure.json` and active `selection-v2.json`/`exposure-v2.json` | Counts, partitions and lineages remain frozen. V2 identifies the two revised cases and review/repair exposure. Held-out tuning/replacement restrictions still apply to every actor and lineage; public/prior exposure is disclosed. |
 | `evidence/`, this report and `artifact-digests.json` | New retained preparation evidence and conditional independent-evidence links. No previous metrics schema, runtime registry or protected store is replaced; author failures and unknown independent validation remain visible. |
-| `internal/evalcorpus/corpus.go` | New stdlib manifest/digest validation; no product caller. `Load` enforces the v1 case/partition/instruction/history declarations. It does not judge natural-language answers or infer training exposure. |
+| `internal/evalcorpus/corpus.go` | New stdlib manifest/digest validation; no product caller. Manifest schema stays v1; `Load` previously allowed only case revision 1 and now accepts positive revisions, including the two v2 answer-wire cases. Partition/instruction/history declarations still hold. It does not judge natural-language answers or infer training exposure. |
 | `internal/evalcorpus/export.go` | New maintainer `Export`/`Inspect` with rooted creation, explicit file bytes, path/type/digest and exact-content checks. Every created packet file uses `os.Root`. Official-case selection depends on the validated manifest; direct helpers accept trusted explicit file lists and do not detect semantic answers or enforce global permissions. All former product write/isolation behavior still holds. |
-| `internal/evalcorpus/corpus_test.go` | New bounded manifest/export negative checks with local synthetic objects, requiring no historical Orch objects. Optional local symlink setup is separately visible; it succeeded for the author. Existing repository tests are unchanged. |
+| `internal/evalcorpus/corpus_test.go` | New bounded manifest/export negative checks with local synthetic objects, requiring no historical Orch objects. Trusted fixture roots now resolve OS aliases; deliberate linked-path rejection remains unchanged. Optional local symlink setup is separately visible; it succeeded for the author. Existing repository tests are unchanged. |
 | `internal/evalcorpus/validation_test.go` | New opt-in reconstruction/probe suite, exact failure matching and scoped effort extraction. It never calls evaluated models or production GitHub; it does not grade prose. Ordinary production CLI, adapters, native refusal, guard, configuration, schemas, dependencies and deferred work are unchanged. |
 
 The source/key/task table above enumerates every case structure. Files outside
 these corpus artifacts, the preparation package and the two guides are not
-changed. No existing runtime behavior is removed.
+changed. Existing production behavior remains unchanged. The preparation-only
+differences are the explicit case-version acceptance and repaired fixture/grader
+checks above.

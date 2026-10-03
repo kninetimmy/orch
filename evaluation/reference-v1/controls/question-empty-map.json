@@ -1,0 +1,7 @@
+[
+  {
+    "path": "internal/question/decode.go",
+    "old": "if a.Answers == nil {\n\t\ta.Answers = map[string]string{}\n\t}",
+    "new": "a.Answers = map[string]string{}"
+  }
+]

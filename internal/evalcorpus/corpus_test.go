@@ -25,6 +25,17 @@ func manifestFixture(t *testing.T) (Manifest, []byte) {
 	return m, data
 }
 
+// TempDir may use a trusted OS alias such as macOS /var -> /private/var.
+// Resolve that fixture root, not the deliberate links the rejection tests add.
+func fixtureDir(t *testing.T) string {
+	t.Helper()
+	dir, err := filepath.EvalSymlinks(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	return dir
+}
+
 func TestManifest(t *testing.T) {
 	_, original := manifestFixture(t)
 	for _, mutate := range []func(*Manifest){
@@ -61,7 +72,7 @@ func TestManifest(t *testing.T) {
 
 func TestExportRejections(t *testing.T) {
 	ctx := t.Context()
-	corpus, parent := t.TempDir(), t.TempDir()
+	corpus, parent := fixtureDir(t), fixtureDir(t)
 	if err := os.WriteFile(filepath.Join(corpus, "input.txt"), []byte("declared\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
@@ -119,7 +130,7 @@ func TestExportRejections(t *testing.T) {
 // Synthetic local Git objects make these rejection tests independent of Orch
 // history and of platform symlink privileges. No branch, hook or GitHub changes.
 func TestHistoricalExportRejections(t *testing.T) {
-	repo := t.TempDir()
+	repo := fixtureDir(t)
 	git := func(stdin []byte, args ...string) []byte {
 		t.Helper()
 		ctx, stop := context.WithTimeout(t.Context(), 10*time.Second)
@@ -145,7 +156,7 @@ func TestHistoricalExportRejections(t *testing.T) {
 	base := commit(tree)
 	withModule := string(git([]byte("160000 commit "+base+"\tmodule\n"), "mktree"))
 	submodule := commit(withModule)
-	corpus, parent := t.TempDir(), t.TempDir()
+	corpus, parent := fixtureDir(t), fixtureDir(t)
 	f := File{Path: "safe.txt", Source: "safe.txt", Commit: base, SHA256: Digest([]byte("safe\n"))}
 	if _, err := Export(t.Context(), repo, corpus, parent, "valid", []File{f}); err != nil {
 		t.Fatal(err)
@@ -167,7 +178,7 @@ func TestHistoricalExportRejections(t *testing.T) {
 }
 
 func TestExportLinks(t *testing.T) {
-	corpus, parent, outside := t.TempDir(), t.TempDir(), t.TempDir()
+	corpus, parent, outside := fixtureDir(t), fixtureDir(t), fixtureDir(t)
 	if err := os.WriteFile(filepath.Join(outside, "key.txt"), []byte("not public"), 0o600); err != nil {
 		t.Fatal(err)
 	}

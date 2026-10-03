@@ -1,0 +1,34 @@
+package question
+
+import "testing"
+
+func TestCorpus(t *testing.T) {
+	t.Run("tail", func(t *testing.T) {
+		for _, input := range []string{`{"schema_version":1}}`, `{"schema_version":1}]`, `{"schema_version":1}{} `, `{"schema_version":1}x`} {
+			if _, err := DecodeAnswers([]byte(input)); err == nil {
+				t.Errorf("accepted trailing bytes: %q", input)
+			}
+		}
+	})
+	t.Run("fields", func(t *testing.T) {
+		if _, err := DecodeAnswers([]byte(`{"schema_version":1,"surprise":true}`)); err == nil {
+			t.Error("accepted unknown field")
+		}
+	})
+	t.Run("schema", func(t *testing.T) {
+		if _, err := DecodeAnswers([]byte(`{"schema_version":9}`)); err == nil {
+			t.Error("accepted wrong schema")
+		}
+	})
+	t.Run("map", func(t *testing.T) {
+		for _, input := range []string{`{"schema_version":1}`, `{"schema_version":1,"answers":null}`, `{"schema_version":1,"answers":{"q":"yes"}}`} {
+			got, err := DecodeAnswers([]byte(input))
+			if err != nil || got.Answers == nil {
+				t.Errorf("map normalization: %+v, %v", got, err)
+			}
+			if input == `{"schema_version":1,"answers":{"q":"yes"}}` && got.Answers["q"] != "yes" {
+				t.Error("answer lost")
+			}
+		}
+	})
+}

@@ -90,7 +90,7 @@ func Load(data []byte) (Manifest, error) {
 	ids, lineages := map[string]bool{}, map[string]string{}
 	counts, reviews, difficulties := map[string]int{}, map[string]int{}, map[string]bool{}
 	for _, c := range m.Cases {
-		if ids[c.ID] || safePath(c.ID, false) != nil || strings.Contains(c.ID, "/") || c.Version != 1 {
+		if ids[c.ID] || safePath(c.ID, false) != nil || strings.Contains(c.ID, "/") || c.Version < 1 {
 			return m, fmt.Errorf("case %q: invalid or duplicate identity/version", c.ID)
 		}
 		ids[c.ID] = true

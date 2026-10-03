@@ -789,7 +789,7 @@
     },
     {
       "id": "scout-held-question",
-      "version": 2,
+      "version": 1,
       "role": "scout",
       "partition": "held-out",
       "lineage": "answer-wire",
@@ -837,13 +837,13 @@
       "packet_sha256": "7a88725b6dd704171b465b1f42ed765edad0e4ac16bc1e6929509e1031c83968",
       "key": {
         "path": "key.md",
-        "source": "cases/scout-held-question/key-v2.md",
-        "sha256": "cad5de967cd38c6a5f739e9cfc9db88749c5809e03b3ef0ca55257f9c85cac46"
+        "source": "cases/scout-held-question/key.md",
+        "sha256": "0f3a1746844e508ae759f759fdf85eb6dedfb1a6e8ddd3fcd089f21af6ea114b"
       },
       "probe": {
         "path": "internal/question/corpus_test.go",
-        "source": "controls/question_test-v2.go.txt",
-        "sha256": "9e2af9363df4ff37331604650366c53676873c48f98365fb0d97a22df81bd2ec"
+        "source": "controls/question_test.go.txt",
+        "sha256": "b2e3ea2453cc05143a5c2835a44075ca6d2e647d677bcde86bb87ad0e940e8aa"
       },
       "command": [
         "go",
@@ -1036,38 +1036,6 @@
             "sha256": "e413ae99c76947dbfac84e2c064d30f7f2c08beaa4c45bf7df5834344c0ffcd2"
           },
           "expected_failures": []
-        },
-        {
-          "name": "bad-supplied-answer",
-          "purpose": "Always return an empty non-nil map, discarding supplied answers; revision-2 probe must reject this semantic control.",
-          "files": [
-            {
-              "path": "internal/question/question.go",
-              "source": "internal/question/question.go",
-              "commit": "1c934cebc9d1707ceb3134d29906dc2563cc6ce8",
-              "sha256": "f555a0d2edfb828327ca6d55494d626f228e006e3bfc3efe72ab4a52026456a2"
-            },
-            {
-              "path": "internal/question/decode.go",
-              "source": "internal/question/decode.go",
-              "commit": "1c934cebc9d1707ceb3134d29906dc2563cc6ce8",
-              "sha256": "b11f677641a401f5ddb8328ba4fd96e2e22745ab2df30854e78b6179117da15e"
-            },
-            {
-              "path": "go.mod",
-              "source": "public/go.mod.txt",
-              "sha256": "ab35cad14d574f7e762603357ed0cdb4a8cd8a1b9e70d31ecf566a2bfccdb208"
-            }
-          ],
-          "patch": {
-            "path": "patch.json",
-            "source": "controls/question-empty-map.json",
-            "sha256": "901af685980d2bfd23ed7a0c8fe4eae583300f31ac0c277868473e123beb31be"
-          },
-          "expected_failures": [
-            "TestCorpus/tail",
-            "TestCorpus/map"
-          ]
         }
       ]
     },
@@ -2725,7 +2693,7 @@
     },
     {
       "id": "review-held-question-defective",
-      "version": 2,
+      "version": 1,
       "role": "review",
       "partition": "held-out",
       "lineage": "answer-wire",
@@ -2774,13 +2742,13 @@
       "packet_sha256": "0454cd26d8022ca38790f9c2943fe8b91af039ae5781a170b4c11f77265ca512",
       "key": {
         "path": "key.md",
-        "source": "cases/review-held-question-defective/key-v2.md",
-        "sha256": "75e5c0bdcb07ccb6cade25808ceef9a2933b1c19d4955da2fd337effd81eba82"
+        "source": "cases/review-held-question-defective/key.md",
+        "sha256": "52b8d15077b67e6d2da1a067e4dfe796c43d13bddfed865bded8a8199024a025"
       },
       "probe": {
         "path": "internal/question/corpus_test.go",
-        "source": "controls/question_test-v2.go.txt",
-        "sha256": "9e2af9363df4ff37331604650366c53676873c48f98365fb0d97a22df81bd2ec"
+        "source": "controls/question_test.go.txt",
+        "sha256": "b2e3ea2453cc05143a5c2835a44075ca6d2e647d677bcde86bb87ad0e940e8aa"
       },
       "command": [
         "go",
@@ -2968,38 +2936,6 @@
             "path": "patch.json",
             "source": "controls/question-map.json",
             "sha256": "d37697e3a27929000195c4d244e8b24a131a5da599d3ed0d31dba4fa9daff1fc"
-          },
-          "expected_failures": [
-            "TestCorpus/tail",
-            "TestCorpus/map"
-          ]
-        },
-        {
-          "name": "bad-supplied-answer",
-          "purpose": "Always return an empty non-nil map, discarding supplied answers; revision-2 probe must reject this semantic control.",
-          "files": [
-            {
-              "path": "internal/question/question.go",
-              "source": "internal/question/question.go",
-              "commit": "1c934cebc9d1707ceb3134d29906dc2563cc6ce8",
-              "sha256": "f555a0d2edfb828327ca6d55494d626f228e006e3bfc3efe72ab4a52026456a2"
-            },
-            {
-              "path": "internal/question/decode.go",
-              "source": "internal/question/decode.go",
-              "commit": "1c934cebc9d1707ceb3134d29906dc2563cc6ce8",
-              "sha256": "b11f677641a401f5ddb8328ba4fd96e2e22745ab2df30854e78b6179117da15e"
-            },
-            {
-              "path": "go.mod",
-              "source": "public/go.mod.txt",
-              "sha256": "ab35cad14d574f7e762603357ed0cdb4a8cd8a1b9e70d31ecf566a2bfccdb208"
-            }
-          ],
-          "patch": {
-            "path": "patch.json",
-            "source": "controls/question-empty-map.json",
-            "sha256": "901af685980d2bfd23ed7a0c8fe4eae583300f31ac0c277868473e123beb31be"
           },
           "expected_failures": [
             "TestCorpus/tail",
