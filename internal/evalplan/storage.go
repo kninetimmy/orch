@@ -70,6 +70,9 @@ func directory(name string, allowMissing bool) (string, error) {
 	if runtime.GOOS != "windows" && runtime.GOOS != "linux" && runtime.GOOS != "darwin" {
 		return "", fmt.Errorf("evaluation local path verification unavailable on %s", runtime.GOOS)
 	}
+	if err := verifyDriveRoot(name); err != nil {
+		return "", err
+	}
 	for p := name; ; p = filepath.Dir(p) {
 		info, err := os.Lstat(p)
 		if err != nil {

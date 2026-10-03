@@ -363,6 +363,12 @@ unsupported evaluation verbs fail explicitly. Existing metrics do not supply a
 validated corpus, grader or measured evaluation baseline. Preview supplies plans
 and blockers, with no observed results.
 
+The initial preview admitted Windows `SUBST` drive aliases during placement
+checks, allowing a record to land inside an excluded worker location. After the
+review repair, every preview directory uses Windows' handle-resolved drive-root
+identity and rejects aliased or unverifiable roots, including aliases on the
+excluded-path side. Worker-access protection remains unverified.
+
 On Claude Code the three interviews also have slash commands:
 `/orch:init`, `/orch:configure`, `/orch:configure-local`.
 

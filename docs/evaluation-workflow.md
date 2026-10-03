@@ -150,8 +150,19 @@ directory/common directory, or any declared worker/scratch location. Declare
 `worker_roots` with 1..32 entries and `scratch_roots` explicitly with 0..32;
 future worker/scratch directories may be absent, but their existing ancestors
 must be verifiable. Links, Windows reparse points/junctions, file hard links,
-traversal, reserved devices, alternate streams, short-name aliases and
+traversal, reserved devices, alternate streams, short-name and drive aliases and
 unverifiable paths fail closed. Resolve trusted OS aliases before choosing paths.
+
+Before the review-cycle-1 repair, a Windows `SUBST` mapping could present an
+excluded worker directory under a different drive letter, pass lexical placement
+comparisons and receive a saved preview record. After the repair, shared
+directory validation compares the handle-resolved Windows drive-root path with
+the declared DOS root and rejects aliases or unavailable identity evidence.
+This covers storage roots, every artifact parent, repository/Git locations and
+worker/scratch exclusions, including absent descendants and aliases on either
+side of an exclusion. Standard local drives retain their behavior. Unix path
+rules and other existing `internal/paths` consumers are unchanged; this added
+placement check does not verify worker-access protection.
 
 Version 1 rejects unknown or duplicate JSON fields, non-lowercase field names,
 nulls, trailing documents, malformed UTF-8 and nesting beyond 32 levels. Optional
@@ -289,8 +300,8 @@ execution to fulfill the proposed run/status/stop/report workflow.
 | `internal/cli/eval.go`: `runEval` | New preview-only parser. Every unsupported evaluation verb, not merely `run`, fails explicitly. Duplicate/unknown flags and missing plan paths fail before reads or writes. No stdin policy, approval, model invocation or lifecycle mutation is added. |
 | `internal/evalplan/plan.go`: proposal/normalized/public-record types, `Preview`, strict decoder, configuration/profile pins, counts/schedule, `WriteText` | New bounded local preparation path. Reuses corpus/config rules and projects typed public metadata; no evaluator, observations, automatic verdict or private artifact copying. Text/JSON share the same facts. Readiness is never authority. |
 | `internal/evalplan/storage.go`: local reads, effective overlay identity, fixed Git queries, root exclusions, `save`/replay | New metadata retention outside current/listed checkouts, actual Git/common directories and declared worker/scratch roots. Every artifact reference and destination uses checked local paths; this is not a restriction on one file alone. Existing records are never replaced; pending writes are not complete. Existing Delivery serialization/state/lock/association behavior is untouched. |
-| `internal/evalplan/path_windows.go`, `path_unix.go`, `path_other.go` | New Windows reparse/link-count and Linux/macOS file-link checks; other platforms fail closed. These checks apply to all preview artifact/record files and directory components, not to only one named artifact. They do not establish worker-access protection or change existing `internal/paths` consumers. |
-| `internal/cli/eval_test.go`, `eval_windows_test.go`, `internal/evalplan/storage_test.go` | New deterministic synthetic-artifact, real CLI process, schedule, strict-input/limit, path/Git exclusion, Windows junction, immutable/concurrent and interrupted-record checks. Existing tests and CI matrix remain; no normal test invokes evaluation models. |
+| `internal/evalplan/path_windows.go`, `path_unix.go`, `path_other.go` | New Windows native drive-root identity/reparse/link-count and Linux/macOS file-link checks; other platforms fail closed. The drive check is Windows-only; Unix behavior is preserved. These checks apply through shared directory validation to every preview path kind and on both sides of exclusions, not to only one named artifact. They do not establish worker-access protection or change existing `internal/paths` consumers. |
+| `internal/cli/eval_test.go`, `eval_windows_test.go`, `internal/evalplan/storage_test.go` | New deterministic synthetic-artifact, real CLI process, schedule, strict-input/limit, path/Git exclusion, Windows junction/SUBST, immutable/concurrent and interrupted-record checks. The SUBST regression reproduced six accepted aliases before repair and now requires refusal with no saved/pending file. Existing tests and CI matrix remain; no normal test invokes evaluation models. |
 | `README.md` | Help and feature status now describe implemented preview; the previous whole-family unimplemented behavior is retained as before/after context in the same section. Other CLI/install/Delivery behavior holds. |
 | `docs/evaluation-workflow.md` | The former illustrative preview syntax is retained as historical context and replaced by the exact implemented version 1 format. Preview's prior proposed verified controller store is distinguished from the implemented unverified public preparation store. Proposed execution, approval, status, stop, report and adoption behavior remains proposed. |
 | `docs/evaluation-contract.md` | Only the whole-family implementation-status statement changes, with its old behavior preserved as before/after. Corpus, grading, matching, measures, decisions, isolation and approval requirements still hold. |

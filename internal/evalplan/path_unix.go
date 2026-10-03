@@ -10,6 +10,8 @@ import (
 
 func reparse(info os.FileInfo) bool { return info.Mode()&os.ModeSymlink != 0 }
 
+func verifyDriveRoot(string) error { return nil }
+
 func linkCount(f *os.File) (uint64, error) {
 	info, err := f.Stat()
 	if err != nil {
