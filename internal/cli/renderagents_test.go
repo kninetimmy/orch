@@ -28,7 +28,7 @@ config_revision = "r1"
 mode = "off"
 
 [hosts.codex.roles.architect]
-model  = "gpt-5.6-sol"
+model  = "gpt-6-astra"
 effort = "xhigh"
 
 [hosts.codex.roles.scout]
@@ -36,19 +36,19 @@ model  = "gpt-5.6-luna"
 effort = "max"
 
 [hosts.codex.roles.implementer]
-model  = "gpt-5.6-terra"
-effort = "max"
+model  = "gpt-6.1-sol"
+effort = "xhigh"
 
 [hosts.codex.roles.specialist]
-model  = "gpt-5.6-sol"
+model  = "gpt-6.1-sol"
 effort = "max"
 
 [hosts.codex.roles.reviewer]
-model  = "gpt-5.6-sol"
-effort = "xhigh"
+model  = "gpt-6-astra"
+effort = "medium"
 
 [hosts.codex.roles.review_downgrade]
-model  = "gpt-5.6-sol"
+model  = "gpt-6.1-sol"
 effort = "high"
 `
 

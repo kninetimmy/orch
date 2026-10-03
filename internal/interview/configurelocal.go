@@ -547,6 +547,9 @@ func localRoleDocSpecs(host string, committed *config.Config, seeded map[string]
 			FreeText: true,
 			Default:  effectiveModel,
 		}
+		if host == "codex" {
+			modelQ.Hint = codexModelHint
+		}
 		effortKey := localRoleEffortID(host, rs.key)
 		effectiveEffort := effectiveValue(seeded, effortKey, cp.Effort)
 		profileQ := question.Question{
@@ -617,11 +620,11 @@ func localOpenCodeRoleDocSpecs(facts Facts, committed *config.Config, seeded, an
 	return docs, nil
 }
 
-// modelOptionsLocal lists host's local-override-selectable models,
+// modelOptionsLocal lists host's offered local-override models,
 // marking committedVal's option "(committed)" in its Label and
 // effectiveVal Recommended.
 func modelOptionsLocal(host, committedVal, effectiveVal string) []question.Option {
-	models := hostLocalModels[host]
+	models := modelsOffered(hostLocalModels[host], effectiveVal)
 	opts := make([]question.Option, len(models))
 	for i, m := range models {
 		label := m

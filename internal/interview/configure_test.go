@@ -360,7 +360,7 @@ func TestGoldenTranscriptConfigureDisableCodex(t *testing.T) {
 // that its instruction file proposes a fresh install.
 func TestGoldenTranscriptConfigureEnableCodexFromClaudeOnly(t *testing.T) {
 	root := t.TempDir()
-	writeCommittedConfigClaudeOnly(t, root)
+	committed := writeCommittedConfigClaudeOnly(t, root)
 	facts := configureFacts()
 
 	overrides := map[string]string{
@@ -371,11 +371,19 @@ func TestGoldenTranscriptConfigureEnableCodexFromClaudeOnly(t *testing.T) {
 	if doc.Kind != question.DocComplete {
 		t.Fatalf("Kind = %q, want %q", doc.Kind, question.DocComplete)
 	}
-	toml := doc.Complete.Summary.ConfigTOML
-	for role, want := range map[string]string{"architect": "gpt-5.6-sol", "scout": "gpt-5.6-terra"} {
-		if !strings.Contains(toml, want) {
-			t.Errorf("ConfigTOML missing PRD default %s for %s:\n%s", want, role, toml)
+	cfg, err := config.Parse([]byte(doc.Complete.Summary.ConfigTOML))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, rs := range roleSpecs {
+		got := committedProfile(cfg.Hosts.Codex, rs.key)
+		want := defaultProfiles["codex"][rs.key]
+		if got.Model != want.model || got.Effort != want.execution {
+			t.Errorf("new Codex %s = %+v, want %+v", rs.key, got, want)
 		}
+	}
+	if cfg.Hosts.Claude.Roles != committed.Hosts.Claude.Roles {
+		t.Error("enabling Codex changed the existing Claude profiles")
 	}
 	change := findFileChange(doc.Complete.Summary.Files, "AGENTS.md")
 	if change == nil {
@@ -392,6 +400,39 @@ func TestGoldenTranscriptConfigureEnableCodexFromClaudeOnly(t *testing.T) {
 		if !strings.Contains(gitignore, destination) {
 			t.Errorf("GitignoreLines = %v, want %s", doc.Complete.Summary.GitignoreLines, destination)
 		}
+	}
+}
+
+func TestNextConfigurePreservesExplicitCodexProfiles(t *testing.T) {
+	root := t.TempDir()
+	committed := writeCommittedConfigLocal(t, root)
+	committed.Hosts.Codex.Roles.Specialist = config.RoleProfile{Model: "custom-model-v1", Effort: "ultra"}
+	writeCommittedConfig(t, root, committed)
+	writeLocalOverrideFile(t, root, "[hosts.codex.roles.architect]\nmodel = \"gpt-6.1-sol\"\neffort = \"max\"\n")
+	answers := map[string]string{idPickHosts: "no", idPickRolesClaude: "no", idPickRolesCodex: "yes", idPickSettings: "no"}
+	for _, rs := range roleSpecs {
+		doc, err := NextConfigure(configureFacts(), answers, root)
+		if err != nil {
+			t.Fatal(err)
+		}
+		want := committedProfile(committed.Hosts.Codex, rs.key)
+		if doc.Kind != question.DocQuestions || len(doc.Questions) != 2 || doc.Questions[0].Default != want.Model || doc.Questions[1].Default != want.Effort {
+			t.Fatalf("%s defaults do not retain %+v: %+v", rs.key, want, doc)
+		}
+		for _, q := range doc.Questions {
+			answers[q.ID] = q.Default
+		}
+	}
+	doc, err := NextConfigure(configureFacts(), answers, root)
+	if err != nil || doc.Kind != question.DocSummary {
+		t.Fatalf("NextConfigure summary: %+v, %v", doc, err)
+	}
+	cfg, err := config.Parse([]byte(doc.Summary.ConfigTOML))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.Hosts.Codex.Roles != committed.Hosts.Codex.Roles || cfg.ConfigRevision != committed.ConfigRevision {
+		t.Error("accepting existing Codex profiles changed their selections or revision")
 	}
 }
 

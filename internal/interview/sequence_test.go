@@ -26,21 +26,16 @@ func withOpenCodeTestCatalog(f Facts) Facts {
 	return f
 }
 
-// TestDefaultProfilesMatchPRD pins defaultProfiles against the PRD §10
-// table verbatim (plan verification string: codex
-// sol-xhigh/luna-max/terra-max/sol-max/sol-xhigh/sol-high;
-// claude opus-5-high/opus-5-low/opus-5-medium/opus-5-high/
-// opus-5-high/opus-5-medium; OpenCode uses the same native variant values
-// shown in the PRD table).
+// TestDefaultProfilesMatchPRD pins all six profiles against the PRD §10 table.
 func TestDefaultProfilesMatchPRD(t *testing.T) {
 	want := map[string]map[string]profile{
 		"codex": {
-			"architect":        {"gpt-5.6-sol", "xhigh"},
+			"architect":        {"gpt-6-astra", "xhigh"},
 			"scout":            {"gpt-5.6-luna", "max"},
-			"implementer":      {"gpt-5.6-terra", "max"},
-			"specialist":       {"gpt-5.6-sol", "max"},
-			"reviewer":         {"gpt-5.6-sol", "xhigh"},
-			"review_downgrade": {"gpt-5.6-sol", "high"},
+			"implementer":      {"gpt-6.1-sol", "xhigh"},
+			"specialist":       {"gpt-6.1-sol", "max"},
+			"reviewer":         {"gpt-6-astra", "medium"},
+			"review_downgrade": {"gpt-6.1-sol", "high"},
 		},
 		"claude": {
 			"architect":        {"claude-opus-5", "high"},
@@ -64,6 +59,34 @@ func TestDefaultProfilesMatchPRD(t *testing.T) {
 			got := defaultProfiles[host][role]
 			if got != want {
 				t.Errorf("defaultProfiles[%s][%s] = %+v, want %+v", host, role, got, want)
+			}
+		}
+	}
+}
+
+func TestCodexModelChoicesKeepCurrentAndFreeText(t *testing.T) {
+	models := append(append([]string{}, hostModels["codex"]...), "custom-model-v1")
+	for _, current := range models {
+		for _, opts := range [][]question.Option{
+			modelOptions("codex", current),
+			modelOptionsLocal("codex", "gpt-5.6-terra", current),
+		} {
+			q := question.Question{ID: roleModelID("codex", "architect"), Header: "Architect", Prompt: "Model?", Kind: question.KindSelect, Options: opts, FreeText: true, Default: current}
+			if err := question.SpecCheck(q); err != nil {
+				t.Fatal(err)
+			}
+			for _, visible := range []string{"gpt-6-astra", "gpt-6.1-sol", current} {
+				if !slices.ContainsFunc(opts, func(o question.Option) bool { return o.Value == visible && (visible != current || o.Recommended) }) {
+					t.Errorf("current %s: options %v omit %s", current, opts, visible)
+				}
+			}
+			for _, model := range models {
+				if err := question.ValidateAnswer(q, model); err != nil {
+					t.Fatal(err)
+				}
+				if err := validateModelAnswer(q.ID, model, current); err != nil {
+					t.Fatal(err)
+				}
 			}
 		}
 	}

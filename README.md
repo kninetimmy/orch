@@ -389,12 +389,21 @@ tier it belonged to. The defaults `orch init` offers:
 
 | Role | Claude Code | Codex CLI | OpenCode V2 |
 |---|---|---|---|
-| Architect | `claude-opus-5` / high | `gpt-5.6-sol` / xhigh | `openai/gpt-5.6-sol#xhigh` |
+| Architect | `claude-opus-5` / high | `gpt-6-astra` / xhigh | `openai/gpt-5.6-sol#xhigh` |
 | Scout | `claude-opus-5` / low | `gpt-5.6-luna` / max | `openai/gpt-5.6-luna#max` |
-| Implementer | `claude-opus-5` / medium | `gpt-5.6-terra` / max | `openai/gpt-5.6-terra#max` |
-| Specialist | `claude-opus-5` / high | `gpt-5.6-sol` / max | `openai/gpt-5.6-sol#max` |
-| Reviewer | `claude-opus-5` / high | `gpt-5.6-sol` / xhigh | `openai/gpt-5.6-sol#xhigh` |
-| Review downgrade | `claude-opus-5` / medium | `gpt-5.6-sol` / high | `openai/gpt-5.6-sol#high` |
+| Implementer | `claude-opus-5` / medium | `gpt-6.1-sol` / xhigh | `openai/gpt-5.6-terra#max` |
+| Specialist | `claude-opus-5` / high | `gpt-6.1-sol` / max | `openai/gpt-5.6-sol#max` |
+| Reviewer | `claude-opus-5` / high | `gpt-6-astra` / medium | `openai/gpt-5.6-sol#xhigh` |
+| Review downgrade | `claude-opus-5` / medium | `gpt-6.1-sol` / high | `openai/gpt-5.6-sol#high` |
+
+These Codex defaults apply to fresh setup and newly enabled hosts. Existing
+committed profiles and machine-local overrides keep their selections. Codex
+model questions show at most four choices, including Astra, Sol 6.1 and the
+current default; use Other for any prior or custom exact model ID. To adopt the
+profiles in an existing repository, use `orch configure` for shared selections
+or `orch configure-local` for this machine, then run `orch render-agents` after
+the change is applied. Follow the [Codex install order](adapters/codex/README.md#install-order)
+when updating the engine and adapter; installing alone does not rewrite profiles.
 
 Before optional OpenCode variants, OpenCode reused the `effort` key and always
 rendered it as a `#variant` suffix. New OpenCode configuration uses optional
