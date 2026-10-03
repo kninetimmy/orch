@@ -7,6 +7,11 @@ a change; they cannot establish general superiority across repositories, hosts
 or tasks. Recovery tests and a later live pilot supply separate evidence about
 the complete delivery workflow.
 
+The companion [evaluation workflow](evaluation-workflow.md) defines discovery,
+preview, approval, progress and saved results. Its `orch eval` commands are
+proposed and unimplemented; they are not part of current `orch help` output.
+Existing metrics remain available under their own recording and reporting rules.
+
 The [metrics contract](metric-observations.md) governs native usage, provenance,
 missingness and timing. The [native session contract](codex-native-protocol.md)
 governs execution eligibility and boundaries. This document adds evaluation
