@@ -54,6 +54,14 @@ Reported counters/profiles/IDs retain available meanings and missingness, with
 unknown grades and no fabricated totals, active time, human work or metrics
 associations. Current-Delivery recording is not used for standalone evaluations.
 
+Before review-cycle-1 repair, the core could accept a `completed` progress
+record containing unrun slots, or publish malformed native observations that
+its own reader rejected. After repair, read/publication share logical state and
+native payload validation. Completion requires closed evidence for every frozen
+slot; malformed native bytes remain bounded, digest-linked quarantined data with
+an explicit invalid outcome, unknown grade and no further execution. Original
+valid records remain compatible and production native refusal remains binding.
+
 Guarded files and ordinary modes do **not** verify worker-access enforcement or
 OS/model isolation. Every production controller attempt still passes through
 `IsolationPreflight` and refuses; no diagnostic can grant approval or start a

@@ -125,6 +125,7 @@ type AttemptRecord struct {
 	Artifacts       []DigestedFile  `json:"artifacts"`
 	Output          *DigestedFile   `json:"output,omitempty"`
 	Native          *NativeEvidence `json:"native,omitempty"`
+	InvalidNative   *DigestedFile   `json:"invalid_native,omitempty"`
 	Eligibility     *Eligibility    `json:"eligibility,omitempty"`
 	Cleanup         Cleanup         `json:"cleanup"`
 }
@@ -331,6 +332,78 @@ func inventory(g *guardedDir) (int64, int, []string, error) {
 
 var outcomes = []string{"native-completed", "task-failure", "infrastructure-failure", "timeout", "interrupted", "disconnected", "refused", "protocol-invalid", "invalid-evidence", "safety-failure"}
 
+// State claims must follow the retained schedule, not just use a valid enum.
+// Both publication and inspection use this same semantic check.
+func validateProgressState(p *Progress) error {
+	if len(p.Slots) == 0 {
+		return fmt.Errorf("progress lacks scheduled slots")
+	}
+	unrun, unfinished := false, false
+	last := ""
+	for _, slot := range p.Slots {
+		if slot.Status == "unrun" {
+			if len(slot.Attempts) != 0 || slot.AttemptsConsumed != 0 || slot.RepairsConsumed != 0 {
+				return fmt.Errorf("unrun slot has consumed attempts")
+			}
+			unrun = true
+			if p.State == "completed" {
+				return fmt.Errorf("completed schedule contains unrun work")
+			}
+			continue
+		}
+		if unrun || unfinished || len(slot.Attempts) == 0 {
+			return fmt.Errorf("slot progression contradicts the frozen schedule")
+		}
+		for i, ref := range slot.Attempts {
+			if ref.SHA256 == "" && (i != len(slot.Attempts)-1 || slot.Status != "running") {
+				return fmt.Errorf("terminal or earlier attempt lacks complete evidence")
+			}
+		}
+		if slot.Status == "running" {
+			if slot.Attempts[len(slot.Attempts)-1].SHA256 != "" {
+				return fmt.Errorf("running slot has no unfinished attempt")
+			}
+			unfinished = true
+		} else if !slices.Contains(outcomes, slot.Status) {
+			return fmt.Errorf("invalid slot status")
+		}
+		if p.State == "prepared" || p.State == "completed" && !slices.Contains([]string{"native-completed", "task-failure", "infrastructure-failure", "timeout"}, slot.Status) {
+			return fmt.Errorf("controller state contradicts retained slot outcomes")
+		}
+		last = slot.Status
+		if slices.Contains([]string{"interrupted", "disconnected", "refused", "protocol-invalid", "invalid-evidence", "safety-failure"}, last) {
+			unfinished = true // these outcomes must stop subsequent units
+		}
+	}
+	if p.State == "prepared" && p.Sequence != 0 || p.State == "refused" && last != "refused" || p.State == "incomplete" && last == "" {
+		return fmt.Errorf("controller state lacks its required slot evidence")
+	}
+	return nil
+}
+
+func validateNative(native *NativeEvidence) error {
+	if native == nil {
+		return nil
+	}
+	if len(native.Observations) > 1024 {
+		return fmt.Errorf("native observation capacity exceeded")
+	}
+	// Observation has version-specific JSON decoding as well as semantic rules.
+	// A typed payload must survive the same decode used by the retained reader.
+	data, err := storedBytes(native)
+	if err != nil {
+		return err
+	}
+	var decoded NativeEvidence
+	if err := strictStored(data, &decoded); err != nil {
+		return fmt.Errorf("native evidence wire format invalid: %w", err)
+	}
+	if _, err := metrics.CounterContributions(decoded.Observations); err != nil {
+		return fmt.Errorf("native observations invalid: %w", err)
+	}
+	return nil
+}
+
 func validateProgress(p *Progress, e *Evaluation, hash string, previous *Progress) error {
 	if p.SchemaVersion != 1 || p.EvaluationID != e.ID || p.PlanDigest != e.Preparation.PlanDigest ||
 		p.EvaluationSHA256 != hash || len(p.Slots) != len(e.Preparation.Preview.Schedule) || len(p.Inspection) != 0 ||
@@ -382,7 +455,7 @@ func validateProgress(p *Progress, e *Evaluation, hash string, previous *Progres
 			}
 		}
 	}
-	return nil
+	return validateProgressState(p)
 }
 
 func readProgress(g *guardedDir, e *Evaluation, hash string) (*Progress, error) {
@@ -453,12 +526,16 @@ func readProgress(g *guardedDir, e *Evaluation, hash string) (*Progress, error) 
 				if ref.Number == len(slot.Attempts) && slot.Status != "running" && slot.Status != a.Outcome {
 					return nil, fmt.Errorf("slot status conflicts with final attempt outcome")
 				}
-				if a.Native != nil {
-					if len(a.Native.Observations) > 1024 {
-						return nil, fmt.Errorf("native observation capacity exceeded")
+				if err := validateNative(a.Native); err != nil {
+					return nil, err
+				}
+				if a.InvalidNative != nil {
+					if a.Native != nil || a.Outcome != "invalid-evidence" {
+						return nil, fmt.Errorf("invalid native evidence presented as usable")
 					}
-					if _, err := metrics.CounterContributions(a.Native.Observations); err != nil {
-						return nil, fmt.Errorf("native observations invalid: %w", err)
+					bytes, err := g.read(attemptName(slot.Ordinal, ref.Number)+"/"+a.InvalidNative.Path, MaxArtifactBytes)
+					if err != nil || evalcorpus.Digest(bytes) != a.InvalidNative.SHA256 {
+						return nil, fmt.Errorf("invalid native artifact missing or changed: %v", err)
 					}
 				}
 				caseBytes, err := g.read(attemptName(slot.Ordinal, ref.Number)+"/case.json", maxRecordBytes)
@@ -595,6 +672,9 @@ func appendProgress(g *guardedDir, p *Progress, change func(*Progress)) (*Progre
 	next.Sequence++
 	next.At = now()
 	change(&next)
+	if err := validateProgressState(&next); err != nil {
+		return p, err
+	}
 	if next.Sequence >= maxProgressRecords {
 		return p, fmt.Errorf("progress record capacity exceeded")
 	}

@@ -494,6 +494,7 @@ indentation and a final newline; hashes below cover those exact retained bytes.
 | `unit-NNNNNN-attempt-NNNNNN/case.json` | Exact controller-side corpus case declaration, digest-linked from the final attempt. It includes controller references and never enters the worker packet. |
 | `initial/`, `private/key/`, `private/probe/`, `private/control-NNN/files/` and optional `private/control-NNN/patch/` inside an attempt | Original public bytes and separately rooted key/probe/control bytes. Each retained file's relative name and SHA-256 appear in the attempt's `initial` list. Initial bytes/outcomes survive every fresh retry/repair. |
 | `worker-output/`, `scratch-output/`, optional `output.txt` inside an attempt | Bounded retained worker/scratch files and available textual output, treated solely as data. File names/digests are in `artifacts` and optional `output`. No worker code or hidden probe is run with controller privileges. |
+| Optional `invalid-native.json` inside an attempt | Exact bounded malformed native payload, linked by `invalid_native` path/digest. It is retained as data with an `invalid-evidence` outcome and unknown grade, never decoded as usable native observations. If it cannot fit the existing artifact/storage limits, the attempt stays explicitly incomplete. |
 | `unit-NNNNNN-attempt-NNNNNN/attempt.json` | Final schema/identity, frozen unit, number/kind, case/packet hashes, packet/scratch names, controller receipt timestamps, outcome/detail, execution source, unknown grade, artifact-only verification, initial/output links, optional native/eligibility evidence and explicit cleanup observations. Its byte hash is linked from progress. |
 | `.pending-*` anywhere in the controller area | Unpublished/interrupted evidence. Never a complete record, never swept or overwritten. |
 
@@ -523,7 +524,17 @@ States are `prepared`, `running`, `completed`, `stopped`, `overall-cutoff`,
 `native-completed`, `task-failure`, `infrastructure-failure`, `timeout`,
 `interrupted`, `disconnected`, `refused`, `protocol-invalid`, `invalid-evidence`
 and `safety-failure`; untouched slots remain `unrun`. Completed means the schedule
-ended, not graded correctness. Infrastructure failures/timeouts may consume
+ended, not graded correctness. Before review-cycle-1 repair, value/hash checks
+could accept `completed` with every slot unrun, and the controller could publish
+native observations rejected by its own reader. After repair, publication and
+inspection share schedule/state consistency checks: completion requires closed
+attempt evidence for every slot, preparation/refusal require their corresponding
+slot states, and units cannot advance past unrun, unfinished or stopping work.
+Native observation semantics and version-specific wire decoding are checked
+before progression using the same validator as inspection. Invalid payloads
+stop progression and remain digest-linked as quarantined data, so the retained
+invalid outcome is inspectable without claiming usable observations.
+Infrastructure failures/timeouts may consume
 remaining retry attempts; task failures may consume separate repair allowances.
 Disconnect/interruption never launches durable resume or replays an unidentified
 turn. Stop, refusal, safety failure and overall cutoff prevent new units.
@@ -585,6 +596,7 @@ changes no production execution seam, test assertions, toolchain or CI command.
 | `evalplan` path, drive/reparse/link checks, `readRoot`, `openDirectory`, storage publication and new `guardedDir` | Original alias/traversal/identity/no-replace restrictions still hold for every preparation/controller read/write and child directory. New retained handles also reject directory replacement. Previously failed own pending writes could be removed; now failed pending files are preserved for inspection. Complete concurrent immutable replay still holds. |
 | `evalplan.gitRead` production runner | Existing fixed read-only Git operations, no lazy fetch/replace objects and finite command context remain. Production stdout/stderr are now bounded during capture; injected preview test runners retain their API. No runtime worker injection is added. |
 | `evalplan.Prepare`, `Run`, `Status`, `Stop`, evaluation/progress/attempt/cleanup records | No core existed. Now bounded preparation, one-time scheduling, journal validation, durable stop and explicit unknowns exist under separate external roots. Model execution still refuses; no CLI, takeover, replay or native-session recovery is added. |
+| Review-cycle-1 `validateProgressState`, `validateNative`, publication/inspection and optional `invalid_native` artifact | Before repair, logically impossible completion could pass and native observation validation was reader-only. Both paths now share those checks; invalid native bytes are retained separately and never labeled usable. Existing valid schema-1 records remain readable; the new digest link is optional. All production refusal, bounds, schedule/attempt identity, unknown-grade, no-replay and local-cleanup restrictions still hold. |
 | `evalcorpus.ReadHistoricalFile`, `gitRead`, `historicalFile` | Existing declared-file/tree/link/submodule/digest restrictions still hold. A single-file reusable reader now serves runtime preparation; historical stdout/stderr are bounded and lazy fetching is disabled. Existing local `Export`/`Inspect` preparation behavior remains; their weaker local hygiene is not used as runtime protection. |
 | Controller no-model and Windows tests | New real-core checks; scripted success exists only in test files. Existing preview, corpus and native tests retain their contracts. |
 | `docs/evaluation-workflow.md`, `docs/evaluation-contract.md` | Previous unimplemented core/evidence claims are retained as before/after context and the new schema/refusal/limitations are explicit. Proposed public CLI/report/approval and live validation/baseline remain pending. |

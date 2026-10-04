@@ -212,11 +212,19 @@ func run(ctx context.Context, storageRoot, id string, executor worker) (*Progres
 				record.ExecutionSource = "native-eligibility-only"
 			}
 			record.Native, record.Eligibility = result.Native, result.Eligibility
-			if result.Native != nil && len(result.Native.Observations) > 1024 {
-				record.Outcome, record.Detail = "invalid-evidence", "Native observation capacity exceeded; no observations silently discarded."
-				a.close()
-				terminal, reason, runError = "incomplete", record.Detail, errors.New(record.Detail)
-				break // original incomplete artifacts retained; bounded storage cannot claim complete evidence
+			if validationErr := validateNative(record.Native); validationErr != nil {
+				data, retainErr := storedBytes(record.Native)
+				if retainErr == nil {
+					retainErr = a.controller.writeFile("invalid-native.json", data)
+				}
+				if retainErr != nil {
+					a.close()
+					terminal, reason, runError = "incomplete", "Invalid native payload could not be retained within bounds; attempt remains incomplete.", errors.Join(validationErr, retainErr)
+					break
+				}
+				record.InvalidNative = &DigestedFile{Path: "invalid-native.json", SHA256: evalcorpus.Digest(data)}
+				record.Native = nil // malformed bytes remain data, never usable observations
+				record.Outcome, record.Detail = "invalid-evidence", validationErr.Error()
 			}
 			verificationDeadline := time.Now().Add(time.Duration(limits.VerificationSeconds) * time.Second)
 			if deadline, ok := execution.Deadline(); ok && deadline.Before(verificationDeadline) {

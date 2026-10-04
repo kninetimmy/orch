@@ -801,3 +801,141 @@ func TestControllerDelayedCancellationSharesCleanupAllowance(t *testing.T) {
 		t.Fatalf("bounded local cleanup: %+v", observation)
 	}
 }
+
+func TestControllerRejectsImpossibleProgressStates(t *testing.T) {
+	if controllerTestProcess(t) {
+		return
+	}
+	f := newControllerFixture(t, "screen", 1)
+	attempt := func(slot *Slot, status string, pending bool) {
+		slot.Status, slot.AttemptsConsumed = status, 1
+		hash := strings.Repeat("a", 64)
+		if pending {
+			hash = ""
+		}
+		slot.Attempts = []AttemptRef{{Number: 1, Kind: "initial", SHA256: hash}}
+	}
+	tests := map[string]func(*Progress){
+		"completed-unrun":            func(p *Progress) { p.State = "completed" },
+		"completed-pending":          func(p *Progress) { p.State = "completed"; attempt(&p.Slots[0], "running", true) },
+		"refused-without-refusal":    func(p *Progress) { p.State = "refused" },
+		"incomplete-without-attempt": func(p *Progress) { p.State = "incomplete" },
+		"prepared-after-work":        func(p *Progress) { p.State = "prepared"; attempt(&p.Slots[0], "native-completed", false) },
+		"out-of-order":               func(p *Progress) { p.State = "running"; attempt(&p.Slots[1], "native-completed", false) },
+		"multiple-pending": func(p *Progress) {
+			p.State = "running"
+			attempt(&p.Slots[0], "running", true)
+			attempt(&p.Slots[1], "running", true)
+		},
+		"terminal-missing-evidence": func(p *Progress) { p.State = "running"; attempt(&p.Slots[0], "native-completed", true) },
+		"running-complete-evidence": func(p *Progress) { p.State = "running"; attempt(&p.Slots[0], "running", false) },
+	}
+	for _, status := range []string{"refused", "interrupted", "disconnected", "protocol-invalid", "invalid-evidence", "safety-failure"} {
+		tests["completed-"+status] = func(p *Progress) {
+			p.State = "completed"
+			for i := range p.Slots {
+				attempt(&p.Slots[i], "native-completed", false)
+			}
+			p.Slots[len(p.Slots)-1].Status = status
+		}
+	}
+	for _, name := range sortedKeys(tests) {
+		t.Run(name, func(t *testing.T) {
+			e := f.prepare(t)
+			g, _, hash, err := openEvaluation(f.root, e.ID)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer g.close()
+			p, err := readProgress(g, e, hash)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if _, err := appendProgress(g, p, tests[name]); err == nil {
+				t.Fatal("writer accepted impossible progress")
+			}
+			data, _ := json.Marshal(p)
+			var forged Progress
+			if err := json.Unmarshal(data, &forged); err != nil {
+				t.Fatal(err)
+			}
+			forged.Sequence++
+			forged.PreviousSHA256 = storedDigest(p)
+			forged.At = now()
+			tests[name](&forged)
+			if err := g.publish(progressName(forged.Sequence), &forged); err != nil {
+				t.Fatal(err)
+			}
+			before, err := g.read(progressName(forged.Sequence), maxRecordBytes)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if _, err := Status(f.root, e.ID); err == nil {
+				t.Fatal("reader accepted correctly chained impossible progress")
+			}
+			after, err := g.read(progressName(forged.Sequence), maxRecordBytes)
+			if err != nil || !bytes.Equal(before, after) {
+				t.Fatal("forged record was changed")
+			}
+		})
+	}
+}
+
+func TestControllerQuarantinesInvalidNativeEvidence(t *testing.T) {
+	if controllerTestProcess(t) {
+		return
+	}
+	tests := map[string]func() *NativeEvidence{
+		"schema-zero": func() *NativeEvidence { return &NativeEvidence{Observations: []metrics.Observation{{}}} },
+		"v1-with-v2-field": func() *NativeEvidence {
+			return &NativeEvidence{Observations: []metrics.Observation{{SchemaVersion: 1, Unavailable: &metrics.Unavailable{Reason: "fixture"}}}}
+		},
+		"missing-provenance": func() *NativeEvidence {
+			n := int64(1)
+			return &NativeEvidence{Observations: []metrics.Observation{{SchemaVersion: metrics.ObservationVersion, RunID: "run-fixture", ID: "sample", At: now(), Source: "fixture", Sample: &metrics.CounterSample{Stream: "fixture", Mode: "cumulative", Sequence: 1, Counters: metrics.Counters{InputTokens: &n}}}}}
+		},
+		"negative-counter": func() *NativeEvidence {
+			n := int64(-1)
+			return &NativeEvidence{Observations: []metrics.Observation{{SchemaVersion: metrics.ObservationVersion, RunID: "run-fixture", ID: "sample", At: now(), Source: "fixture", Host: "codex", Session: "fixture", Sample: &metrics.CounterSample{Stream: "fixture", Mode: "cumulative", Sequence: 1, Counters: metrics.Counters{InputTokens: &n}}}}}
+		},
+		"observation-cap": func() *NativeEvidence { return &NativeEvidence{Observations: make([]metrics.Observation, 1025)} },
+	}
+	for _, name := range sortedKeys(tests) {
+		t.Run(name, func(t *testing.T) {
+			f := newControllerFixture(t, "screen", 1)
+			e := f.prepare(t)
+			native := tests[name]()
+			raw, err := storedBytes(native)
+			if err != nil {
+				t.Fatal(err)
+			}
+			calls := 0
+			p, err := run(t.Context(), f.root, e.ID, scriptedWorker{func(ctx context.Context, r workerRequest) (workerResult, error) {
+				calls++
+				return workerResult{Outcome: "native-completed", Native: native}, nil
+			}})
+			if err == nil || p == nil || p.State != "safety-failure" || calls != 1 || p.Slots[0].Status != "invalid-evidence" || p.Slots[1].Status != "unrun" {
+				t.Fatalf("invalid native evidence progressed: %+v %v calls=%d", p, err, calls)
+			}
+			status, err := Status(f.root, e.ID)
+			if err != nil || status.State != p.State {
+				t.Fatalf("controller published unreadable evidence: %+v %v", status, err)
+			}
+			a := readAttempt(t, f, e, 1, 1)
+			if a.Native != nil || a.InvalidNative == nil || a.Grade != "unknown" || a.Cleanup.Status != "preserved-unverifiable" {
+				t.Fatalf("invalid evidence presented as usable: %+v", a)
+			}
+			retained, err := os.ReadFile(filepath.Join(f.root, e.ID, attemptName(1, 1), a.InvalidNative.Path))
+			if err != nil || !bytes.Equal(retained, raw) || evalcorpus.Digest(retained) != a.InvalidNative.SHA256 {
+				t.Fatal("invalid raw evidence lost")
+			}
+			if _, err := os.Stat(a.Packet); err != nil {
+				t.Fatal("invalid worker packet removed")
+			}
+			writeFixture(t, filepath.Join(f.root, e.ID, attemptName(1, 1), a.InvalidNative.Path), []byte("changed invalid payload"))
+			if _, err := Status(f.root, e.ID); err == nil {
+				t.Fatal("quarantined evidence tampering accepted")
+			}
+		})
+	}
+}
