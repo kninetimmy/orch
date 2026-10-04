@@ -1,6 +1,7 @@
 package evalcorpus
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -15,21 +16,49 @@ import (
 
 const maxFileBytes = 2 * 1024 * 1024
 
+type boundedOutput struct{ bytes.Buffer }
+
+func (b *boundedOutput) Write(p []byte) (int, error) {
+	if len(p) > maxFileBytes-b.Len() {
+		return 0, fmt.Errorf("historical Git output exceeds %d-byte preparation limit", maxFileBytes)
+	}
+	return b.Buffer.Write(p)
+}
+
 // gitRead never invokes a shell and never fetches missing history.
 func gitRead(ctx context.Context, repo string, args ...string) ([]byte, error) {
 	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
 	defer cancel()
-	cmd := exec.CommandContext(ctx, "git", args...)
+	cmd := exec.CommandContext(ctx, "git", append([]string{"--no-optional-locks", "--no-pager", "-c", "core.fsmonitor=false"}, args...)...)
 	cmd.Dir = repo
-	cmd.Env = append(os.Environ(), "GIT_TERMINAL_PROMPT=0", "GIT_NO_REPLACE_OBJECTS=1", "LC_ALL=C")
+	cmd.Env = append(os.Environ(), "GIT_TERMINAL_PROMPT=0", "GIT_NO_REPLACE_OBJECTS=1", "GIT_NO_LAZY_FETCH=1", "LC_ALL=C")
 	cmd.WaitDelay = 2 * time.Second
-	data, err := cmd.Output()
+	var output, diagnostic boundedOutput
+	cmd.Stdout, cmd.Stderr = &output, &diagnostic
+	err := cmd.Run()
 	if err != nil {
 		var exit *exec.ExitError
 		if errors.As(err, &exit) {
-			return nil, fmt.Errorf("git %s: %w: %s", args[0], err, strings.TrimSpace(string(exit.Stderr)))
+			return nil, fmt.Errorf("git %s: %w", args[0], err)
 		}
 		return nil, fmt.Errorf("git %s: %w", args[0], err)
+	}
+	return output.Bytes(), nil
+}
+
+// ReadHistoricalFile reuses the reference export's fixed Git/tree checks for a
+// single digested historical blob. Local authored artifacts instead use the
+// controller's anchored reader. It never fetches or executes artifact contents.
+func ReadHistoricalFile(ctx context.Context, repo string, f File) ([]byte, error) {
+	if err := validateFiles([]File{f}, false); err != nil || f.Commit == "" {
+		return nil, fmt.Errorf("require a valid pinned historical file: %v", err)
+	}
+	data, err := historicalFile(ctx, repo, f)
+	if err != nil {
+		return nil, err
+	}
+	if Digest(data) != f.SHA256 {
+		return nil, fmt.Errorf("digest mismatch for %s", f.Source)
 	}
 	return data, nil
 }

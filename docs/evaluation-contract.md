@@ -17,15 +17,66 @@ preview, approval, progress and saved results. Before issue #312, its `orch eval
 commands were proposed and unimplemented, absent from `orch help`. After that
 increment, only `orch eval preview --plan FILE [--json]` is implemented: bounded
 local validation, a frozen schedule and immutable public preparation metadata.
-Execution, stop/status/report and protected worker-access enforcement remain
-unimplemented. Preparation records and digests grant no approval. Existing
+Before issue #314, this document stated: "Execution, stop/status/report and
+protected worker-access enforcement remain unimplemented." The bounded internal
+controller and guarded local retention now exist; production model execution
+remains refused and the public execution CLI, reports and verified access
+enforcement remain pending. Preparation records and digests grant no approval. Existing
 metrics remain available under their own recording and reporting rules.
 
 The [metrics contract](metric-observations.md) governs native usage, provenance,
 missingness and timing. The [native session contract](codex-native-protocol.md)
 governs execution eligibility and boundaries. This document adds evaluation
-requirements without changing either contract, runtime behavior, model/effort
-defaults, dependencies, permissions or Phase 1 status.
+requirements. Before the core increment it added no runtime behavior; issue #314
+adds only the bounded internal controller and retained schema described below.
+Neither native/metrics contract, model/effort defaults, dependencies, permissions
+nor Phase 1 completion status changes.
+
+## Delivered controller boundary (issue #314)
+
+The [workflow's exact retained schema and blast radius](evaluation-workflow.md#implemented-controller-core-issue-314-run-1-of-2)
+define internal `Load`, `Prepare`, `Run`, `Status` and `Stop`. A version-1 saved
+preview is rechecked against current artifacts, configuration, local commits,
+schedule and repository/Git/worker/scratch exclusions without rewriting it.
+Preparing additionally verifies declared public and controller source bytes;
+fresh disposable packets contain only public inputs, with private material and
+retained outputs separately rooted and digest-linked by case/unit/attempt.
+No supplied worker/probe/control code executes with controller privileges.
+
+The external controller root has bounded, identity-checked local reads/writes,
+exclusive one-time execution claims, immutable progress/evidence, durable stop
+requests and explicit interrupted/unknown outcomes. It retains every frozen
+scheduled slot and the initial artifact/outcome through separate retry/repair
+budgets. Stop/cutoff/refusal/safety failures prevent new units. Finite interruption
+and cleanup share the single frozen cleanup allowance. Dirty and unacknowledged
+work is preserved; local cleanup is not native shutdown acknowledgement.
+Reported counters/profiles/IDs retain available meanings and missingness, with
+unknown grades and no fabricated totals, active time, human work or metrics
+associations. Current-Delivery recording is not used for standalone evaluations.
+
+Before review-cycle-1 repair, the core could accept a `completed` progress
+record containing unrun slots, or publish malformed native observations that
+its own reader rejected. After repair, read/publication share logical state and
+native payload validation. Completion requires closed evidence for every frozen
+slot; malformed native bytes remain bounded, digest-linked quarantined data with
+an explicit invalid outcome, unknown grade and no further execution. Original
+valid records remain compatible and production native refusal remains binding.
+
+Guarded files and ordinary modes do **not** verify worker-access enforcement or
+OS/model isolation. Every production controller attempt still passes through
+`IsolationPreflight` and refuses; no diagnostic can grant approval or start a
+model turn here. This restriction applies to every controller attempt and all
+roles, alongside the unchanged restrictions on **both** native turn entry
+points, `RunSession` and `Session.Resume`. Metadata/command diagnostics retain
+their distinct checks. Successful scheduling exists only in `_test.go` and is
+labeled `no-model-test-script`; it is not a semantic-grader or native-validation
+claim. No exported worker callback, backend flag or environment bypass exists.
+
+Run 2 completes the public `eval run/status/stop/report` commands, exact-scope
+approval/readiness integration, retained text/Markdown/JSON reports and final
+no-model end-to-end checks. The separately deferred native model-tool validation,
+reviewed refusal change, actual model trials and measured baseline remain outside
+that finish line. Core completion does not close Phase 1 or authorize live work.
 
 ## Corpus and case records
 
