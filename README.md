@@ -335,7 +335,7 @@ commands:
   resume           Reconcile an interrupted Delivery run against GitHub and continue
   abort            Stop dispatch and return to Assist
   metrics          Show local metrics (or record JSON observations with `metrics record`)
-  eval             Preview and retain a local evaluation plan (eval preview --plan FILE)
+  eval             Evaluation preview/run/status/stop/report (eval help for arguments)
   render-agents    Render project agent definitions for every enabled host
   run              Adapter plumbing: Delivery run verbs (JSON stdin/stdout; not a human command)
   guard            Adapter plumbing: pre-write enforcement for host hooks (not a human command)
@@ -357,11 +357,19 @@ To prepare an evaluation of an Orch change, see the
 the bounded schedule and retains an immutable public preparation record under
 an explicit existing local root outside the checkout, Git metadata and declared
 worker/scratch locations. A valid blocked preview exits successfully; it grants
-no approval. Its storage is unverified against worker access. Evaluation
-execution, stop/status/report and protected runtime storage remain proposed;
-unsupported evaluation verbs fail explicitly. Existing metrics do not supply a
-validated corpus, grader or measured evaluation baseline. Preview supplies plans
-and blockers, with no observed results.
+no approval. Its storage is unverified against worker access. Before issue #316,
+"Evaluation execution, stop/status/report and protected runtime storage remain
+proposed; unsupported evaluation verbs fail explicitly." After that increment,
+`orch eval run --plan sha256:DIGEST --storage-root ROOT [--approval FILE] [--json]`
+returns the frozen scope and requires a single-use, digest-bound human assertion.
+Production attempts still refuse. `status` and `stop` take `--run ID
+--storage-root ROOT [--json]`; `report` takes those selectors plus `--format
+text|markdown|json`. Every terminal outcome retains immutable report bundles;
+reports also expose incomplete snapshots. See `orch eval help` and the workflow
+for the approval format, strict arguments, exit codes and recovery limits.
+Verified worker-access enforcement, native model-tool validation, live trials
+and the measured baseline remain outstanding; Phase 1 is open. Existing metrics
+and Delivery/configuration/merge gates retain their prior contracts.
 
 The initial preview admitted Windows `SUBST` drive aliases during placement
 checks, allowing a record to land inside an excluded worker location. After the
@@ -1098,7 +1106,7 @@ its own.
 | `internal/manifest/` | The issue/PR audit record — lossless render/parse over a managed body region |
 | `internal/memhub/` | Read-only client for the external memhub CLI: health probe and fixed-canary recall check |
 | `internal/metrics/` | Local, opt-in per-run JSON metrics recorder (schema-versioned, never transmitted) |
-| `internal/evalplan/` | Bounded local evaluation preview and immutable public preparation records; no execution or worker-access enforcement |
+| `internal/evalplan/` | Bounded evaluation controller, digest-bound approval and immutable reports; production models refuse and worker-access enforcement remains unverified |
 | `internal/codexusage/` | Reader that recovers exact Codex subagent token totals from persisted child rollout files |
 | `internal/routing/` | Pure role routing and the escalation ladder |
 | `internal/guard/` | Mechanical pre-write enforcement behind host PreToolUse hooks |

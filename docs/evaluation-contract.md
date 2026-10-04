@@ -15,13 +15,17 @@ pilot supply separate evidence about the complete delivery workflow.
 The companion [evaluation workflow](evaluation-workflow.md) defines discovery,
 preview, approval, progress and saved results. Before issue #312, its `orch eval`
 commands were proposed and unimplemented, absent from `orch help`. After that
-increment, only `orch eval preview --plan FILE [--json]` is implemented: bounded
+increment, only `orch eval preview --plan FILE [--json]` was implemented: bounded
 local validation, a frozen schedule and immutable public preparation metadata.
 Before issue #314, this document stated: "Execution, stop/status/report and
 protected worker-access enforcement remain unimplemented." The bounded internal
 controller and guarded local retention now exist; production model execution
-remains refused and the public execution CLI, reports and verified access
-enforcement remain pending. Preparation records and digests grant no approval. Existing
+remains refused. Before issue #316, "the public execution CLI, reports and
+verified access enforcement remain pending." After that increment, the public
+CLI, explicit single-use approval assertion and immutable reports exist under the
+[run 2 wire/storage contract](evaluation-workflow.md#delivered-cli-approval-and-reports-issue-316-run-2-of-2).
+Verified access enforcement remains pending. Preparation records and digests
+grant no approval. Existing
 metrics remain available under their own recording and reporting rules.
 
 The [metrics contract](metric-observations.md) governs native usage, provenance,
@@ -72,9 +76,22 @@ their distinct checks. Successful scheduling exists only in `_test.go` and is
 labeled `no-model-test-script`; it is not a semantic-grader or native-validation
 claim. No exported worker callback, backend flag or environment bypass exists.
 
-Run 2 completes the public `eval run/status/stop/report` commands, exact-scope
+Before issue #316, run 2's finish line was the public `eval run/status/stop/report`
+commands, exact-scope
 approval/readiness integration, retained text/Markdown/JSON reports and final
-no-model end-to-end checks. The separately deferred native model-tool validation,
+no-model end-to-end checks. After issue #316 those runner/storage requirements
+are delivered: a strict schema-1 human assertion is bound to one frozen
+evaluation; source/configuration pins revalidate; normal terminal outcomes retain
+all three formats in a digest-named sibling namespace without spending stop
+capacity. Existing schema-1 records stay inspectable without migration. Status
+is read-only; stop receipt is distinct from observed termination; interrupted
+execution/publication is inspectable without takeover. Reports share one typed
+snapshot, reference private/raw evidence, preserve counter coverage/semantics
+and explicitly leave semantic grades, judgments, human work and exposure unknown.
+Only supported complete compatible counter values enter matched/repeat summaries;
+no accepted denominator means undefined cost. Opaque decision rules and incomplete
+comparisons remain inconclusive, with attributable safety findings disqualifying.
+The separately deferred native model-tool validation,
 reviewed refusal change, actual model trials and measured baseline remain outside
 that finish line. Core completion does not close Phase 1 or authorize live work.
 

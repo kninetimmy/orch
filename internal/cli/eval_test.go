@@ -424,7 +424,7 @@ func TestEvalPreviewCLIProcess(t *testing.T) {
 	if err != nil || string(data) != output {
 		t.Fatalf("CLI output/storage mismatch: %v", err)
 	}
-	if code, output := run("eval", "run", "--plan", r.PlanDigest); code != ExitUsage || !strings.Contains(output, "unsupported verb") {
+	if code, output := run("eval", "run", "--plan", r.PlanDigest); code != ExitUsage || !strings.Contains(output, "explicit arguments") {
 		t.Fatalf("CLI execution refusal: %d %s", code, output)
 	}
 	evalWrite(t, r.StorageDestination, []byte("corrupt-smoke-sentinel"))

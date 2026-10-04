@@ -178,6 +178,10 @@ func openEvaluation(storageRoot, id string) (*guardedDir, *Evaluation, string, e
 // Prepare creates a distinct controller record after revalidating a saved
 // preview and every selected source byte. This grants no execution authority.
 func Prepare(ctx context.Context, repo, storageRoot, digest string) (*Evaluation, error) {
+	return prepare(ctx, repo, storageRoot, digest, nil)
+}
+
+func prepare(ctx context.Context, repo, storageRoot, digest string, approval *Approval) (*Evaluation, error) {
 	r, err := Load(ctx, repo, storageRoot, digest)
 	if err != nil {
 		return nil, err
@@ -202,6 +206,13 @@ func Prepare(ctx context.Context, repo, storageRoot, digest string) (*Evaluation
 	}
 	defer parent.close()
 	id := "eval-" + strings.ToLower(rand.Text())
+	var receipt *ApprovalRecord
+	if approval != nil {
+		receipt = &ApprovalRecord{1, id, *approval, Scope(r)}
+		if err := claimApproval(parent, receipt); err != nil {
+			return nil, err
+		}
+	}
 	g, err := parent.createDir(id)
 	if err != nil {
 		return nil, err
@@ -211,6 +222,11 @@ func Prepare(ctx context.Context, repo, storageRoot, digest string) (*Evaluation
 	e := &Evaluation{SchemaVersion: 1, ID: id, Repository: repo, PreparedAt: now(), Preparation: *r}
 	if err := g.publish("evaluation.json", e); err != nil {
 		return nil, err
+	}
+	if receipt != nil {
+		if err := g.publish("approval.json", receipt); err != nil {
+			return nil, err
+		}
 	}
 	p := &Progress{SchemaVersion: 1, EvaluationID: id, EvaluationSHA256: storedDigest(e), PlanDigest: digest,
 		State: "prepared", At: now(), Slots: make([]Slot, 0, len(r.Preview.Schedule))}
