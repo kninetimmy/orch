@@ -654,7 +654,10 @@ func TestProductionHasNoScriptedExecutionSeam(t *testing.T) {
 			t.Fatalf("production %s execution bypass: %+v", role, result)
 		}
 	}
-	e := f.prepare(t)
+	e, err := PrepareApproved(t.Context(), f.repo, f.root, f.record.PlanDigest, Approval{1, f.record.PlanDigest, "test-human", now(), ApprovalStatement})
+	if err != nil {
+		t.Fatal(err)
+	}
 	p, err := Run(t.Context(), f.root, e.ID, "") // missing version refuses before spawning a host; no model/native validation
 	if err != nil || p.State != "refused" || p.Slots[1].Status != "unrun" {
 		t.Fatalf("production core refusal: %+v %v", p, err)

@@ -44,7 +44,7 @@ type nativeWorker struct{ clientVersion string }
 func (w nativeWorker) execute(ctx context.Context, request workerRequest) (workerResult, error) {
 	options := codexnative.Options{Dir: request.Layout.Workspace, ClientVersion: w.clientVersion}
 	caps, err := codexnative.IsolationPreflight(ctx, options, request.Layout, request.Role != "implementation")
-	result := workerResult{Outcome: "refused", Detail: "Exact-scope approval/readiness integration and verified native execution remain unavailable."}
+	result := workerResult{Outcome: "refused", Detail: "Verified worker-access enforcement and native model-tool execution remain unavailable."}
 	if caps.HostVersion != "" {
 		result.Eligibility = &Eligibility{HostVersion: caps.HostVersion, SandboxReady: caps.SandboxReady,
 			ProfileAllowed: caps.ProfileAllowed, ToolsDisabled: caps.ToolsDisabled}
@@ -67,10 +67,22 @@ func (w nativeWorker) execute(ctx context.Context, request workerRequest) (worke
 // refuse at the native gate; successful scheduling is test-only. Run confers no
 // approval, changes no Delivery state, and cannot resume interrupted execution.
 func Run(ctx context.Context, storageRoot, id, clientVersion string) (*Progress, error) {
+	if err := executionApproval(storageRoot, id); err != nil {
+		return nil, err
+	}
 	return run(ctx, storageRoot, id, nativeWorker{clientVersion: clientVersion})
 }
 
 func run(ctx context.Context, storageRoot, id string, executor worker) (*Progress, error) {
+	p, err := runController(ctx, storageRoot, id, executor)
+	if p != nil && terminalState(p.State) {
+		_, reportErr := RetainReport(storageRoot, id)
+		err = errors.Join(err, reportErr)
+	}
+	return p, err
+}
+
+func runController(ctx context.Context, storageRoot, id string, executor worker) (*Progress, error) {
 	g, e, hash, err := openEvaluation(storageRoot, id)
 	if err != nil {
 		return nil, err

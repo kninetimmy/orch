@@ -1,7 +1,12 @@
 # P1-C evaluation preview and proposed execution workflow
 
-**Status: preview, bounded controller core and guarded local retention implemented;
-execution CLI, reports and verified worker-access protection remain pending.**
+**Status: preview, bounded controller, explicit approval, public CLI and retained
+reports implemented; verified worker-access/model-tool protection, live trials
+and a measured baseline remain pending. Phase 1 is open.**
+Before issue #316 this guide stated: "execution CLI, reports and verified
+worker-access protection remain pending." After that increment the CLI and
+reports exist under the [run 2 contract](#delivered-cli-approval-and-reports-issue-316-run-2-of-2);
+the access/model boundary remains unverified and production attempts refuse.
 Before issue #314, this guide stated: "local preview and maintainer preparation
 implemented; runner and protected storage unimplemented." After that increment,
 the internal controller prepares fresh packets and retains bounded progress and
@@ -12,8 +17,9 @@ plan format, storage location and output here was proposed and unimplemented;
 `orch help` did not list this family. Now help exposes
 `orch eval preview --plan FILE [--json]`. It validates and retains public local
 preparation metadata with a frozen bounded schedule and explicit blockers. It
-never starts evaluation work or grants approval. Every other evaluation verb
-still fails explicitly. Existing `orch metrics` reporting and `orch metrics
+never starts evaluation work or grants approval. Before issue #316, "Every other
+evaluation verb still fails explicitly." After that increment `run`, `status`,
+`stop` and `report` use the strict explicit selectors below. Existing `orch metrics` reporting and `orch metrics
 record` observations are available under the [metrics contract](metric-observations.md);
 they do not supply evaluation grades or a comparison runner. Before issue #310
 this guide stated: "There is no prepared reference corpus, validated grader or
@@ -94,10 +100,14 @@ create a separate execution or approval policy.
 | Operation | Reads, saves or executes |
 | --- | --- |
 | `orch eval preview --plan FILE [--json]` — implemented | Reads bounded local inputs, validates manifest structure and pinned artifact bytes, reads effective configuration, displays scope/limits/schedule and saves one immutable normalized plan plus preview evidence. The explicit external storage root is a maintainer preparation area with worker-access protection **unverified**. Starts no model work, changes no Delivery state and grants no approval. |
-| `orch eval run --plan DIGEST` — proposed | Loads that exact saved plan, revalidates eligibility and requests explicit approval through the applicable existing gates. Only then may the future controller execute its frozen schedule and save progress, evidence and results. A digest identifies a plan; it is not approval. |
-| `orch eval status --run ID` — proposed | Reads saved progress and reports current work, remaining limits, coverage and blockers. Starts no execution. |
-| `orch eval stop --run ID` — proposed | Requests a stop for that evaluation, prevents new units and interrupts active work with bounded cleanup. Saves the reason and observed terminal/cleanup evidence. |
-| `orch eval report --run ID --format text\|markdown\|json` — proposed | Reads retained evidence and renders the selected local result format. Saves it under the approved report destination; it does not rerun tasks or infer missing data. |
+| `orch eval run --plan sha256:DIGEST --storage-root ROOT [--approval FILE] [--json]` | Returns frozen scope; loads and revalidates that exact plan. Requires the evaluation-specific single-use human assertion below. Retains the schedule, approval, native refusal and reports; no production model turn is available. |
+| `orch eval status --run ID --storage-root ROOT [--json]` | Read-only retained snapshot with limits, consumed attempts/repairs, schedule, coverage, blockers and cleanup unknowns. Source artifacts and live hosts are unnecessary. |
+| `orch eval stop --run ID --storage-root ROOT [--json]` | Durably requests a stop only for that evaluation. Request receipt and observed controller acknowledgement remain distinct. Bounded controller interruption/cleanup prevents later units. |
+| `orch eval report --run ID --storage-root ROOT --format text\|markdown\|json` | Validates retained evidence and publishes all three immutable formats for that snapshot, returning the requested format. Starts no work and can explicitly retain incomplete snapshots. |
+
+Before issue #316 these four verbs were proposed with no storage-root selector
+or implemented approval/report wire contract. After that increment every selector
+is explicit; no registry lookup, guessed path or implicit approval is supported.
 
 ### Implemented version 1 preview format
 
@@ -389,7 +399,8 @@ acknowledgement, descendant checks, protected-resource checks, unfinished cleanu
 and unknowns. A cleanup failure becomes an actionable blocker, never an assumed
 success or permission to delete unrelated resources.
 
-`orch eval stop` would stop an evaluation. Existing `orch abort` returns a
+Before issue #316, "`orch eval stop` would stop an evaluation." It now durably
+requests that stop with the explicit selectors above. Existing `orch abort` returns a
 Delivery run to Assist, and `orch resume` reconciles Delivery artifacts; neither
 is evaluation stop/recovery. Saved reports do not promise durable evaluation
 resume. Native session checkpoints are currently in memory only. After loss,
@@ -407,7 +418,9 @@ protection. Before issue #314, this section stated: "It retains public metadata
 only; the protected runtime store, execution evidence and result reports
 described below remain unimplemented." Preview still retains public metadata
 only. The core now retains separately rooted controller bytes and execution
-outcomes; verified worker-access enforcement and result reports remain pending.
+outcomes. Before issue #316, "verified worker-access enforcement and result
+reports remain pending." Reports now exist under the run 2 contract below;
+verified worker-access enforcement remains pending.
 
 Propose a controller-owned local artifact root **outside every worker-readable
 checkout, scratch area and shared Git store**. Preview must display its canonical
@@ -458,8 +471,10 @@ changes follow the existing approved Delivery workflow and separate merge gate.
 
 ## Implemented controller core (issue #314, run 1 of 2)
 
-The internal `evalplan` APIs are `Load`, `Prepare`, `Run`, `Status` and `Stop`.
-They add no execution CLI. `Load(ctx, repo, storageRoot, digest)` reads the existing
+The internal `evalplan` APIs in issue #314 were `Load`, `Prepare`, `Run`, `Status`
+and `Stop`. In that increment they added no execution CLI. Issue #316 adds the
+CLI and approval/report helpers below; `Run` now requires its retained assertion.
+`Load(ctx, repo, storageRoot, digest)` reads the existing
 schema-1 preview without rewriting it. It checks the complete generated wire
 shape, normalized plan digest, regenerated schedule/counts, current effective
 configuration and profile/artifact bytes, local commits and current repository,
@@ -610,6 +625,178 @@ CI, releases and installation. `RunSession` is not the sole restricted symbol:
 **every** role. Metadata/command diagnostics retain their separate eligibility.
 The new controller always refuses and supplies no bypass for either entry point.
 
+## Delivered CLI, approval and reports (issue #316, run 2 of 2)
+
+The public syntax is the table above and `orch eval help`. Flags are separate
+arguments; duplicate/unknown flags, extra positional values, missing selectors
+and unsupported formats exit **2**. Operational, validation, approval, refusal,
+capacity and publication failures exit **1**. Successful preview, status, stop
+receipt or report publication exits **0**, including a clearly incomplete
+snapshot. An approved production run exits **1** after retaining its refusal.
+No flag selects a fake backend, worker callback, model bypass or automatic resume.
+
+### Exact approval assertion
+
+First invoke `run` without `--approval`. It revalidates the saved plan, returns
+the exact `ApprovalScope` and exits 1 without creating an evaluation. Review its
+entire frozen plan: selected/excluded cases and partitions, repetitions, pinned
+revisions/profiles/effective configuration, finite budgets, opaque measurement,
+decision/readiness references, storage exclusions and report destination template.
+Preview's original schema-1 evidence wording stays frozen for digest/replay
+compatibility; current blockers in snapshots describe the delivered runner and
+the still unavailable access/model boundary.
+
+After a human explicitly approves that finite evaluation, the terminal or agent
+caller supplies a local UTF-8 JSON assertion file. The engine cannot authenticate
+the human; this follows the existing digest-bound approval convention and never
+manufactures approval from a digest, readiness file or Delivery decision:
+
+```json
+{
+  "schema_version": 1,
+  "plan_digest": "sha256:<64 lowercase hex digits from the saved preview>",
+  "approved_by": "human-identifier",
+  "approved_at": "<actual RFC3339 timestamp of the human decision>",
+  "statement": "approve-evaluation"
+}
+```
+
+Every field is required. Duplicate keys, nulls, unknown/noncanonical fields,
+overlong/nonpublic identifiers, wrong statement/digest, malformed timestamps,
+future approval and approval older than **24 hours** fail closed. Assertion files
+are limited to **64 KiB** and use the same alias/link-rejecting reader as plans.
+All supplied source/profile/configuration/exclusion bytes are revalidated before
+preparation and again before controller work; changed pins require fresh review.
+
+`PrepareApproved` consumes the assertion in an exclusive
+`ROOT/approvals/<assertion-sha256>/assertion.json` claim bound to one evaluation
+and the full scope. `ROOT/ID/approval.json` retains the identical receipt. Reuse
+of that same assertion, even concurrently or after an interrupted preparation,
+is rejected. A new human decision needs a new timestamp/assertion, and any new
+execution after loss/stop/cutoff still needs the applicable newly frozen finite
+repeat/replacement plan. Failed claims are preserved; no takeover/replay occurs.
+The root-scoped claims are not a global registry or Delivery metrics identity.
+
+Text run output presents the scope followed by the retained result. JSON run
+output is a stream of **two JSON documents** when execution is reached: first
+`ApprovalScope`, then `Report`. Approval rejection after loading emits only the
+scope; errors go to stderr. `status --json`, `stop --json` and JSON reports emit
+one report document. No command reads an interactive dialog or guesses paths.
+
+### Snapshot and immutable publication
+
+`Inspect` validates the existing evaluation, every immutable progress-chain
+record and linked attempt/artifact digest without source artifacts or a live
+host. It also validates any approval receipt against its consumed claim.
+Schema-1 evaluations lacking a sidecar stay readable with approval **unknown**;
+exported production `Run` requires a valid, unexpired bound assertion. Private
+successful workers remain exclusively `_test.go` and visibly labeled
+`no-model-test-script`. Old evaluation/progress/attempt wire shapes and preview
+bytes/digests are not migrated or rewritten.
+
+A report has schema 1, `snapshot_sha256` (SHA-256 of the canonical indented
+`Snapshot` bytes plus newline), the derived `destination` and that `snapshot`.
+The snapshot retains public scope/provenance, approval limitations, complete
+scheduled slots and consumed initial/retry/repair attempts, observed outcomes,
+typed native identity/counters/intervals, artifact/evidence references, cleanup,
+safety findings and reproduction argument vectors. Arbitrary reason/detail,
+worker output and unavailable-reason prose stay in guarded referenced evidence;
+keys, probes, controls/solutions and credentials are never copied into summaries.
+All semantic grades, annotations, review judgments, disputes/regrades, human work
+and exposure evidence remain explicitly unknown. Requested profiles in frozen
+scope are distinct from observed native identities; configuration diagnostics
+cannot establish inference identity, independent grading or containment.
+
+Text and Markdown use a short summary and the same full JSON facts as JSON.
+`evidence_complete` describes the validated execution snapshot, **not** a live
+process, model success, semantic correctness or successful report publication.
+Prepared/running/interrupted, missing-attempt or unobserved-cleanup snapshots
+remain explicitly incomplete. A report destination is a location, never a
+completed-publication claim. Incomplete cleanup and native acknowledgement stay
+visible; request receipt does not turn into controller termination.
+
+Normal terminal controller outcomes, including refusal, stop, cutoff and failure,
+invoke `RetainReport`. The report command also publishes incomplete snapshots
+without running work. All three formats are retained under
+`ROOT/reports/ID/<snapshot-sha256>/report.txt`, `report.md`, `report.json`.
+`complete.json` is published last and lists the exact ordered file/digest set.
+No command claims successful publication until all three files and that manifest
+verify. A partial write/conflicting bytes/corrupt chain/oversized output fails
+explicitly and preserves its evidence. Later snapshots use another directory;
+identical completed bundles are safe to replay concurrently.
+
+This report namespace is a **sibling** of `ROOT/ID`: it cannot spend controller
+or stop capacity, and corrupt/pending report files cannot poison valid controller
+status. Each evaluation's report namespace is limited to **256 MiB**, **65,536
+entries**, **32 directory levels** and **16 MiB per file**. New publication
+conservatively reserves 64 MiB and 16 entries, including failed/pending writes.
+One exclusive temporary `publication` directory serializes capacity decisions;
+only its creator removes its own empty identity-checked claim on return. A crash
+leaves it inspectable and new publishers fail closed without takeover. Existing
+completed bundles remain inspectable/replayable. A snapshot's permanent directory
+also prevents takeover of interrupted bundle publication. Bounded one-second
+waits handle concurrent publication; persistent aliases/claims fail explicitly.
+Controller inspection and targeted stop remain usable with valid underlying
+records; incomplete/corrupt execution evidence is never promoted to completion.
+
+### Measurement, readiness and stop limits
+
+Reports retain typed observations and raw-evidence references by unit, attempt
+and actor, including failed/retried/repaired work. Counter deltas come from
+`metrics.CounterContributions`, including its run/host/session/source/stream
+baselines. Per-unit compatible counters stay independent; missing total is never
+reconstructed and aggregate values are never added to components. Coverage names
+observed/consumed attempts; unknown actor/counters remain unknown. Cross-attempt
+duplicate, ordering or stream conflicts keep raw evidence and make measurement
+unknown rather than invalidating otherwise readable schema-1 records.
+Matched case/repetition values and repeat ranges use only supported complete
+counter coverage, keeping different host/source/stream definitions separate.
+Receipt/wall spans are distinct from explicitly observed active-agent intervals.
+No absent active duration or remaining active-time budget is inferred.
+
+Cost per accepted outcome is **undefined** without a validated nonzero accepted
+denominator. Missing controller/grader/human evidence cannot establish whole-Orch
+cost. Baseline/screen output is observation only; opaque decision semantics,
+unknown/disputed grades or incomplete comparisons remain **inconclusive**.
+Attributable safety findings are prominent and disqualifying regardless of
+resource savings; no report adopts a profile or authorizes configuration/merge.
+
+Every production role still refuses through the controller's native eligibility
+path. Both native turn entry points, **`RunSession` and `Session.Resume`**, keep
+their existing `IsolationPreflight` production refusal; this is a restriction on
+all roles using either entry point, not one named caller. The controller has no
+exported worker callback/environment bypass and never fills fabricated Delivery
+identities. Native metadata/configuration diagnostics retain their own checks
+and never prove worker-access/model-tool isolation or grant model authority.
+
+Status never asserts process liveness. Stop is durable, idempotent and targeted
+by explicit root/ID, even after terminal refusal. Its `stop_requested` receipt is
+separate from `controller_stop_acknowledged`, which requires retained `stopped`
+progress. It prevents later units and uses the existing bounded cancellation/
+cleanup allowance; unrun work and unknown cleanup stay visible. Interruptions
+are inspectable with status/report, never resumable by takeover or silent retry.
+
+### Run 2 change blast radius
+
+| Touched structure | Before/after and preserved behavior |
+| --- | --- |
+| `internal/cli/cli.go`: command catalog/help | Previously advertised preview only; now advertises all five verbs and eval help. Other command dispatch and exit-code mapping hold. |
+| `internal/cli/eval.go`: `runEval`, `evalUsage`, `runEvalPreview`, `runEvalController` | Preview syntax/output/digests still hold. Previously other verbs refused as unsupported; now explicit root/digest or root/ID selects scope/approval, retained operations and three report formats. Missing/duplicate/unknown flags still fail usage; no interactive dialogs or execution backend selector exists. |
+| `approval.go`: `ApprovalStatement`, `errNoApproval`, `Approval`, `ApprovalScope`, `ApprovalRecord`, `Scope`, `ReadApproval`, `Approval.validate`, `PrepareApproved`, `directoryForPublication`, `claimApproval`, `readApproval`, `executionApproval` | New schema-1 sidecars and single-use digest-bound human assertion; bounded strict decoding and guarded alias/identity checks hold for **every** approval read/write and directory, not just `ReadApproval`. No Delivery/configuration/merge authority is introduced. |
+| `controller_store.go`: `Prepare`, private `prepare` | Original unapproved preparation remains inspectable and grants no authority. New `PrepareApproved` shares input/source validation and binds one assertion before retained progress. Original evaluation/progress/attempt fields and schema remain unchanged. |
+| `controller.go`: `Run`, `run`, `runController`, `nativeWorker.execute` refusal wording | Previously `Run` consumed any untouched preparation; now it requires its bound unexpired assertion. Every normal terminal outcome also publishes reports. Finite scheduling, separate retries/repairs, cancellation, exclusive execution claims and no takeover hold; every production worker still refuses. Native `RunSession`/`Session.Resume` gates for all roles hold unchanged. |
+| `report.go`: `Blocker`, `ReportAttempt`, `AttributedObservation`, `CounterValue`, `PairValue`, `RepeatRange`, `SafetyFinding`, `UnitTiming`, `Snapshot`, `Report`; `terminalState`, `blockers`, `Inspect`, `publicNative`, `counterNames`, `counterFields`, `measure`, `RenderReport`, `RetainReport`, `retainBundle`, `waitForBundle`, `verifyBundle` | New read-only validated snapshots, compatible-counter contributions and immutable three-format bundles. Unknown grades/cost/active time, source separation and no automatic profile adoption hold. Private/output prose stays in guarded references. |
+| `guarded.go`: `guardedDir.publish`, new `publishBytes`, `guardedDir.read` grace | Original no-replace identity/link/path/size checks hold for every JSON or text/Markdown publication. The bounded transient hard-link grace now covers all three report formats; persistent hard links still fail closed. Delivery locks and permission rules are untouched. |
+| `internal/cli/eval_test.go`, `eval_controller_test.go` | Existing preview process checks hold with the new missing-selector error. New bounded compiled-CLI tests cover approval/strict input/revalidation/refusal/status/stop/report parity and tampering, with host software absent from PATH. |
+| `internal/evalplan/controller_test.go`, `report_test.go`, `controller_windows_test.go` | Original production-seam test now supplies explicit approval; existing controller test-only successes exercise common terminal reporting. New process scenarios cover single-use approval, privacy, cumulative/unknown observations, retry/repair, concurrent stop/read/report and incomplete/conflicting publication. Shared Windows rejection remains binding for new paths. |
+| `README.md`, workflow and contract | Previous preview-only/unimplemented CLI/report claims remain as before/after context in their original documents. Runner/storage finish line is delivered; independent semantic/native validation, runtime access enforcement, live trials and measured baseline remain outstanding. |
+
+Frozen reference-v1 artifacts, canonical roles/defaults/routing/configuration,
+adapters, permissions, dependencies, Delivery state/lock/lifecycle and metrics
+association/disabled-recording behavior are untouched. Only the declared runner,
+approval, reporting and no-model verification surface changes. No release or
+installation is included.
+
 ## Work still required
 
 Before issue #310, this guide deferred corpus/grader preparation and independent
@@ -619,7 +806,9 @@ Before issue #314, this section required separately scoped runner/CLI and
 protected controller storage implementation. The core and guarded retention now
 exist. Run 2's finish line is `eval run/status/stop/report`, exact-scope
 approval/readiness integration, retained text/Markdown/JSON reports and final
-no-model end-to-end checks. Verified worker-access enforcement, supported native
+no-model end-to-end checks. Before issue #316 that finish line was outstanding;
+after it, those runner/storage requirements are implemented as documented above.
+Verified worker-access enforcement, supported native
 model-tool containment, the reviewed refusal change and separately approved
 finite one-task validation remain separate prerequisites for approved bounded
 screens, baseline and matched trials. Corpus readiness and runner implementation

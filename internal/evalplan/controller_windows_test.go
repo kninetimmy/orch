@@ -12,6 +12,9 @@ func TestControllerWindowsDriveAliasAndReparse(t *testing.T) {
 		return
 	}
 	f := newControllerFixture(t, "screen", 1)
+	e := f.prepare(t)
+	approval := filepath.Join(f.root, "assertion-source.json")
+	writeFixture(t, approval, fixtureJSON(t, Approval{1, f.record.PlanDigest, "test-human", now(), ApprovalStatement}))
 	drive := ""
 	for _, candidate := range []string{"Z:", "Y:", "X:", "W:"} {
 		if _, err := os.Stat(candidate + `\`); !os.IsNotExist(err) {
@@ -36,6 +39,15 @@ func TestControllerWindowsDriveAliasAndReparse(t *testing.T) {
 	if _, err := openGuarded(drive + `\`); err == nil {
 		t.Fatal("controller accepted drive alias root")
 	}
+	if _, err := ReadApproval(f.repo, filepath.Join(drive+`\`, "assertion-source.json")); err == nil {
+		t.Fatal("approval reader accepted drive alias")
+	}
+	if _, err := Inspect(drive+`\`, e.ID); err == nil {
+		t.Fatal("snapshot reader accepted drive alias")
+	}
+	if _, err := RetainReport(drive+`\`, e.ID); err == nil {
+		t.Fatal("report publisher accepted drive alias")
+	}
 	alias := filepath.Join(filepath.Dir(f.root), "junction")
 	// Values travel as environment data, not interpolated shell expressions.
 	cmd := exec.CommandContext(t.Context(), "powershell.exe", "-NoProfile", "-NonInteractive", "-Command", `New-Item -ItemType Junction -Path $env:ORCH_TEST_LINK -Target $env:ORCH_TEST_TARGET -ErrorAction Stop | Out-Null`)
@@ -53,5 +65,11 @@ func TestControllerWindowsDriveAliasAndReparse(t *testing.T) {
 	}
 	if _, err := Load(t.Context(), f.repo, alias, f.record.PlanDigest); err == nil {
 		t.Fatal("saved loader followed reparse root")
+	}
+	if _, err := ReadApproval(f.repo, filepath.Join(alias, "assertion-source.json")); err == nil {
+		t.Fatal("approval reader followed reparse root")
+	}
+	if _, err := RetainReport(alias, e.ID); err == nil {
+		t.Fatal("report publisher followed reparse root")
 	}
 }

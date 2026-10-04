@@ -220,7 +220,7 @@ func (g *guardedDir) read(name string, limit int) ([]byte, error) {
 	var data []byte
 	for attempt := 0; attempt < 50; attempt++ {
 		data, err = readRoot(p.root, base, limit)
-		if !strings.HasSuffix(base, ".json") || !errors.Is(err, errLinkedFile) {
+		if !errors.Is(err, errLinkedFile) {
 			break
 		}
 		// A completed immutable record can briefly have its publisher's pending
@@ -237,6 +237,10 @@ func (g *guardedDir) publish(name string, value any) error {
 		return err
 	}
 	data = append(data, '\n')
+	return g.publishBytes(name, data)
+}
+
+func (g *guardedDir) publishBytes(name string, data []byte) error {
 	if len(data) > maxRecordBytes {
 		return fmt.Errorf("controller record exceeds %d-byte limit", maxRecordBytes)
 	}

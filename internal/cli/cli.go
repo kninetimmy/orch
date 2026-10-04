@@ -74,7 +74,7 @@ func commands() []command {
 		{"resume", "Reconcile an interrupted Delivery run against GitHub and continue", runResume},
 		{"abort", "Stop dispatch and return to Assist", noArgs("abort", runAbort)},
 		{"metrics", "Show local metrics or record JSON observations", runMetrics},
-		{"eval", "Preview and retain a local evaluation plan (eval preview --plan FILE)", runEval},
+		{"eval", "Evaluation preview/run/status/stop/report (eval preview --plan FILE; eval help for arguments)", runEval},
 		{"render-agents", "Render project agent definitions for every enabled host", noArgs("render-agents", runRenderAgents)},
 		{"run", "Adapter plumbing: Delivery run verbs (JSON stdin/stdout; not a human command)", runRunVerb},
 		{"guard", "Adapter plumbing: pre-write enforcement for host hooks (not a human command)", runGuard},
