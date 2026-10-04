@@ -1,7 +1,13 @@
 # P1-C evaluation preview and proposed execution workflow
 
-**Status: local preview and maintainer preparation implemented; runner and
-protected storage unimplemented.** Before issue #312, every `orch eval` command,
+**Status: preview, bounded controller core and guarded local retention implemented;
+execution CLI, reports and verified worker-access protection remain pending.**
+Before issue #314, this guide stated: "local preview and maintainer preparation
+implemented; runner and protected storage unimplemented." After that increment,
+the internal controller prepares fresh packets and retains bounded progress and
+evidence, while every production attempt still refuses model execution. Guarded
+placement and file identity checks do not establish a protected model/OS boundary.
+Before issue #312, every `orch eval` command,
 plan format, storage location and output here was proposed and unimplemented;
 `orch help` did not list this family. Now help exposes
 `orch eval preview --plan FILE [--json]`. It validates and retains public local
@@ -192,9 +198,11 @@ baseline/candidate units, pairs, maximum retries, repairs and attempts including
 repairs. Maximum attempts are
 `units * (max_attempts_per_unit + max_repairs_per_unit)`; maximum scheduled
 seconds multiply those attempts by attempt + verification + cleanup bounds.
-The overall cutoff can be smaller than that ceiling: a future runner would
-retain unrun slots after cutoff. No attempts, successes, grades or resource
-observations are invented. This example schedules eight units, eight maximum
+The overall cutoff can be smaller than that ceiling. Before issue #314, retaining
+unrun slots after cutoff was a future-runner requirement; the core now retains
+them and consumed budgets, including interrupted preparation. Preview still
+invents no attempts, successes, grades or resource observations. This example
+schedules eight units, eight maximum
 attempts and a 3600-second ceiling, with no retries or repairs.
 
 The prior hypothetical decision rule remains an example for future execution:
@@ -395,8 +403,11 @@ This section describes the **future protected runtime store and results**.
 Before issue #312 preview was proposed to display a verified access boundary
 and save into that controller area. The implemented preview instead displays
 an explicit external preparation root and **unverified** worker-access
-protection. It retains public metadata only; the protected runtime store,
-execution evidence and result reports described below remain unimplemented.
+protection. Before issue #314, this section stated: "It retains public metadata
+only; the protected runtime store, execution evidence and result reports
+described below remain unimplemented." Preview still retains public metadata
+only. The core now retains separately rooted controller bytes and execution
+outcomes; verified worker-access enforcement and result reports remain pending.
 
 Propose a controller-owned local artifact root **outside every worker-readable
 checkout, scratch area and shared Git store**. Preview must display its canonical
@@ -445,15 +456,164 @@ Delivery/merge approval for shared configuration, or `orch configure-local` for
 authorized machine-local changes, then `orch render-agents` as required. Source
 changes follow the existing approved Delivery workflow and separate merge gate.
 
+## Implemented controller core (issue #314, run 1 of 2)
+
+The internal `evalplan` APIs are `Load`, `Prepare`, `Run`, `Status` and `Stop`.
+They add no execution CLI. `Load(ctx, repo, storageRoot, digest)` reads the existing
+schema-1 preview without rewriting it. It checks the complete generated wire
+shape, normalized plan digest, regenerated schedule/counts, current effective
+configuration and profile/artifact bytes, local commits and current repository,
+Git, worker and scratch exclusions. Version-1 config role fields keep their
+existing `Architect`/`Model`/`Effort` JSON names and digest semantics; arbitrary
+field casing, omissions, duplicates, nulls and unknown fields are rejected.
+Readiness/decision references remain opaque and confer no authorization.
+
+`Prepare` also requires existing, disjoint worker and scratch parents and verifies
+the selected corpus's public and controller source bytes. Historical blobs use
+fixed, bounded Git reads with lazy fetching and replacement objects disabled.
+Authored bytes use the same anchored, bounded reader as preview. No source code
+or supplied command is executed. Credential locations and known credential
+filenames cannot become public packet sources. Frozen reference-v1 bytes remain
+unchanged. A preview with absent scratch parents remains a valid preview, but
+cannot prepare a controller evaluation until the separate parents exist.
+
+### Exact retained schema 1
+
+Each preparation creates `STORAGE_ROOT/eval-BASE32/`, with a random 26-character
+lowercase base32 suffix. The evaluation is distinct from its immutable plan and
+from Delivery run/issue/metrics identifiers. Generated JSON uses two-space
+indentation and a final newline; hashes below cover those exact retained bytes.
+
+| Relative name | Complete meaning |
+| --- | --- |
+| `evaluation.json` | `schema_version: 1`, `id`, canonical `repository`, controller `prepared_at` receipt and the exact schema-1 `preparation` record (plan, limits, frozen schedule, counts and preview blockers). No approval or verified isolation claim. |
+| `progress-NNNNNN.json` | A full snapshot: schema, evaluation ID/hash, plan digest, sequence, previous snapshot hash (omitted for sequence 0), state, receipt timestamp, optional reason and every scheduled slot. Slots retain the original unit identity, status, `grade: unknown`, separate attempts/repairs consumed and ordered attempt number/kind/final-evidence hashes. A missing final hash is incomplete execution/cleanup, never success. Initial sequence 0 is `prepared`. |
+| `execution/owner.json` | An exclusive, permanent execution claim and its schema, evaluation/plan identity and start receipt. The directory is created exclusively before running progress. An empty or interrupted claim remains inspectable and prevents concurrent execution, takeover and replay. It is never a Delivery lock. |
+| `stop/request.json` | One idempotent schema-1 `stop` request bound to evaluation/plan identity. An exclusive stop directory has one writer; concurrent callers read its complete publication. An interrupted/invalid stop claim fails closed and is preserved. Stop has reserved byte/entry capacity. |
+| `unit-NNNNNN-attempt-NNNNNN/begun.json` | Attempt identity, case/version, repetition, side, number, initial/retry/repair kind, case/packet digests, packet/scratch names and preparation receipt. It records started preparation without inventing execution or cleanup evidence. |
+| `unit-NNNNNN-attempt-NNNNNN/case.json` | Exact controller-side corpus case declaration, digest-linked from the final attempt. It includes controller references and never enters the worker packet. |
+| `initial/`, `private/key/`, `private/probe/`, `private/control-NNN/files/` and optional `private/control-NNN/patch/` inside an attempt | Original public bytes and separately rooted key/probe/control bytes. Each retained file's relative name and SHA-256 appear in the attempt's `initial` list. Initial bytes/outcomes survive every fresh retry/repair. |
+| `worker-output/`, `scratch-output/`, optional `output.txt` inside an attempt | Bounded retained worker/scratch files and available textual output, treated solely as data. File names/digests are in `artifacts` and optional `output`. No worker code or hidden probe is run with controller privileges. |
+| `unit-NNNNNN-attempt-NNNNNN/attempt.json` | Final schema/identity, frozen unit, number/kind, case/packet hashes, packet/scratch names, controller receipt timestamps, outcome/detail, execution source, unknown grade, artifact-only verification, initial/output links, optional native/eligibility evidence and explicit cleanup observations. Its byte hash is linked from progress. |
+| `.pending-*` anywhere in the controller area | Unpublished/interrupted evidence. Never a complete record, never swept or overwritten. |
+
+Worker and scratch directories are fresh exclusive children of the first declared
+parents, named `EVALUATION_ID-unit-NNNNNN-attempt-NNNNNN`. Worker packets contain
+only declared public inputs, with no `.git` pointer, inherited repository history,
+controller keys/probes/solutions or copied credentials. All source checkouts,
+shared Git locations, corpus/controller artifacts, other declared parents,
+sibling entries and credential locations are included in the native protected
+layout. Every production attempt invokes `IsolationPreflight` and remains
+`refused`, including if a future diagnostic returns success: no scope approval
+integration or model-turn path is supplied here. The existing `RunSession` and
+`Session.Resume` restrictions remain binding for every role.
+
+The only successful executor is compiled in `_test.go`. Its evidence is labeled
+`no-model-test-script`; production evidence is `native-eligibility-only`.
+Scripted `native-completed` outcomes simulate that execution observation and
+prove no native model/OS isolation, observed inference profile or task acceptance.
+No exported callback, backend selector, environment flag or alternative native
+execution route exists. Native session IDs/profiles/observations, when available,
+retain their reported meanings and absent fields; no totals, grades, human work,
+active-agent time or native cleanup acknowledgements are inferred. The core never
+calls the current-Delivery metrics recorder with evaluation or fabricated IDs.
+
+States are `prepared`, `running`, `completed`, `stopped`, `overall-cutoff`,
+`refused`, `safety-failure` and `incomplete`. Slot outcomes distinguish
+`native-completed`, `task-failure`, `infrastructure-failure`, `timeout`,
+`interrupted`, `disconnected`, `refused`, `protocol-invalid`, `invalid-evidence`
+and `safety-failure`; untouched slots remain `unrun`. Completed means the schedule
+ended, not graded correctness. Infrastructure failures/timeouts may consume
+remaining retry attempts; task failures may consume separate repair allowances.
+Disconnect/interruption never launches durable resume or replays an unidentified
+turn. Stop, refusal, safety failure and overall cutoff prevent new units.
+
+Attempt execution, verification and cleanup have finite frozen deadlines.
+Interruption/shutdown and final local cleanup share one cleanup allowance;
+cancellation does not grant it twice. Overall cutoff/caller cancellation during
+preparation retains the consumed attempt and incomplete artifact observations.
+An unavailable worker return, verification or cleanup observation is incomplete,
+not automatically a safety violation. Local cleanup removes only an unchanged
+controller-created packet and empty scratch, using anchored, nonrecursive removes.
+Dirty, aliased, oversized, incomplete or unacknowledged work remains inspectable.
+Local removal is recorded separately from unavailable native acknowledgement.
+
+The controller caps the frozen maximum at 1,024 attempts, each artifact/output at
+2 MiB, each record at 16 MiB, each selected case at 256 source files / 16 MiB,
+all selected source bytes at 64 MiB, each worker/scratch inspection at 256 entries
+/ 16 MiB / 16 directory levels, and the evaluation at 65,536 entries / 256 MiB /
+32 directory levels. It permits at most 2,051 progress records. These are core
+capacity limits, not new preview syntax or configuration defaults. Every write
+charges a shared monotonic byte/entry budget; failed/pending writes do not refund
+capacity. Stop has a reserved quota. Complete snapshots have bounded quadratic
+metadata cost; controller writes avoid repeatedly scanning old evidence. Status
+checks the entire bounded inventory, snapshot chain and all referenced bytes.
+Caps fail visibly and preserve partial/dirty work rather than silently truncating
+evidence or declaring success. Filesystem modes and placement remain local
+hygiene, not verified worker denial or protection against privileged mutation.
+
+Runnable no-model verification (ordinary tests use synthetic local Git/corpus
+artifacts; tagged controls still require the documented historical objects):
+
+```sh
+go test -count=1 ./internal/evalplan
+go test -tags=corpus_validation -count=1 ./internal/evalcorpus
+go build ./...
+go test ./...
+go vet ./...
+gofmt -l .
+npm test --prefix adapters/opencode
+git diff --check
+```
+
+Tests cover baseline/matched order, artifact separation, separate retries/repairs,
+stop/cutoff/refusal, concurrent start/stop/readers, tampering/aliases, interrupted
+publication, unknown grades/observations and bounded evidence/cleanup. Windows
+tests construct disposable SUBST and junction aliases. These checks perform no
+evaluation model trial and do not validate the deferred native boundary.
+Heavy controller scenarios execute in the existing test binary as exact named
+subprocesses with finite deadlines and propagated output/exit/assertions. This
+avoids Go 1.26's repeated outside-module filesystem testlog/cache replay; it
+changes no production execution seam, test assertions, toolchain or CI command.
+
+### Controller change blast radius
+
+| Structural element | Before / after and preserved behavior |
+| --- | --- |
+| `evalplan.Preview`, normalized `Plan`/`Record`, digest and text/JSON preview | Previously preparation-only; still the same schema/digests/output and immutable replay. Normalization is shared with saved-record validation. Preview still grants no approval and starts no host/model work. |
+| `evalplan.Load` and strict stored decoding | No saved loader existed. Now the exact generated v1 schema and current inputs/exclusions are rechecked without rewriting. Existing capitalized config role/profile fields remain compatible; proposal JSON keeps its existing lowercase-only rules. |
+| `evalplan` path, drive/reparse/link checks, `readRoot`, `openDirectory`, storage publication and new `guardedDir` | Original alias/traversal/identity/no-replace restrictions still hold for every preparation/controller read/write and child directory. New retained handles also reject directory replacement. Previously failed own pending writes could be removed; now failed pending files are preserved for inspection. Complete concurrent immutable replay still holds. |
+| `evalplan.gitRead` production runner | Existing fixed read-only Git operations, no lazy fetch/replace objects and finite command context remain. Production stdout/stderr are now bounded during capture; injected preview test runners retain their API. No runtime worker injection is added. |
+| `evalplan.Prepare`, `Run`, `Status`, `Stop`, evaluation/progress/attempt/cleanup records | No core existed. Now bounded preparation, one-time scheduling, journal validation, durable stop and explicit unknowns exist under separate external roots. Model execution still refuses; no CLI, takeover, replay or native-session recovery is added. |
+| `evalcorpus.ReadHistoricalFile`, `gitRead`, `historicalFile` | Existing declared-file/tree/link/submodule/digest restrictions still hold. A single-file reusable reader now serves runtime preparation; historical stdout/stderr are bounded and lazy fetching is disabled. Existing local `Export`/`Inspect` preparation behavior remains; their weaker local hygiene is not used as runtime protection. |
+| Controller no-model and Windows tests | New real-core checks; scripted success exists only in test files. Existing preview, corpus and native tests retain their contracts. |
+| `docs/evaluation-workflow.md`, `docs/evaluation-contract.md` | Previous unimplemented core/evidence claims are retained as before/after context and the new schema/refusal/limitations are explicit. Proposed public CLI/report/approval and live validation/baseline remain pending. |
+
+Unchanged: frozen corpus/reference-v1 versions/bytes; config loading/overlays,
+routing/defaults and canonical roles; both native model-turn APIs, isolation
+diagnostics and their separate restrictions; Delivery locks/state/lifecycle and
+merge approval/recovery; metrics association/recording; dependencies, adapters,
+CI, releases and installation. `RunSession` is not the sole restricted symbol:
+**both** `RunSession` and `Session.Resume` require the native model gate for
+**every** role. Metadata/command diagnostics retain their separate eligibility.
+The new controller always refuses and supplies no bypass for either entry point.
+
 ## Work still required
 
 Before issue #310, this guide deferred corpus/grader preparation and independent
 validation "without model calls." After that increment, maintainer preparation
-exists and fresh independent semantic validation remains required. Separately
-scope runner/CLI and protected controller storage implementation; supported native
+exists and fresh independent semantic validation remains required.
+Before issue #314, this section required separately scoped runner/CLI and
+protected controller storage implementation. The core and guarded retention now
+exist. Run 2's finish line is `eval run/status/stop/report`, exact-scope
+approval/readiness integration, retained text/Markdown/JSON reports and final
+no-model end-to-end checks. Verified worker-access enforcement, supported native
 model-tool containment, the reviewed refusal change and separately approved
-finite one-task validation; then approved bounded screens, baseline and matched
-trials. Corpus readiness and runner implementation alone do not authorize native
-execution. No runtime, adapter, schema, dependency, default, permission,
-installation or release is changed here; no model evaluation runs or measured
+finite one-task validation remain separate prerequisites for approved bounded
+screens, baseline and matched trials. Corpus readiness and runner implementation
+alone do not authorize native
+execution. Before the core increment this guide stated that no runtime/schema
+changed; issue #314 adds only the documented internal controller and retained
+schema. No adapter, dependency, default, permission, installation or release
+changes; no model evaluation runs or measured
 baseline are claimed, and Phase 1 remains open.

@@ -1,5 +1,5 @@
-// Package evalplan validates and retains maintainer preparation metadata only.
-// It has no evaluation runner, approval capability, or worker-access enforcement.
+// Package evalplan retains evaluation preparation and bounded controller evidence.
+// It grants no approval and has no verified worker-access enforcement.
 package evalplan
 
 import (
@@ -181,6 +181,10 @@ var (
 // strictJSON also rejects duplicate keys, nulls and excessive nesting; the
 // standard decoder alone silently accepts duplicate object members.
 func strictJSON(data []byte, out any) error {
+	return decodeJSON(data, out, true)
+}
+
+func decodeJSON(data []byte, out any, lowercase bool) error {
 	if !utf8.Valid(data) {
 		return fmt.Errorf("JSON must be UTF-8")
 	}
@@ -206,7 +210,7 @@ func strictJSON(data []byte, out any) error {
 					return err
 				}
 				name, ok := key.(string)
-				if !ok || seen[name] || name != strings.ToLower(name) {
+				if !ok || seen[name] || lowercase && name != strings.ToLower(name) {
 					return fmt.Errorf("duplicate or non-lowercase JSON field %q", key)
 				}
 				seen[name] = true
@@ -476,6 +480,20 @@ func Preview(ctx context.Context, repo, file string, runner execx.Runner) (*Reco
 		return nil, fmt.Errorf("plan version %d unsupported; require version 1", p.Version)
 	}
 	base := filepath.Dir(name)
+	record, err := normalize(ctx, repo, base, p, runner)
+	if err != nil {
+		return nil, err
+	}
+	if err := save(record); err != nil {
+		return nil, err
+	}
+	return record, nil
+}
+
+// normalize is shared by preview and saved-record revalidation. It never writes.
+func normalize(ctx context.Context, repo, base string, p Proposal, runner execx.Runner) (*Record, error) {
+	var data []byte
+	var err error
 	p.Corpus, data, err = readArtifact(base, p.Corpus)
 	if err != nil {
 		return nil, fmt.Errorf("corpus: %w", err)
@@ -540,11 +558,7 @@ func Preview(ctx context.Context, repo, file string, runner execx.Runner) (*Reco
 		return nil, err
 	}
 	digest := evalcorpus.Digest(normalized)
-	record := &Record{SchemaVersion: 1, Kind: "maintainer-preparation-record", PlanDigest: "sha256:" + digest, StorageDestination: filepath.Join(plan.StorageRoot, digest+".json"), Plan: plan, Preview: evidence(plan, counts)}
-	if err := save(record); err != nil {
-		return nil, err
-	}
-	return record, nil
+	return &Record{SchemaVersion: 1, Kind: "maintainer-preparation-record", PlanDigest: "sha256:" + digest, StorageDestination: filepath.Join(plan.StorageRoot, digest+".json"), Plan: plan, Preview: evidence(plan, counts)}, nil
 }
 
 // Text uses exactly the JSON record's facts, including every scheduled unit and

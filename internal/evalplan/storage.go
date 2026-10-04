@@ -10,6 +10,7 @@ import (
 	"io"
 	"io/fs"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"runtime"
 	"slices"
@@ -228,7 +229,7 @@ func effectiveConfiguration(repo string) (Configuration, error) {
 // objects so a missing pin stays a local error, never a remote request.
 func gitRead(ctx context.Context, runner execx.Runner, repo string, args ...string) (string, error) {
 	if runner == nil {
-		runner = execx.Local{}
+		runner = boundedGit{}
 	}
 	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
 	defer cancel()
@@ -243,6 +244,37 @@ func gitRead(ctx context.Context, runner execx.Runner, repo string, args ...stri
 		return "", fmt.Errorf("local Git metadata exceeds %d bytes", MaxArtifactBytes)
 	}
 	return res.Stdout, nil
+}
+
+type gitOutput struct{ bytes.Buffer }
+
+func (b *gitOutput) Write(p []byte) (int, error) {
+	if len(p) > MaxArtifactBytes-b.Len() {
+		return 0, fmt.Errorf("local Git metadata exceeds %d bytes", MaxArtifactBytes)
+	}
+	return b.Buffer.Write(p)
+}
+
+// Only gitRead's fixed read-only command vectors use this runner. Bound both
+// pipes while reading, rather than discovering an oversized allocation later.
+type boundedGit struct{}
+
+func (boundedGit) Run(ctx context.Context, c execx.Cmd) (execx.Result, error) {
+	cmd := exec.CommandContext(ctx, c.Name, c.Args...)
+	cmd.Dir, cmd.Env = c.Dir, append(os.Environ(), c.Env...)
+	cmd.WaitDelay = 2 * time.Second
+	var stdout, stderr gitOutput
+	cmd.Stdout, cmd.Stderr = &stdout, &stderr
+	err := cmd.Run()
+	result := execx.Result{Stdout: stdout.String(), ExitCode: -1}
+	if cmd.ProcessState != nil {
+		result.ExitCode = cmd.ProcessState.ExitCode()
+	}
+	var exit *exec.ExitError
+	if errors.As(err, &exit) && ctx.Err() == nil {
+		return result, nil
+	}
+	return result, err
 }
 
 func pathList(base string, names []string, mustExist bool) ([]string, error) {
@@ -378,6 +410,12 @@ func save(record *Record) error {
 	if !digestPattern.MatchString(strings.TrimSuffix(name, ".json")) {
 		return fmt.Errorf("invalid normalized plan digest")
 	}
+	return publishRoot(root, name, data)
+}
+
+// publishRoot is the shared no-replace publication path for preparation and
+// controller records. Failed/interrupted writes remain available for inspection.
+func publishRoot(root *os.Root, name string, data []byte) error {
 	if _, err := root.Lstat(name); err == nil {
 		return existingRecord(root, name, data)
 	} else if !errors.Is(err, fs.ErrNotExist) {
@@ -388,7 +426,6 @@ func save(record *Record) error {
 	if err != nil {
 		return err
 	}
-	defer func() { _ = root.Remove(temp) }()
 	_, writeErr := f.Write(data)
 	err = errors.Join(writeErr, f.Sync(), f.Close())
 	if err != nil {
@@ -396,6 +433,10 @@ func save(record *Record) error {
 	}
 	if err := root.Link(temp, name); err != nil {
 		if errors.Is(err, fs.ErrExist) {
+			// This invocation owns this unpublished temporary file only.
+			if err := root.Remove(temp); err != nil {
+				return err
+			}
 			return existingRecord(root, name, data)
 		}
 		return fmt.Errorf("atomic no-replace preview publication unavailable: %w", err)
