@@ -391,8 +391,7 @@ func replayArgs(b isolationBoundary, endpoint string) []string {
 		"-c", "openai_base_url="+quoteTOML(endpoint+"/v1"), "-c", `model_provider="orch_replay"`, "-c", `model="gpt-5.5"`,
 		"-c", `model_providers.orch_replay={name="Synthetic loopback replay",base_url=`+quoteTOML(endpoint+"/v1")+`,wire_api="responses",requires_openai_auth=false,http_headers={Authorization="Bearer orch-synthetic-replay"},request_max_retries=0,stream_max_retries=0}`,
 		"-c", `features.enable_request_compression=false`, "-c", `features.responses_websockets=false`, "-c", `features.responses_websockets_v2=false`,
-		"-c", `features.goals=false`, "-c", `features.request_permissions_tool=false`, "-c", `features.exec_permission_approvals=false`, "-c", `features.image_generation=false`,
-		"-c", `ephemeral=true`, "-c", "log_dir="+quoteTOML(filepath.Join(b.scratch, "native-log")), "-c", "sqlite_home="+quoteTOML(filepath.Join(b.scratch, "native-state")))
+		"-c", "log_dir="+quoteTOML(filepath.Join(b.scratch, "native-log")), "-c", "sqlite_home="+quoteTOML(filepath.Join(b.scratch, "native-state")))
 }
 
 func openReplayChild(ctx context.Context, executable string, b isolationBoundary, args []string) (*connection, error) {
@@ -442,7 +441,10 @@ func openToolReplay(ctx context.Context, executable string, b isolationBoundary,
 		err = config.verify(b, servers)
 	}
 	if err == nil {
-		err = verifyRestrictedFeatures(c)
+		err = verifyRestrictedFeatures(c, modelRestrictedFeatures...)
+	}
+	if err == nil {
+		err = config.verifyFeatures(modelRestrictedFeatures)
 	}
 	if err == nil {
 		err = replayDisabledCapabilities(c, b)
@@ -459,29 +461,16 @@ func openToolReplay(ctx context.Context, executable string, b isolationBoundary,
 	if err != nil {
 		return nil, errors.Join(err, c.close())
 	}
-	c.session = true // test-only native replay; production modelToolBoundary is unchanged
+	c.session = true // test-only synthetic provider; production requires managed OpenAI auth
 	return c, nil
 }
 
-// These inventory calls stay test-only; production transport admission is unchanged.
+// Hook recognition/trust is test-only; the same read-only RPC allowlist is used.
 func replayMetadata(c *connection, method string, params, result any) error {
 	if method != "hooks/list" && method != "plugin/installed" {
 		return errors.New("replay limitation: unsupported metadata method")
 	}
-	c.sequence++
-	id := fmt.Sprintf("orch-replay-metadata-%d", c.sequence)
-	if err := c.send(map[string]any{"id": id, "method": method, "params": params}); err != nil {
-		return err
-	}
-	for {
-		m, err := c.read()
-		if err != nil {
-			return err
-		}
-		if len(m.Method) == 0 {
-			return decodeResponse(m, id, method, result)
-		}
-	}
+	return c.call(method, params, result)
 }
 
 type replayHookInventory struct {
@@ -547,22 +536,8 @@ func replayHookSource(ctx context.Context, executable string, b isolationBoundar
 }
 
 func replayDisabledCapabilities(c *connection, b isolationBoundary) error {
-	var hooks replayHookInventory
-	if err := replayMetadata(c, "hooks/list", map[string]any{"cwds": []string{b.workspace}}, &hooks); err != nil {
+	if err := verifyDisabledCapabilities(c, b); err != nil {
 		return err
-	}
-	if len(hooks.Data) != 1 || hooks.Data[0].Cwd != b.workspace || hooks.Data[0].Hooks == nil || len(hooks.Data[0].Hooks) != 0 || hooks.Data[0].Errors == nil || len(hooks.Data[0].Errors) != 0 || hooks.Data[0].Warnings == nil || len(hooks.Data[0].Warnings) != 0 {
-		return errors.New("replay limitation: disabled native hooks not unambiguously unavailable")
-	}
-	var plugins struct {
-		Marketplaces []json.RawMessage `json:"marketplaces"`
-		Errors       []json.RawMessage `json:"marketplaceLoadErrors"`
-	}
-	if err := replayMetadata(c, "plugin/installed", map[string]any{"cwds": []string{b.workspace}}, &plugins); err != nil {
-		return err
-	}
-	if plugins.Marketplaces == nil || len(plugins.Marketplaces) != 0 || plugins.Errors == nil || len(plugins.Errors) != 0 {
-		return errors.New("replay limitation: disabled native plugin inventory missing, nonempty or failed")
 	}
 	return replayInstalledPluginSource(c, b.workspace)
 }

@@ -194,7 +194,7 @@ func TestIsolationEnvironmentsAndModelRefusal(t *testing.T) {
 		}
 	}
 	for _, version := range []string{"0.159.2", "0.160.0", "77.88.99", "", "future-version"} {
-		if err := modelToolBoundary(version); !errors.Is(err, ErrIsolationUnavailable) {
+		if err := modelToolBoundary(nil, b, IsolationCapabilities{HostVersion: version}); !errors.Is(err, ErrIsolationUnavailable) {
 			t.Fatalf("unverified model-tool boundary accepted: %v", err)
 		}
 	}
@@ -222,6 +222,7 @@ func scriptedIsolationServer() {
 		}
 	}
 	scenario := ""
+	configReads := 0
 	scanner := bufio.NewScanner(os.Stdin)
 	for scanner.Scan() {
 		var request struct {
@@ -247,12 +248,19 @@ func scriptedIsolationServer() {
 			}
 			scenario = params.ClientInfo.Version
 			version := "0.159.2"
+			if parts := strings.Split(scenario, ":"); len(parts) == 3 && parts[0] == "session" {
+				write(request.ID, map[string]any{"userAgent": "orch/0.160.0 (scripted)", "platformFamily": "windows", "platformOs": "windows"})
+				_ = json.NewEncoder(os.Stdout).Encode(map[string]any{"method": "account/updated", "params": map[string]string{"authMode": "chatgpt"}})
+				scriptedSessionRequests(parts[2], parts[1], scanner)
+				return
+			}
 			if base, observed, ok := strings.Cut(scenario, "@"); ok {
 				scenario, version = base, observed
 			}
 			write(request.ID, map[string]any{"userAgent": "Codex Desktop/" + version, "extraMetadata": "harmless"})
 		case "initialized":
 		case "config/read":
+			configReads++
 			var params struct {
 				Cwd    string `json:"cwd"`
 				Layers bool   `json:"includeLayers"`
@@ -312,6 +320,14 @@ func scriptedIsolationServer() {
 					config["permissions"].(map[string]any)[config["default_permissions"].(string)].(map[string]any)["filesystem"].(map[string]any)["/unapproved"] = "write"
 				case "inherited-environment":
 					config["shell_environment_policy"].(map[string]any)["set"] = map[string]any{"secret": "DO-NOT-LEAK"}
+				case "missing-model-control":
+					delete(config["features"].(map[string]any), "image_generation")
+				case "changed-model-control":
+					if configReads > 1 {
+						config["features"].(map[string]any)["request_permissions_tool"] = true
+					}
+				case "wrong-provider":
+					config["model_provider"] = "other"
 				}
 			}
 			write(request.ID, map[string]any{"config": config, "origins": "ignored metadata", "extra": true})
@@ -327,8 +343,11 @@ func scriptedIsolationServer() {
 				os.Exit(48)
 			}
 			var data []any
-			for i, name := range restrictedFeatures {
+			for i, name := range append(append([]string(nil), restrictedFeatures...), modelRestrictedFeatures...) {
 				if (params.Cursor == nil && i >= 6) || (params.Cursor != nil && i < 6) || (scenario == "unsupported-feature" && name == "plugins") {
+					continue
+				}
+				if scenario == "unsupported-model-control" && name == "goals" {
 					continue
 				}
 				entry := map[string]any{"name": name, "enabled": false, "metadata": "harmless"}
@@ -347,6 +366,37 @@ func scriptedIsolationServer() {
 				next = &value
 			}
 			write(request.ID, map[string]any{"data": data, "nextCursor": next})
+		case "hooks/list":
+			if scenario == "missing-inventory-method" {
+				_ = json.NewEncoder(os.Stdout).Encode(map[string]any{"id": request.ID, "error": map[string]any{"code": -32601, "message": "DO-NOT-LEAK"}})
+				continue
+			}
+			cwd, _ := os.Getwd()
+			entry := map[string]any{"cwd": cwd, "hooks": []any{}, "errors": []any{}, "warnings": []any{}}
+			switch scenario {
+			case "missing-hook-inventory":
+				delete(entry, "hooks")
+			case "enabled-hook":
+				entry["hooks"] = []any{map[string]any{"command": "DO-NOT-LEAK"}}
+			case "hook-errors":
+				entry["errors"] = []any{"DO-NOT-LEAK"}
+			case "hook-warnings":
+				entry["warnings"] = []any{"DO-NOT-LEAK"}
+			case "hook-wrong-cwd":
+				entry["cwd"] = filepath.Dir(cwd)
+			}
+			write(request.ID, map[string]any{"data": []any{entry}})
+		case "plugin/installed":
+			inventory := map[string]any{"marketplaces": []any{}, "marketplaceLoadErrors": []any{}}
+			switch scenario {
+			case "missing-plugin-inventory":
+				delete(inventory, "marketplaces")
+			case "enabled-plugin":
+				inventory["marketplaces"] = []any{map[string]any{"name": "DO-NOT-LEAK"}}
+			case "plugin-errors":
+				inventory["marketplaceLoadErrors"] = []any{"DO-NOT-LEAK"}
+			}
+			write(request.ID, inventory)
 		case "windowsSandbox/readiness":
 			switch scenario {
 			case "missing-method":
@@ -463,6 +513,65 @@ func TestIsolationCapabilitiesAndFailureCleanup(t *testing.T) {
 				t.Fatalf("server did not close on failure: %v", err)
 			}
 		})
+	}
+}
+
+func TestModelToolAdmission(t *testing.T) {
+	executable, err := os.Executable()
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, reviewer := range []bool{false, true} {
+		for _, scenario := range []string{"success", "missing-model-control", "changed-model-control", "unsupported-model-control", "wrong-provider", "missing-inventory-method", "missing-hook-inventory", "enabled-hook", "hook-errors", "hook-warnings", "hook-wrong-cwd", "missing-plugin-inventory", "enabled-plugin", "plugin-errors"} {
+			t.Run(fmt.Sprintf("reviewer=%v/%s", reviewer, scenario), func(t *testing.T) {
+				layout := isolationLayout(t)
+				b, err := prepareIsolation(layout, reviewer)
+				if err != nil {
+					t.Fatal(err)
+				}
+				ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
+				defer cancel()
+				options := Options{Executable: executable, Dir: layout.Workspace, ClientVersion: scenario + "@0.160.0"}
+				c, caps, err := openIsolation(ctx, options, b)
+				if err != nil {
+					t.Fatal(err) // diagnostic compatibility remains independent
+				}
+				defer func() {
+					if err := c.close(); err != nil {
+						t.Error(err)
+					}
+				}()
+				err = modelToolBoundary(c, b, caps)
+				if (scenario == "success") != (err == nil) || (err != nil && strings.Contains(err.Error(), "DO-NOT-LEAK")) {
+					t.Fatalf("actual-connection admission: %+v %v", caps, err)
+				}
+				if _, err := c.request("turn/start", nil); err == nil || c.session {
+					t.Fatal("isolation evidence enabled a metadata-only model turn")
+				}
+				if scenario == "success" {
+					changed := b
+					changed.nonce = "changed"
+					if err := modelToolBoundary(c, changed, caps); !errors.Is(err, ErrIsolationUnavailable) {
+						t.Fatal("another boundary reused connection evidence")
+					}
+					caps.ToolsDisabled = false
+					if err := modelToolBoundary(c, b, caps); !errors.Is(err, ErrIsolationUnavailable) {
+						t.Fatal("version/profile alone granted admission")
+					}
+				}
+			})
+		}
+	}
+	if runtime.GOOS == "windows" {
+		for _, reviewer := range []bool{false, true} {
+			layout := isolationLayout(t)
+			ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
+			caps, err := IsolationPreflight(ctx, Options{Executable: executable, Dir: layout.Workspace, ClientVersion: "success@0.160.0"}, layout, reviewer)
+			cancel()
+			if err != nil || !caps.ModelToolsVerified {
+				t.Fatalf("eligible public isolation preflight: %+v %v", caps, err)
+			}
+		}
 	}
 }
 

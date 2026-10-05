@@ -16,11 +16,17 @@ var restrictedFeatures = []string{
 	"workspace_dependencies", "skill_mcp_dependency_install",
 }
 
+// Diagnostic compatibility does not require these model-only controls.
+var modelRestrictedFeatures = []string{
+	"goals", "request_permissions_tool", "exec_permission_approvals", "image_generation",
+}
+
 // Only the fields needed for restrictions are decoded; account/configuration
 // metadata and server credentials are discarded, never returned or logged.
 type isolationConfig struct {
-	Features map[string]json.RawMessage `json:"features"`
-	Servers  map[string]*struct {
+	ModelProvider string                     `json:"model_provider"`
+	Features      map[string]json.RawMessage `json:"features"`
+	Servers       map[string]*struct {
 		Enabled *bool `json:"enabled"`
 	} `json:"mcp_servers"`
 	WebSearch string `json:"web_search"`
@@ -93,24 +99,8 @@ func (config *isolationConfig) verify(b isolationBoundary, servers []string) err
 			return restrictionError("inherited MCP server disable missing or denied")
 		}
 	}
-	for _, feature := range restrictedFeatures {
-		var enabled *bool
-		data := config.Features[feature]
-		if feature == "multi_agent_v2" && len(data) > 0 && data[0] == '{' {
-			var multi struct {
-				Enabled *bool `json:"enabled"`
-			}
-			if json.Unmarshal(data, &multi) == nil {
-				enabled = multi.Enabled
-			}
-		} else {
-			if json.Unmarshal(data, &enabled) != nil {
-				enabled = nil
-			}
-		}
-		if enabled == nil || *enabled {
-			return restrictionError("config/read requires disabled features." + feature)
-		}
+	if err := config.verifyFeatures(restrictedFeatures); err != nil {
+		return err
 	}
 	if config.WebSearch != "disabled" {
 		return restrictionError("config/read requires disabled web_search")
@@ -157,9 +147,33 @@ func (config *isolationConfig) verify(b isolationBoundary, servers []string) err
 	return nil
 }
 
+func (config *isolationConfig) verifyFeatures(features []string) error {
+	for _, feature := range features {
+		var enabled *bool
+		data := config.Features[feature]
+		if feature == "multi_agent_v2" && len(data) > 0 && data[0] == '{' {
+			var multi struct {
+				Enabled *bool `json:"enabled"`
+			}
+			if json.Unmarshal(data, &multi) == nil {
+				enabled = multi.Enabled
+			}
+		} else {
+			if json.Unmarshal(data, &enabled) != nil {
+				enabled = nil
+			}
+		}
+		if enabled == nil || *enabled {
+			return restrictionError("config/read requires disabled features." + feature)
+		}
+	}
+	return nil
+}
+
 // A raw config echo alone cannot prove that a feature control is supported.
 // This read-only list reports enablement in the actual server's loaded config.
-func verifyRestrictedFeatures(c *connection) error {
+func verifyRestrictedFeatures(c *connection, additional ...string) error {
+	required := append(append([]string(nil), restrictedFeatures...), additional...)
 	seen := map[string]bool{}
 	cursors := map[string]bool{}
 	var cursor *string
@@ -178,7 +192,7 @@ func verifyRestrictedFeatures(c *connection) error {
 			return restrictionError("experimentalFeature/list data missing")
 		}
 		for _, feature := range result.Data {
-			if !slices.Contains(restrictedFeatures, feature.Name) {
+			if !slices.Contains(required, feature.Name) {
 				continue
 			}
 			if seen[feature.Name] || feature.Enabled == nil || *feature.Enabled {
@@ -187,7 +201,7 @@ func verifyRestrictedFeatures(c *connection) error {
 			seen[feature.Name] = true
 		}
 		if result.NextCursor == nil {
-			for _, name := range restrictedFeatures {
+			for _, name := range required {
 				if !seen[name] {
 					return restrictionError("experimentalFeature/list unsupported required feature " + name)
 				}
@@ -201,4 +215,34 @@ func verifyRestrictedFeatures(c *connection) error {
 		cursors[*cursor] = true
 	}
 	return restrictionError("experimentalFeature/list exceeds 16 pages")
+}
+
+// Native inventories supplement loaded feature support; a configuration echo
+// alone cannot establish that inherited hook/plugin execution is excluded.
+func verifyDisabledCapabilities(c *connection, b isolationBoundary) error {
+	var hooks struct {
+		Data []struct {
+			Cwd      string            `json:"cwd"`
+			Hooks    []json.RawMessage `json:"hooks"`
+			Errors   []json.RawMessage `json:"errors"`
+			Warnings []json.RawMessage `json:"warnings"`
+		} `json:"data"`
+	}
+	if err := c.call("hooks/list", map[string]any{"cwds": []string{b.workspace}}, &hooks); err != nil {
+		return err
+	}
+	if len(hooks.Data) != 1 || hooks.Data[0].Cwd != b.workspace || hooks.Data[0].Hooks == nil || len(hooks.Data[0].Hooks) != 0 || hooks.Data[0].Errors == nil || len(hooks.Data[0].Errors) != 0 || hooks.Data[0].Warnings == nil || len(hooks.Data[0].Warnings) != 0 {
+		return restrictionError("disabled native hooks not unambiguously unavailable")
+	}
+	var plugins struct {
+		Marketplaces []json.RawMessage `json:"marketplaces"`
+		Errors       []json.RawMessage `json:"marketplaceLoadErrors"`
+	}
+	if err := c.call("plugin/installed", map[string]any{"cwds": []string{b.workspace}}, &plugins); err != nil {
+		return err
+	}
+	if plugins.Marketplaces == nil || len(plugins.Marketplaces) != 0 || plugins.Errors == nil || len(plugins.Errors) != 0 {
+		return restrictionError("disabled native plugin inventory missing, nonempty or failed")
+	}
+	return nil
 }

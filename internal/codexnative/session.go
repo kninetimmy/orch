@@ -69,6 +69,7 @@ type SessionResult struct {
 // turn input, steering, fork, tool-response or approval API.
 type Session struct {
 	task         Task
+	boundary     isolationBoundary // canonical implicit credential/shared-Git protections
 	options      Options
 	instructions string
 	result       SessionResult
@@ -90,8 +91,8 @@ type sessionMessage struct {
 }
 
 // RunSession executes at most one turn. A finite caller deadline is mandatory.
-// Every production path requires both preflights; current hosts always fail the
-// isolation preflight, so this API cannot currently start a production turn.
+// Every start and resume requires both preflights and the actual execution
+// connection's controls. Unreviewed native enforcement remains unavailable.
 func RunSession(ctx context.Context, options Options, approved Task) (*Session, error) {
 	if err := sessionDeadline(ctx); err != nil {
 		return nil, err
@@ -190,7 +191,7 @@ func newSession(options Options, task Task) (*Session, isolationBoundary, error)
 		return nil, boundary, fmt.Errorf("%w: host cwd differs from approved workspace", ErrTaskBoundary)
 	}
 	options.Dir = dir
-	s := &Session{task: task, options: options, instructions: instructions, samples: map[string]bool{}, items: map[string]string{},
+	s := &Session{task: task, boundary: boundary, options: options, instructions: instructions, samples: map[string]bool{}, items: map[string]string{},
 		result: SessionResult{TaskID: task.ID, Workspace: dir, Requested: task.Selection}}
 	return s, boundary, nil
 }
@@ -206,8 +207,8 @@ func (s *Session) checkResume(ctx context.Context, approved Task) error {
 	if err := sessionDeadline(ctx); err != nil {
 		return err
 	}
-	bound, _, instructions, err := bindTask(approved)
-	if err != nil || !reflect.DeepEqual(bound, s.task) || instructions != s.instructions {
+	bound, boundary, instructions, err := bindTask(approved)
+	if err != nil || !reflect.DeepEqual(bound, s.task) || !reflect.DeepEqual(boundary.protected, s.boundary.protected) || instructions != s.instructions {
 		return fmt.Errorf("%w: resume requires the same approved binding", ErrTaskBoundary)
 	}
 	if s.result.Outcome != SessionDisconnected || s.completed || s.result.ThreadID == "" || s.result.NativeSessionID == "" || s.result.TurnID == "" {
@@ -227,13 +228,16 @@ func (s *Session) connect(ctx context.Context) (*connection, func(), error) {
 	if err != nil {
 		return nil, nil, err
 	}
+	if !reflect.DeepEqual(b.protected, s.boundary.protected) {
+		return nil, nil, fmt.Errorf("%w: implicit credential or shared Git paths changed", ErrTaskBoundary)
+	}
 	processCtx, cleanup := sessionContext(ctx)
 	c, capabilities, err := openIsolation(processCtx, s.options, b)
 	if err == nil {
 		_, err = inspectCatalog(c, Capabilities{HostVersion: capabilities.HostVersion}, s.task.Selection)
 	}
 	if err == nil {
-		err = modelToolBoundary(capabilities.HostVersion) // recheck the actual connection
+		err = modelToolBoundary(c, b, capabilities) // recheck the actual connection
 	}
 	if err != nil {
 		if c != nil {
@@ -270,6 +274,7 @@ type nativeTurn struct {
 }
 
 type nativeSettings struct {
+	Provider string  `json:"modelProvider"`
 	Model    *string `json:"model"`
 	Effort   *string `json:"reasoningEffort"`
 	Cwd      string  `json:"cwd"`
@@ -290,9 +295,10 @@ type nativeThread struct {
 
 type nativeThreadResponse struct {
 	nativeSettings
-	Thread      nativeThread `json:"thread"`
-	TurnsCursor *string      `json:"turnsBackwardsCursor"`
-	ItemsCursor *string      `json:"itemsBackwardsCursor"`
+	Thread         nativeThread `json:"thread"`
+	TurnsCursor    *string      `json:"turnsBackwardsCursor"`
+	ItemsCursor    *string      `json:"itemsBackwardsCursor"`
+	WorkspaceRoots []string     `json:"runtimeWorkspaceRoots"`
 }
 
 func (s *Session) execute(ctx context.Context, c *connection, resume bool) (err error) {
@@ -327,7 +333,7 @@ func (s *Session) execute(ctx context.Context, c *connection, resume bool) (err 
 		s.connection = nil
 		err = s.finish(err, cleanupErr)
 	}()
-	params := map[string]any{"cwd": s.task.Layout.Workspace, "model": s.task.Selection.Model,
+	params := map[string]any{"cwd": s.task.Layout.Workspace, "model": s.task.Selection.Model, "modelProvider": "openai", "runtimeWorkspaceRoots": []any{},
 		"config": map[string]string{"model_reasoning_effort": s.task.Selection.Effort}, "approvalPolicy": "never",
 		"permissions": c.profile, "developerInstructions": s.instructions + "\nExecute only the supplied approved task. Do not delegate, expand the task or request elevated permissions. Completion is not verification or merge approval."}
 	method := "thread/start"
@@ -339,6 +345,7 @@ func (s *Session) execute(ctx context.Context, c *connection, resume bool) (err 
 		params["allowProviderModelFallback"] = false
 		params["environments"] = []any{}
 		params["selectedCapabilityRoots"] = []any{}
+		params["dynamicTools"] = []any{}
 		params["ephemeral"] = false
 	}
 	var response nativeThreadResponse
@@ -413,6 +420,9 @@ func (s *Session) receive(ctx context.Context) (message, error) {
 }
 
 func (s *Session) settings(settings nativeSettings) error {
+	if settings.Provider != "" && settings.Provider != "openai" {
+		return fmt.Errorf("%w: reported provider differs", ErrTaskBoundary)
+	}
 	if settings.Model != nil {
 		s.result.Observed.Model = *settings.Model
 	}
@@ -439,7 +449,7 @@ func (s *Session) settings(settings nativeSettings) error {
 
 func (s *Session) acceptThread(response nativeThreadResponse, resume bool) error {
 	t := response.Thread
-	if t.ID == "" || t.Session == "" || t.Parent != nil || t.Cwd == "" || response.Cwd == "" || response.Approval == "" || response.Profile == nil {
+	if t.ID == "" || t.Session == "" || t.Parent != nil || t.Cwd == "" || response.Cwd == "" || response.Approval == "" || response.Profile == nil || response.Provider != "openai" || response.WorkspaceRoots == nil || len(response.WorkspaceRoots) != 0 {
 		return fmt.Errorf("%w: incomplete or delegated native thread binding", ErrTaskBoundary)
 	}
 	if (s.result.ThreadID != "" && t.ID != s.result.ThreadID) || (resume && t.Session != s.result.NativeSessionID) {
@@ -530,6 +540,8 @@ func (s *Session) notification(m message) error {
 		return fmt.Errorf("%w: notification for another task turn", ErrTaskBoundary)
 	}
 	switch method {
+	case "hook/started", "hook/completed":
+		return restrictionError("disabled native hook reported execution")
 	case "turn/started", "turn/completed":
 		if event.ThreadID == "" {
 			return ErrTaskBoundary

@@ -1,5 +1,5 @@
 // Package codexnative implements Codex preflights and bounded task sessions.
-// Production sessions require a verified model-tool boundary, currently absent.
+// Production sessions require supported native enforcement and verified controls.
 // Metadata connections have no execution methods.
 package codexnative
 
@@ -49,6 +49,7 @@ type connection struct {
 	diagnosticReady bool // set only after actual-connection restriction/readiness checks
 	session         bool // private; enabled only after both session preflights succeed
 	profile         string
+	disabledMCP     []string // discovery binding, checked again before session admission
 }
 
 // start follows execx's argument-vector and explicit-cwd contract. execx.Local
@@ -226,7 +227,7 @@ func (c *connection) read() (message, error) {
 func (c *connection) request(method string, params any) (string, error) {
 	switch method {
 	case "initialize", "account/read", "model/list":
-	case "config/read", "experimentalFeature/list", "windowsSandbox/readiness", "permissionProfile/list":
+	case "config/read", "experimentalFeature/list", "windowsSandbox/readiness", "permissionProfile/list", "hooks/list", "plugin/installed":
 		if !c.isolation {
 			return "", errors.New("codex native preflight method unavailable")
 		}
