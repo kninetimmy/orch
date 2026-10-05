@@ -1,9 +1,13 @@
 # P1-C evaluation preview and proposed execution workflow
 
-**Status: preview, bounded controller, explicit approval, public CLI, retained
-reports and evidence-backed grading implemented; verified worker-access/model-tool
-protection, live trials
-and a measured baseline remain pending. Phase 1 is open.**
+**Status: version-2 evaluation binding and native integration implemented;
+actual-connection protections and approved instruction context are required per
+attempt. Live validation and a measured baseline remain pending. Phase 1 is open.**
+Before #323 the status stated: "verified worker-access/model-tool protection,
+live trials and a measured baseline remain pending." The
+[current integration contract](#native-evaluation-integration-issue-323) below
+supersedes execution/refusal claims in earlier dated increment sections; their
+original evidence remains historical, not rewritten.
 Before issue #316 this guide stated: "execution CLI, reports and verified
 worker-access protection remain pending." After that increment the CLI and
 reports exist under the [run 2 contract](#delivered-cli-approval-and-reports-issue-316-run-2-of-2);
@@ -776,6 +780,8 @@ unknown/disputed grades or incomplete comparisons remain **inconclusive**.
 Attributable safety findings are prominent and disqualifying regardless of
 resource savings; no report adopts a profile or authorizes configuration/merge.
 
+Before #323, this section stated the following refusal behavior:
+
 Every production role still refuses through the controller's native eligibility
 path. Both native turn entry points, **`RunSession` and `Session.Resume`**, keep
 their existing `IsolationPreflight` production refusal; this is a restriction on
@@ -783,6 +789,10 @@ all roles using either entry point, not one named caller. The controller has no
 exported worker callback/environment bypass and never fills fabricated Delivery
 identities. Native metadata/configuration diagnostics retain their own checks
 and never prove worker-access/model-tool isolation or grant model authority.
+
+After #323, all controller roles use the version-2 evaluation binding and actual
+native admission checks below. Both native start/resume APIs retain their shared
+gates; the evaluation controller never calls resume or fabricates Delivery IDs.
 
 Status never asserts process liveness. Stop is durable, idempotent and targeted
 by explicit root/ID, even after terminal refusal. Its `stop_requested` receipt is
@@ -833,3 +843,161 @@ changed; issue #314 adds only the documented internal controller and retained
 schema. No adapter, dependency, default, permission, installation or release
 changes; no model evaluation runs or measured
 baseline are claimed, and Phase 1 remains open.
+
+## Native evaluation integration (issue #323)
+
+Version-1 proposals, previews and retained attempts remain readable without
+migration. Their frozen preview bytes/claims are unchanged, and production
+execution refuses because they cannot declare approved inherited instructions.
+Use proposal `version: 2` for execution. It retains the version-1 fields and
+requires an explicit `instructions` array: empty only when the native home has
+no effective global instruction file, or one `{path, sha256}` artifact naming
+the effective global `AGENTS.md` or `AGENTS.override.md`. Artifact paths resolve
+against the proposal; normalized paths and raw-byte SHA-256 enter the frozen
+plan digest and displayed approval scope. Do not put credentials in this array.
+Inspect the entire instruction text for corpus answers/private evaluation
+material before approving it. Declaring an artifact is not approval; the existing
+single-use `approve-evaluation` assertion covers the exact version-2 scope.
+
+Version 2 also requires explicit `protected_roots`: zero to 32 absolute canonical
+directories for additional known private/controller/source copies, including
+earlier OS-temp grading/control reports outside this repository/current storage.
+These roots enter the digest/approval and the existing native deny profile, with
+the same overlap/alias/changed-rule refusal as other protected paths. Inventory
+known copies before approving; if a required private location cannot be accurately
+declared and denied, do not execute. This is a bounded declared layout, not a scan
+of user files or proof that unknown copies do not exist.
+
+The selected baseline and any candidate must both match the controller binary's
+clean embedded Go `vcs.revision`; absent provenance or `vcs.modified=true`
+refuses. Only `none` and `requested-profile` interventions execute. Preview still
+supports historical revision/combined proposals, but this controller refuses
+them rather than building historical executors. Build from a clean committed
+checkout and pin that full commit in every selected `orch_revision`. A release
+label or repository HEAD alone is not binary provenance.
+
+The frozen selected side's Codex profile maps public `scout` to `roles.scout`,
+`implementation` to `roles.implementer`, and `review` to `roles.reviewer`.
+There is no specialist, safe-review, host, model or effort fallback. The native
+binding includes the real evaluation ID, plan digest, unit/case version and
+case/packet digests, repetition/side, attempt/kind/role, selected profile digest,
+controller revision, exact selection, canonical packet/scratch, public prompt
+and role-instruction hashes, and declared global instruction artifacts.
+The turn input is exactly public `TASK.md`; developer instructions contain public
+`ROLE.md` and the fixed evaluation restrictions. Other public files remain in the
+checked packet. Maintainer repositories, history/shared Git, controller/private
+grading material, sibling packets/scratch and credential directories remain
+protected by the existing native layout and role profile.
+
+Every evaluation child, including metadata/preflight/discovery children, receives
+the scrubbed environment and evaluation context controls before startup. The
+actual connection disables project instruction discovery, private memory/import/
+screen-memory features and automatic skill/app/collaboration/environment blocks.
+Configuration and loaded features are checked through existing helpers. Undeclared
+custom base/developer/model-file/compaction configuration and managed additional
+developer instructions refuse. Native `instructionSources` must be present and
+exactly match the declared effective global source, including empty versus
+unknown. Hashes are checked before binding and around execution. Existing
+declared files are held with Windows `FILE_SHARE_READ` against ordinary writes
+and replacement; undeclared overrides or hash/source drift refuse. This does
+not disable the native global provider or prove exclusion of privileged external
+changes. Native source-path reports plus controller hash checks are not an
+independent native attestation of every model-visible byte. The native host may
+load only declared approved instructions; model tools still cannot read their
+protected directory. No global/home/auth/config/trust mutation is performed.
+
+Preview observes no native eligibility or execution. Status and report retain
+per-attempt actual-connection eligibility separately from native thread/session/
+turn identity, configured profile, available counters/output, failure, context
+and cleanup evidence. `model_tools_verified` is checked admission evidence,
+not observed inference identity, entitlement, semantic acceptance or baseline
+performance. A known context/profile/protection mismatch stops progression.
+Timeout/disconnect/interruption evidence stays visible; an interrupted native
+turn is never automatically replayed. The evaluation controller has no resume
+or takeover path. Unreturned workers leave native output/counters/acknowledgement
+unknown and all disposable resources preserved.
+
+New previews/plans use schema 2, new version-2 attempts use schema 2, native
+evaluation evidence explicitly uses schema 2, and new reports/snapshots use
+schema 3. Evaluation/approval/progress/grading journals retain their existing
+versions. Original unversioned native evidence and schema-1/2 reports remain
+readable and immutable. Evaluation observation schema 3 contains an explicit
+evaluation identity and forbids Delivery run/issue/attempt association. It reuses
+the same presence validation, cumulative deltas, replay checks and compatible
+source separation; `metrics.Record` and Delivery history reject it. Nothing
+records evaluation usage into current Delivery metrics.
+
+Native cleanup distinguishes a direct stdio child exit/reap and any requested
+turn interruption acknowledgement from local artifact inspection/removal.
+Unacknowledged execution preserves resources. Dirty packets/scratch stay visible;
+clean controller-created bytes alone may be removed. Descendant cleanup is not
+independently observed here. Completion leaves execution-record grades unknown;
+the existing grading submissions, disputes, invalidations, initial/final coverage
+and every unrun slot remain separate and visible.
+
+### Remaining validation procedure
+
+1. Freeze each selected case/version/packet, source commit, rubric and controls.
+   A fresh reviewer independently checks every selected case's public task to
+   semantic-key/rubric mapping, reproduces every declared good/bad/alternative
+   control, distinguishes setup/compiler from intended behavior failures, and
+   records identity, outputs, disputes and prior exposure under the existing
+   [grading contract](evaluation-grading.md). The existing corpus-validation entry
+   point above and grading validation procedures remain applicable. Prior
+   independent twelve-case/sixty-control review is historical evidence; a pending
+   author flag does not require gratuitously rerunning unchanged corpus material.
+2. Obtain exact separate human approval for the bounded native `complete`,
+   `interrupt` and `recover` checks in the
+   [subscription trial procedure](codex-native-protocol.md#separately-authorized-subscription-trial-not-executed).
+   Freeze caller/task/profile, executable and canonical paths, instruction context,
+   preserved/forbidden/expected hashes, scenario, 1–180 second execution bound,
+   expiry and one-use evidence destination. Use the documented authorization
+   preparation and exact `TestCodexSubscriptionTrial` command; retain completion,
+   interruption and same-turn recovery results independently. Source delivery
+   and generic readiness assertions do not approve any of these checks.
+3. After those checks, review exposure and approve an exact version-2 four-case
+   screen: scout, implementation, defective review and clean review. Freeze
+   repetitions, both matching build/profile selections where applicable, every
+   schedule/attempt/repair/verification/cleanup/overall limit and decision rule.
+   Inspect failures, unrun work, counter/profile missingness, dirty artifacts and
+   semantic grading before proposing more work.
+4. Separately approve the twelve-case baseline: three repetitions per case,
+   36 units, six development/six held-out cases and all three roles. Grade every
+   retained attempt and show every missing/disputed/unrun observation. Repeats
+   do not expand independent case coverage; source exposure and unknown training
+   familiarity limit held-out claims. Task-agent usage is not whole-Orch cost,
+   and twelve historical Orch cases cannot establish cross-project/host
+   superiority. A screen, synthetic RPC success or native completion is not
+   this measured baseline and does not close Phase 1.
+
+### #323 touched structure and compatibility
+
+| Element | Before #323 | After #323; does prior behavior still hold? |
+| --- | --- | --- |
+| `metrics.Observation`, `UnmarshalJSON`, `Validate`, `CounterContributions`, `Document.validate`, `Record`; new `EvaluationIdentity` | Observation schemas 1/2 were Delivery-bound; shared validation/deltas and source separation. | Delivery schemas, run/issue rules, missingness and arithmetic still hold. Explicit evaluation schema 3 has its own closed identity/scope and is rejected by Delivery writers/history. |
+| Native `Task`, `bindTask`, `newSession`, `checkResume`, `observation` | Exact Delivery binding, canonical shipped role prose, same-object replay history. | Delivery binding/prose still hold; evaluation is mutually exclusive and binds public text/context/profile/paths without fictional Delivery identity. Every evaluation start/resume uses these checks. |
+| New `EvaluationBinding`, `InstructionSource`, `InstructionEvidence`, evaluation task/source/config checks and Windows file hold | No evaluation context declaration/check path. | Adds the narrow declared-context contract above. Existing native/global provider and credential ownership remain; no disable support or privileged-change guarantee is claimed. Unsupported hosts still refuse. |
+| `isolationBoundary`, `args`, private `isolationPreflight`; `Preflight`, private `preflight`, `inspect`; `connection.request` | Shared sandbox/profile/protection/environment/feature rules; closed RPC allowlist and public metadata preflight. | All prior Delivery/diagnostic rules still hold. Every evaluation child adds context controls and scrubbed environment before startup; metadata remains unable to execute. Only read-only `configRequirements/read` is added. Execution/config writes/arbitrary RPC bypass remain unavailable. |
+| `Session.connect`, `execute`, `acceptThread`, `finish`, `SessionResult`, `nativeThreadResponse`, new `SessionCleanup` | Checked connection, native identity/output/observations, bounded interrupt/shutdown and disconnected checkpoints. | Prior lifecycle/identity/replay behavior holds. Evaluation eligibility/context and explicit direct-child cleanup/error evidence are retained; each execution resets current cleanup evidence. Delivery failed reconnects preserve checkpoints. |
+| Proposal/Plan/Record, `normalize`, `evidence`, `Preview`, `WriteText`, `proposal`, `validateRecord`, `Load` | Version-1 frozen preview and exact regenerated claims/digests. | Version 1 remains unchanged/readable. Version 2 freezes explicit instruction artifacts/additional protected roots and reports execution/protection as not observed in preview; same bounded path/digest validation holds. |
+| `protectedSources`, `prepareAttempt`, `evaluationTask`, `evaluationProfile`, `buildRevision` | Exact public packet; separate controller/private artifacts and protected layout. | Prior packet/exclusion checks hold; approved instruction snapshots remain separately retained/protected. Adds exact role/profile/build/attempt binding; unsupported revision/intervention combinations refuse. |
+| `nativeWorker`, `workerRequest`, `Run`, `runController`, `executeAttempt` | Controller native worker unconditionally refused, including after successful isolation preflight. | That refusal is replaced only for eligible approved version-2 attempts. Single-use approval, exclusive claim, finite schedule/budgets, stop/safety behavior and no takeover still hold for all roles; no historical executor or evaluation resume exists. |
+| `NativeEvidence`, `Eligibility`, `AttemptRecord`, `validateNative`, `validateAttemptNative`, `readProgress`, `Status` | Schema-1 attempt/unversioned native retention, quarantined invalid evidence and strict inspection. | Legacy evidence remains readable. Versioned native evaluation identity/profile/session observations are checked against the originating attempt; invalid/mixed evidence remains quarantined, never usable counters. Status separates retained evidence from readiness. |
+| Controller cleanup/terminal handling | Local clean-only removal, dirty/unreturned preservation; outcome/budget transitions. | Those rules hold. Unacknowledged native shutdown preserves resources, direct acknowledgement is explicit, and interrupted native turns stop instead of automatic timeout replay. |
+| `Inspect`, `blockers`, `publicNative`, report/snapshot schema 3 | Immutable schema-1/2 reports, compatible counter summaries and grading projection. | Earlier bundles remain unchanged/readable; new snapshots explain conditional execution and retained context/cleanup evidence. Private failure/context prose remains outside summaries. Native completion still supplies no semantic pass. |
+| CLI eval help; README/workflow/contract/native/metrics docs | Historical unconditional controller/native refusal claims. | Original claims are retained as dated before/after history. Current help/docs distinguish integration, observed admission/execution and unexecuted live/baseline work. CLI selectors/approval grammar/exit rules still hold. |
+| Focused metrics/native/controller tests; existing delayed-cancellation caller | Scripted native/worker evidence and existing deterministic guard/lifecycle tests. | Prior checks hold; tests add evaluation binding/context/source/counter/approval/profile/protection rejection and real worker-to-session RPC integration. Only synthetic fixtures run in ordinary CI; no model evaluation runs. |
+
+Frozen corpus/rubrics/profiles/decision thresholds, canonical Delivery roles,
+routing/defaults, Delivery state/locks/lifecycle/metric association, dependencies
+and installed/user configuration are unchanged. No subscription trials, measured
+baseline, profile adoption, release/install or Phase 1 closure are claimed.
+
+The separately authorized metadata-only check
+`go test -tags codex_live ./internal/codexnative -run '^TestCodexEvaluationMetadataSmoke$' -count=1 -timeout 2m -v`
+passed against installed native host **0.160.0**. It verifies the new effective
+config, managed requirements and loaded-feature response shapes, with bounded
+metadata-child cleanup. It starts no thread, turn, command probe or inference,
+and changes no global/user configuration. This tagged supplemental check is not
+run by ordinary CI. It does not observe loaded thread instruction sources,
+model usage or live evaluation behavior; those limitations remain above.

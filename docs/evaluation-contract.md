@@ -74,6 +74,8 @@ slot; malformed native bytes remain bounded, digest-linked quarantined data with
 an explicit invalid outcome, unknown grade and no further execution. Original
 valid records remain compatible and production native refusal remains binding.
 
+Before #323, this section stated the following production behavior:
+
 Guarded files and ordinary modes do **not** verify worker-access enforcement or
 OS/model isolation. Every production controller attempt still passes through
 `IsolationPreflight` and refuses; no diagnostic can grant approval or start a
@@ -83,6 +85,17 @@ points, `RunSession` and `Session.Resume`. Metadata/command diagnostics retain
 their distinct checks. Successful scheduling exists only in `_test.go` and is
 labeled `no-model-test-script`; it is not a semantic-grader or native-validation
 claim. No exported worker callback, backend flag or environment bypass exists.
+
+After #323, the [version-2 integration contract](evaluation-workflow.md#native-evaluation-integration-issue-323)
+replaces unconditional controller refusal with actual native admission for all
+three public roles, exact build/profile/task identity and explicitly approved
+instruction sources. Version-1 and unsupported contexts still refuse. The native
+start/resume gates apply to every task of their kind; the controller never
+resumes or fabricates Delivery IDs. Local storage checks alone still prove no
+worker boundary, native completion supplies no semantic grade, retained grading
+and disputes remain independent, and live validation/baseline/Phase 1 completion
+remain outstanding. Frozen corpus, rubrics, decision thresholds and earlier
+evidence do not change.
 
 Before issue #316, run 2's finish line was the public `eval run/status/stop/report`
 commands, exact-scope

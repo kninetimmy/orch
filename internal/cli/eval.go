@@ -44,7 +44,9 @@ Corrections, disputes and rubric validation are append-only submissions, never e
 Run returns the exact frozen scope before requiring a single-use human assertion:
 schema_version=1, plan_digest, approved_by, approved_at (preceding 24h), statement=approve-evaluation.
 JSON run output is a scope document followed by the retained snapshot when execution is reached.
-Production execution remains refused; approval cannot establish native/worker isolation.
+Version-2 execution requires a matching clean controller build, declared approved instructions
+and actual native protection/profile checks. Legacy/unsupported contexts refuse; approval alone
+cannot establish isolation, semantic acceptance or a measured baseline.
 Exit 0: successful inspection/publication/request; 1: operational/refusal/approval error; 2: arguments.
 Stop receipt is distinct from controller acknowledgement. No takeover, replay or durable resume.`
 

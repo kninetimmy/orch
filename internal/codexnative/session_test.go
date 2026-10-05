@@ -29,6 +29,7 @@ func scriptedSessionConnection(t *testing.T, ctx context.Context, s *Session, sc
 	if err != nil {
 		t.Fatal(err)
 	}
+	b.evaluation = s.task.Evaluation != nil
 	processCtx, cleanup := sessionContext(ctx)
 	payload, err := os.Executable()
 	if err != nil {
@@ -81,6 +82,13 @@ func scriptedSessionConnection(t *testing.T, ctx context.Context, s *Session, sc
 		t.Fatal(err)
 	}
 	c.session = true
+	if b.evaluation {
+		if err := verifyEvaluationConfig(c, b); err != nil {
+			_ = c.close()
+			cleanup()
+			t.Fatal(err)
+		}
+	}
 	return c, cleanup
 }
 
@@ -181,9 +189,15 @@ func scriptedSessionRequests(scenario, role string, scanner *bufio.Scanner) {
 			response(request.ID, map[string]any{"data": []any{map[string]any{"id": profile, "allowed": true}}, "nextCursor": nil})
 		case "config/read":
 			response(request.ID, map[string]any{"config": config})
+		case "configRequirements/read":
+			response(request.ID, map[string]any{"requirements": nil})
 		case "experimentalFeature/list":
 			data := []any{}
-			for _, name := range append(append([]string(nil), restrictedFeatures...), modelRestrictedFeatures...) {
+			required := append(append([]string(nil), restrictedFeatures...), modelRestrictedFeatures...)
+			if strings.HasPrefix(scenario, "evaluation-") {
+				required = append(required, evaluationRestrictedFeatures...)
+			}
+			for _, name := range required {
 				data = append(data, map[string]any{"name": name, "enabled": false})
 			}
 			response(request.ID, map[string]any{"data": data, "nextCursor": nil})
@@ -206,6 +220,9 @@ func scriptedSessionRequests(scenario, role string, scanner *bufio.Scanner) {
 				Fallback     *bool             `json:"allowProviderModelFallback"`
 			}
 			instructions, err := agents.CodexInstructions(role)
+			if strings.HasPrefix(scenario, "evaluation-") {
+				instructions, err = "Public ROLE.md instructions.", nil
+			}
 			if json.Unmarshal(request.Params, &params) != nil || err != nil || !strings.HasPrefix(params.Instructions, instructions) || params.Cwd != cwd || params.Model != "gpt-6.1-sol" || params.Config["model_reasoning_effort"] != "max" || params.Approval != "never" || params.Permissions != profile || params.Provider != "openai" || params.Roots == nil || len(params.Roots) != 0 {
 				os.Exit(67)
 			}
@@ -217,6 +234,12 @@ func scriptedSessionRequests(scenario, role string, scanner *bufio.Scanner) {
 			}
 			thread := map[string]any{"id": "thread-294", "sessionId": "tree-session-294", "cwd": cwd, "turns": []any{}}
 			result := map[string]any{"thread": thread, "cwd": cwd, "model": "gpt-6.1-sol", "modelProvider": "openai", "runtimeWorkspaceRoots": []any{}, "reasoningEffort": "max", "approvalPolicy": "never", "activePermissionProfile": map[string]any{"id": profile, "extends": nil}}
+			if strings.HasPrefix(scenario, "evaluation-") {
+				result["instructionSources"] = []string{}
+				if scenario == "evaluation-private-source" {
+					result["instructionSources"] = []string{filepath.Join(filepath.Dir(cwd), "hidden-grade", "AGENTS.md")}
+				}
+			}
 			if scenario == "thread-provider" {
 				result["modelProvider"] = "other"
 			}

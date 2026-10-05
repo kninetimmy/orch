@@ -28,6 +28,11 @@ func (s *Session) observation(key string) metrics.Observation {
 		ID: fmt.Sprintf("codex-native:%x", id), At: time.Now().UTC().Format(time.RFC3339Nano), Source: "codex-app-server",
 		IssueNumber: s.task.IssueNumber, Role: metricRole(s.task.Role), Attempt: s.task.Attempt, ReviewCycle: s.task.ReviewCycle,
 		Host: "codex", Session: s.result.ThreadID, Requested: &requested}
+	if s.task.Evaluation != nil {
+		o.SchemaVersion = metrics.EvaluationObservationVersion
+		identity := s.task.Evaluation.Identity
+		o.Evaluation = &identity
+	}
 	if s.result.Observed.Model != "" || s.result.Observed.Effort != "" {
 		observed := s.result.Observed
 		o.Observed = &observed

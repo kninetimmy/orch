@@ -67,6 +67,14 @@ func protectedSources(p Plan) []string {
 	if p.Candidate != nil {
 		protected = append(protected, p.Candidate.Profile.Path)
 	}
+	if p.Instructions != nil {
+		for _, artifact := range *p.Instructions {
+			protected = append(protected, filepath.Dir(artifact.Path))
+		}
+	}
+	if p.ProtectedRoots != nil {
+		protected = append(protected, *p.ProtectedRoots...)
+	}
 	for _, artifact := range []*Artifact{p.Readiness.Exposure, p.Readiness.IndependentValidation, p.Readiness.NativeExecution} {
 		if artifact != nil {
 			protected = append(protected, artifact.Path)
@@ -244,6 +252,9 @@ func prepareAttempt(ctx context.Context, g *guardedDir, e *Evaluation, slot Slot
 		CaseSHA256: storedDigest(source.definition),
 		StartedAt:  now(), Outcome: "started", ExecutionSource: "not-started", Grade: "unknown", Verification: "not-performed",
 		Initial: []DigestedFile{}, Artifacts: []DigestedFile{}, Cleanup: Cleanup{Status: "unknown", Detail: "No cleanup observation."}}
+	if p.Version == 2 {
+		record.SchemaVersion = 2
+	}
 	if err := ctx.Err(); err != nil {
 		return a, record, err
 	}
@@ -297,6 +308,19 @@ func prepareAttempt(ctx context.Context, g *guardedDir, e *Evaluation, slot Slot
 			return a, record, err
 		}
 		record.Initial = append(record.Initial, DigestedFile{name, evalcorpus.Digest(source.private[name])})
+	}
+	if p.Instructions != nil {
+		for _, artifact := range *p.Instructions {
+			_, bytes, err := readArtifact("", artifact)
+			if err != nil {
+				return a, record, err
+			}
+			name := "approved-instructions/" + filepath.Base(artifact.Path)
+			if err := a.controller.writeFile(name, bytes); err != nil {
+				return a, record, err
+			}
+			record.Initial = append(record.Initial, DigestedFile{name, artifact.SHA256})
+		}
 	}
 	// Inspect runs over anchored bounded reads, rather than trusting Export's
 	// local-mode hygiene as a runtime boundary. No source/Git pointer is copied.

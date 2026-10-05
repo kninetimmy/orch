@@ -362,7 +362,10 @@ no approval. Its storage is unverified against worker access. Before issue #316,
 proposed; unsupported evaluation verbs fail explicitly." After that increment,
 `orch eval run --plan sha256:DIGEST --storage-root ROOT [--approval FILE] [--json]`
 returns the frozen scope and requires a single-use, digest-bound human assertion.
-Production attempts still refuse. `status` and `stop` take `--run ID
+Before issue #323, "Production attempts still refuse." After that increment,
+version-2 plans can execute through the checked native boundary with declared
+approved instructions and a matching clean controller build. Legacy and
+unsupported contexts refuse. `status` and `stop` take `--run ID
 --storage-root ROOT [--json]`; `report` takes those selectors plus `--format
 text|markdown|json`. Every terminal outcome retains immutable report bundles;
 reports also expose incomplete snapshots. See `orch eval help` and the workflow
@@ -374,8 +377,10 @@ assertions, with immutable corrections and initial/final coverage. See the
 [grading input and trust contract](docs/evaluation-grading.md). Unknown or
 disputed judgments remain unknown; scripted preparation never becomes model
 trial acceptance. Existing execution records and older reports stay unchanged.
-Verified worker-access enforcement, native model-tool validation, live trials
-and the measured baseline remain outstanding; Phase 1 is open. Existing metrics
+Before #323 this section listed worker-access/model-tool validation as
+outstanding. The native boundary now checks enforcement and declared context
+per attempt; separately approved live trials and the measured baseline remain
+outstanding. Phase 1 is open. Existing metrics
 and Delivery/configuration/merge gates retain their prior contracts.
 
 The initial preview admitted Windows `SUBST` drive aliases during placement
@@ -1113,7 +1118,7 @@ its own.
 | `internal/manifest/` | The issue/PR audit record — lossless render/parse over a managed body region |
 | `internal/memhub/` | Read-only client for the external memhub CLI: health probe and fixed-canary recall check |
 | `internal/metrics/` | Local, opt-in per-run JSON metrics recorder (schema-versioned, never transmitted) |
-| `internal/evalplan/` | Bounded evaluation controller, digest-bound approval and immutable reports; production models refuse and worker-access enforcement remains unverified |
+| `internal/evalplan/` | Bounded evaluation controller, digest-bound approval and immutable reports. Before #323 production models refused and worker enforcement was unverified; version-2 attempts now require checked native protections, declared context and exact build/profile binding. Live trials/baseline remain pending. |
 | `internal/codexusage/` | Reader that recovers exact Codex subagent token totals from persisted child rollout files |
 | `internal/routing/` | Pure role routing and the escalation ladder |
 | `internal/guard/` | Mechanical pre-write enforcement behind host PreToolUse hooks |

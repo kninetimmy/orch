@@ -1,5 +1,5 @@
 // Package evalplan retains evaluation preparation and bounded controller evidence.
-// It grants no approval and has no verified worker-access enforcement.
+// It grants no approval; execution separately verifies the native boundary.
 package evalplan
 
 import (
@@ -59,22 +59,24 @@ type Readiness struct {
 }
 
 type Proposal struct {
-	Version      int         `json:"version"`
-	Scope        string      `json:"scope"`
-	Intervention string      `json:"intervention"`
-	Corpus       Artifact    `json:"corpus"`
-	Cases        []string    `json:"cases"`
-	Partitions   []string    `json:"partitions"`
-	Baseline     Selection   `json:"baseline"`
-	Candidate    *Selection  `json:"candidate,omitempty"`
-	Repetitions  int64       `json:"repetitions"`
-	Limits       Limits      `json:"limits"`
-	Measurement  Measurement `json:"measurement"`
-	DecisionRule Artifact    `json:"decision_rule"`
-	Readiness    Readiness   `json:"readiness"`
-	StorageRoot  string      `json:"storage_root"`
-	WorkerRoots  []string    `json:"worker_roots"`
-	ScratchRoots []string    `json:"scratch_roots"`
+	Version        int         `json:"version"`
+	Scope          string      `json:"scope"`
+	Intervention   string      `json:"intervention"`
+	Corpus         Artifact    `json:"corpus"`
+	Cases          []string    `json:"cases"`
+	Partitions     []string    `json:"partitions"`
+	Baseline       Selection   `json:"baseline"`
+	Candidate      *Selection  `json:"candidate,omitempty"`
+	Repetitions    int64       `json:"repetitions"`
+	Limits         Limits      `json:"limits"`
+	Measurement    Measurement `json:"measurement"`
+	DecisionRule   Artifact    `json:"decision_rule"`
+	Readiness      Readiness   `json:"readiness"`
+	StorageRoot    string      `json:"storage_root"`
+	WorkerRoots    []string    `json:"worker_roots"`
+	ScratchRoots   []string    `json:"scratch_roots"`
+	Instructions   *[]Artifact `json:"instructions,omitempty"`
+	ProtectedRoots *[]string   `json:"protected_roots,omitempty"`
 }
 
 type Configuration struct {
@@ -124,6 +126,8 @@ type Plan struct {
 	ScratchRoots           []string         `json:"scratch_roots"`
 	RepositoryRoots        []string         `json:"repository_roots"`
 	GitDirectories         []string         `json:"git_directories"`
+	Instructions           *[]Artifact      `json:"instructions,omitempty"`
+	ProtectedRoots         *[]string        `json:"protected_roots,omitempty"`
 }
 
 type Counts struct {
@@ -446,6 +450,24 @@ func evidence(plan Plan, counts Counts) Evidence {
 			"Validate decision-rule semantics and measurement coverage, then obtain approval of the exact frozen finite trial through applicable gates.",
 		},
 	}
+	if plan.Version == 2 {
+		e.WorkerAccessProtection = "not-observed; required on actual native connection"
+		for i := range e.Checks {
+			switch e.Checks[i].Name {
+			case "native-execution":
+				e.Checks[i] = Check{"native-execution", "not-observed", "evaluation integration requires exact clean build revision, frozen Codex role/profile, declared instruction context and actual-connection admission; no turn occurs in preview"}
+			case "worker-access-protection":
+				e.Checks[i] = Check{"worker-access-protection", "not-observed", "native sandbox/profile/protected-path controls are checked for each attempted execution; readiness references never establish enforcement"}
+			}
+		}
+		e.Checks = append(e.Checks, Check{"approved-instruction-inputs", "digests-checked", "declared global instruction artifacts are frozen approval inputs; native loaded sources and hashes must match at execution"})
+		e.ReadinessBlockers = []string{
+			"Preview observes no native execution/eligibility and grants no approval; version-2 execution requires a matching clean embedded build revision and supported none/requested-profile intervention.",
+			"Independently validate selected sources, controls/rubrics, disputes and exposure; opaque readiness documents are not execution or semantic proof.",
+			"Revalidate the actual native connection's protections, declared instruction sources/hashes and exact role/profile; missing or changed controls refuse.",
+			"Complete separately approved bounded live completion/interruption/recovery checks, decision/measurement validation and screening before the twelve-case baseline; Phase 1 remains open.",
+		}
+	}
 	pair := 0
 	for _, c := range plan.Cases {
 		for rep := int64(1); rep <= plan.Repetitions; rep++ {
@@ -476,8 +498,8 @@ func Preview(ctx context.Context, repo, file string, runner execx.Runner) (*Reco
 	if err := strictJSON(data, &p); err != nil {
 		return nil, fmt.Errorf("plan JSON: %w", err)
 	}
-	if p.Version != 1 {
-		return nil, fmt.Errorf("plan version %d unsupported; require version 1", p.Version)
+	if p.Version != 1 && p.Version != 2 {
+		return nil, fmt.Errorf("plan version %d unsupported; require version 1 or 2", p.Version)
 	}
 	base := filepath.Dir(name)
 	record, err := normalize(ctx, repo, base, p, runner)
@@ -494,6 +516,9 @@ func Preview(ctx context.Context, repo, file string, runner execx.Runner) (*Reco
 func normalize(ctx context.Context, repo, base string, p Proposal, runner execx.Runner) (*Record, error) {
 	var data []byte
 	var err error
+	if p.Version != 1 && p.Version != 2 || p.Version == 1 && (p.Instructions != nil || p.ProtectedRoots != nil) || p.Version == 2 && (p.Instructions == nil || len(*p.Instructions) > 1 || p.ProtectedRoots == nil) {
+		return nil, fmt.Errorf("version-2 plans require explicit instructions (zero or one approved global artifact) and protected_roots; version 1 has neither declaration")
+	}
 	p.Corpus, data, err = readArtifact(base, p.Corpus)
 	if err != nil {
 		return nil, fmt.Errorf("corpus: %w", err)
@@ -519,7 +544,28 @@ func normalize(ctx context.Context, repo, base string, p Proposal, runner execx.
 	if !identifierPattern.MatchString(p.Measurement.Source) || !slices.Contains([]string{"task-agents", "whole-orch"}, p.Measurement.Scope) {
 		return nil, fmt.Errorf("measurement requires a public source identifier and scope task-agents or whole-orch")
 	}
-	plan := Plan{Version: 1, Scope: p.Scope, Intervention: p.Intervention, Corpus: p.Corpus, Cases: cases, ExcludedCases: excluded, Partitions: slices.Clone(p.Partitions), Repetitions: p.Repetitions, Limits: p.Limits, Measurement: p.Measurement, Readiness: p.Readiness}
+	plan := Plan{Version: p.Version, Scope: p.Scope, Intervention: p.Intervention, Corpus: p.Corpus, Cases: cases, ExcludedCases: excluded, Partitions: slices.Clone(p.Partitions), Repetitions: p.Repetitions, Limits: p.Limits, Measurement: p.Measurement, Readiness: p.Readiness}
+	if p.Instructions != nil {
+		instructions := []Artifact{}
+		for _, source := range *p.Instructions {
+			artifact, bytes, err := readArtifact(base, source)
+			if err != nil {
+				return nil, fmt.Errorf("approved instruction artifact: %w", err)
+			}
+			if !slices.Contains([]string{"AGENTS.md", "AGENTS.override.md"}, filepath.Base(artifact.Path)) || len(bytes) > 64*1024 || !utf8.Valid(bytes) || len(bytes) == 0 {
+				return nil, fmt.Errorf("approved instruction artifact must be a bounded nonempty UTF-8 global AGENTS file")
+			}
+			instructions = append(instructions, artifact)
+		}
+		plan.Instructions = &instructions
+	}
+	if p.ProtectedRoots != nil {
+		roots, err := pathList(base, *p.ProtectedRoots, false)
+		if err != nil {
+			return nil, fmt.Errorf("protected_roots: %w", err)
+		}
+		plan.ProtectedRoots = &roots
+	}
 	slices.Sort(plan.Partitions)
 	plan.Baseline, err = pinSelection(ctx, repo, base, p.Baseline, runner)
 	if err != nil {
@@ -558,13 +604,13 @@ func normalize(ctx context.Context, repo, base string, p Proposal, runner execx.
 		return nil, err
 	}
 	digest := evalcorpus.Digest(normalized)
-	return &Record{SchemaVersion: 1, Kind: "maintainer-preparation-record", PlanDigest: "sha256:" + digest, StorageDestination: filepath.Join(plan.StorageRoot, digest+".json"), Plan: plan, Preview: evidence(plan, counts)}, nil
+	return &Record{SchemaVersion: plan.Version, Kind: "maintainer-preparation-record", PlanDigest: "sha256:" + digest, StorageDestination: filepath.Join(plan.StorageRoot, digest+".json"), Plan: plan, Preview: evidence(plan, counts)}, nil
 }
 
 // Text uses exactly the JSON record's facts, including every scheduled unit and
 // unknown. Individual structured sections remain JSON to avoid lossy summaries.
 func WriteText(w io.Writer, r *Record) error {
-	if _, err := fmt.Fprintf(w, "Maintainer preparation record: %s\nStorage: %s\nExecution unavailable; worker-access protection unverified; no approval granted.\n", r.PlanDigest, r.StorageDestination); err != nil {
+	if _, err := fmt.Fprintf(w, "Maintainer preparation record: %s\nStorage: %s\nExecution/worker protection not observed in preview; no approval granted.\n", r.PlanDigest, r.StorageDestination); err != nil {
 		return err
 	}
 	for _, section := range []struct {

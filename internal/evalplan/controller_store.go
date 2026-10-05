@@ -15,6 +15,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/kninetimmy/orch/internal/codexnative"
 	"github.com/kninetimmy/orch/internal/evalcorpus"
 	"github.com/kninetimmy/orch/internal/metrics"
 )
@@ -76,23 +77,30 @@ type DigestedFile struct {
 // NativeEvidence preserves reports with their original counter semantics and
 // missingness. It is never submitted to the current-Delivery metrics recorder.
 type NativeEvidence struct {
-	ThreadID     string                `json:"thread_id,omitempty"`
-	SessionID    string                `json:"session_id,omitempty"`
-	TurnID       string                `json:"turn_id,omitempty"`
-	Status       string                `json:"status,omitempty"`
-	Requested    *metrics.Profile      `json:"requested,omitempty"`
-	Observed     *metrics.Profile      `json:"observed,omitempty"`
-	Observations []metrics.Observation `json:"observations,omitempty"`
+	SchemaVersion int                              `json:"schema_version,omitempty"`
+	Binding       *codexnative.EvaluationBinding   `json:"binding,omitempty"`
+	TaskID        string                           `json:"task_id,omitempty"`
+	ThreadID      string                           `json:"thread_id,omitempty"`
+	SessionID     string                           `json:"session_id,omitempty"`
+	TurnID        string                           `json:"turn_id,omitempty"`
+	Status        string                           `json:"status,omitempty"`
+	Requested     *metrics.Profile                 `json:"requested,omitempty"`
+	Observed      *metrics.Profile                 `json:"observed,omitempty"`
+	Observations  []metrics.Observation            `json:"observations,omitempty"`
+	Instructions  *codexnative.InstructionEvidence `json:"instructions,omitempty"`
+	Cleanup       *codexnative.SessionCleanup      `json:"cleanup,omitempty"`
+	Failure       string                           `json:"failure,omitempty"`
 }
 
-// Eligibility describes native configuration checks only, never OS/model
-// isolation, observed inference identity, native completion or task acceptance.
+// Eligibility reports checked native controls, not observed inference identity,
+// native completion or semantic acceptance. Legacy evidence lacks model proof.
 type Eligibility struct {
-	HostVersion    string `json:"host_version,omitempty"`
-	SandboxReady   bool   `json:"sandbox_ready,omitempty"`
-	ProfileAllowed bool   `json:"profile_allowed,omitempty"`
-	ToolsDisabled  bool   `json:"tools_disabled,omitempty"`
-	DisabledMCP    *int   `json:"disabled_mcp,omitempty"`
+	HostVersion        string `json:"host_version,omitempty"`
+	SandboxReady       bool   `json:"sandbox_ready,omitempty"`
+	ProfileAllowed     bool   `json:"profile_allowed,omitempty"`
+	ToolsDisabled      bool   `json:"tools_disabled,omitempty"`
+	DisabledMCP        *int   `json:"disabled_mcp,omitempty"`
+	ModelToolsVerified bool   `json:"model_tools_verified,omitempty"`
 }
 
 type Cleanup struct {
@@ -404,6 +412,14 @@ func validateNative(native *NativeEvidence) error {
 	if len(native.Observations) > 1024 {
 		return fmt.Errorf("native observation capacity exceeded")
 	}
+	if native.SchemaVersion != 0 && native.SchemaVersion != 2 || native.SchemaVersion == 0 && (native.Binding != nil || native.TaskID != "" || native.Instructions != nil || native.Cleanup != nil || native.Failure != "") || native.SchemaVersion == 2 && (native.Binding == nil || native.Cleanup == nil) {
+		return fmt.Errorf("unsupported or mixed native evidence schema")
+	}
+	for _, o := range native.Observations {
+		if (native.SchemaVersion == 2) != (o.SchemaVersion == metrics.EvaluationObservationVersion) {
+			return fmt.Errorf("native observation/evidence versions differ")
+		}
+	}
 	// Observation has version-specific JSON decoding as well as semantic rules.
 	// A typed payload must survive the same decode used by the retained reader.
 	data, err := storedBytes(native)
@@ -533,16 +549,16 @@ func readProgress(g *guardedDir, e *Evaluation, hash string) (*Progress, error) 
 				if err := strictStored(data, &a); err != nil {
 					return nil, err
 				}
-				if a.SchemaVersion != 1 || a.EvaluationID != e.ID || a.PlanDigest != e.Preparation.PlanDigest ||
+				if (a.SchemaVersion != 1 && a.SchemaVersion != 2) || a.EvaluationID != e.ID || a.PlanDigest != e.Preparation.PlanDigest ||
 					a.Unit != slot.Unit || a.Number != ref.Number || a.Kind != ref.Kind || a.Grade != "unknown" ||
 					!slices.Contains(outcomes, a.Outcome) || a.FinishedAt == "" ||
-					!slices.Contains([]string{"native-eligibility-only", "no-model-test-script"}, a.ExecutionSource) {
+					!slices.Contains([]string{"native-eligibility-only", "no-model-test-script", "codex-native-evaluation"}, a.ExecutionSource) || a.ExecutionSource == "codex-native-evaluation" && (a.SchemaVersion != 2 || e.Preparation.Plan.Version != 2) {
 					return nil, fmt.Errorf("invalid attempt identity/outcome")
 				}
 				if ref.Number == len(slot.Attempts) && slot.Status != "running" && slot.Status != a.Outcome {
 					return nil, fmt.Errorf("slot status conflicts with final attempt outcome")
 				}
-				if err := validateNative(a.Native); err != nil {
+				if err := validateAttemptNative(&a, e); err != nil {
 					return nil, err
 				}
 				if a.InvalidNative != nil {
@@ -607,7 +623,11 @@ func Status(storageRoot, id string) (*Progress, error) {
 		return nil, err
 	}
 	defer g.close()
-	return readProgress(g, e, hash)
+	p, err := readProgress(g, e, hash)
+	if err == nil && e.Preparation.Plan.Version == 2 {
+		p.Inspection = append(p.Inspection, "Version-2 attempts retain native eligibility, declared-context and execution evidence separately; native completion is not a semantic grade or Phase 1 completion.")
+	}
+	return p, err
 }
 
 type stopRecord struct {

@@ -13,6 +13,30 @@ import (
 	"time"
 )
 
+// Metadata-only validation of evaluation controls; no thread, turn or command.
+func TestCodexEvaluationMetadataSmoke(t *testing.T) {
+	if runtime.GOOS != "windows" {
+		t.Fatal("evaluation metadata limitation: requires existing native Windows sandbox")
+	}
+	installed, err := exec.LookPath("codex.exe")
+	if err != nil {
+		installed = filepath.Join(os.Getenv("LOCALAPPDATA"), "Programs", "OpenAI", "Codex", "bin", "codex.exe")
+	}
+	layout := isolationLayout(t)
+	b, err := prepareIsolation(layout, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	b.evaluation = true
+	ctx, cancel := context.WithTimeout(t.Context(), 30*time.Second)
+	defer cancel()
+	caps, err := isolationPreflight(ctx, Options{Executable: installed, Dir: b.workspace, ClientVersion: "evaluation-metadata-check"}, b)
+	if err != nil || !caps.ModelToolsVerified {
+		t.Fatalf("evaluation metadata: host=%s controls=%+v error=%v", caps.HostVersion, caps, err)
+	}
+	t.Logf("Native host=%s evaluation config/requirements/loaded-feature shapes verified; metadata only, no thread/turn/command/inference.", caps.HostVersion)
+}
+
 // TestCodexIsolationSmoke is opt-in and never starts a model turn. An unsupported
 // host/platform fails with a limitation, rather than skipping as validation.
 func TestCodexIsolationSmoke(t *testing.T) {

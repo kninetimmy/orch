@@ -227,7 +227,7 @@ func (c *connection) read() (message, error) {
 func (c *connection) request(method string, params any) (string, error) {
 	switch method {
 	case "initialize", "account/read", "model/list":
-	case "config/read", "experimentalFeature/list", "windowsSandbox/readiness", "permissionProfile/list", "hooks/list", "plugin/installed":
+	case "config/read", "configRequirements/read", "experimentalFeature/list", "windowsSandbox/readiness", "permissionProfile/list", "hooks/list", "plugin/installed":
 		if !c.isolation {
 			return "", errors.New("codex native preflight method unavailable")
 		}

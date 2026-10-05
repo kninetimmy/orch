@@ -26,9 +26,13 @@ type worker interface {
 }
 
 type workerRequest struct {
-	Unit   Unit
-	Role   string
-	Layout codexnative.IsolationPaths
+	Unit         Unit
+	Role         string
+	Layout       codexnative.IsolationPaths
+	Task         codexnative.Task
+	PlanVersion  int
+	Intervention string
+	Revisions    []string
 }
 
 type workerResult struct {
@@ -39,38 +43,17 @@ type workerResult struct {
 	Eligibility *Eligibility
 }
 
-type nativeWorker struct{ clientVersion string }
-
-func (w nativeWorker) execute(ctx context.Context, request workerRequest) (workerResult, error) {
-	options := codexnative.Options{Dir: request.Layout.Workspace, ClientVersion: w.clientVersion}
-	caps, err := codexnative.IsolationPreflight(ctx, options, request.Layout, request.Role != "implementation")
-	result := workerResult{Outcome: "refused", Detail: "Verified worker-access enforcement and native model-tool execution remain unavailable."}
-	if caps.HostVersion != "" {
-		result.Eligibility = &Eligibility{HostVersion: caps.HostVersion, SandboxReady: caps.SandboxReady,
-			ProfileAllowed: caps.ProfileAllowed, ToolsDisabled: caps.ToolsDisabled}
-		if caps.ToolsDisabled {
-			count := caps.DisabledMCP
-			result.Eligibility.DisabledMCP = &count
-		}
-	}
-	if err != nil {
-		result.Detail = err.Error()
-	}
-	// Even a future successful diagnostic cannot authorize a model turn here.
-	// RunSession's Delivery binding must not be filled with fabricated issue IDs.
-	// RunSession and Session.Resume keep their own existing model refusal gates.
-	return result, err
-}
+type nativeWorker struct{ clientVersion, executable, revision string }
 
 // Run consumes an evaluation exactly once. It retains a complete bounded
-// controller outcome, including every unrun slot. Production attempts always
-// refuse at the native gate; successful scheduling is test-only. Run confers no
+// controller outcome, including every unrun slot. Every production attempt
+// requires its frozen evaluation binding and actual native gate. Run confers no
 // approval, changes no Delivery state, and cannot resume interrupted execution.
 func Run(ctx context.Context, storageRoot, id, clientVersion string) (*Progress, error) {
 	if err := executionApproval(storageRoot, id); err != nil {
 		return nil, err
 	}
-	return run(ctx, storageRoot, id, nativeWorker{clientVersion: clientVersion})
+	return run(ctx, storageRoot, id, nativeWorker{clientVersion: clientVersion, revision: buildRevision()})
 }
 
 func run(ctx context.Context, storageRoot, id string, executor worker) (*Progress, error) {
@@ -88,6 +71,11 @@ func runController(ctx context.Context, storageRoot, id string, executor worker)
 		return nil, err
 	}
 	defer g.close()
+	if _, native := executor.(nativeWorker); native {
+		if err := executionApproval(storageRoot, id); err != nil {
+			return nil, err
+		}
+	}
 	if _, err := Load(ctx, e.Repository, storageRoot, e.Preparation.PlanDigest); err != nil {
 		return nil, err
 	}
@@ -217,14 +205,17 @@ func runController(ctx context.Context, storageRoot, id string, executor worker)
 				}
 				break
 			}
-			result, returned, interrupted, cleanupDeadline := executeAttempt(execution, g, e, a, source, p.Slots[i].Unit, executor)
+			result, returned, interrupted, cleanupDeadline := executeAttempt(execution, g, e, a, source, record, executor)
 			record.Outcome, record.Detail = result.Outcome, result.Detail
 			record.ExecutionSource = "no-model-test-script"
 			if _, native := executor.(nativeWorker); native {
 				record.ExecutionSource = "native-eligibility-only"
+				if record.SchemaVersion == 2 {
+					record.ExecutionSource = "codex-native-evaluation"
+				}
 			}
 			record.Native, record.Eligibility = result.Native, result.Eligibility
-			if validationErr := validateNative(record.Native); validationErr != nil {
+			if validationErr := validateAttemptNative(&record, e); validationErr != nil {
 				data, retainErr := storedBytes(record.Native)
 				if retainErr == nil {
 					retainErr = a.controller.writeFile("invalid-native.json", data)
@@ -280,10 +271,25 @@ func runController(ctx context.Context, storageRoot, id string, executor worker)
 				cleanupDeadline = time.Now().Add(time.Duration(limits.CleanupSeconds) * time.Second)
 			}
 			cleanup, cancelCleanup := context.WithDeadline(context.WithoutCancel(execution), cleanupDeadline)
-			if record.Outcome == "invalid-evidence" || record.Verification == "timed-out" {
+			var acknowledged *bool
+			if record.Native != nil && record.Native.Cleanup != nil && record.Native.Cleanup.ShutdownObserved != nil {
+				native := record.Native.Cleanup
+				value := *native.ShutdownObserved && (!native.InterruptionAsked || native.InterruptAcknowledged != nil && *native.InterruptAcknowledged)
+				acknowledged = &value
+			}
+			if record.Native != nil && record.Native.SchemaVersion == 2 && record.Native.ThreadID != "" && (acknowledged == nil || !*acknowledged) {
+				record.Cleanup = Cleanup{Status: "preserved-unacknowledged", Detail: "Native shutdown/interruption was not acknowledged; disposable resources preserved.", WorkerReturned: returned, InterruptionAsked: interrupted}
+			} else if record.Outcome == "invalid-evidence" || record.Verification == "timed-out" {
 				record.Cleanup = Cleanup{Status: "preserved-unverifiable", Detail: "Invalid or bounded-out evidence; disposable work preserved.", WorkerReturned: returned, InterruptionAsked: interrupted}
 			} else {
 				record.Cleanup = cleanupAttempt(cleanup, a, source, returned, interrupted)
+			}
+			if record.Native != nil && record.Native.Cleanup != nil {
+				record.Cleanup.InterruptionAsked = interrupted || record.Native.Cleanup.InterruptionAsked
+			}
+			record.Cleanup.NativeAcknowledged = acknowledged
+			if acknowledged != nil && *acknowledged {
+				record.Cleanup.Detail = "Local artifact cleanup recorded separately; direct native stdio shutdown and any requested turn interruption acknowledged. Descendant cleanup not independently observed."
 			}
 			cancelCleanup()
 			record.FinishedAt = now()
@@ -316,7 +322,7 @@ func runController(ctx context.Context, storageRoot, id string, executor worker)
 				terminal, reason, runError = "incomplete", "Bounded interruption, verification or cleanup observation unavailable; resources and consumed budgets retained.", fmt.Errorf("%s: %s; cleanup: %s", record.Outcome, record.Detail, record.Cleanup.Detail)
 				break
 			}
-			if record.Outcome == "disconnected" || record.Outcome == "interrupted" {
+			if record.Outcome == "disconnected" || record.Outcome == "interrupted" || record.Native != nil && record.Native.SchemaVersion == 2 && record.Native.Status == "interrupted" {
 				terminal, reason = "incomplete", "Unfinished execution retained; no durable native resume or automatic retry."
 				break
 			}
@@ -363,13 +369,24 @@ func stopState(cause error) (string, string) {
 	}
 }
 
-func executeAttempt(ctx context.Context, g *guardedDir, e *Evaluation, a *preparedAttempt, source caseSource, unit Unit, executor worker) (workerResult, bool, bool, time.Time) {
+func executeAttempt(ctx context.Context, g *guardedDir, e *Evaluation, a *preparedAttempt, source caseSource, record AttemptRecord, executor worker) (workerResult, bool, bool, time.Time) {
 	layout, err := a.layout(e)
 	if err != nil {
 		return workerResult{Outcome: "safety-failure", Detail: err.Error()}, true, false, time.Time{}
 	}
 	if cause := executionCause(ctx, g, e); cause != nil {
 		return workerResult{Outcome: "interrupted", Detail: cause.Error()}, true, false, time.Time{}
+	}
+	request := workerRequest{Unit: record.Unit, Role: source.definition.Role, Layout: layout, PlanVersion: e.Preparation.Plan.Version, Intervention: e.Preparation.Plan.Intervention}
+	request.Revisions = []string{e.Preparation.Plan.Baseline.OrchRevision}
+	if e.Preparation.Plan.Candidate != nil {
+		request.Revisions = append(request.Revisions, e.Preparation.Plan.Candidate.OrchRevision)
+	}
+	if request.PlanVersion == 2 {
+		request.Task, err = evaluationTask(e, record, source, layout)
+		if err != nil {
+			return workerResult{Outcome: "refused", Detail: err.Error()}, true, false, time.Time{}
+		}
 	}
 	limits := e.Preparation.Plan.Limits
 	attempt, cancel := context.WithTimeoutCause(ctx, time.Duration(limits.AttemptSeconds)*time.Second, errAttempt)
@@ -380,7 +397,7 @@ func executeAttempt(ctx context.Context, g *guardedDir, e *Evaluation, a *prepar
 	}
 	done := make(chan reply, 1)
 	go func() {
-		result, err := executor.execute(attempt, workerRequest{Unit: unit, Role: source.definition.Role, Layout: layout})
+		result, err := executor.execute(attempt, request)
 		done <- reply{result, err}
 	}()
 	var response reply

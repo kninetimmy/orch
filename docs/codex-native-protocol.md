@@ -983,7 +983,7 @@ verification nor merge permission. No durable cross-process recovery is added.
 | `IsolationPreflight` | Bounded public no-turn evidence check, Windows amd64 only; closes both children and returns separate checked controls. No session method is enabled. |
 | `RunSession` → `Session.connect` → `Session.execute(false)` | Validates the exact approved Task, performs metadata and isolation preflights, repeats controls plus managed auth/catalog on the actual execution connection, then submits at most one turn. |
 | `Session.Resume` → `checkResume` → `connect` → `execute(true)` | Requires the original caller/task/profile/canonical protection binding and identified disconnected unfinished turn; repeats all admission checks, sends only `thread/resume`, and accepts only that single retained turn. |
-| `internal/evalplan/controller.go`: `nativeWorker.execute` | Calls `IsolationPreflight` for eligibility but unconditionally returns `Outcome: refused` even if it succeeds. It does not call `RunSession`/`Resume`, fabricate Delivery IDs or admit evaluation model work. #323 owns integration and the still-historical refusal wording in evaluation preview/report. |
+| `internal/evalplan`: `nativeWorker.execute` | Before #323: calls `IsolationPreflight` for eligibility but unconditionally returns `Outcome: refused` even if it succeeds; does not call `RunSession`/`Resume` or fabricate Delivery IDs. After #323: calls `RunSession` with a real versioned evaluation binding, approved public/global instructions, exact clean build/profile and actual-connection checks. Never calls `Resume` or fabricates Delivery IDs. Legacy/unsupported contexts still refuse. |
 | Ordinary session tests | Scripted subprocess host satisfies or rejects the real gate. Public eligible five-role start/resume runs on Windows; private admitted lifecycle tests and refusal/binding checks run on every CI OS. No installed Codex or inference. |
 | `TestCodexIsolationSmoke` | Existing opt-in no-model diagnostic commands; command proof does not enable any session. |
 | `TestCodexModelToolIsolationSmoke` | Existing opt-in synthetic Responses/provider/auth replay; test-only session flag admits synthetic dispatch and reuses production inventory/feature checks. No managed subscription inference. |
@@ -1145,3 +1145,54 @@ No managed subscription trial, real-path authorization preparation, inference
 identity/usage observation, live interruption/recovery or evaluation baseline
 ran in this source increment. Existing-home validation did not resolve the
 historical fresh-home elevated-descendant uncertainty.
+
+## Evaluation task/context binding (#323)
+
+`RunSession` and same-object `Session.Resume` now accept either the original
+Delivery Task or an explicit `EvaluationBinding`, never both. Delivery run/issue/
+attempt association and shipped role prose remain strict. An evaluation binding
+pins real evaluation/plan/unit/case/attempt identity, selected revision/profile,
+canonical packet/scratch, public prompt/role hashes and approved global instruction
+artifacts. All evaluation roles and both native entry points use this contract;
+the controller itself has no resume/takeover/replay API. The
+[evaluation workflow](evaluation-workflow.md#native-evaluation-integration-issue-323)
+defines the exact role mapping, supported revision/intervention scope and full
+touched-element before/after table.
+
+Evaluation children add process-only controls: project instruction discovery
+off, automatic skill/app/collaboration/environment context off, and loaded
+`memories`, `external_agent_memory_import` and `chronicle` features off.
+Configuration and loaded-feature checks reuse the existing helpers. Read-only
+`configRequirements/read` rejects undeclared managed additional developer text;
+custom configured base/developer/model-file/compaction inputs also refuse.
+The pinned feature registry and config/thread protocol provide these controls.
+Global `CodexHomeUserInstructionsProvider` remains enabled: `project_doc_max_bytes`
+only controls project discovery, and base/developer overrides cannot replace
+the separate global contribution. The caller must declare/approve its effective
+global AGENTS source and raw-byte hash. Native `instructionSources` must match;
+before/after hash checks and a Windows read-sharing file hold detect/refuse
+ordinary source drift. Undeclared overrides and unknown source/requirements
+evidence refuse before a turn. This is no provider-disable or privileged-change
+guarantee and no independent native attestation of every contextual byte.
+
+The host may read declared approved instructions while model tools continue to
+deny their credential/home directory. Caller-declared additional protected roots
+cover known private/controller copies outside the repository/current storage.
+Role-appropriate packet/scratch grants, all existing protections, managed
+ChatGPT auth, provider/profile gates and native bounds remain. No home/config/
+trust/auth write, credential copying or API/provider fallback is added.
+
+`SessionResult` separately retains evaluation eligibility, context-source reports,
+direct interruption/shutdown observations and error evidence. Direct stdio
+child exit/reap is not an independently observed descendant-cleanup guarantee.
+Delivery observations remain schema 2; evaluation observations explicitly use
+schema 3 and cannot enter Delivery history. Both reuse the original counter
+validation, replay/delta arithmetic and source separation. New native evaluation
+evidence is explicitly versioned; earlier evidence and failed/disconnected
+checkpoints remain readable. Completion is never verification or semantic pass.
+
+Ordinary tests use scripted RPC subprocesses, including worker-to-session
+integration. They run no model evaluation. No managed subscription trial or
+measured baseline ran for #323. The separately authorized live procedure above
+and remaining independent grading/screening/baseline work still apply; Phase 1
+and the historical fresh-home cleanup uncertainty remain open.
