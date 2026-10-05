@@ -164,6 +164,9 @@ func (s *Session) holdInstructions() (func(), error) {
 		f, err := holdInstructionFile(source.Path)
 		if err != nil {
 			release()
+			if errors.Is(err, ErrIsolationUnavailable) {
+				return nil, err // unsupported platform is refusal, never a weaker hold
+			}
 			return nil, fmt.Errorf("%w: approved instruction file hold unavailable", ErrTaskBoundary)
 		}
 		files = append(files, f)
