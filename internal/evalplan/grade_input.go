@@ -177,8 +177,10 @@ func validateJudgments(judgments []Judgment, requirements []Requirement, items m
 			return fmt.Errorf("unknown, duplicate or invalid required judgment %q", j.ID)
 		}
 		state := j.State
-		if requirements[index].Kind == "control" && state == "satisfied" {
-			state = "observed-control-outcome"
+		// A correct description can reproduce a defect with failing tests.
+		// Implementation behavior/regression satisfaction still requires passes.
+		if slices.Contains([]string{"control", "conclusion"}, requirements[index].Kind) && state == "satisfied" {
+			state = "observed-outcome"
 		} else if slices.Contains([]string{"behavior", "regression"}, requirements[index].Kind) && state == "violated" {
 			state = "behavior-violation"
 		}

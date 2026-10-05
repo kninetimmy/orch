@@ -149,6 +149,86 @@ func TestGradingSemanticAndReviewOutcomes(t *testing.T) {
 	}
 }
 
+func TestGradingFailingProbesSupportDescriptiveConclusions(t *testing.T) {
+	manifestBytes, err := os.ReadFile("../../evaluation/reference-v1/manifest.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	manifest, err := evalcorpus.Load(manifestBytes)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, caseID := range []string{"scout-held-question", "review-held-question-defective", "review-dev-ci-defective"} {
+		t.Run(caseID, func(t *testing.T) {
+			c := manifest.Cases[slices.IndexFunc(manifest.Cases, func(c evalcorpus.Case) bool { return c.ID == caseID })]
+			data, err := os.ReadFile("../../evaluation/grading-v1/" + caseID + ".json")
+			if err != nil {
+				t.Fatal(err)
+			}
+			var rubric Rubric
+			if err := strictStored(data, &rubric); err != nil {
+				t.Fatal(err)
+			}
+			if err := validateRubric(&rubric, c, evalcorpus.Digest(manifestBytes)); err != nil {
+				t.Fatal(err)
+			}
+			failed := slices.Clone(c.Controls[0].ExpectedFailures)
+			if len(failed) != 1 || !slices.Contains([]string{"TestCorpus/tail", "TestCorpus/empty"}, failed[0]) {
+				t.Fatal("fixture no longer names the pinned reference defect")
+			}
+			passed, judgments := []string{}, []Judgment{}
+			for _, req := range rubric.Requirements {
+				if req.Kind != "conclusion" {
+					t.Fatal("expected a descriptive scout/review requirement")
+				}
+				for _, check := range req.Checks {
+					if !slices.Contains(failed, check) {
+						passed = append(passed, check)
+					}
+				}
+				judgments = append(judgments, Judgment{ID: req.ID, State: "satisfied", Evidence: []string{"probe"}, Reason: "The pinned probe confirms the described behavior, including its historical defect."})
+			}
+			evidence := map[string]GradeEvidence{"probe": {ID: "probe", Route: "reproduction", Citation: "Pinned reference behavioral outcomes; preparation data, not a model trial.",
+				Reproduction: &Reproduction{Command: c.Command, Phase: "behavior", Passed: passed, Failed: failed}}}
+			// No source route is supplied: the failing behavioral probe must be
+			// an acceptable evidence route for a truthful satisfied conclusion.
+			if err := validateJudgments(judgments, rubric.Requirements, evidence); err != nil {
+				t.Fatalf("truthful defect reproduction rejected: %v", err)
+			}
+			submission := GradeSubmission{Judgments: judgments}
+			if c.Role == "review" {
+				submission.Review = &ReviewJudgment{Verdict: "request-changes", Evidence: []string{"probe"}, Reason: "The reference defect is reproduced.", Findings: []FindingJudgment{}}
+				for _, blocker := range rubric.Blockers {
+					submission.Review.Findings = append(submission.Review.Findings, FindingJudgment{ID: "defect", DefectID: blocker.ID, Severity: blocker.Severity, State: "supported", Evidence: []string{"probe"}, Reason: "Pinned failing behavioral check."})
+				}
+				if err := validateReview(submission.Review, &rubric, evidence); err != nil {
+					t.Fatal(err)
+				}
+			}
+			if result, _ := semanticResult(&submission, &rubric); result != "pass" {
+				t.Fatalf("correct descriptive conclusions graded %s", result)
+			}
+			for _, kind := range []string{"behavior", "regression"} {
+				req := Requirement{ID: "implementation", Kind: kind, EvidenceRoutes: []string{"reproduction"}}
+				judgment := Judgment{ID: req.ID, State: "satisfied", Evidence: []string{"probe"}, Reason: "Implementation must satisfy its behavior, not merely describe a defect."}
+				if err := validateJudgments([]Judgment{judgment}, []Requirement{req}, evidence); err == nil {
+					t.Fatalf("failing probe became a satisfied implementation %s", kind)
+				}
+				judgment.State = "violated"
+				if err := validateJudgments([]Judgment{judgment}, []Requirement{req}, evidence); err != nil {
+					t.Fatalf("behavioral implementation failure rejected: %v", err)
+				}
+			}
+			for _, phase := range []string{"setup", "compiler"} {
+				evidence["probe"].Reproduction.Phase = phase
+				if err := validateJudgments(judgments, rubric.Requirements, evidence); err == nil {
+					t.Fatalf("%s failure became descriptive behavioral evidence", phase)
+				}
+			}
+		})
+	}
+}
+
 func TestGradingLegacyReportRendering(t *testing.T) {
 	legacy := &Report{SchemaVersion: 1, SnapshotSHA256: "legacy-digest", Destination: "legacy-destination", Snapshot: Snapshot{SchemaVersion: 1, EvaluationID: "legacy", Progress: Progress{State: "refused"}}}
 	data, err := storedBytes(legacy)
