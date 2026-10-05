@@ -628,14 +628,20 @@ Command restrictions apply to every diagnostic command; metadata and diagnostic
 thread/turn restrictions apply to every connection of those kinds. The manual
 Assist shell-write loophole remains outside this issue.
 
-## Native tool replay investigation (#320, incomplete WIP)
+## Native tool replay investigation (#320)
 
-This increment is **not closed model-tool isolation evidence**. The opt-in
-`TestCodexModelToolIsolationSmoke` ends with an explicit limitation because safe
-hook/plugin source controls remain unverified. Production `RunSession`,
-`Session.Resume`, `IsolationPreflight` and evaluation execution still refuse.
-The final WIP native harness has not been rerun after removing the unsafe hook
-source attempt. It must not authorize a live trial or an evaluation baseline.
+Before the bounded follow-up, this increment was **not closed model-tool
+isolation evidence**: `TestCodexModelToolIsolationSmoke` ended with an explicit
+hook/plugin limitation, and the WIP harness had not been rerun after removing
+the unsafe hook source attempt. The follow-up replaces that unconditional
+failure with required native source, inventory and dispatch checks described
+below. One bounded attempt stopped on an
+output-parser mismatch before reviewer dispatch. After the exact parser
+correction and code freeze, final native verification passed for both profiles
+in 94.52s; the separate 46-command check passed in 56.31s. Missing or ambiguous
+evidence still fails explicitly. Production
+`RunSession`, `Session.Resume`, `IsolationPreflight` and evaluation execution
+still refuse; replay evidence cannot authorize a live trial or a baseline.
 
 The exact native check is:
 
@@ -724,8 +730,9 @@ was observed by metadata only; its attribution is unverified and it was not
 killed. After the deadline, metadata queries found no owned Go test PID 11376,
 its direct children, or native replay processes with the synthetic provider
 marker. Not every possible elevated setup descendant could be attributed,
-so cleanup of such descendants remains uncertain. No further native attempts
-ran after this failure.
+so cleanup of such descendants remains uncertain. At that stop, no further
+native attempts ran. The bounded existing-home follow-up below did not repeat
+the fresh-home setup.
 
 Before #320, `isolationBoundary.args` used `inherit="none",set={}`. Buffered
 diagnostic commands explicitly supplied scratch temp values, while real shell
@@ -736,19 +743,144 @@ child using that builder and both role profiles, not one named tool. Every
 existing filesystem grant/denial, elevated requirement and command-network
 restriction is retained. The old empty-set statement above is historical.
 
-WIP scope: `isolation.go` and `isolation_config.go` change only that shared temp
+At the original WIP stop, scope was: `isolation.go` and `isolation_config.go`
+changed only that shared temp
 pinning/verification; `isolation_test.go` checks both profiles; `preflight_test.go`
 adds one test-binary fixture dispatch. New `tool_replay_test.go` contains the
 bounded replay/evidence checks, synthetic MCP and command fixtures; new tagged
 `tool_replay_live_test.go` contains the opt-in native probes and explicit final
 limitation. No role/routing defaults, corpus/rubrics, user permissions, adapters,
 release/install state, dependencies, memhub or production refusal changed.
-Complete per-symbol accounting and all seven acceptance criteria are unfinished.
+At the WIP stop, complete per-symbol accounting and the acceptance criteria
+were unfinished. The bounded follow-up's accounting appears below.
 
 Focused no-native tests passed for replay missingness/cleanup/protected changes,
 isolation profile/config/environment failures and production start/resume refusal
 for all five roles. Full `go build ./...`, `go test ./...`, `go vet ./...` and the
-final native checks were deliberately not run after the Architect stopped work
-with criterion 3 unsatisfied. Native subscription auth/inference, actual usage,
+final native checks were deliberately not run at that WIP stop after the
+Architect stopped work with criterion 3 unsatisfied. Native subscription auth/inference, actual usage,
 live interruption, disconnect/resume, evaluation integration and a measured
 baseline remain unverified.
+
+### Bounded existing-home capability evidence
+
+The follow-up uses the existing installed home and sandbox. It creates no
+home, installer, VM or dependency, writes no user configuration/trust/auth,
+and never enables plugins. Two metadata-only children enable hooks solely to
+call `hooks/list`; neither starts a thread or turn or executes a hook command.
+The first call recognizes a task-owned `PreToolUse` command with matcher `.*`
+and obtains its actual key/current hash. The second supplies that exact hash
+in one session-flags `hooks` table and requires native `source=sessionFlags`,
+`eventName=preToolUse`, `handlerType=command`, `trustStatus=trusted`, enabled
+status, matching command and matcher, and an unmanaged, unique identity.
+Hashes and source keys are discovered, never hardcoded or persisted.
+
+The same hook table remains configured on every actual replay child with
+`features.hooks=false` and `features.plugins=false`. Native `hooks/list` and
+`plugin/installed` must return present, empty inventories without errors or
+warnings. Effective configuration and loaded feature support are verified
+before any turn. The real advertised tool catalog is separately checked on
+every replay request; native filesystem positive controls establish dispatch,
+and matched dispatch must emit no hook execution notification or hook marker.
+Recognition/trust is a source control, not a positive hook execution control.
+
+Plugin provenance uses the existing configured, enabled
+`unified-computer-use@openai-bundled` fixture. The actual child must retain that
+configuration while the plugin feature is disabled. Parent checks require its
+single installed cache version, canonical containment, a manifest identifying
+`unified-computer-use`, and a regular nonempty `.mcp.json` source file. Only
+manifest identity is decoded; MCP contents, credentials and commands are not
+read or executed. An absent, ambiguous or escaped installation fails rather
+than silently accepting an empty catalog or inventing a plugin tool name.
+This is deliberately an installed-source fixture for this validation host;
+other hosts must satisfy it or report that precise limitation.
+
+The pinned native
+[plugin loader](https://github.com/openai/codex/blob/rust-v0.160.0/codex-rs/core-plugins/src/manager.rs#L815)
+returns no plugin capabilities when plugins are disabled; its independent
+[plugin-hook loader](https://github.com/openai/codex/blob/rust-v0.160.0/codex-rs/core-plugins/src/manager.rs#L997)
+also returns no sources. Both gates cover every configured plugin routed
+through those loaders, including installed sources. The native
+[hook engine](https://github.com/openai/codex/blob/rust-v0.160.0/codex-rs/hooks/src/engine/mod.rs#L238)
+needs both gates: plugin cleanup hooks can survive the hook feature alone.
+The metadata-only
+[catalog handler](https://github.com/openai/codex/blob/rust-v0.160.0/codex-rs/app-server/src/request_processors/catalog_processor.rs#L614)
+does not execute hooks and only loads plugin hooks when both features are on.
+The
+[installed inventory handler](https://github.com/openai/codex/blob/rust-v0.160.0/codex-rs/app-server/src/request_processors/plugins.rs)
+returns an empty catalog before auth/synchronization when plugins are disabled
+and its configuration loads without errors. Source/configuration alone is not
+reported as runtime isolation proof: installed provenance, native inventories,
+the actual dispatch catalog and the configured MCP rejection control accompany
+the source-backed gates. Plugin callbacks and enabled plugin loading are not
+positive controls, and no claim about their execution is made.
+
+### #320 blast radius and compatibility
+
+| Touched element | Before #320 | After #320; does prior behavior still hold? |
+| --- | --- | --- |
+| `isolation.go`: `isolationBoundary.args` | Command tools inherited no environment and had an empty set; buffered diagnostics separately pinned temp paths. | Retains every permission, path, network, feature and elevated-sandbox rule. Pins only `TEMP`, `TMP`, `TMPDIR` to scratch for every child and both profiles; the exact before/after is retained above. |
+| `isolation_config.go`: `isolationConfig.verify` | Required an empty command environment set. | Requires exactly those three scratch values. All other configuration restrictions, discovery, loaded-feature checks and error behavior remain. Applies to every child verified with this function. |
+| `isolation_test.go`: `TestIsolationPathsAndProfiles` | Checked scrubbed environments, profiles and fail-closed admission. | Checks the new shared scratch-temp contract for both profiles; prior protections and missing/conflicting control failures remain. |
+| `preflight_test.go`: `TestMain` | Dispatched existing scripted preflight/session/isolation fixtures. | Adds only the test-binary model-tool fixture entry. Existing branches and ordinary no-native/no-model behavior remain. |
+| New `tool_replay_test.go`: `replayTool`, `replayCall`, `toolReplay`, `advertisedReplayTools`, `toolReplay.ServeHTTP`, `toolReplay.validate`, `validateReplayOutput` | No scripted native model-tool replay seam. | Adds test-only bounded Responses replay, actual catalog parsing, native output validation and explicit missingness/errors. No production provider or bypass is exposed. |
+| New `tool_replay_test.go`: `replayMCP`, `replayMCP.ServeHTTP`, `replayFixtureRequest`, `modelToolFixture`, `verifyReplayFiles`, `TestToolReplayEvidenceFailsClosed` | Existing command containment fixtures did not prove model-tool dispatch. | Adds one synthetic MCP capability, direct/stdin probes, marker/hash checks and CI failure checks. Existing fixtures, production refusal and dependencies remain unchanged. |
+| New tagged `tool_replay_live_test.go`: `TestCodexModelToolIsolationSmoke`, `modelToolReplayPlan`, `replayArgs`, `openToolReplay`, `openReplayChild` | Only the separately opt-in command-isolation smoke existed. | Adds bounded opt-in installed-native dispatch for both profiles and the MCP source control. It uses existing isolation rules, synthetic auth and task-owned replay, with no live inference. The old command smoke remains separately required. |
+| Same tagged file: `replayMetadata`, `replayHookInventory`, `replayHookSource`, `replayDisabledCapabilities`, `replayInstalledPluginSource` | The WIP unconditionally failed for hook/plugin controls. | Replaces only that unconditional failure with source/inventory/dispatch requirements. These test-only RPCs do not change the production transport allowlist. Unsupported/missing evidence still fails; hook execution and enabled-plugin positive controls are deliberately absent. |
+| This document | Recorded command-only limits and the incomplete replay attempts. | Preserves that history and the removed unconditional-failure before/after, then records the smaller supported evidence route and its limits. |
+
+Every unlisted production symbol retains its behavior. In particular,
+`modelToolBoundary`, `RunSession`, `Session.Resume`, `IsolationPreflight` and
+evaluation model execution remain refused for all roles, not one specialist
+symbol. Every diagnostic command still requires verified restrictions; every
+metadata-only connection still denies production thread/turn execution. Native
+replay proves synthetic tool behavior only. Live subscription authentication,
+inference, usage, interruption/resume and the bounded subsequent trial remain
+separate evidence. Frozen corpus/rubrics, controller/evaluation storage,
+routing/defaults, user permissions, adapters, releases/install state, manual
+execution and deferred Claude/shell-containment work are unchanged.
+
+### Bounded follow-up results
+
+On the same installed Windows 0.160.0 host, the first follow-up native check
+failed in 6.08s before any thread/turn: native hook recognition and session-only
+trust passed, then the harness incorrectly used a directory-only canonicalizer
+on the installed plugin manifest. File canonicalization was corrected with
+`filepath.EvalSymlinks`; no host setup or configuration change was involved.
+
+The one corrected attempt began 2026-10-05 17:41:56 UTC and failed in 49.31s.
+The installed configured plugin source and empty native hook/plugin inventories
+passed. The MCP source control advertised `apply_patch`, `exec_command`,
+`list_mcp_resource_templates`, `list_mcp_resources`, `read_mcp_resource`,
+`request_user_input`, `tool_search`, `view_image`, `write_stdin`, discovered the
+configured `read_synthetic` capability, and reached its named dispatcher.
+Approval `never` rejected execution; listing count was one and callbacks zero.
+The restricted worker reached native filesystem dispatch and returned the
+configured MCP rejection as `unsupported call: mcp__orch_replay_canaryread_synthetic`.
+The old validator expected a dot between namespace and name and rejected that
+reply. No other call produced a failing-output diagnostic, and cleanup's
+parent protected-content/forbidden-path checks reported no failure. These are
+partial observations, not a completed worker/reviewer pass.
+
+The validator now accepts that exact observed reply form and has a no-native
+regression check rejecting another source's reply. Code was frozen at the
+implementation time limit. The final deterministic verification began
+2026-10-05 17:46:19 UTC and passed in 94.52s (package 95.071s), including
+shutdown. Both worker and reviewer advertised exactly `apply_patch` (custom),
+`exec_command`, `request_user_input`, `view_image`, `write_stdin`; each produced
+four replay requests and 38 validated native outputs. All permitted
+workspace/scratch controls and protected read/write/image/stdin denials,
+configured MCP rejection, escalation refusal, command environment and network
+checks passed. Parent markers, protected hashes and forbidden new paths were
+verified; native hooks emitted no execution event or marker. The configured
+installed plugin source remained present while native hook/plugin inventories
+were empty on both actual replay children. The MCP source control still listed
+once with zero callbacks and reached the approval-never rejection.
+
+The separately required `TestCodexIsolationSmoke` passed in 56.31s (package
+56.862s): all 46 parent-verified synthetic commands, both profiles, native
+timeout cancellation and descendant markers passed. No subscription inference
+or provisioning ran during this follow-up. Earlier fresh-home descendant
+uncertainty is not resolved by these cleanly bounded existing-home observations.
+Production execution stays refused; an independent review and separately
+approved subscription-backed trial remain necessary.

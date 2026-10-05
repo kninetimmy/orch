@@ -276,7 +276,7 @@ func validateReplayOutput(call replayCall, output json.RawMessage) error {
 	case "image-denied":
 		passed = denied && (strings.Contains(lower, "locate image") || strings.Contains(lower, "read image"))
 	case "unavailable":
-		passed = strings.Contains(lower, "unrecognized function name") || strings.Contains(lower, "unsupported custom tool call") || strings.Contains(lower, "unknown tool") || text == "unsupported call: "+call.Tool.Name || text == "unsupported call: "+call.Tool.Namespace+"."+call.Tool.Name
+		passed = strings.Contains(lower, "unrecognized function name") || strings.Contains(lower, "unsupported custom tool call") || strings.Contains(lower, "unknown tool") || text == "unsupported call: "+call.Tool.Name || text == "unsupported call: "+call.Tool.Namespace+"."+call.Tool.Name || text == "unsupported call: "+call.Tool.Namespace+call.Tool.Name
 	case "escalation-denied":
 		passed = strings.Contains(lower, "approval policy") && strings.Contains(lower, "never")
 	case "running":
@@ -440,6 +440,13 @@ func modelToolFixture(args []string) int {
 }
 
 func TestToolReplayEvidenceFailsClosed(t *testing.T) {
+	configuredMCP := replayCall{ID: "inherited-mcp-denied", Tool: replayTool{Namespace: "mcp__orch_replay_canary", Name: "read_synthetic"}, Want: "unavailable"}
+	if err := validateReplayOutput(configuredMCP, json.RawMessage(`"unsupported call: mcp__orch_replay_canaryread_synthetic"`)); err != nil {
+		t.Fatal(err)
+	}
+	if err := validateReplayOutput(configuredMCP, json.RawMessage(`"unsupported call: mcp__another_source_read_synthetic"`)); err == nil {
+		t.Fatal("unrelated MCP source rejection accepted")
+	}
 	for _, raw := range []string{"null", "[]", `[{"type":"web_search"}]`, `[{"type":"function","name":"x"},{"type":"function","name":"x"}]`, `[{"type":"namespace","name":"functions","tools":null}]`} {
 		if _, err := advertisedReplayTools(json.RawMessage(raw)); err == nil {
 			t.Fatalf("invalid tool inventory accepted: %s", raw)

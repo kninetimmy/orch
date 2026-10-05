@@ -114,6 +114,16 @@ func TestCodexModelToolIsolationSmoke(t *testing.T) {
 	t.Setenv("OPENAI_API_KEY", "synthetic-api-key")
 	ctx, cancel := context.WithTimeout(context.Background(), 170*time.Second) // reserve ten seconds for owned shutdown
 	defer cancel()
+	boundary, err := prepareIsolation(layout, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	hookConfig, hookMarker, err := replayHookSource(ctx, installed, boundary)
+	if err != nil {
+		t.Fatal(err)
+	}
+	forbidden = append(forbidden, hookMarker)
+	t.Log("native metadata recognized the session-only matched hook and accepted its exact trust hash; no hook execution control")
 	var observedMCP replayTool
 	for _, role := range []string{"canary", "worker", "reviewer"} {
 		reviewer := role == "reviewer"
@@ -175,7 +185,7 @@ func TestCodexModelToolIsolationSmoke(t *testing.T) {
 		}
 		func() {
 			defer server.Close()
-			c, err := openToolReplay(ctx, installed, b, server.URL)
+			c, err := openToolReplay(ctx, installed, b, server.URL, hookConfig)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -212,6 +222,10 @@ func TestCodexModelToolIsolationSmoke(t *testing.T) {
 					_ = c.close()
 					t.Fatal("replay limitation: unsolicited native reply")
 				}
+				if strings.HasPrefix(method, "hook/") {
+					_ = c.close()
+					t.Fatal("replay limitation: disabled hook emitted a native execution event")
+				}
 				if method == "turn/completed" {
 					var completed struct {
 						Turn struct {
@@ -241,6 +255,7 @@ func TestCodexModelToolIsolationSmoke(t *testing.T) {
 				t.Fatal(err)
 			}
 			t.Logf("native dispatched tools: role=%s tools=%v requests=%d outputs=%d; synthetic replay only", b.profile(), r.tools, r.requests, len(r.outputs))
+			t.Log("actual replay child: configured installed plugin source retained; native hook and plugin inventories empty, feature gates disabled")
 			if role == "canary" {
 				if canary.err != nil || canary.listed == 0 || canary.called != 0 {
 					t.Fatal("replay limitation: native MCP dispatch control did not retain never approval")
@@ -267,10 +282,7 @@ func TestCodexModelToolIsolationSmoke(t *testing.T) {
 			}
 		}()
 	}
-	// Native filesystem evidence is insufficient to admit production model turns.
-	// The removed synthetic-home hook source attempt created .sandbox and timed
-	// out; do not repeat it or treat loaded feature flags as hook enforcement.
-	t.Fatal("model-tool validation limitation: safe native hook/plugin source controls remain unverified; production execution must stay refused")
+	// This replay never enables production model turns or proves live inference.
 }
 
 func modelToolReplayPlan(t *testing.T, b isolationBoundary, protected []string, network string) (func([]replayTool) ([]replayCall, error), func(map[string]json.RawMessage) ([]replayCall, error)) {
@@ -383,31 +395,32 @@ func replayArgs(b isolationBoundary, endpoint string) []string {
 		"-c", `ephemeral=true`, "-c", "log_dir="+quoteTOML(filepath.Join(b.scratch, "native-log")), "-c", "sqlite_home="+quoteTOML(filepath.Join(b.scratch, "native-state")))
 }
 
-func openToolReplay(ctx context.Context, executable string, b isolationBoundary, endpoint string) (*connection, error) {
-	args := append(replayArgs(b, endpoint), "-c", `mcp_servers.orch_replay_canary={url=`+quoteTOML(endpoint+"/mcp")+`,enabled=true}`)
+func openReplayChild(ctx context.Context, executable string, b isolationBoundary, args []string) (*connection, error) {
 	env := serverEnvironment(os.Environ(), b.scratch)
-	// The first child performs bounded read-only MCP discovery with ephemeral auth.
-	initialize := func(args []string) (*connection, error) {
-		c, err := startWithEnv(ctx, execx.Cmd{Name: executable, Args: args, Dir: b.workspace}, env)
-		if err != nil {
-			return nil, err
-		}
-		c.isolation, c.profile = true, b.profile()
-		var response struct {
-			UserAgent string `json:"userAgent"`
-		}
-		if err := c.call("initialize", map[string]any{"clientInfo": map[string]string{"name": "orch", "version": "synthetic-tool-replay"}, "capabilities": map[string]bool{"experimentalApi": true}}, &response); err != nil {
-			return nil, errors.Join(err, c.close())
-		}
-		if !hostVersion.MatchString(response.UserAgent) {
-			return nil, errors.Join(errors.New("replay limitation: native host version missing"), c.close())
-		}
-		if err := c.initialized(); err != nil {
-			return nil, errors.Join(err, c.close())
-		}
-		return c, nil
+	c, err := startWithEnv(ctx, execx.Cmd{Name: executable, Args: args, Dir: b.workspace}, env)
+	if err != nil {
+		return nil, err
 	}
-	c, err := initialize(args)
+	c.isolation, c.profile = true, b.profile()
+	var response struct {
+		UserAgent string `json:"userAgent"`
+	}
+	if err := c.call("initialize", map[string]any{"clientInfo": map[string]string{"name": "orch", "version": "synthetic-tool-replay"}, "capabilities": map[string]bool{"experimentalApi": true}}, &response); err != nil {
+		return nil, errors.Join(err, c.close())
+	}
+	if !hostVersion.MatchString(response.UserAgent) {
+		return nil, errors.Join(errors.New("replay limitation: native host version missing"), c.close())
+	}
+	if err := c.initialized(); err != nil {
+		return nil, errors.Join(err, c.close())
+	}
+	return c, nil
+}
+
+func openToolReplay(ctx context.Context, executable string, b isolationBoundary, endpoint, hookConfig string) (*connection, error) {
+	args := append(replayArgs(b, endpoint), "-c", hookConfig, "-c", `mcp_servers.orch_replay_canary={url=`+quoteTOML(endpoint+"/mcp")+`,enabled=true}`)
+	// The first child performs bounded read-only MCP discovery with ephemeral auth.
+	c, err := openReplayChild(ctx, executable, b, args)
 	if err != nil {
 		return nil, err
 	}
@@ -420,7 +433,7 @@ func openToolReplay(ctx context.Context, executable string, b isolationBoundary,
 		return nil, err
 	}
 	restricted := append(disableMCP(args, servers), "-c", "mcp_servers.orch_replay_canary.url="+quoteTOML(endpoint+"/mcp"))
-	c, err = initialize(restricted)
+	c, err = openReplayChild(ctx, executable, b, restricted)
 	if err != nil {
 		return nil, err
 	}
@@ -430,6 +443,9 @@ func openToolReplay(ctx context.Context, executable string, b isolationBoundary,
 	}
 	if err == nil {
 		err = verifyRestrictedFeatures(c)
+	}
+	if err == nil {
+		err = replayDisabledCapabilities(c, b)
 	}
 	var readiness struct {
 		Status string `json:"status"`
@@ -445,4 +461,169 @@ func openToolReplay(ctx context.Context, executable string, b isolationBoundary,
 	}
 	c.session = true // test-only native replay; production modelToolBoundary is unchanged
 	return c, nil
+}
+
+// These inventory calls stay test-only; production transport admission is unchanged.
+func replayMetadata(c *connection, method string, params, result any) error {
+	if method != "hooks/list" && method != "plugin/installed" {
+		return errors.New("replay limitation: unsupported metadata method")
+	}
+	c.sequence++
+	id := fmt.Sprintf("orch-replay-metadata-%d", c.sequence)
+	if err := c.send(map[string]any{"id": id, "method": method, "params": params}); err != nil {
+		return err
+	}
+	for {
+		m, err := c.read()
+		if err != nil {
+			return err
+		}
+		if len(m.Method) == 0 {
+			return decodeResponse(m, id, method, result)
+		}
+	}
+}
+
+type replayHookInventory struct {
+	Data []struct {
+		Cwd   string `json:"cwd"`
+		Hooks []struct {
+			Key         string `json:"key"`
+			Source      string `json:"source"`
+			CurrentHash string `json:"currentHash"`
+			TrustStatus string `json:"trustStatus"`
+			Enabled     *bool  `json:"enabled"`
+			IsManaged   *bool  `json:"isManaged"`
+			Matcher     string `json:"matcher"`
+			EventName   string `json:"eventName"`
+			HandlerType string `json:"handlerType"`
+			Command     string `json:"command"`
+		} `json:"hooks"`
+		Errors   []json.RawMessage `json:"errors"`
+		Warnings []json.RawMessage `json:"warnings"`
+	} `json:"data"`
+}
+
+func replayHookSource(ctx context.Context, executable string, b isolationBoundary) (string, string, error) {
+	marker := filepath.Join(b.scratch, "hook-forbidden-executed")
+	command := `powershell.exe -NoProfile -NonInteractive -Command "Set-Content -LiteralPath '` + strings.ReplaceAll(marker, "'", "''") + `' -Value executed"`
+	base := `PreToolUse=[{matcher=".*",hooks=[{type="command",command=` + quoteTOML(command) + `,timeout=1}]}]`
+	config := "hooks={" + base + "}"
+	var key, hash string
+	for _, trusted := range []bool{false, true} {
+		args := append(replayArgs(b, "http://127.0.0.1:1"), "-c", "features.hooks=true", "-c", config)
+		c, err := openReplayChild(ctx, executable, b, args)
+		if err != nil {
+			return "", marker, err
+		}
+		var inventory replayHookInventory
+		err = replayMetadata(c, "hooks/list", map[string]any{"cwds": []string{b.workspace}}, &inventory)
+		if err = errors.Join(err, c.close()); err != nil {
+			return "", marker, err
+		}
+		if len(inventory.Data) != 1 || inventory.Data[0].Cwd != b.workspace || inventory.Data[0].Hooks == nil || inventory.Data[0].Errors == nil || len(inventory.Data[0].Errors) != 0 {
+			return "", marker, errors.New("replay limitation: hook source inventory missing, ambiguous or failed")
+		}
+		found := 0
+		for _, hook := range inventory.Data[0].Hooks {
+			if hook.Command != command {
+				continue // inherited metadata is never logged or executed
+			}
+			found++
+			if hook.Key == "" || !strings.HasPrefix(hook.CurrentHash, "sha256:") || hook.Source != "sessionFlags" || hook.EventName != "preToolUse" || hook.Matcher != ".*" || hook.HandlerType != "command" || hook.IsManaged == nil || *hook.IsManaged {
+				return "", marker, errors.New("replay limitation: configured hook source identity unsupported")
+			}
+			if trusted && (hook.Key != key || hook.CurrentHash != hash || hook.TrustStatus != "trusted" || hook.Enabled == nil || !*hook.Enabled) {
+				return "", marker, errors.New("replay limitation: session-only hook trust not accepted")
+			}
+			key, hash = hook.Key, hook.CurrentHash
+		}
+		if found != 1 {
+			return "", marker, errors.New("replay limitation: configured hook canary not uniquely recognized")
+		}
+		config = "hooks={" + base + ",state={" + quoteTOML(key) + "={trusted_hash=" + quoteTOML(hash) + "}}}"
+	}
+	return config, marker, verifyReplayFiles(nil, []string{marker})
+}
+
+func replayDisabledCapabilities(c *connection, b isolationBoundary) error {
+	var hooks replayHookInventory
+	if err := replayMetadata(c, "hooks/list", map[string]any{"cwds": []string{b.workspace}}, &hooks); err != nil {
+		return err
+	}
+	if len(hooks.Data) != 1 || hooks.Data[0].Cwd != b.workspace || hooks.Data[0].Hooks == nil || len(hooks.Data[0].Hooks) != 0 || hooks.Data[0].Errors == nil || len(hooks.Data[0].Errors) != 0 || hooks.Data[0].Warnings == nil || len(hooks.Data[0].Warnings) != 0 {
+		return errors.New("replay limitation: disabled native hooks not unambiguously unavailable")
+	}
+	var plugins struct {
+		Marketplaces []json.RawMessage `json:"marketplaces"`
+		Errors       []json.RawMessage `json:"marketplaceLoadErrors"`
+	}
+	if err := replayMetadata(c, "plugin/installed", map[string]any{"cwds": []string{b.workspace}}, &plugins); err != nil {
+		return err
+	}
+	if plugins.Marketplaces == nil || len(plugins.Marketplaces) != 0 || plugins.Errors == nil || len(plugins.Errors) != 0 {
+		return errors.New("replay limitation: disabled native plugin inventory missing, nonempty or failed")
+	}
+	return replayInstalledPluginSource(c, b.workspace)
+}
+
+func replayInstalledPluginSource(c *connection, cwd string) error {
+	var response struct {
+		Config struct {
+			Plugins map[string]struct {
+				Enabled *bool `json:"enabled"`
+			} `json:"plugins"`
+		} `json:"config"`
+	}
+	if err := c.call("config/read", map[string]any{"cwd": cwd, "includeLayers": false}, &response); err != nil {
+		return err
+	}
+	const identity = "unified-computer-use@openai-bundled"
+	enabled := response.Config.Plugins[identity].Enabled
+	if enabled == nil || !*enabled {
+		return errors.New("replay limitation: configured installed plugin source fixture unavailable")
+	}
+	codexRoot := os.Getenv("CODEX_HOME")
+	if codexRoot == "" {
+		userDir, err := os.UserHomeDir()
+		if err != nil {
+			return err
+		}
+		codexRoot = filepath.Join(userDir, ".codex")
+	}
+	cacheRoot, err := isolationPath(filepath.Join(codexRoot, "plugins", "cache"), true)
+	if err != nil {
+		return err
+	}
+	base := filepath.Join(cacheRoot, "openai-bundled", "unified-computer-use")
+	versions, err := os.ReadDir(base)
+	if err != nil || len(versions) != 1 || !versions[0].IsDir() {
+		return errors.New("replay limitation: installed plugin version source absent or ambiguous")
+	}
+	root, err := isolationPath(filepath.Join(base, versions[0].Name()), true)
+	if err != nil || !strings.HasPrefix(strings.ToLower(root), strings.ToLower(cacheRoot)+string(filepath.Separator)) {
+		return errors.New("replay limitation: installed plugin source escapes its cache")
+	}
+	manifestPath := filepath.Join(root, ".codex-plugin", "plugin.json")
+	manifestPath, err = filepath.EvalSymlinks(manifestPath)
+	if err != nil || !strings.HasPrefix(strings.ToLower(manifestPath), strings.ToLower(root)+string(filepath.Separator)) {
+		return errors.New("replay limitation: plugin manifest source escapes its installation")
+	}
+	data, err := os.ReadFile(manifestPath)
+	var manifest struct {
+		Name string `json:"name"`
+	}
+	if err != nil || len(data) > 16384 || json.Unmarshal(data, &manifest) != nil || manifest.Name != "unified-computer-use" {
+		return errors.New("replay limitation: installed plugin manifest identity unsupported")
+	}
+	mcpPath, err := filepath.EvalSymlinks(filepath.Join(root, ".mcp.json"))
+	if err != nil || !strings.HasPrefix(strings.ToLower(mcpPath), strings.ToLower(root)+string(filepath.Separator)) {
+		return errors.New("replay limitation: plugin MCP source escapes its installation")
+	}
+	info, err := os.Stat(mcpPath)
+	if err != nil || !info.Mode().IsRegular() || info.Size() == 0 {
+		return errors.New("replay limitation: installed plugin has no declared MCP source")
+	}
+	// Only manifest identity and source presence are read; MCP credentials/content stay unread.
+	return nil
 }
