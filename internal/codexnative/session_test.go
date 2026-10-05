@@ -9,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -20,9 +21,8 @@ import (
 	"github.com/kninetimmy/orch/internal/metrics"
 )
 
-// This fixture is the only isolation-bypass seam: it is compiled solely into
-// ordinary tests, starts the test binary, and never exposes a caller callback or
-// flag in production. Native prerequisite/auth/catalog RPCs still run end to end.
+// The ordinary-test host implements the real admission RPCs without native
+// inference. No caller callback or bypass flag is exposed in production.
 func scriptedSessionConnection(t *testing.T, ctx context.Context, s *Session, scenario string) (*connection, func()) {
 	t.Helper()
 	b, err := prepareIsolation(s.task.Layout, s.task.Role == "scout" || metricRole(s.task.Role) == "reviewer")
@@ -48,6 +48,15 @@ func scriptedSessionConnection(t *testing.T, ctx context.Context, s *Session, sc
 		cleanup()
 		t.Fatalf("scripted capability preflight: %+v, %v", capabilities, err)
 	}
+	config, err := readIsolationConfig(c, b.workspace)
+	if err == nil {
+		err = config.verify(b, nil)
+	}
+	if err != nil {
+		_ = c.close()
+		cleanup()
+		t.Fatal(err)
+	}
 	var readiness struct{ Status string }
 	if err := c.call("windowsSandbox/readiness", struct{}{}, &readiness); err != nil || readiness.Status != "ready" {
 		_ = c.close()
@@ -65,7 +74,13 @@ func scriptedSessionConnection(t *testing.T, ctx context.Context, s *Session, sc
 		cleanup()
 		t.Fatalf("scripted isolation prerequisite: %v", err)
 	}
-	c.session = true // synthetic closed host, not modelToolBoundary evidence
+	c.diagnosticReady = true
+	if err := modelToolBoundary(c, b, IsolationCapabilities{HostVersion: capabilities.HostVersion, SandboxReady: true, ProfileAllowed: true, ToolsDisabled: true}); err != nil {
+		_ = c.close()
+		cleanup()
+		t.Fatal(err)
+	}
+	c.session = true
 	return c, cleanup
 }
 
@@ -82,6 +97,12 @@ func sessionTask(t *testing.T) (Options, Task) {
 }
 
 func scriptedSessionServer(scenario string) {
+	scanner := bufio.NewScanner(os.Stdin)
+	scanner.Buffer(make([]byte, 4096), maxMessageBytes+1)
+	scriptedSessionRequests(scenario, os.Getenv("ORCH_CODEX_SESSION_TEST_ROLE"), scanner)
+}
+
+func scriptedSessionRequests(scenario, role string, scanner *bufio.Scanner) {
 	cwd, err := os.Getwd()
 	if err != nil {
 		os.Exit(60)
@@ -91,6 +112,12 @@ func scriptedSessionServer(scenario string) {
 		if _, err := toml.Decode(strings.Join(configOverrides(os.Args[1:]), "\n"), &config); err != nil {
 			os.Exit(61)
 		}
+	}
+	if config == nil {
+		config = map[string]any{}
+	}
+	if config["mcp_servers"] == nil {
+		config["mcp_servers"] = map[string]any{}
 	}
 	profile, _ := config["default_permissions"].(string)
 	write := func(value any) {
@@ -119,8 +146,6 @@ func scriptedSessionServer(scenario string) {
 		}
 		notify("turn/completed", map[string]any{"threadId": "thread-294", "turn": value})
 	}
-	scanner := bufio.NewScanner(os.Stdin)
-	scanner.Buffer(make([]byte, 4096), maxMessageBytes+1)
 	for scanner.Scan() {
 		var request struct {
 			ID     string          `json:"id"`
@@ -140,7 +165,7 @@ func scriptedSessionServer(scenario string) {
 		}
 		switch request.Method {
 		case "initialize":
-			response(request.ID, map[string]any{"userAgent": "orch/0.159.2 (scripted)", "platformFamily": "windows", "platformOs": "windows"})
+			response(request.ID, map[string]any{"userAgent": "orch/0.160.0 (scripted)", "platformFamily": "windows", "platformOs": "windows"})
 			notify("account/updated", map[string]string{"authMode": "chatgpt"})
 		case "initialized":
 		case "account/read":
@@ -154,6 +179,18 @@ func scriptedSessionServer(scenario string) {
 			response(request.ID, map[string]string{"status": "ready"})
 		case "permissionProfile/list":
 			response(request.ID, map[string]any{"data": []any{map[string]any{"id": profile, "allowed": true}}, "nextCursor": nil})
+		case "config/read":
+			response(request.ID, map[string]any{"config": config})
+		case "experimentalFeature/list":
+			data := []any{}
+			for _, name := range append(append([]string(nil), restrictedFeatures...), modelRestrictedFeatures...) {
+				data = append(data, map[string]any{"name": name, "enabled": false})
+			}
+			response(request.ID, map[string]any{"data": data, "nextCursor": nil})
+		case "hooks/list":
+			response(request.ID, map[string]any{"data": []any{map[string]any{"cwd": cwd, "hooks": []any{}, "errors": []any{}, "warnings": []any{}}}})
+		case "plugin/installed":
+			response(request.ID, map[string]any{"marketplaces": []any{}, "marketplaceLoadErrors": []any{}})
 		case "thread/start", "thread/resume":
 			var params struct {
 				Cwd          string            `json:"cwd"`
@@ -163,16 +200,29 @@ func scriptedSessionServer(scenario string) {
 				Permissions  string            `json:"permissions"`
 				Instructions string            `json:"developerInstructions"`
 				Thread       string            `json:"threadId"`
+				Provider     string            `json:"modelProvider"`
+				Roots        []any             `json:"runtimeWorkspaceRoots"`
+				Dynamic      []any             `json:"dynamicTools"`
+				Fallback     *bool             `json:"allowProviderModelFallback"`
 			}
-			instructions, err := agents.CodexInstructions(os.Getenv("ORCH_CODEX_SESSION_TEST_ROLE"))
-			if json.Unmarshal(request.Params, &params) != nil || err != nil || !strings.HasPrefix(params.Instructions, instructions) || params.Cwd != cwd || params.Model != "gpt-6.1-sol" || params.Config["model_reasoning_effort"] != "max" || params.Approval != "never" || params.Permissions != profile {
+			instructions, err := agents.CodexInstructions(role)
+			if json.Unmarshal(request.Params, &params) != nil || err != nil || !strings.HasPrefix(params.Instructions, instructions) || params.Cwd != cwd || params.Model != "gpt-6.1-sol" || params.Config["model_reasoning_effort"] != "max" || params.Approval != "never" || params.Permissions != profile || params.Provider != "openai" || params.Roots == nil || len(params.Roots) != 0 {
+				os.Exit(67)
+			}
+			if request.Method == "thread/start" && (params.Dynamic == nil || len(params.Dynamic) != 0 || params.Fallback == nil || *params.Fallback) {
 				os.Exit(67)
 			}
 			if (request.Method == "thread/resume") != (params.Thread == "thread-294") {
 				os.Exit(68)
 			}
 			thread := map[string]any{"id": "thread-294", "sessionId": "tree-session-294", "cwd": cwd, "turns": []any{}}
-			result := map[string]any{"thread": thread, "cwd": cwd, "model": "gpt-6.1-sol", "reasoningEffort": "max", "approvalPolicy": "never", "activePermissionProfile": map[string]any{"id": profile, "extends": nil}}
+			result := map[string]any{"thread": thread, "cwd": cwd, "model": "gpt-6.1-sol", "modelProvider": "openai", "runtimeWorkspaceRoots": []any{}, "reasoningEffort": "max", "approvalPolicy": "never", "activePermissionProfile": map[string]any{"id": profile, "extends": nil}}
+			if scenario == "thread-provider" {
+				result["modelProvider"] = "other"
+			}
+			if scenario == "thread-roots" {
+				result["runtimeWorkspaceRoots"] = []any{filepath.Dir(cwd)}
+			}
 			if scenario == "unknown-profile" {
 				delete(result, "model")
 				delete(result, "reasoningEffort")
@@ -268,6 +318,8 @@ func scriptedSessionServer(scenario string) {
 				notify("thread/settings/updated", map[string]any{"threadId": "thread-294", "threadSettings": settings})
 			case "reroute":
 				notify("model/rerouted", map[string]string{"threadId": "thread-294", "turnId": "turn-294", "fromModel": "gpt-6.1-sol", "toModel": "gpt-6.1-sol", "reason": "rateLimit"})
+			case "unexpected-hook":
+				notify("hook/started", map[string]string{"threadId": "thread-294", "turnId": "turn-294"})
 			case "delegation":
 				notify("item/started", map[string]any{"threadId": "thread-294", "turnId": "turn-294", "item": map[string]string{"id": "spawn-1", "type": "collabAgentToolCall"}})
 			case "tool-outside", "file-escape", "task-input", "unknown-tool", "file-change":
@@ -335,10 +387,13 @@ func TestSessionScriptedLifecycle(t *testing.T) {
 		{"thread-effort", SessionFailed, ErrProfileMismatch},
 		{"thread-permissions", SessionFailed, ErrTaskBoundary},
 		{"thread-workspace", SessionFailed, ErrTaskBoundary},
+		{"thread-provider", SessionFailed, ErrTaskBoundary},
+		{"thread-roots", SessionFailed, ErrTaskBoundary},
 		{"settings-model", SessionFailed, ErrProfileMismatch},
 		{"settings-effort", SessionFailed, ErrProfileMismatch},
 		{"settings-permissions", SessionFailed, ErrTaskBoundary},
 		{"reroute", SessionFailed, ErrProfileMismatch},
+		{"unexpected-hook", SessionFailed, ErrIsolationUnavailable},
 		{"delegation", SessionFailed, ErrTaskBoundary},
 		{"tool-outside", SessionFailed, ErrTaskBoundary},
 		{"file-escape", SessionFailed, ErrTaskBoundary},
@@ -371,7 +426,11 @@ func TestSessionScriptedLifecycle(t *testing.T) {
 			if strings.HasPrefix(test.scenario, "thread-") && strings.Contains(string(calls), "turn/start") {
 				t.Fatal("thread mismatch progressed to model execution")
 			}
-			if result.Requested != task.Selection || result.ThreadID != "thread-294" || result.NativeSessionID != "tree-session-294" {
+			wantSession := "tree-session-294"
+			if test.scenario == "thread-provider" || test.scenario == "thread-roots" {
+				wantSession = "" // refused incomplete binding remains unknown
+			}
+			if result.Requested != task.Selection || result.ThreadID != "thread-294" || result.NativeSessionID != wantSession {
 				t.Fatalf("lost native/requested identities: %+v", result)
 			}
 			if test.scenario == "unknown-profile" {
@@ -554,8 +613,7 @@ func TestSessionDisconnectResumeReplay(t *testing.T) {
 			if err := s.Resume(ctx, task); !errors.Is(err, ErrIsolationUnavailable) || !reflect.DeepEqual(before, s.Result()) {
 				t.Fatalf("resume bypassed production isolation or changed checkpoint: %v", err)
 			}
-			// Like initial execution, only this private synthetic seam can pass
-			// the deliberately unavailable production model-tool boundary.
+			// The synthetic host supplies every required admission control.
 			c, cleanup = scriptedSessionConnection(t, ctx, s, scenario)
 			err = s.execute(ctx, c, true)
 			cleanup()
@@ -660,6 +718,61 @@ func TestSessionProductionRefusalEveryRole(t *testing.T) {
 				t.Fatalf("production preflights submitted model work for %s: %v", role, err)
 			}
 		})
+	}
+}
+
+func TestSessionAdmittedStartAndResumeEveryRole(t *testing.T) {
+	for _, role := range []string{"scout", "implementer", "specialist", "reviewer", "review_downgrade"} {
+		t.Run(role, func(t *testing.T) {
+			options, task := sessionTask(t)
+			task.Role = role
+			options.ClientVersion = "session:" + role + ":disconnect"
+			t.Setenv("ORCH_CODEX_SESSION_TEST_SERVER", "disconnect")
+			t.Setenv("ORCH_CODEX_SESSION_TEST_ROLE", role)
+			ctx, cancel := context.WithTimeout(t.Context(), 10*time.Second)
+			defer cancel()
+			s, err := RunSession(ctx, options, task)
+			if runtime.GOOS != "windows" {
+				if !errors.Is(err, ErrIsolationUnavailable) || s.result.ThreadID != "" {
+					t.Fatalf("unsupported platform admitted production execution: %v", err)
+				}
+				return // private admitted lifecycle tests still run on every CI OS
+			}
+			if !errors.Is(err, ErrProcessExit) || s.Result().Outcome != SessionDisconnected {
+				t.Fatalf("eligible start did not reach identified disconnect: %+v %v", s.Result(), err)
+			}
+			before := s.Result()
+			if err := s.Resume(ctx, task); err != nil || s.Result().Outcome != SessionSuccessful || s.Result().TurnID != before.TurnID || s.Result().NativeSessionID != before.NativeSessionID {
+				t.Fatalf("eligible same-turn resume: %+v %v", s.Result(), err)
+			}
+			calls, err := os.ReadFile(filepath.Join(task.Layout.Workspace, ".scripted-native-calls"))
+			if err != nil || strings.Count(string(calls), "turn/start\n") != 1 || strings.Count(string(calls), "thread/resume\n") != 1 || strings.Count(string(calls), "hooks/list\n") != 4 || strings.Count(string(calls), "plugin/installed\n") != 4 {
+				t.Fatalf("start/resume lost actual-connection inventory checks or replayed turn: %s %v", calls, err)
+			}
+			if data, err := os.ReadFile(filepath.Join(task.Layout.Workspace, ".dirty-task")); err != nil || string(data) != "preserve dirty work" {
+				t.Fatal("admitted reconnect modified dirty work")
+			}
+		})
+	}
+}
+
+func TestSessionResumeRejectsChangedImplicitProtection(t *testing.T) {
+	options, task := sessionTask(t)
+	s, _, err := newSession(options, task)
+	if err != nil {
+		t.Fatal(err)
+	}
+	s.result.Outcome = SessionDisconnected
+	s.result.ThreadID, s.result.NativeSessionID, s.result.TurnID = "retained-thread", "retained-tree", "retained-turn"
+	before := s.Result()
+	metadata := t.TempDir()
+	if err := os.WriteFile(filepath.Join(task.Layout.Workspace, ".git"), []byte("gitdir: "+metadata+"\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithTimeout(t.Context(), time.Second)
+	defer cancel()
+	if err := s.Resume(ctx, task); !errors.Is(err, ErrTaskBoundary) || !reflect.DeepEqual(before, s.Result()) {
+		t.Fatalf("changed implicit shared Git protection accepted: %v", err)
 	}
 }
 

@@ -127,8 +127,8 @@ func TestCodexIsolationSmoke(t *testing.T) {
 			if _, err := os.Stat(marker); !errors.Is(err, os.ErrNotExist) {
 				t.Fatal("canceled payload wrote its delayed marker")
 			}
-			if err := modelToolBoundary(capabilities.HostVersion); !errors.Is(err, ErrIsolationUnavailable) {
-				t.Fatal("command proof incorrectly enabled model tools")
+			if c.session || capabilities.ModelToolsVerified {
+				t.Fatal("command proof incorrectly enabled model sessions")
 			}
 			t.Logf("executed containment checks: %s allowed access, explicit denied reads/writes, outside write denial, environment and native timeout cancellation verified", b.profile())
 		}()

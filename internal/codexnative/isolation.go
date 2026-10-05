@@ -31,14 +31,14 @@ type IsolationPaths struct {
 	CredentialPaths   []string
 }
 
-// IsolationCapabilities reports configuration availability, not containment.
-// No host currently has a verified closed model-tool boundary in this package.
+// IsolationCapabilities reports checked controls, not live inference evidence.
 type IsolationCapabilities struct {
-	HostVersion    string
-	SandboxReady   bool
-	ProfileAllowed bool
-	ToolsDisabled  bool // effective configuration only, never model-tool proof
-	DisabledMCP    int  // names and configuration are not retained as evidence
+	HostVersion        string
+	SandboxReady       bool
+	ProfileAllowed     bool
+	ToolsDisabled      bool // effective configuration only, never model-tool proof
+	DisabledMCP        int  // names and configuration are not retained as evidence
+	ModelToolsVerified bool // supported native enforcement plus actual-connection controls
 }
 
 type isolationBoundary struct {
@@ -50,14 +50,14 @@ type isolationBoundary struct {
 }
 
 // IsolationPreflight checks a native profile without model turns or user-file
-// probes. It always refuses model execution until a supported native tool
-// boundary is verified. Sandbox readiness/profile listing alone cannot pass it.
+// probes. Supported native enforcement and actual-connection controls are both
+// required; success does not authorize a task or enable this metadata connection.
 func IsolationPreflight(ctx context.Context, options Options, layout IsolationPaths, reviewer bool) (capabilities IsolationCapabilities, err error) {
 	b, err := prepareIsolation(layout, reviewer)
 	if err != nil {
 		return capabilities, err
 	}
-	if runtime.GOOS != "windows" {
+	if runtime.GOOS != "windows" || runtime.GOARCH != "amd64" {
 		return capabilities, fmt.Errorf("%w: only native Windows elevated sandbox diagnostics are supported", ErrIsolationUnavailable)
 	}
 	ctx, cancel := context.WithTimeout(ctx, preflightTimeout)
@@ -66,15 +66,47 @@ func IsolationPreflight(ctx context.Context, options Options, layout IsolationPa
 	if err != nil {
 		return capabilities, err
 	}
-	defer func() { err = errors.Join(err, c.close(), c.contextError("isolation preflight")) }()
-	return capabilities, modelToolBoundary(capabilities.HostVersion)
+	defer func() {
+		err = errors.Join(err, c.close(), c.contextError("isolation preflight"))
+		if err != nil {
+			capabilities.ModelToolsVerified = false
+		}
+	}()
+	err = modelToolBoundary(c, b, capabilities)
+	capabilities.ModelToolsVerified = err == nil
+	return capabilities, err
 }
 
-func modelToolBoundary(version string) error {
-	if version == "0.159.2" {
+func modelToolBoundary(c *connection, b isolationBoundary, capabilities IsolationCapabilities) error {
+	if capabilities.HostVersion == "0.159.2" {
 		return fmt.Errorf("%w: native 0.159.2 disabledPluginIds does not filter plugin capabilities; inherited connectors, plugins, hooks and additional agent tools have no verified closed boundary", ErrIsolationUnavailable)
 	}
-	return fmt.Errorf("%w: native host has no verified closed model-tool boundary", ErrIsolationUnavailable)
+	// ponytail: only Windows 0.160.0 has reviewed source and native tool replay;
+	// extend support only with equivalent enforcement evidence for another host.
+	if capabilities.HostVersion != "0.160.0" {
+		return restrictionError("native host has no reviewed model-tool enforcement")
+	}
+	if c == nil || c.cmd == nil || !c.isolation || !c.diagnosticReady || !capabilities.SandboxReady || !capabilities.ProfileAllowed || !capabilities.ToolsDisabled || c.profile != b.profile() || c.cmd.Dir != b.workspace {
+		return restrictionError("model tools require the actual verified connection and boundary")
+	}
+	// Recheck after authentication/catalog inspection, not just the earlier child.
+	config, err := readIsolationConfig(c, b.workspace)
+	if err != nil {
+		return err
+	}
+	if err := config.verify(b, c.disabledMCP); err != nil {
+		return err
+	}
+	if config.ModelProvider != "openai" {
+		return restrictionError("model tools require the managed OpenAI provider")
+	}
+	if err := config.verifyFeatures(modelRestrictedFeatures); err != nil {
+		return err
+	}
+	if err := verifyRestrictedFeatures(c, modelRestrictedFeatures...); err != nil {
+		return err
+	}
+	return verifyDisabledCapabilities(c, b)
 }
 
 func isolationPath(path string, directory bool) (string, error) {
@@ -271,8 +303,8 @@ func (b isolationBoundary) args() []string {
 	profile := `{filesystem={` + strings.Join(entries, ",") + `},network={enabled=false}}`
 	args := []string{"app-server", "--listen", "stdio://", "-c", `windows.sandbox="elevated"`, "-c", "permissions." + b.profile() + "=" + profile,
 		"-c", "default_permissions=" + quoteTOML(b.profile()), "-c", `shell_environment_policy={inherit="none",set={TEMP=` + quoteTOML(b.scratch) + `,TMP=` + quoteTOML(b.scratch) + `,TMPDIR=` + quoteTOML(b.scratch) + `}}`,
-		"-c", `approval_policy="never"`, "-c", `web_search="disabled"`}
-	for _, feature := range restrictedFeatures {
+		"-c", `approval_policy="never"`, "-c", `web_search="disabled"`, "-c", `model_provider="openai"`}
+	for _, feature := range append(append([]string(nil), restrictedFeatures...), modelRestrictedFeatures...) {
 		args = append(args, "-c", "features."+feature+"=false")
 	}
 	return args
@@ -406,6 +438,7 @@ func openIsolation(ctx context.Context, options Options, b isolationBoundary) (c
 	}
 	capabilities.ProfileAllowed = true
 	c.diagnosticReady = true
+	c.disabledMCP = servers
 	return c, capabilities, nil
 }
 

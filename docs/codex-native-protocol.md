@@ -1,5 +1,16 @@
 # Codex native protocol preflight
 
+Current behavior after #322: native Windows amd64 Codex 0.160.0 can pass
+model-tool admission only with the reviewed enforcement evidence and all
+actual-connection controls described in the final section. `RunSession` and
+same-object `Session.Resume` remain caller-bound and fail closed. Evaluation
+production attempts still refuse until #323. No subscription trial was run by
+this source change; configured identity remains distinct from inference evidence.
+
+**Retained baseline (#292–#321).** Statements below about unconditional model
+refusal describe the behavior before #322. Their replacements, every caller and
+the exact touched-element accounting are recorded in the #322 section below.
+
 `internal/codexnative` adds an internal, read-only capability check alongside
 the manual Codex adapter. Nothing calls it from the CLI or Delivery engine yet.
 It starts the installed executable with the argument vector `app-server
@@ -884,3 +895,253 @@ or provisioning ran during this follow-up. Earlier fresh-home descendant
 uncertainty is not resolved by these cleanly bounded existing-home observations.
 Production execution stays refused; an independent review and separately
 approved subscription-backed trial remain necessary.
+
+## Verified native admission (#322, current behavior)
+
+Before #322, `modelToolBoundary(version)` returned `ErrIsolationUnavailable`
+unconditionally, including after #321's successful synthetic tool replay.
+`IsolationPreflight`, every `RunSession` start and every `Session.Resume`
+reconnect therefore refused for all five dispatched roles. After #322,
+`modelToolBoundary(connection, boundary, capabilities)` admits only the
+reviewed Windows amd64 0.160.0 enforcement with its actual connection's controls.
+Older, newer, prerelease, missing and otherwise unreviewed native enforcement
+still refuses. Version equality is a necessary source-evidence boundary, never
+sufficient admission. Private command diagnostics retain their broader
+capability compatibility; their success alone does not enable session methods.
+
+The admission checks require the canonical workspace/scratch/protected-path
+profile, no inherited profile roots/extensions, elevated sandbox readiness,
+allowed profile, network denial, approval `never`, disabled web search, scrubbed
+command environment and scratch-pinned `TEMP`, `TMP`, `TMPDIR`. Discovery still
+closes without execution, and a fresh child explicitly disables every discovered
+MCP server. The server set must remain identical. Effective configuration and
+loaded feature support are checked again after managed account/catalog inspection
+on the actual execution connection. Missing, enabled, conflicting, malformed or
+unsupported controls refuse before `thread/start` or `thread/resume`.
+
+In addition to the existing inherited-surface controls, the shared process-only
+builder disables `goals`, `request_permissions_tool`, `exec_permission_approvals`
+and `image_generation`. Model admission requires all four in effective config
+and loaded features. Command diagnostics require the original controls, so an
+unreviewed model feature cannot silently narrow their compatibility. The actual
+model connection must return exactly one `hooks/list` entry for its approved cwd,
+with present empty hooks/errors/warnings, and present empty `plugin/installed`
+marketplaces/load-errors. Both hooks and plugins must be disabled: the reviewed
+source shows plugin cleanup hooks are not excluded by the hook flag alone.
+Hook/plugin inventory errors or warnings and reported hook execution refuse
+progression. Generic advisory notifications remain nonauthoritative: their method
+names cannot prove isolation or substitute for concrete control checks. The
+pinned thread/session source also emits instruction and development-feature
+notices, so a generic notice is not an invented blanket refusal rule. Required
+configuration, loaded features, profile/provider/policy/path reports and permission
+requests still fail closed on missing, conflicting or unsupported evidence.
+These inventory checks reuse #321's verifier; production does not acquire its
+installed-plugin source fixture or hook recognition/trust setup.
+
+The pinned [feature registry](https://github.com/openai/codex/blob/rust-v0.160.0/codex-rs/features/src/lib.rs)
+and [tool plan](https://github.com/openai/codex/blob/rust-v0.160.0/codex-rs/core/src/tools/spec_plan.rs),
+the hook/plugin loaders cited above, and the retained native replay supply the
+enforcement evidence. The [thread protocol](https://github.com/openai/codex/blob/rust-v0.160.0/codex-rs/app-server-protocol/src/protocol/v2/thread.rs)
+supports explicit `modelProvider` and `runtimeWorkspaceRoots` on start/resume;
+`allowProviderModelFallback` and `dynamicTools` belong to start only. Both
+start/resume select `openai` and empty runtime roots. Start also supplies empty
+dynamic tools, empty environments/capability roots and fallback false. The
+response must confirm the OpenAI provider and present empty runtime roots.
+Resume can restore only this same object's originally empty dynamic-tool history;
+arbitrary externally supplied threads and histories remain unavailable.
+
+All five roles share this gate: implementer/specialist use the worker profile;
+scout/reviewer/review_downgrade use the read-only profile. The root-read
+prerequisite and explicitly protected read denials remain as documented above.
+`modelToolBoundary` is a shared restriction for every start/resume of every
+role, not a specialist-only rule. `IsolationCapabilities.ModelToolsVerified`
+means reviewed enforcement and observed controls; it is cleared on preflight
+cleanup failure and does not set the metadata connection's session flag, approve
+a task, prove subscription entitlement or create a metrics observation.
+
+Task IDs, actual Delivery association, role prose, prompt, exact model/effort and
+canonical caller paths remain fixed. The session now also retains its implicit
+native credential-home and shared-Git protections; a changed binding refuses
+reconnect without altering the retained checkpoint or dirty work. All reported
+profile/provider/path/policy mismatches stop execution. Model/effort reports are
+configured identity, not per-turn inference telemetry. Missing native identity
+or usage stays unknown; an unidentified turn cannot be resumed or retried.
+Managed ChatGPT account and auth-mode evidence are still required, with no
+credential copying, key fallback, login or provider/model fallback API.
+
+The finite caller deadline, 1 MiB message/output bound, 1,024 event/observation
+limits, bounded interrupt acknowledgement and stdio shutdown/reaping remain.
+Cancellation still preserves its execution outcome even when cleanup fails.
+Disconnect recovery reuses the same retained thread/session/turn and deduplicates
+usage/output; it never sends another `turn/start`. Completion is neither task
+verification nor merge permission. No durable cross-process recovery is added.
+
+### Every start/resume caller
+
+| Caller or entry | Current behavior |
+| --- | --- |
+| `IsolationPreflight` | Bounded public no-turn evidence check, Windows amd64 only; closes both children and returns separate checked controls. No session method is enabled. |
+| `RunSession` → `Session.connect` → `Session.execute(false)` | Validates the exact approved Task, performs metadata and isolation preflights, repeats controls plus managed auth/catalog on the actual execution connection, then submits at most one turn. |
+| `Session.Resume` → `checkResume` → `connect` → `execute(true)` | Requires the original caller/task/profile/canonical protection binding and identified disconnected unfinished turn; repeats all admission checks, sends only `thread/resume`, and accepts only that single retained turn. |
+| `internal/evalplan/controller.go`: `nativeWorker.execute` | Calls `IsolationPreflight` for eligibility but unconditionally returns `Outcome: refused` even if it succeeds. It does not call `RunSession`/`Resume`, fabricate Delivery IDs or admit evaluation model work. #323 owns integration and the still-historical refusal wording in evaluation preview/report. |
+| Ordinary session tests | Scripted subprocess host satisfies or rejects the real gate. Public eligible five-role start/resume runs on Windows; private admitted lifecycle tests and refusal/binding checks run on every CI OS. No installed Codex or inference. |
+| `TestCodexIsolationSmoke` | Existing opt-in no-model diagnostic commands; command proof does not enable any session. |
+| `TestCodexModelToolIsolationSmoke` | Existing opt-in synthetic Responses/provider/auth replay; test-only session flag admits synthetic dispatch and reuses production inventory/feature checks. No managed subscription inference. |
+| `TestCodexSubscriptionTrial` | Separately tagged and explicitly authorized live validation caller described below. Uses the same `connect`/`execute`/`Resume` lifecycle, with no production bypass. Not run by this source delivery. |
+
+No CLI or Delivery-engine model execution caller is added. Search of all
+`RunSession`, `Resume`, `IsolationPreflight`, `modelToolBoundary` and direct
+thread/turn requests accounts for the entries above. Metadata connections still
+deny every execution method, not just `turn/start`. Isolation connections add
+only read-only hook/plugin inventory RPCs. Unsandboxed process, fork/steer,
+approval/tool responses, delegation, login, configuration writes and arbitrary
+RPCs remain unavailable on every connection, including admitted sessions.
+
+### Separately authorized subscription trial (not executed)
+
+The runnable path has the separate build tag `codex_subscription`. It is absent
+from ordinary CI and both `codex_live` synthetic commands. It creates no home,
+provisions no sandbox, installs no dependency, changes no persisted user
+config/trust and probes no credential content. Use only the existing installed
+Windows amd64 Codex 0.160.0 and elevated sandbox. Its future execution requires
+a separate exact human approval; the #322 source plan does not authorize it.
+
+A trusted caller first obtains a real, separately approved Delivery Task and
+profile and confirms the current dispatch/run association through the parent
+engine. The harness validates the binding but does not confer engine approval.
+Do not manufacture RunID/IssueNumber/attempt identifiers for evaluation work.
+Prepare existing, separately approved workspace/scratch/protected directories
+outside each other, and small task-owned parent sentinels. No new Codex home is
+part of that setup. The caller retains the exact prompt and selects one scenario:
+`complete`, `interrupt`, or `recover`. Each authorization consumes at most one
+turn and one same-turn reconnect; a later scenario needs a new explicit approval.
+
+Prepare `codex-subscription-authorization.json` with these exact Go JSON fields:
+
+| Field | Required binding |
+| --- | --- |
+| `Caller` | Exactly `TestCodexSubscriptionTrial`. |
+| `Options` | `Executable`: absolute installed native executable; canonical `Dir` exactly equals Task workspace; real `ClientVersion`. |
+| `Task` | Full exact `ID`, `RunID`, `IssueNumber`, `Role`, `Attempt`, `ReviewCycle`, `Selection` (`Model`, `Effort`, no variant), `Prompt`, and canonical `Layout` (`Workspace`, `Scratch`, `MainCheckout`, `ControllerState`, `SiblingWorkspaces`, `CredentialPaths`) from the separately approved caller. |
+| `Scenario`, `TimeoutSeconds` | Exactly one named scenario and 1–180 seconds for initial execution plus reconnect. Existing bounded shutdown grace is additional; the Go test has a four-minute outer bound. |
+| `ApprovedAt`, `ExpiresAt` | RFC3339 timestamps; no future approval, at most 30 minutes between them, and enough remaining validity for the full execution bound. |
+| `Preserved`, `Forbidden` | 1–16 canonical protected sentinel paths mapped to exact SHA-256 hex hashes; at most 32 canonical protected outputs that must remain absent. Parent paths must be within approved main/controller/sibling locations and outside every supplied/native credential home. No credential/home contents are read. |
+| `Expected` | At most 16 canonical workspace/scratch output paths mapped to exact SHA-256 hashes from the approved bounded tool action. They must be absent before execution; at least one is required for `complete`, so a model saying done without the expected new file fails. Recovered successful completion also checks supplied expected outputs. |
+| `Evidence` | A new canonical `.jsonl` path under protected `ControllerState`, distinct from the checked sentinel/forbidden paths. Exclusive creation consumes authorization before any host launch; an existing claim, including a failed trial's claim, cannot be reused. |
+| `Assertion` | Exact statement printed by preparation below and separately approved by the human. SHA-256 covers every preceding field, including caller, task/role/profile, executable, paths, scenario, limits and parent checks; only Assertion itself is blanked for hashing. |
+
+Preparation validates the binding and prints the required assertion without
+claiming authorization, launching a host or submitting a turn:
+
+```powershell
+$env:ORCH_CODEX_SUBSCRIPTION_TRIAL = 'C:\approved\controller\codex-subscription-authorization.json'
+go test -tags codex_subscription ./internal/codexnative -run '^TestCodexSubscriptionTrialAuthorization$' -count=1 -v -timeout 20s
+```
+
+After the separate human approves that exact statement, the trusted caller
+inserts it as Assertion in the file, checks the current parent dispatch again,
+and runs exactly:
+
+```powershell
+go test -tags codex_subscription ./internal/codexnative -run '^TestCodexSubscriptionTrial$' -count=1 -v -timeout 4m
+```
+
+Missing, changed, expired or reused authorization refuses before host launch.
+The ordinary `TestSubscriptionTrialAuthorization` checks those paths without
+inference. A generic boolean opt-in cannot authorize the test. No trial command
+above was run in this source delivery, including preparation against real paths.
+
+Parent sentinel hashes and absent forbidden outputs are checked before and
+after the trial. The protected JSONL evidence retains the exact authorization,
+receipt times, initial error, before-resume checkpoint, final SessionResult,
+requested versus native reported profile, thread/session/turn IDs, output,
+source-distinct observations/unknowns, cleanup errors and final parent/expected-check
+status. Evidence writes are synced and failures fail the test; evidence and dirty
+workspace/scratch are preserved, never reset or automatically deleted.
+
+Completion requires a successful terminal turn, clean shutdown and parent-verified
+expected tool-output bytes. Expected paths are revalidated after model work;
+`os.Root` confines resolution, file identity is checked before reading, and
+symlink/junction escapes, hard links and unavailable link identity refuse. Both
+protected and expected file reads are bounded to 1 MiB. The no-native output
+regression checks missing files and matching-content protected aliases/hard links.
+Interruption
+cancels only after the existing `turnReady` seam has retained an identified turn;
+it requires a native `interrupted` terminal event and the sole expected caller
+cancellation error, with cleanup errors refusing validation. Recovery closes
+only the owned output pipe after an identified turn, retains the disconnect and
+any cleanup error, and makes one `Resume` call with the same Task/object. It
+requires the same native thread/session/turn and a terminal resumed result;
+an interrupted terminal result is honest recovery, not task completion. A fast
+completion race, unsupported native resume, missing identity or cleanup failure
+is retained as a limitation and is not retried with new task input. Owned-server
+shutdown remains bounded; this path makes no blanket descendant-cleanup claim.
+Interrupt/recover validate lifecycle; tool-action evidence remains unknown unless
+the trial reaches successful completion and checks its supplied Expected outputs.
+
+Synthetic success is still not live managed-authentication/inference/usage/
+interruption/recovery evidence. Those subscription trials and the measured
+evaluation baseline remain unexecuted. The removed fresh-home attempt's possible
+elevated-descendant cleanup uncertainty above is unchanged and unresolved.
+
+### #322 blast radius and compatibility
+
+| Touched element | Before #322 | After #322; does prior behavior still hold? |
+| --- | --- | --- |
+| `isolation.go`: `IsolationCapabilities`, `IsolationPreflight`, `modelToolBoundary` | Configuration prerequisites followed by unconditional model refusal for every role/version. | Adds separate ModelToolsVerified evidence and conditional admission for reviewed Windows amd64 0.160.0 plus actual controls; before/after refusal is retained above. No-turn preflight, cleanup, missingness and unsupported-host refusal remain. |
+| `isolation.go`: `isolationBoundary.args`, `openIsolation` | Shared canonical profile/environment/feature rules and discovered MCP disables; diagnosticReady follows verified readiness/profile. | Retains all rules and diagnostic compatibility; pins OpenAI provider, supplies four model-only disables and retains discovered MCP names privately for the later recheck. Every child/profile uses the builder. |
+| `isolation_config.go`: `isolationConfig`, `restrictedFeatures`, new `modelRestrictedFeatures`, `verify`, new `verifyFeatures`, `verifyRestrictedFeatures`, new `verifyDisabledCapabilities` | Effective config and original loaded-feature checks; inventories were test-only. | Retains original diagnostic requirements; extracts their shared feature decoder, adds the four model-only requirements and promotes bounded empty hook/plugin inventories. Config echo alone still cannot pass. No user config/trust, plugin provenance or credential probes are added. |
+| `transport.go`: package comment, `connection.disabledMCP`, `connection.request` | Metadata denied execution; isolation allowlist had config/features/readiness/profile; generic advisories were not authority. | Keeps execution/approval/process/fork/tool/config-write restrictions for every connection. Adds only isolation inventory RPCs and private discovery binding. Generic notification handling remains unchanged; concrete control checks decide admission. |
+| `session.go`: `Session.boundary`, `newSession`, `checkResume`, `connect`, `RunSession` comment | Exact canonical caller Task binding and lifecycle; implicit protection paths were recomputed without retention; every model boundary refused. | Retains task/profile/auth/catalog/deadline/cleanup/dirty-work/replay behavior. Adds implicit protection comparison and actual gate admission; every start and resume uses it. No caller bypass or arbitrary execution API. |
+| `session.go`: `nativeSettings`, `nativeThreadResponse`, `execute`, `settings`, `acceptThread`, `notification` | Explicit model/effort/policy/profile; inherited provider was not bound, roots/dynamic-tools were not explicit, hooks were ignored. | Retains mismatch/unknown handling; pins and confirms provider/empty roots, sets empty start dynamic tools and stops hook execution reports. Native lifecycle identities, one turn and no-replay semantics remain. |
+| `isolation_test.go`: `TestIsolationEnvironmentsAndModelRefusal`, `scriptedIsolationServer`, new `TestModelToolAdmission` | Synthetic diagnostics, environment/config/feature failures, unconditional refusal. | Retains diagnostic/refusal/cleanup cases; tests eligible controls versus missing/changed/unsupported/inherited inventories, wrong provider and connection/profile mismatch for both profiles. Extends the existing scripted host to the session fixture, without a native inference seam. |
+| `session_test.go`: `scriptedSessionConnection`, `scriptedSessionServer`, new `scriptedSessionRequests`, `TestSessionScriptedLifecycle`, `TestSessionDisconnectResumeReplay`, new `TestSessionAdmittedStartAndResumeEveryRole`, new `TestSessionResumeRejectsChangedImplicitProtection` | Private synthetic session-flag bypass and bounded lifecycle/binding/counter tests. | Removes that bypass: ordinary fixtures satisfy the real gate. Retains prior failure/lifecycle/unknown/usage checks; adds provider/roots/hook refusals, public eligible five-role start/resume and changed shared-Git binding rejection. Unreviewed production fixtures still refuse without model work. |
+| `preflight_test.go`: `TestPreflightSelectionAndExecutionBoundary` | All metadata execution/isolation methods refused. | Same behavior, with explicit inventory-RPC denial checks. |
+| `isolation_live_test.go`: `TestCodexIsolationSmoke` | 46 native synthetic command probes plus assertion of global model refusal. | All probes/parent/descendant/cleanup checks remain. Replaces that assertion with the actual invariant: command evidence alone leaves session admission disabled. No model turn. |
+| `tool_replay_live_test.go`: `replayArgs`, `openToolReplay`, `replayMetadata`, `replayDisabledCapabilities` | Test-only four feature disables, ignored process `ephemeral=true`, manual inventory RPC dispatch and duplicated empty-inventory decoder. | Removes duplicate overrides/dispatcher/decoder and the deprecated ignored process ephemeral key; supported thread/start ephemeral=true remains. Reuses production controls/allowlist/verifier. Synthetic provider/auth, hook trust source, installed-plugin provenance and both role replay plans remain test-only. No new fixture infrastructure. |
+| New `subscription_trial_test.go`: `subscriptionTrial`, `assertion`, `validate`, `parentPath`, `expectedRoot`, `checkExpected`, `checkTrialHash`, `claim`, `TestSubscriptionTrialAuthorization`, `TestSubscriptionTrialExpectedOutput` | No executable exact live-trial authorization or parent tool-output check. | Adds test-only bounded caller assertion/canonical parent/output validation and exclusive one-use claim; missing/mismatched/expired/reused input cannot launch a host. Completion must leave exact expected tool output; replaced aliases and hard links cannot make the parent read protected sources. No production approval/config API. |
+| New `subscription_trial_path_windows_test.go`, `subscription_trial_path_other_test.go`: `trialSingleLink` | No trial-specific link-identity check. | Test-only reuse of Windows handle metadata and Unix stat link counts rejects hard links or unverifiable identity before file reads. No production path-helper or platform compatibility change. |
+| New tagged `subscription_trial_live_test.go`: `TestCodexSubscriptionTrial`, `TestCodexSubscriptionTrialAuthorization`, `readSubscriptionTrial`, `runSubscriptionTrial`, `checkParent` | No separately callable managed-subscription lifecycle trial. | Adds explicit unexecuted opt-in preparation/trial using the existing session API and turnReady seam, finite limits, parent checks and retained evidence. No ordinary-CI or codex_live inference. |
+| This document | Recorded unconditional model refusal and synthetic-only validation. | Preserves the old statements and fresh-home uncertainty; adds current conditional behavior, all caller/symbol boundaries, source and configured-versus-observed limits, and a separately authorized unexecuted trial recipe. |
+
+Every unlisted production symbol retains its behavior. Evaluation/controller
+integration and storage, corpus/rubrics/grading, routing/defaults, metrics
+association/persistence, manifests/run schemas, approval/merge gates, manual
+adapters/guards, releases/installation, user permissions/config/trust and
+dependencies are unchanged. In particular, every evaluation production attempt
+still refuses; changing a shared native admission helper does not authorize it.
+
+### #322 verification and retained repair history
+
+Final serial native checks on the same installed Windows 0.160.0 host passed:
+`TestCodexIsolationSmoke` in 42.394s (all 46 parent-verified commands), and
+`TestCodexModelToolIsolationSmoke` in 83.058s (both role profiles, each with 38
+validated native outputs and the configured MCP/source/inventory controls).
+Final ordinary package tests passed in 42.666s; the separately tagged
+authorization/output tests passed in 0.984s without selecting a subscription
+trial. Build, vet, formatting and diff checks passed; gofmt output was empty.
+The full Go suite passed earlier, including evalplan in 562.859s. Later localized
+trial and warning-handling repairs were exercised with affected package/tagged
+and native checks; the unchanged long evaluation suite was not repeated. Final
+head-wide CI and independent review remain the Architect's lifecycle steps.
+
+The first focused run failed only because two new provider/root refusal fixtures
+correctly retained an unknown session identity while an old assertion expected
+a known one; the assertion was corrected. An added generic-warning filter then
+caused native failures before any replay output: 6.213s at the hook source,
+6.877s at actual-child metadata, and diagnostic runs of 6.796s, 6.718s and 6.786s.
+The last run safely characterized a deprecated config `ephemeral` notice without
+printing native account/config text. Before this repair, replayArgs included an
+ignored top-level `ephemeral=true`; after it, only the supported thread/start
+ephemeral parameter remains, with ephemeral credential storage unchanged.
+That repair advanced to thread/start but the added blanket filter still failed
+in 11.558s on an advisory. Pinned thread/session source confirms that advisory
+notifications also carry instruction and development-feature notices. The
+Architect removed this unrequested blanket policy and its temporary diagnostic
+taxonomy, retaining every concrete enforcement check. The final native pass
+above followed that correction. No failed attempt is reported as a pass.
+
+No managed subscription trial, real-path authorization preparation, inference
+identity/usage observation, live interruption/recovery or evaluation baseline
+ran in this source increment. Existing-home validation did not resolve the
+historical fresh-home elevated-descendant uncertainty.
