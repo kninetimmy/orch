@@ -1,0 +1,218 @@
+{
+  "schema_version": 1,
+  "kind": "grading-author-preparation",
+  "issue": 318,
+  "author": {
+    "identity": "Codex/issue-318-author",
+    "kind": "agent",
+    "routed_selection": {
+      "model": "gpt-6.1-sol",
+      "effort": "max"
+    },
+    "source_access": [
+      "pinned-source",
+      "key",
+      "controls",
+      "grading-definitions"
+    ],
+    "exposure": [
+      "reference-v1-all-keys",
+      "held-out-source-access",
+      "grading-implementation",
+      "model-training-unknown"
+    ]
+  },
+  "independent_validation": {
+    "status": "pending fresh Architect-arranged review; all author verification complete",
+    "validator_identity": "not-yet-retained",
+    "limitations": [
+      "Author mapping/control/test evidence is not independent semantic validation.",
+      "Test-only identities and claimed validation are synthetic preparation assertions, not authenticated principals or actual fresh review."
+    ]
+  },
+  "frozen_corpus": {
+    "path": "evaluation/reference-v1/manifest.json",
+    "sha256": "2c3724026d5dc586c01c628bc103670eeb084a1abd173b28342c7372aa9a8ddd",
+    "prior_bytes": "unchanged"
+  },
+  "rubrics": [
+    {
+      "case_id": "implement-dev-ci-empty",
+      "case_version": 1,
+      "rubric_version": 1,
+      "path": "evaluation/grading-v1/implement-dev-ci-empty.json",
+      "sha256": "dcce2516069ce648e8724e030aa9dcae4b46be345224025773bd37285e4617fe"
+    },
+    {
+      "case_id": "implement-dev-ignore-lf",
+      "case_version": 1,
+      "rubric_version": 1,
+      "path": "evaluation/grading-v1/implement-dev-ignore-lf.json",
+      "sha256": "519d5f886604d9cc709c538f97d98abec8605aa28de2023683b8a5d8c6717ab3"
+    },
+    {
+      "case_id": "implement-held-capture",
+      "case_version": 1,
+      "rubric_version": 1,
+      "path": "evaluation/grading-v1/implement-held-capture.json",
+      "sha256": "d51b7fd635969119aa6f9b0d92ac8b0e8ddb4d2f6f7048124cf64ba873a37bd7"
+    },
+    {
+      "case_id": "implement-held-effort-window",
+      "case_version": 1,
+      "rubric_version": 1,
+      "path": "evaluation/grading-v1/implement-held-effort-window.json",
+      "sha256": "f507f50b95356cd26d73a15b5b37b59bbb6d2a0dd197b569995793f66e63320d"
+    },
+    {
+      "case_id": "review-dev-ci-defective",
+      "case_version": 1,
+      "rubric_version": 1,
+      "path": "evaluation/grading-v1/review-dev-ci-defective.json",
+      "sha256": "bd72ea7b01cdbf573eb9de0c08d219bf2b7a6c661898f0a427c49d82af35b528"
+    },
+    {
+      "case_id": "review-dev-risk-clean",
+      "case_version": 1,
+      "rubric_version": 1,
+      "path": "evaluation/grading-v1/review-dev-risk-clean.json",
+      "sha256": "35a46eea970c308bd9cf3737dd0487152316e30c917126661f36011daabf5134"
+    },
+    {
+      "case_id": "review-held-effort-clean",
+      "case_version": 1,
+      "rubric_version": 1,
+      "path": "evaluation/grading-v1/review-held-effort-clean.json",
+      "sha256": "8a3fd8490ee247ef1ce76c57f5652c831ee1125c27a166f522e8e3cf048b8891"
+    },
+    {
+      "case_id": "review-held-question-defective",
+      "case_version": 2,
+      "rubric_version": 1,
+      "path": "evaluation/grading-v1/review-held-question-defective.json",
+      "sha256": "5fbee6cc2a01ab9a2860379e8ba7a1ad2e8d5705be3aebc87a399b0e1224a8c2"
+    },
+    {
+      "case_id": "scout-dev-paths",
+      "case_version": 1,
+      "rubric_version": 1,
+      "path": "evaluation/grading-v1/scout-dev-paths.json",
+      "sha256": "6b95e3d101cd794195c639568c9d321ae529e6e3480ae096133143f5dccf6278"
+    },
+    {
+      "case_id": "scout-dev-scan",
+      "case_version": 1,
+      "rubric_version": 1,
+      "path": "evaluation/grading-v1/scout-dev-scan.json",
+      "sha256": "6a37dc363340cb5c956752eed9cd7b7911920aa94ddf93f3b847c2b06dfdfc9b"
+    },
+    {
+      "case_id": "scout-held-git-gates",
+      "case_version": 1,
+      "rubric_version": 1,
+      "path": "evaluation/grading-v1/scout-held-git-gates.json",
+      "sha256": "b611fd5d4b4a13a9d46646a1dd36fb945fcf48b3851efa6218d9d2c2a9288db6"
+    },
+    {
+      "case_id": "scout-held-question",
+      "case_version": 2,
+      "rubric_version": 1,
+      "path": "evaluation/grading-v1/scout-held-question.json",
+      "sha256": "f5aae4acaf9a5abe7120bd32aea1fabd3a20caef5c5404d83b118d75408afe33"
+    }
+  ],
+  "checks": [
+    {
+      "command": "go build ./...",
+      "status": "passed",
+      "result": "Exit 0; rerun after the final production admission edit."
+    },
+    {
+      "command": "go test ./...",
+      "status": "passed",
+      "result": "Exit 0; internal/evalplan 485.500s; other packages passed/cached; unchanged default timeout."
+    },
+    {
+      "command": "go vet ./...",
+      "status": "passed",
+      "result": "Exit 0; rerun after the final production admission edit."
+    },
+    {
+      "command": "gofmt -l .",
+      "status": "passed",
+      "result": "Exit 0 and empty output; only touched Go files formatted."
+    },
+    {
+      "command": "npm test --prefix adapters/opencode",
+      "status": "passed",
+      "result": "Exit 0, 6/6 tests; existing lockfile dependencies prepared from local cache."
+    },
+    {
+      "command": "git diff --check",
+      "status": "passed",
+      "result": "Exit 0, empty output.",
+      "ci_does_not_run": true
+    },
+    {
+      "command": "go test -count=1 ./internal/cli ./internal/evalplan",
+      "status": "passed",
+      "result": "Exit 0; CLI 52.663s and evalplan 467.314s; serial execution with unchanged default timeout.",
+      "ci_does_not_run": true
+    },
+    {
+      "command": "go test -tags=corpus_validation -count=1 ./internal/evalcorpus",
+      "status": "passed",
+      "result": "Exit 0, 90.226s, 60/60 pinned maintainer controls; author-only reproduction.",
+      "ci_does_not_run": true
+    },
+    {
+      "command": "go test -count=1 -run '^TestGrading' ./internal/evalplan",
+      "status": "passed",
+      "result": "Exit 0, 0.384s; normal mapping, scoring, input, state, coverage and compatibility checks."
+    },
+    {
+      "command": "go test -tags=corpus_validation -count=1 -run '^TestGrading' ./internal/evalplan",
+      "status": "passed",
+      "result": "Exit 0, 209.162s; every heavy grading scenario executed.",
+      "ci_does_not_run": true
+    },
+    {
+      "command": "go test -count=1 -run '^TestEvalControllerCLIProcess$' -v ./internal/cli",
+      "status": "passed",
+      "result": "Exit 0, 22.283s; public CLI submission/status/text/Markdown/JSON/replay/failure preservation; Git-only PATH."
+    }
+  ],
+  "control_reproduction": {
+    "count": 60,
+    "verified": 60,
+    "classification": "author-only maintainer preparation; no model trial",
+    "invocation": "go test -tags=corpus_validation -count=1 ./internal/evalcorpus",
+    "reports": [
+      {
+        "path": "bin/issue-318/preparation-results.json",
+        "sha256": "cc79ebdb33d9642d93f627539e9f9c939e6b22a8efe7ed2f502e045829df438c"
+      },
+      {
+        "path": "bin/issue-318/control-output.json",
+        "sha256": "0ed6be08ed55ddf58c2a9c927252984e380c39972bd4217b6ab594ba416f1a69"
+      }
+    ]
+  },
+  "failure_history": {
+    "path": "bin/issue-318/verification-failures.json",
+    "retained": [
+      "Initial missing declared adapter dependency.",
+      "Contradictory synthetic regression evidence and overstrong concurrent-success assertion corrected.",
+      "Two overlapping and one serial default-suite timeouts retained; heavy new filesystem checks moved to explicit existing opt-in tag and actually run.",
+      "Generated disposable control source appeared in recursive gofmt; JSON evidence hash-verified and only task-created sandbox cleaned."
+    ]
+  },
+  "unresolved_disputes": [],
+  "limitations": [
+    "No evaluation model trials, measured baseline or Phase 1 completion.",
+    "Production native execution remains refused for every role through RunSession and Session.Resume.",
+    "Semantic assertions and evaluator independence/exposure are not authenticated identity or machine proof.",
+    "Comparison decisions remain inconclusive; coverage/native/measurement eligibility is not established by these preparation checks.",
+    "The explicit tagged grading and corpus gates must be independently repeated; CI omits them."
+  ]
+}

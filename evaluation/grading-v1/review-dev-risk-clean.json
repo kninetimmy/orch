@@ -1,0 +1,105 @@
+{
+  "schema_version": 1,
+  "version": 1,
+  "controller_only": true,
+  "corpus_sha256": "2c3724026d5dc586c01c628bc103670eeb084a1abd173b28342c7372aa9a8ddd",
+  "case_id": "review-dev-risk-clean",
+  "case_version": 1,
+  "case_sha256": "59534a505a2e302483a051a2023c6bfc228b38252b64ba0e4d0874ac70b41b32",
+  "packet_sha256": "4b2d3a9407ee18094aa5f4fb4d33dedb266863ebc1d3d8c2acc58fa9ea4204a7",
+  "key_sha256": "f4cdd2f55afbcb82d1a879077eeea549f95611d6f8334e1a6efe634fa059b0cb",
+  "probe_sha256": "0f56dee5f7cb5f51eb333b2f2c2fb35deb85800eef79d729d3171a2f976fdd9c",
+  "role": "review",
+  "classification": "clean",
+  "author": {
+    "identity": "Codex/issue-318-author",
+    "kind": "agent",
+    "relationship": "author",
+    "independent_of": [],
+    "source_access": [
+      "pinned-source",
+      "key",
+      "controls",
+      "grading-definitions"
+    ],
+    "exposure": [
+      "reference-v1-all-keys",
+      "held-out-source-access",
+      "grading-implementation",
+      "model-training-unknown"
+    ]
+  },
+  "controls": [
+    {
+      "name": "reference",
+      "sha256": "594ca67f2d2b30abdd1e635ae32401654aed4881f74c12c93135f6ecb14d7cc0",
+      "expected_failures": []
+    },
+    {
+      "name": "contrast-unknown",
+      "sha256": "0ed8aec0ba6c75b15c7a4225faab4acf5bc5f8a901904a1fa3772fca904142fb",
+      "expected_failures": [
+        "TestCorpus/closed"
+      ]
+    },
+    {
+      "name": "contrast-order",
+      "sha256": "6a786a3876cd9b2171beefa70e3eb3691bfe089fe39fa891056151559c02cc57",
+      "expected_failures": [
+        "TestCorpus/order"
+      ]
+    },
+    {
+      "name": "contrast-shared",
+      "sha256": "8777e8352777940706657449300121d230a14212022b5b1bff0f7e19d3e5608b",
+      "expected_failures": [
+        "TestCorpus/copy"
+      ]
+    }
+  ],
+  "requirements": [
+    {
+      "id": "closed",
+      "kind": "conclusion",
+      "expectation": "Every declared risk domain is valid; empty, unknown and wrong-case tokens are invalid.",
+      "severity": "major",
+      "evidence_routes": [
+        "source",
+        "reproduction"
+      ],
+      "checks": [
+        "TestCorpus/closed"
+      ]
+    },
+    {
+      "id": "order",
+      "kind": "conclusion",
+      "expectation": "Domains returns the nine declared values in canonical order.",
+      "severity": "major",
+      "evidence_routes": [
+        "source",
+        "reproduction"
+      ],
+      "checks": [
+        "TestCorpus/order"
+      ]
+    },
+    {
+      "id": "copy",
+      "kind": "conclusion",
+      "expectation": "Each Domains call creates independent slice backing storage.",
+      "severity": "major",
+      "evidence_routes": [
+        "source",
+        "reproduction"
+      ],
+      "checks": [
+        "TestCorpus/copy"
+      ]
+    }
+  ],
+  "blockers": [],
+  "alternatives": [
+    "A differently written approval using source analysis rather than reproduction is acceptable. A nonblocking suggestion to keep ordering tests is advisory, not a blocker. The fixed source has one correct verdict; a different implementation is not meaningful for this review packet."
+  ]
+}

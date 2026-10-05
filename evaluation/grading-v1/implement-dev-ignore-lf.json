@@ -1,0 +1,98 @@
+{
+  "schema_version": 1,
+  "version": 1,
+  "controller_only": true,
+  "corpus_sha256": "2c3724026d5dc586c01c628bc103670eeb084a1abd173b28342c7372aa9a8ddd",
+  "case_id": "implement-dev-ignore-lf",
+  "case_version": 1,
+  "case_sha256": "52ec3af5b01222f6e25c685dbf2021aeacd1af1d0dc46c6f72b300c937ea21b4",
+  "packet_sha256": "f5e8eda0fa1554f4d549b6607155d2be4da77c0778cdec1186e22584097a9b1d",
+  "key_sha256": "292aa3a4350b017c64a8165ca153d77820be2f5d74060851e037aaa0bee73833",
+  "probe_sha256": "aa9d3c13ecf6bb67f259cc638d1cbbf40cbeb6490f48bc6b8e9e994a18537509",
+  "role": "implementation",
+  "author": {
+    "identity": "Codex/issue-318-author",
+    "kind": "agent",
+    "relationship": "author",
+    "independent_of": [],
+    "source_access": [
+      "pinned-source",
+      "key",
+      "controls",
+      "grading-definitions"
+    ],
+    "exposure": [
+      "reference-v1-all-keys",
+      "held-out-source-access",
+      "grading-implementation",
+      "model-training-unknown"
+    ]
+  },
+  "controls": [
+    {
+      "name": "reference",
+      "sha256": "a3e1a717cf87ced12fd79e00a845aac803c1f1656148f2748dcd9993d884e705",
+      "expected_failures": []
+    },
+    {
+      "name": "unfixed",
+      "sha256": "b00117f386dd7036de25a623aa470be5d4a92e45c7a63ba6c03125e089931add",
+      "expected_failures": [
+        "TestCorpus/ignore-lf"
+      ]
+    },
+    {
+      "name": "bad-preserved",
+      "sha256": "17a913268ee945809ad7de4d08a30b1f9c58f1aed2392e7e0871d40d273f0182",
+      "expected_failures": [
+        "TestCorpus/preserved"
+      ]
+    },
+    {
+      "name": "alternative",
+      "sha256": "7edb01806775f54624aecbb838d131cc80ac2fd7b759ab94c1ed806c6a0f85d3",
+      "expected_failures": []
+    }
+  ],
+  "requirements": [
+    {
+      "id": "ignore-lf",
+      "kind": "behavior",
+      "expectation": "A .gitignore fixture written with CRLF is normalized and checked out as LF even with core.autocrlf=true.",
+      "severity": "major",
+      "evidence_routes": [
+        "reproduction"
+      ],
+      "checks": [
+        "TestCorpus/ignore-lf"
+      ]
+    },
+    {
+      "id": "preserved",
+      "kind": "regression",
+      "expectation": "Existing *.go, *.sh and *.md eol=lf policies remain effective.",
+      "severity": "major",
+      "evidence_routes": [
+        "reproduction"
+      ],
+      "checks": [
+        "TestCorpus/preserved"
+      ]
+    },
+    {
+      "id": "scope",
+      "kind": "scope",
+      "expectation": "Satisfy the packet's component/path/dependency restrictions: Pin the repository-root .gitignore to LF checkout line endings in .gitattributes. Preserve the existing LF rules for Go, shell and Markdown files. Use Git's native attributes; do not change .gitignore content or introduce dependencies. The external check will create its own disposable Git fixture with core.autocrlf=true and inspect checkout bytes. Permitted source paths: `.gitattributes`, `.gitignore`.\nSupplied instructions: ROLE.md and CONTEXT.md. All other history is excluded.\n",
+      "severity": "major",
+      "evidence_routes": [
+        "source",
+        "scope"
+      ],
+      "checks": []
+    }
+  ],
+  "blockers": [],
+  "alternatives": [
+    "A separately constructed anchored /.gitignore text eol=lf rule passes for this root-scoped task. Broader nested .gitignore coverage is not required by this packet. Both variants rely on Git, not a custom newline converter."
+  ]
+}

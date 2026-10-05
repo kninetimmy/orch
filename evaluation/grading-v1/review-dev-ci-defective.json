@@ -1,0 +1,117 @@
+{
+  "schema_version": 1,
+  "version": 1,
+  "controller_only": true,
+  "corpus_sha256": "2c3724026d5dc586c01c628bc103670eeb084a1abd173b28342c7372aa9a8ddd",
+  "case_id": "review-dev-ci-defective",
+  "case_version": 1,
+  "case_sha256": "f655af94ac723dd3f972fb94daa47669e6d8aa8d0ec403d10d822e8c1c8310c3",
+  "packet_sha256": "93d2965f7d91e9a79faf6494a50a867f1669a64dacb9e2e55b82233592673026",
+  "key_sha256": "52e3a247c3dcd75d5f4a0007a647b9c6b590a51f96516dbe9367d6b2c17c96fa",
+  "probe_sha256": "7dad82f4b499cc5654717934c03a4f0d9094aead6337dfad4aef12c883cab4b4",
+  "role": "review",
+  "classification": "defective",
+  "author": {
+    "identity": "Codex/issue-318-author",
+    "kind": "agent",
+    "relationship": "author",
+    "independent_of": [],
+    "source_access": [
+      "pinned-source",
+      "key",
+      "controls",
+      "grading-definitions"
+    ],
+    "exposure": [
+      "reference-v1-all-keys",
+      "held-out-source-access",
+      "grading-implementation",
+      "model-training-unknown"
+    ]
+  },
+  "controls": [
+    {
+      "name": "reference",
+      "sha256": "6b32cbaeb977ca99605fd9d01a63e4e019ce0234c0f3eb13d30ce3c6abca6d6b",
+      "expected_failures": [
+        "TestCorpus/empty"
+      ]
+    },
+    {
+      "name": "repair",
+      "sha256": "175f571ab391a89f3a5c3f7190bde1c9326d8be3c8ba76895e1f0a3cbbe35c8a",
+      "expected_failures": []
+    },
+    {
+      "name": "bad-malformed",
+      "sha256": "cabb8f610b6b795eee2e480fa376979940a389c87859460dd6750471d8b0959e",
+      "expected_failures": [
+        "TestCorpus/malformed"
+      ]
+    },
+    {
+      "name": "bad-states",
+      "sha256": "30a66b34188c19330c68baf32796b0856d6d4b9daca1a67111e142e74195d5c0",
+      "expected_failures": [
+        "TestCorpus/states"
+      ]
+    },
+    {
+      "name": "alternative-repair",
+      "sha256": "5bf57c3f394fd9f41e19a7eee31feb32738179918cbfb89f2b8e002f6b17b5e1",
+      "expected_failures": []
+    }
+  ],
+  "requirements": [
+    {
+      "id": "empty",
+      "kind": "conclusion",
+      "expectation": "RequiredCI wrongly unmarshals empty/whitespace stdout and returns an error instead of usable no-checks evidence.",
+      "severity": "major",
+      "evidence_routes": [
+        "source",
+        "reproduction"
+      ],
+      "checks": [
+        "TestCorpus/empty"
+      ]
+    },
+    {
+      "id": "malformed",
+      "kind": "conclusion",
+      "expectation": "Nonempty malformed JSON and unexpected exit codes are correctly rejected; alleging their acceptance is unjustified.",
+      "severity": "major",
+      "evidence_routes": [
+        "source",
+        "reproduction"
+      ],
+      "checks": [
+        "TestCorpus/malformed"
+      ]
+    },
+    {
+      "id": "states",
+      "kind": "conclusion",
+      "expectation": "Existing no-checks/pending/failing/passing derivation is correct; allegations that pending passes are unjustified.",
+      "severity": "major",
+      "evidence_routes": [
+        "source",
+        "reproduction"
+      ],
+      "checks": [
+        "TestCorpus/states"
+      ]
+    }
+  ],
+  "blockers": [
+    {
+      "id": "CI-EMPTY",
+      "severity": "major",
+      "requirement": "empty",
+      "description": "Empty/whitespace required-check stdout is wrongly parsed as JSON instead of usable no-checks evidence; empty and whitespace triggers are one defect."
+    }
+  ],
+  "alternatives": [
+    "A report that describes the empty and whitespace triggers as one defect, with either the exact source or injected-runner evidence, is acceptable. A suggested guard or [] normalization can be advisory. The repaired historical and alternative controls establish that blocking CI-EMPTY is justified."
+  ]
+}

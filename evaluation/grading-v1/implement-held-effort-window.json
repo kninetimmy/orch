@@ -1,0 +1,118 @@
+{
+  "schema_version": 1,
+  "version": 1,
+  "controller_only": true,
+  "corpus_sha256": "2c3724026d5dc586c01c628bc103670eeb084a1abd173b28342c7372aa9a8ddd",
+  "case_id": "implement-held-effort-window",
+  "case_version": 1,
+  "case_sha256": "71c847b872e615db6e800428040d37c0b02ac3944769c18a1af1c1fc033e8f4f",
+  "packet_sha256": "4de2f4589aa6b226d326bbf81b10bc54239958fc2ac413953d4a8ad100210323",
+  "key_sha256": "39d9cb7666f86c08925ab961088a4ba39ed612f79e0d3d631cb132815490f60d",
+  "probe_sha256": "ec0b05a550a51ca5194faea8c5666ddb3525b4f5a6655c374fec97ba4c116750",
+  "role": "implementation",
+  "author": {
+    "identity": "Codex/issue-318-author",
+    "kind": "agent",
+    "relationship": "author",
+    "independent_of": [],
+    "source_access": [
+      "pinned-source",
+      "key",
+      "controls",
+      "grading-definitions"
+    ],
+    "exposure": [
+      "reference-v1-all-keys",
+      "held-out-source-access",
+      "grading-implementation",
+      "model-training-unknown"
+    ]
+  },
+  "controls": [
+    {
+      "name": "reference",
+      "sha256": "f7bbeb4fe28f625038b6804c4238e066711b0f37b94d0b2582f3f4dcb725d454",
+      "expected_failures": []
+    },
+    {
+      "name": "unfixed",
+      "sha256": "cc9ad0229fb2a71ea8444dcc1340d1fd57f9b255b4480d9026b091535c650b11",
+      "expected_failures": [
+        "TestCorpus/window",
+        "TestCorpus/labels"
+      ]
+    },
+    {
+      "name": "bad-labels",
+      "sha256": "a1a49222917e37aeb4c041b72a61fe4381b5c63d1d84bfeb1a7638a8115807fe",
+      "expected_failures": [
+        "TestCorpus/labels"
+      ]
+    },
+    {
+      "name": "bad-typed",
+      "sha256": "86c8229a5ec4982991e15f24511b587be68945232ed4ea556ea8b953dffa61af",
+      "expected_failures": [
+        "TestCorpus/typed"
+      ]
+    },
+    {
+      "name": "alternative",
+      "sha256": "bfeb3b2e6c24110700d87f3ea6696e4b0a4b78261cdc95867133ee829b6ab675",
+      "expected_failures": []
+    }
+  ],
+  "requirements": [
+    {
+      "id": "window",
+      "kind": "behavior",
+      "expectation": "Codex max/ultra and Claude max are included in their contiguous four-value windows; low retains the leading window.",
+      "severity": "major",
+      "evidence_routes": [
+        "reproduction"
+      ],
+      "checks": [
+        "TestCorpus/window"
+      ]
+    },
+    {
+      "id": "labels",
+      "kind": "regression",
+      "expectation": "Every option label equals its submitted effort token; exactly the default is recommended.",
+      "severity": "major",
+      "evidence_routes": [
+        "reproduction"
+      ],
+      "checks": [
+        "TestCorpus/labels"
+      ]
+    },
+    {
+      "id": "typed",
+      "kind": "regression",
+      "expectation": "validEffort continues to accept the full host enum, including values omitted from the offered window, and reject invalid values/Claude ultra.",
+      "severity": "major",
+      "evidence_routes": [
+        "reproduction"
+      ],
+      "checks": [
+        "TestCorpus/typed"
+      ]
+    },
+    {
+      "id": "scope",
+      "kind": "scope",
+      "expectation": "Satisfy the packet's component/path/dependency restrictions: Update the effort-choice component in internal/interview/sequence.go and its shared use with configurelocal.go. Offer at most four contiguous enum values: the leading four unless the question's default occurs later, then the four ending at that default. Label options with their submitted enum tokens and mark exactly the offered default recommended. Preserve validEffort's full typed domain. Modify only this component and focused tests. Full interviews, model defaults and configuration are outside this case. The controller compiles exact selected declarations, not the unrelated interview machinery. Permitted source paths: `internal/interview/sequence.go`, `internal/interview/configurelocal.go`, `internal/question/question.go`.\nSupplied instructions: ROLE.md and CONTEXT.md. All other history is excluded.\n",
+      "severity": "major",
+      "evidence_routes": [
+        "source",
+        "scope"
+      ],
+      "checks": []
+    }
+  ],
+  "blockers": [],
+  "alternatives": [
+    "A separately constructed start-index algorithm uses max(0,index-4+1) and a bounded end. The controls compile exact AST declarations from the two full pinned context files and the real question types; declaration extraction and omitted whole-interview behavior are disclosed."
+  ]
+}

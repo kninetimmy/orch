@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"reflect"
 	"runtime"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -165,6 +166,46 @@ func TestEvalControllerCLIProcess(t *testing.T) {
 		t.Fatalf("approval replay: %d %s", code, failure)
 	}
 	id := retained.Snapshot.EvaluationID
+	legacyDestination := retained.Destination
+	legacyReport, err := os.ReadFile(filepath.Join(legacyDestination, "report.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Exercise the public grading process against retained refused evidence.
+	// These are synthetic assertions, never fresh independent validation or trials.
+	submission := evalRefusedGrade(t, f, &retained)
+	gradeFile := filepath.Join(filepath.Dir(f.file), "grading-submission.json")
+	evalWrite(t, gradeFile, evalJSON(t, submission))
+	gradeArgs := []string{"eval", "grade", "--run", id, "--storage-root", root, "--unit", "1", "--attempt", "1", "--submission", gradeFile, "--json"}
+	for range 2 {
+		code, out, failure := run(gradeArgs...)
+		if code != ExitOK {
+			t.Fatalf("public grading/replay: %d %s", code, failure)
+		}
+		if err := json.Unmarshal([]byte(out), &retained); err != nil {
+			t.Fatal(err)
+		}
+		if len(retained.Snapshot.Grading.History) != 1 || retained.Snapshot.Attempts[0].Grade != "invalid" || retained.Snapshot.Attempts[0].Grading.AcceptedExecution || retained.Snapshot.Progress.State != "refused" {
+			t.Fatal("refused evidence promoted, execution changed or replay appended")
+		}
+	}
+	for _, args := range [][]string{
+		{"eval", "grade", "--run", id, "--storage-root", root, "--submission", gradeFile},
+		append(slices.Clone(gradeArgs), "--unit", "1"),
+		{"eval", "grade", "--run", id, "--storage-root", root, "--unit", "01", "--attempt", "1", "--submission", gradeFile},
+	} {
+		if code, _, _ := run(args...); code != ExitUsage {
+			t.Fatal("ambiguous grading selectors accepted")
+		}
+	}
+	submission.Reason = "PRIVATE_CONFLICTING_EVALUATOR_PROSE"
+	evalWrite(t, gradeFile, evalJSON(t, submission))
+	if code, _, failure := run(gradeArgs...); code != ExitError || !strings.Contains(failure, "conflicting") {
+		t.Fatalf("conflicting grade replay: %d %s", code, failure)
+	}
+	if preserved, err := os.ReadFile(filepath.Join(legacyDestination, "report.json")); err != nil || !bytes.Equal(preserved, legacyReport) {
+		t.Fatal("grading replaced the earlier retained report")
+	}
 	// Retained operations must work even after the original source disappears.
 	missing := filepath.Dir(f.file) + "-unavailable"
 	if err := os.Rename(filepath.Dir(f.file), missing); err != nil {
@@ -228,5 +269,76 @@ func TestEvalControllerCLIProcess(t *testing.T) {
 	if data, err := os.ReadFile(progress); err != nil || string(data) != "progress-tamper-sentinel" {
 		t.Fatal("corrupt evidence overwritten")
 	}
-	t.Log("Compiled public CLI: strict inputs/approvals, saved-plan revalidation, production refusal, retained status/stop/report parity, single-use approval and immutable conflict preservation; no host/model execution.")
+	t.Log("Compiled public CLI: strict inputs/approvals/grading selectors, saved-plan revalidation, production refusal, grade submission/replay/conflict preservation, retained status/stop/all report formats and earlier report preservation; no installed host/model execution.")
+}
+
+func evalRefusedGrade(t *testing.T, f *evalFixture, report *evalplan.Report) evalplan.GradeSubmission {
+	t.Helper()
+	first := report.Snapshot.Attempts[0]
+	data, err := os.ReadFile(filepath.Join(f.plan.StorageRoot, report.Snapshot.EvaluationID, first.Evidence.Path))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var a evalplan.AttemptRecord
+	if err := json.Unmarshal(data, &a); err != nil {
+		t.Fatal(err)
+	}
+	data, err = os.ReadFile(filepath.Join(f.plan.StorageRoot, report.Snapshot.EvaluationID, filepath.Dir(first.Evidence.Path), "case.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var c evalcorpus.Case
+	if err := json.Unmarshal(data, &c); err != nil {
+		t.Fatal(err)
+	}
+	digest := func(value any) string {
+		t.Helper()
+		data, err := json.MarshalIndent(value, "", "  ")
+		if err != nil {
+			t.Fatal(err)
+		}
+		return evalcorpus.Digest(append(data, '\n'))
+	}
+	rubric := evalplan.Rubric{SchemaVersion: 1, Version: 1, ControllerOnly: true, CorpusSHA256: f.plan.Corpus.SHA256,
+		CaseID: c.ID, CaseVersion: c.Version, CaseSHA256: a.CaseSHA256, PacketSHA256: a.PacketSHA256, KeySHA256: c.Key.SHA256, ProbeSHA256: c.Probe.SHA256,
+		Role: c.Role, Author: evalplan.Evaluator{Identity: "synthetic-author", Kind: "agent", Relationship: "author", IndependentOf: []string{}, SourceAccess: []string{"pinned-source", "key", "controls"}, Exposure: []string{"synthetic-only"}},
+		Controls: []evalplan.ControlBinding{}, Requirements: []evalplan.Requirement{}, Blockers: []evalplan.KeyedDefect{}, Alternatives: []string{"PRIVATE_ALTERNATIVE_PROSE"}}
+	for _, control := range c.Controls {
+		rubric.Controls = append(rubric.Controls, evalplan.ControlBinding{Name: control.Name, SHA256: digest(control), ExpectedFailures: control.ExpectedFailures})
+	}
+	for _, kind := range []string{"behavior", "regression", "scope"} {
+		routes := []string{"reproduction"}
+		if kind == "scope" {
+			routes = []string{"source"}
+		}
+		rubric.Requirements = append(rubric.Requirements, evalplan.Requirement{ID: kind, Kind: kind, Expectation: "PRIVATE_REQUIREMENT_PROSE", Severity: "major", EvidenceRoutes: routes, Checks: []string{"Synthetic/check"}})
+	}
+	rubricData := evalJSON(t, rubric)
+	evalWrite(t, filepath.Join(filepath.Dir(f.file), "grading-rubric.json"), rubricData)
+	evidence := []byte("PRIVATE_EVIDENCE_AND_WORKER_PROSE")
+	evalWrite(t, filepath.Join(filepath.Dir(f.file), "grading-evidence.txt"), evidence)
+	artifacts := append(slices.Clone(a.Initial), a.Artifacts...)
+	artifacts = append(artifacts, evalplan.DigestedFile{Path: "case.json", SHA256: a.CaseSHA256})
+	for _, output := range []*evalplan.DigestedFile{a.Output, a.InvalidNative} {
+		if output != nil {
+			artifacts = append(artifacts, *output)
+		}
+	}
+	slices.SortFunc(artifacts, func(a, b evalplan.DigestedFile) int { return strings.Compare(a.Path, b.Path) })
+	s := evalplan.GradeSubmission{SchemaVersion: 1, ID: "public-cli-grade", Operation: "grade", EvaluationID: report.Snapshot.EvaluationID,
+		EvaluationSHA256: report.Snapshot.EvaluationSHA256, PlanDigest: report.Snapshot.Progress.PlanDigest, Unit: a.Unit, Attempt: a.Number,
+		AttemptSHA256: first.Evidence.SHA256, CaseSHA256: a.CaseSHA256, PacketSHA256: a.PacketSHA256, AttemptArtifacts: artifacts,
+		Rubric: evalplan.Artifact{Path: "grading-rubric.json", SHA256: evalcorpus.Digest(rubricData)}, Evaluator: evalplan.Evaluator{Identity: "synthetic-evaluator", Kind: "human", Relationship: "evaluator", IndependentOf: []string{}, SourceAccess: []string{"worker-output", "pinned-source"}, Exposure: []string{"synthetic-only"}},
+		Reason: "PRIVATE_EVALUATOR_PROSE", Evidence: []evalplan.GradeEvidence{
+			{ID: "source", Artifact: evalplan.Artifact{Path: "grading-evidence.txt", SHA256: evalcorpus.Digest(evidence)}, Route: "source", Citation: "PRIVATE_CITATION"},
+			{ID: "behavior", Artifact: evalplan.Artifact{Path: "grading-evidence.txt", SHA256: evalcorpus.Digest(evidence)}, Route: "reproduction", Citation: "PRIVATE_CITATION", Reproduction: &evalplan.Reproduction{Command: []string{"never-execute-supplied-command"}, Phase: "behavior", Passed: []string{"Synthetic/check"}, Failed: []string{}}},
+		}, Judgments: []evalplan.Judgment{}}
+	for _, req := range rubric.Requirements {
+		id := "behavior"
+		if req.Kind == "scope" {
+			id = "source"
+		}
+		s.Judgments = append(s.Judgments, evalplan.Judgment{ID: req.ID, State: "satisfied", Evidence: []string{id}, Reason: "PRIVATE_JUDGMENT_PROSE"})
+	}
+	return s
 }
