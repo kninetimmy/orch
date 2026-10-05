@@ -156,6 +156,16 @@ func (w nativeWorker) execute(ctx context.Context, request workerRequest) (worke
 }
 
 func validateAttemptNative(a *AttemptRecord, e *Evaluation) error {
+	if a.SchemaVersion != e.Preparation.Plan.Version {
+		return fmt.Errorf("attempt evidence version differs from frozen plan")
+	}
+	if a.SchemaVersion == 2 {
+		if a.Native != nil && a.Native.SchemaVersion != 2 || a.ExecutionSource == "codex-native-evaluation" && a.Outcome == "native-completed" && (a.Native == nil || a.Native.Binding == nil) {
+			return fmt.Errorf("version-2 native execution requires versioned evaluation evidence")
+		}
+	} else if a.Native != nil && a.Native.SchemaVersion != 0 {
+		return fmt.Errorf("legacy attempt cannot contain new native evaluation evidence")
+	}
 	if err := validateNative(a.Native); err != nil {
 		return err
 	}

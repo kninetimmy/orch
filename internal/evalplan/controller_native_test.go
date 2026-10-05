@@ -14,7 +14,10 @@ import (
 	"time"
 
 	"github.com/BurntSushi/toml"
+	"github.com/kninetimmy/orch/internal/codexnative"
+	"github.com/kninetimmy/orch/internal/config"
 	"github.com/kninetimmy/orch/internal/evalcorpus"
+	"github.com/kninetimmy/orch/internal/metrics"
 )
 
 func TestMain(m *testing.M) {
@@ -190,44 +193,42 @@ func evaluationNativeServer() {
 	}
 }
 
-func nativeControllerFixture(t *testing.T) (*controllerFixture, *Evaluation, workerRequest, nativeWorker) {
+func nativeWorkerFixture(t *testing.T) (*Evaluation, workerRequest, nativeWorker) {
 	t.Helper()
-	f := newControllerFixture(t, "screen", 1)
-	f.proposal.Version = 2
-	instructions := []Artifact{}
-	f.proposal.Instructions = &instructions
-	privateRoot := filepath.Join(filepath.Dir(f.root), "earlier-private-evidence")
-	writeFixture(t, filepath.Join(privateRoot, "control.txt"), []byte(privateSentinel))
-	protected := []string{privateRoot}
-	f.proposal.ProtectedRoots = &protected
-	f.proposal.Limits.MaxAttemptsPerUnit = 1
-	repairs := int64(0)
-	f.proposal.Limits.MaxRepairsPerUnit = &repairs
-	f.preview(t)
-	e, err := PrepareApproved(t.Context(), f.repo, f.root, f.record.PlanDigest, Approval{1, f.record.PlanDigest, "test-human", now(), ApprovalStatement})
+	base, err := filepath.EvalSymlinks(t.TempDir())
 	if err != nil {
 		t.Fatal(err)
 	}
-	sources, err := loadSources(t.Context(), f.repo, e.Preparation.Plan)
+	layout := codexnative.IsolationPaths{Workspace: filepath.Join(base, "packet"), Scratch: filepath.Join(base, "scratch"), MainCheckout: filepath.Join(base, "main"), ControllerState: filepath.Join(base, "controller"), SiblingWorkspaces: []string{filepath.Join(base, "earlier-private-evidence")}, CredentialPaths: []string{os.Getenv("CODEX_HOME")}}
+	for _, dir := range append([]string{layout.Workspace, layout.Scratch, layout.MainCheckout, layout.ControllerState}, layout.SiblingWorkspaces...) {
+		if err := os.Mkdir(dir, 0o700); err != nil {
+			t.Fatal(err)
+		}
+	}
+	profileBytes, err := os.ReadFile("../config/testdata/valid/full.toml")
 	if err != nil {
 		t.Fatal(err)
 	}
-	g, _, _, err := openEvaluation(f.root, e.ID)
+	cfg, err := config.Parse(profileBytes)
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer g.close()
-	unit := e.Preparation.Preview.Schedule[0]
-	a, record, err := prepareAttempt(t.Context(), g, e, Slot{Unit: unit, Attempts: []AttemptRef{{Number: 1, Kind: "initial"}}}, "initial", sources[unit.CaseID])
+	profiles, err := configuration(cfg)
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer a.close()
-	layout, err := a.layout(e)
-	if err != nil {
-		t.Fatal(err)
+	instructions, protected := []Artifact{}, layout.SiblingWorkspaces
+	e := &Evaluation{ID: "eval-aaaaaaaaaaaaaaaaaaaaaaaaaa", Preparation: Record{PlanDigest: "sha256:" + strings.Repeat("a", 64), Plan: Plan{Version: 2, Instructions: &instructions, ProtectedRoots: &protected,
+		Baseline: PinnedSelection{Selection: Selection{OrchRevision: strings.Repeat("a", 40), Profile: Artifact{SHA256: evalcorpus.Digest(profileBytes)}}, Configuration: profiles},
+		Cases:    []PublicCase{{Role: "scout"}, {Role: "implementation"}, {Role: "review"}}}}}
+	unit := Unit{Ordinal: 1, CaseID: "public-case", CaseVersion: 1, Repetition: 1, Side: "baseline"}
+	source := caseSource{definition: evalcorpus.Case{Role: "scout"}, public: map[string][]byte{"TASK.md": []byte("Declared synthetic public task."), "ROLE.md": []byte("Declared synthetic public role."), "code/public.go": []byte("package packet\n")}}
+	for name, bytes := range source.public {
+		writeFixture(t, filepath.Join(layout.Workspace, filepath.FromSlash(name)), bytes)
 	}
-	task, err := evaluationTask(e, record, sources[unit.CaseID], layout)
+	writeFixture(t, filepath.Join(layout.SiblingWorkspaces[0], "control.txt"), []byte(privateSentinel))
+	record := AttemptRecord{Unit: unit, Number: 1, Kind: "initial", CaseSHA256: strings.Repeat("b", 64), PacketSHA256: strings.Repeat("c", 64)}
+	task, err := evaluationTask(e, record, source, layout)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -235,8 +236,8 @@ func nativeControllerFixture(t *testing.T) (*controllerFixture, *Evaluation, wor
 	if err != nil {
 		t.Fatal(err)
 	}
-	request := workerRequest{Unit: unit, Role: sources[unit.CaseID].definition.Role, Layout: layout, Task: task, PlanVersion: 2, Intervention: "none", Revisions: []string{e.Preparation.Plan.Baseline.OrchRevision}}
-	return f, e, request, nativeWorker{clientVersion: "fixture-evaluation:complete", executable: executable, revision: e.Preparation.Plan.Baseline.OrchRevision}
+	request := workerRequest{Unit: unit, Role: source.definition.Role, Layout: layout, Task: task, PlanVersion: 2, Intervention: "none", Revisions: []string{e.Preparation.Plan.Baseline.OrchRevision}}
+	return e, request, nativeWorker{clientVersion: "fixture-evaluation:complete", executable: executable, revision: e.Preparation.Plan.Baseline.OrchRevision}
 }
 
 func TestNativeEvaluationControllerBindingAndRejections(t *testing.T) {
@@ -248,7 +249,7 @@ func TestNativeEvaluationControllerBindingAndRejections(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Setenv("CODEX_HOME", home)
-	f, e, request, executor := nativeControllerFixture(t)
+	e, request, executor := nativeWorkerFixture(t)
 	for _, c := range e.Preparation.Plan.Cases {
 		role, _, profile, err := evaluationProfile(e.Preparation.Plan, Unit{Side: "baseline"}, c.Role)
 		wantRole, wantModel, wantEffort := "scout", "gpt-5.6-terra", "low"
@@ -301,11 +302,6 @@ func TestNativeEvaluationControllerBindingAndRejections(t *testing.T) {
 			t.Fatalf("native mismatch %s admitted: %+v %v", scenario, result, err)
 		}
 	}
-	// An unapproved native controller cannot consume or run the same request.
-	unapproved := f.prepare(t)
-	if _, err := run(t.Context(), f.root, unapproved.ID, executor); err == nil {
-		t.Fatal("native controller bypassed approval")
-	}
 }
 
 func TestNativeEvaluationControllerRetainsExecution(t *testing.T) {
@@ -334,6 +330,10 @@ func TestNativeEvaluationControllerRetainsExecution(t *testing.T) {
 	executable, err := os.Executable()
 	if err != nil {
 		t.Fatal(err)
+	}
+	unapproved := f.prepare(t)
+	if _, err := run(t.Context(), f.root, unapproved.ID, nativeWorker{clientVersion: "fixture-evaluation:complete", executable: executable, revision: e.Preparation.Plan.Baseline.OrchRevision}); err == nil {
+		t.Fatal("native controller bypassed approval")
 	}
 	p, err := run(t.Context(), f.root, e.ID, nativeWorker{clientVersion: "fixture-evaluation:complete", executable: executable, revision: e.Preparation.Plan.Baseline.OrchRevision})
 	if err != nil {
@@ -383,4 +383,30 @@ func TestNativeEvaluationControllerRetainsExecution(t *testing.T) {
 		t.Fatal("consumed native schedule replayed")
 	}
 	t.Log("All output is scripted native RPC evidence; no subscription inference, semantic pass or measured baseline.")
+}
+
+func TestNativeEvaluationEvidenceVersionBinding(t *testing.T) {
+	e := &Evaluation{Preparation: Record{Plan: Plan{Version: 2}}}
+	legacy := &NativeEvidence{Observations: []metrics.Observation{{SchemaVersion: 2, RunID: "run-retained-fixture", ID: "legacy",
+		At: now(), Source: "fixture", Host: "codex", Unavailable: &metrics.Unavailable{Reason: "legacy"}}}}
+	for _, test := range []struct {
+		name   string
+		native *NativeEvidence
+	}{{"missing-native-binding", nil}, {"legacy-Delivery-observation", legacy}} {
+		t.Run(test.name, func(t *testing.T) {
+			a := AttemptRecord{SchemaVersion: 2, ExecutionSource: "codex-native-evaluation", Outcome: "native-completed", Native: test.native, Initial: []DigestedFile{}, Artifacts: []DigestedFile{}}
+			var retained AttemptRecord
+			if err := strictStored(fixtureJSON(t, a), &retained); err != nil {
+				t.Fatal(err)
+			}
+			if err := validateAttemptNative(&retained, e); err == nil {
+				t.Fatal("schema-2 native completion accepted without versioned evaluation binding")
+			}
+		})
+	}
+	e.Preparation.Plan.Version = 1
+	a := AttemptRecord{SchemaVersion: 1, ExecutionSource: "no-model-test-script", Outcome: "native-completed", Native: legacy}
+	if err := validateAttemptNative(&a, e); err != nil {
+		t.Fatalf("legacy retained evidence became unreadable: %v", err)
+	}
 }
