@@ -121,8 +121,14 @@ func (config *isolationConfig) verify(b isolationBoundary, servers []string) err
 	if config.Windows.Sandbox != "elevated" || config.Default != b.profile() {
 		return restrictionError("config/read elevated sandbox or default permission profile incompatible")
 	}
-	if config.Environment.Inherit != "none" || config.Environment.Set == nil || len(config.Environment.Set) != 0 {
-		return restrictionError("config/read command environment not empty and scrubbed")
+	if config.Environment.Inherit != "none" || len(config.Environment.Set) != 3 {
+		return restrictionError("config/read command environment not scrubbed and scratch-pinned")
+	}
+	for _, name := range []string{"TEMP", "TMP", "TMPDIR"} {
+		var value string
+		if json.Unmarshal(config.Environment.Set[name], &value) != nil || value != b.scratch {
+			return restrictionError("config/read command temp environment not scratch-pinned")
+		}
 	}
 	profile := config.Permissions[b.profile()]
 	if profile == nil || len(profile.Extends) != 0 || len(profile.Roots) != 0 || profile.Network.Enabled == nil || *profile.Network.Enabled {

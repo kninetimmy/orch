@@ -70,6 +70,11 @@ func TestIsolationPathsAndProfiles(t *testing.T) {
 		if config["windows"].(map[string]any)["sandbox"] != "elevated" || config["default_permissions"] != b.profile() {
 			t.Fatal("native sandbox/profile not pinned")
 		}
+		environment := config["shell_environment_policy"].(map[string]any)
+		set := environment["set"].(map[string]any)
+		if environment["inherit"] != "none" || len(set) != 3 || set["TEMP"] != b.scratch || set["TMP"] != b.scratch || set["TMPDIR"] != b.scratch {
+			t.Fatal("every native shell tool must receive only scratch-pinned temp overrides")
+		}
 	}
 }
 
