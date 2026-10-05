@@ -336,10 +336,11 @@ func gradeCoverage(s *Snapshot, summary *GradingSummary) {
 			} else if index >= 0 {
 				a := s.Attempts[index]
 				eligible := assessmentEligibility(a)
-				if eligible == "invalid-execution" {
+				switch eligible {
+				case "invalid-execution":
 					row.Invalid++
 					result = "invalid"
-				} else if eligible == "eligible" {
+				case "eligible":
 					row.Eligible++
 					result = a.Grade
 				}
