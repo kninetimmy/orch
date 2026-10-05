@@ -270,7 +270,7 @@ func (b isolationBoundary) args() []string {
 	// into this boundary. These are process-only overrides, never config writes.
 	profile := `{filesystem={` + strings.Join(entries, ",") + `},network={enabled=false}}`
 	args := []string{"app-server", "--listen", "stdio://", "-c", `windows.sandbox="elevated"`, "-c", "permissions." + b.profile() + "=" + profile,
-		"-c", "default_permissions=" + quoteTOML(b.profile()), "-c", `shell_environment_policy={inherit="none",set={}}`,
+		"-c", "default_permissions=" + quoteTOML(b.profile()), "-c", `shell_environment_policy={inherit="none",set={TEMP=` + quoteTOML(b.scratch) + `,TMP=` + quoteTOML(b.scratch) + `,TMPDIR=` + quoteTOML(b.scratch) + `}}`,
 		"-c", `approval_policy="never"`, "-c", `web_search="disabled"`}
 	for _, feature := range restrictedFeatures {
 		args = append(args, "-c", "features."+feature+"=false")

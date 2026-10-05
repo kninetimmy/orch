@@ -627,3 +627,128 @@ files, plugin installation, authentication and security policy remain unchanged.
 Command restrictions apply to every diagnostic command; metadata and diagnostic
 thread/turn restrictions apply to every connection of those kinds. The manual
 Assist shell-write loophole remains outside this issue.
+
+## Native tool replay investigation (#320, incomplete WIP)
+
+This increment is **not closed model-tool isolation evidence**. The opt-in
+`TestCodexModelToolIsolationSmoke` ends with an explicit limitation because safe
+hook/plugin source controls remain unverified. Production `RunSession`,
+`Session.Resume`, `IsolationPreflight` and evaluation execution still refuse.
+The final WIP native harness has not been rerun after removing the unsafe hook
+source attempt. It must not authorize a live trial or an evaluation baseline.
+
+The exact native check is:
+
+```text
+go test -tags=codex_live -run '^TestCodexModelToolIsolationSmoke$' -count=1 -v ./internal/codexnative
+```
+
+Development used installed Windows amd64 `codex-cli 0.160.0`, Go 1.26.5,
+and official `openai/codex` source tag `rust-v0.160.0` (inspected ref object
+`79b1b666f2e8551f8abbbca34957227f67f3f553`). No downloaded executable ran.
+The source for scripted Responses events is
+[the native test helper](https://github.com/openai/codex/blob/rust-v0.160.0/codex-rs/core/tests/common/responses.rs).
+The actual provider is a task-owned loopback HTTP server replaying those events.
+The test's `gpt-5.5` request string and zero usage fields are synthetic protocol
+inputs, not model identity, entitlement, inference, routed-selection or usage
+observations. No subscription inference ran.
+
+Every replay child launches the installed executable as `app-server --listen
+stdio://`. `isolationBoundary.args` supplies the fresh worker/reviewer profile,
+elevated mode, protected paths, network disable, approval `never`, disabled web
+search and existing feature restrictions. Test-only `replayArgs` adds these
+process overrides; no production option exposes them:
+
+```text
+cli_auth_credentials_store="ephemeral"
+chatgpt_base_url="<owned loopback endpoint>"
+openai_base_url="<owned loopback endpoint>/v1"
+model_provider="orch_replay"
+model="gpt-5.5"
+model_providers.orch_replay={name="Synthetic loopback replay",base_url="<owned loopback endpoint>/v1",wire_api="responses",requires_openai_auth=false,http_headers={Authorization="Bearer orch-synthetic-replay"},request_max_retries=0,stream_max_retries=0}
+features.enable_request_compression=false
+features.responses_websockets=false
+features.responses_websockets_v2=false
+features.goals=false
+features.request_permissions_tool=false
+features.exec_permission_approvals=false
+features.image_generation=false
+ephemeral=true
+log_dir="<scratch>/native-log"
+sqlite_home="<scratch>/native-state"
+```
+
+MCP names are discovered without turns, then explicitly disabled on the actual
+fresh child. The synthetic canary's URL is restored after that override because
+a parent table assignment replaces its earlier same-layer URL; its disable
+remains intact. Only the separate MCP source control enables that task-owned
+server through `thread/start.config`. Approval remains `never`.
+
+[Native auth loading](https://github.com/openai/codex/blob/rust-v0.160.0/codex-rs/login/src/auth/manager.rs#L1488)
+returns before persistent credential fallback when storage is ephemeral.
+[Its storage implementation](https://github.com/openai/codex/blob/rust-v0.160.0/codex-rs/login/src/auth/storage.rs#L459)
+is memory only. The harness never reads/copies existing authentication files or
+changes persisted user auth/config. The existing Windows sandbox's internal
+service-account authentication is infrastructure already used by command
+diagnostics; it is distinct from harness access to user/provider credentials.
+
+Recorded development outcomes, in order:
+
+| Observation | Actual result and limit |
+| --- | --- |
+| First positive scratch patch | Native dispatch rejected an 8.3 temp alias as outside the project. Using the already canonical `b.scratch` fixed it without changing permissions. Both profiles then passed in 20.06s; this proved only a scratch patch. |
+| Expanded replay, 41.59s | Filesystem checks and network denial passed; environment validation failed and the initial stdin fixture did not complete. No overall pass. |
+| Expanded replay, 43.17s | Real `exec_command` and `write_stdin` both reported `checks_ok=true` and `network_denied=true`. Sensitive environment variables were absent; only `TEMP`, `TMP`, `TMPDIR` lacked scratch pinning. No credential leakage was observed. |
+| Filesystem replay after temp repair, 76.71s | Both profiles passed, 37 native outputs per role. Advertised tools were `apply_patch` (custom), `exec_command`, `request_user_input`, `view_image`, `write_stdin`. All four filesystem tools were exercised against synthetic main, sibling, controller evidence, hidden grading, credentials, shared Git metadata and a junction alias. Worker/scratch positives, reviewer write denials, protected read/write/image denials, stdin process identity, escalation refusal, environment and network checks passed; parent hashes/forbidden paths were checked. This predates the final MCP/hook additions. |
+| MCP source control, 11.99s | Native `tool_search` discovered `read_synthetic` in the canary namespace. Its named dispatcher returned `MCP tool call requires approval, but approval policy is never`. Server listing occurred; callbacks remained zero. This is native advertisement/discovery/dispatch evidence, not callback execution. The WIP validator now handles its structured text output; that change has not been rerun natively. |
+| Removed synthetic-home hook source, 170.14s | Timed out before replay output. Parent inspection found a new `.sandbox` directory in its task-owned synthetic home. No `.sandbox-secrets` or `auth.json` creation was reported, and no setup approval was granted. This control cannot satisfy the no-provisioning requirement and is no longer runnable. |
+
+The removed hook attempt retained elevated mode, used a fresh synthetic home
+and only authored `update_plan` replies, with shell/image/snapshot features off
+and a trusted task-owned hook. Although the
+[plan handler](https://github.com/openai/codex/blob/rust-v0.160.0/codex-rs/core/src/tools/handlers/plan.rs)
+only emits session events, that did not establish safety of native thread/turn
+startup. The exact retained failure was:
+
+```text
+codex app-server read: codex app-server timeout
+context deadline exceeded
+replay limitation: isolated hook source created forbidden .sandbox
+--- FAIL: TestCodexModelToolIsolationSmoke (170.14s)
+FAIL github.com/kninetimmy/orch/internal/codexnative 170.679s
+```
+
+This is evidence of task-owned sandbox state creation and unverified implicit
+provisioning risk, not proof that machine provisioning completed. `consent.exe`
+was observed by metadata only; its attribution is unverified and it was not
+killed. After the deadline, metadata queries found no owned Go test PID 11376,
+its direct children, or native replay processes with the synthetic provider
+marker. Not every possible elevated setup descendant could be attributed,
+so cleanup of such descendants remains uncertain. No further native attempts
+ran after this failure.
+
+Before #320, `isolationBoundary.args` used `inherit="none",set={}`. Buffered
+diagnostic commands explicitly supplied scratch temp values, while real shell
+tools lacked them. After #320, the shared builder sets **only** `TEMP`, `TMP`,
+`TMPDIR` to canonical scratch. `isolationConfig.verify` requires exactly those
+three values and rejects inherited/additional values. This applies to every
+child using that builder and both role profiles, not one named tool. Every
+existing filesystem grant/denial, elevated requirement and command-network
+restriction is retained. The old empty-set statement above is historical.
+
+WIP scope: `isolation.go` and `isolation_config.go` change only that shared temp
+pinning/verification; `isolation_test.go` checks both profiles; `preflight_test.go`
+adds one test-binary fixture dispatch. New `tool_replay_test.go` contains the
+bounded replay/evidence checks, synthetic MCP and command fixtures; new tagged
+`tool_replay_live_test.go` contains the opt-in native probes and explicit final
+limitation. No role/routing defaults, corpus/rubrics, user permissions, adapters,
+release/install state, dependencies, memhub or production refusal changed.
+Complete per-symbol accounting and all seven acceptance criteria are unfinished.
+
+Focused no-native tests passed for replay missingness/cleanup/protected changes,
+isolation profile/config/environment failures and production start/resume refusal
+for all five roles. Full `go build ./...`, `go test ./...`, `go vet ./...` and the
+final native checks were deliberately not run after the Architect stopped work
+with criterion 3 unsatisfied. Native subscription auth/inference, actual usage,
+live interruption, disconnect/resume, evaluation integration and a measured
+baseline remain unverified.
