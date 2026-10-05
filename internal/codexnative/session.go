@@ -36,15 +36,17 @@ const (
 // or route work. The engine remains responsible for eligibility and approval.
 // ID and Prompt identify the exact task; Selection is its routed native profile.
 type Task struct {
-	ID          string
-	RunID       string
-	IssueNumber int
-	Role        string
-	Attempt     string
-	ReviewCycle int
-	Selection   manifest.Selection
-	Prompt      string
-	Layout      IsolationPaths
+	ID           string
+	RunID        string
+	IssueNumber  int
+	Role         string
+	Attempt      string
+	ReviewCycle  int
+	Selection    manifest.Selection
+	Prompt       string
+	Layout       IsolationPaths
+	Evaluation   *EvaluationBinding
+	Instructions string // evaluation-only, supplied from the declared public ROLE.md
 }
 
 // SessionResult describes execution only. Successful is neither verification
@@ -62,6 +64,18 @@ type SessionResult struct {
 	NativeStatus    string
 	Output          string
 	Observations    []metrics.Observation
+	Evaluation      *EvaluationBinding
+	Eligibility     *IsolationCapabilities
+	Instructions    *InstructionEvidence
+	Cleanup         SessionCleanup
+	Error           string
+}
+
+type SessionCleanup struct {
+	InterruptionAsked     bool   `json:"interruption_asked"`
+	InterruptAcknowledged *bool  `json:"interrupt_acknowledged,omitempty"`
+	ShutdownObserved      *bool  `json:"shutdown_observed,omitempty"`
+	Detail                string `json:"detail,omitempty"`
 }
 
 // Session retains one binding and its replay history in memory. Calls are
@@ -142,7 +156,17 @@ func sessionDeadline(ctx context.Context) error {
 }
 
 func bindTask(task Task) (Task, isolationBoundary, string, error) {
-	instructions, err := agents.CodexInstructions(task.Role)
+	var instructions string
+	var err error
+	if task.Evaluation == nil {
+		if task.Instructions != "" {
+			return task, isolationBoundary{}, "", ErrTaskBoundary
+		}
+		instructions, err = agents.CodexInstructions(task.Role)
+	} else {
+		instructions = task.Instructions
+		err = validateEvaluationTask(task)
+	}
 	if err != nil {
 		return task, isolationBoundary{}, "", err
 	}
@@ -156,6 +180,11 @@ func bindTask(task Task) (Task, isolationBoundary, string, error) {
 		At: time.Now().UTC().Format(time.RFC3339Nano), Source: "codex-app-server", Host: "codex", Role: metricRole(task.Role),
 		IssueNumber: task.IssueNumber, Attempt: task.Attempt, ReviewCycle: task.ReviewCycle,
 		Requested: &metrics.Profile{Model: task.Selection.Model, Effort: task.Selection.Effort}, Unavailable: &metrics.Unavailable{Reason: "preflight"}}
+	if task.Evaluation != nil {
+		probe.SchemaVersion = metrics.EvaluationObservationVersion
+		identity := task.Evaluation.Identity
+		probe.Evaluation = &identity
+	}
 	if err := probe.Validate(); err != nil {
 		return task, isolationBoundary{}, "", err
 	}
@@ -164,6 +193,16 @@ func bindTask(task Task) (Task, isolationBoundary, string, error) {
 		return task, b, "", err
 	}
 	task.Layout.Workspace, task.Layout.Scratch = b.workspace, b.scratch
+	b.evaluation = task.Evaluation != nil
+	if task.Evaluation != nil {
+		if task.Evaluation.Workspace != b.workspace || task.Evaluation.Scratch != b.scratch {
+			return task, b, "", fmt.Errorf("%w: evaluation packet/scratch differs", ErrTaskBoundary)
+		}
+		data, _ := json.Marshal(task.Evaluation)
+		var binding EvaluationBinding
+		_ = json.Unmarshal(data, &binding)
+		task.Evaluation = &binding
+	}
 	// Retain canonical copies of every caller-supplied protected location, not
 	// aliases or slice storage that the caller can subsequently change.
 	paths := append([]string{task.Layout.MainCheckout, task.Layout.ControllerState}, task.Layout.SiblingWorkspaces...)
@@ -192,7 +231,7 @@ func newSession(options Options, task Task) (*Session, isolationBoundary, error)
 	}
 	options.Dir = dir
 	s := &Session{task: task, boundary: boundary, options: options, instructions: instructions, samples: map[string]bool{}, items: map[string]string{},
-		result: SessionResult{TaskID: task.ID, Workspace: dir, Requested: task.Selection}}
+		result: SessionResult{TaskID: task.ID, Workspace: dir, Requested: task.Selection, Evaluation: task.Evaluation}}
 	return s, boundary, nil
 }
 
@@ -218,11 +257,13 @@ func (s *Session) checkResume(ctx context.Context, approved Task) error {
 }
 
 func (s *Session) connect(ctx context.Context) (*connection, func(), error) {
-	if _, err := Preflight(ctx, s.options, s.task.Selection); err != nil {
-		return nil, nil, err
-	}
-	if _, err := IsolationPreflight(ctx, s.options, s.task.Layout, s.task.Role == "scout" || metricRole(s.task.Role) == "reviewer"); err != nil {
-		return nil, nil, err
+	if s.task.Evaluation == nil {
+		if _, err := Preflight(ctx, s.options, s.task.Selection); err != nil {
+			return nil, nil, err
+		}
+		if _, err := IsolationPreflight(ctx, s.options, s.task.Layout, s.task.Role == "scout" || metricRole(s.task.Role) == "reviewer"); err != nil {
+			return nil, nil, err
+		}
 	}
 	b, err := prepareIsolation(s.task.Layout, s.task.Role == "scout" || metricRole(s.task.Role) == "reviewer")
 	if err != nil {
@@ -230,6 +271,27 @@ func (s *Session) connect(ctx context.Context) (*connection, func(), error) {
 	}
 	if !reflect.DeepEqual(b.protected, s.boundary.protected) {
 		return nil, nil, fmt.Errorf("%w: implicit credential or shared Git paths changed", ErrTaskBoundary)
+	}
+	b.evaluation = s.task.Evaluation != nil
+	release, err := s.holdInstructions()
+	if err != nil {
+		return nil, nil, err
+	}
+	retained := false
+	defer func() {
+		if !retained {
+			release()
+		}
+	}()
+	if b.evaluation {
+		// Every evaluation child, including metadata and discovery, receives the
+		// same scrubbed environment and context restrictions before it starts.
+		if _, err := preflight(ctx, s.options, s.task.Selection, &b); err != nil {
+			return nil, nil, err
+		}
+		if _, err := isolationPreflight(ctx, s.options, b); err != nil {
+			return nil, nil, err
+		}
 	}
 	processCtx, cleanup := sessionContext(ctx)
 	c, capabilities, err := openIsolation(processCtx, s.options, b)
@@ -239,6 +301,13 @@ func (s *Session) connect(ctx context.Context) (*connection, func(), error) {
 	if err == nil {
 		err = modelToolBoundary(c, b, capabilities) // recheck the actual connection
 	}
+	if err == nil && b.evaluation {
+		err = verifyEvaluationConfig(c, b)
+	}
+	capabilities.ModelToolsVerified = err == nil
+	if s.task.Evaluation != nil {
+		s.result.Eligibility = &capabilities
+	}
 	if err != nil {
 		if c != nil {
 			err = errors.Join(err, c.close())
@@ -247,7 +316,8 @@ func (s *Session) connect(ctx context.Context) (*connection, func(), error) {
 		return nil, nil, err
 	}
 	c.session = true
-	return c, cleanup, nil
+	retained = true
+	return c, func() { cleanup(); release() }, nil
 }
 
 // Keep the host alive for a bounded native interrupt after caller cancellation.
@@ -295,13 +365,15 @@ type nativeThread struct {
 
 type nativeThreadResponse struct {
 	nativeSettings
-	Thread         nativeThread `json:"thread"`
-	TurnsCursor    *string      `json:"turnsBackwardsCursor"`
-	ItemsCursor    *string      `json:"itemsBackwardsCursor"`
-	WorkspaceRoots []string     `json:"runtimeWorkspaceRoots"`
+	Thread             nativeThread `json:"thread"`
+	TurnsCursor        *string      `json:"turnsBackwardsCursor"`
+	ItemsCursor        *string      `json:"itemsBackwardsCursor"`
+	WorkspaceRoots     []string     `json:"runtimeWorkspaceRoots"`
+	InstructionSources []string     `json:"instructionSources"`
 }
 
 func (s *Session) execute(ctx context.Context, c *connection, resume bool) (err error) {
+	s.result.Cleanup = SessionCleanup{}
 	s.connection, s.pending = c, ""
 	s.incoming = make(chan sessionMessage, 1)
 	incoming := s.incoming
@@ -323,12 +395,26 @@ func (s *Session) execute(ctx context.Context, c *connection, resume bool) (err 
 	defer func() {
 		var cleanupErr error
 		if err != nil && !s.completed {
+			s.result.Cleanup.InterruptionAsked = s.result.TurnID != ""
 			if interruptErr := s.interrupt(); interruptErr != nil {
+				if s.result.TurnID != "" {
+					acknowledged := false
+					s.result.Cleanup.InterruptAcknowledged = &acknowledged
+				}
 				cleanupErr = fmt.Errorf("codex native interruption cleanup: %w", interruptErr)
+			} else if s.result.TurnID != "" {
+				acknowledged := true
+				s.result.Cleanup.InterruptAcknowledged = &acknowledged
 			}
 		}
-		if closeErr := c.close(); closeErr != nil {
+		closeErr := c.close()
+		shutdown := closeErr == nil
+		s.result.Cleanup.ShutdownObserved = &shutdown
+		if closeErr != nil {
 			cleanupErr = errors.Join(cleanupErr, fmt.Errorf("codex native shutdown cleanup: %w", closeErr))
+		}
+		if s.task.Evaluation != nil {
+			err = errors.Join(err, s.checkInstructions())
 		}
 		s.connection = nil
 		err = s.finish(err, cleanupErr)
@@ -336,6 +422,11 @@ func (s *Session) execute(ctx context.Context, c *connection, resume bool) (err 
 	params := map[string]any{"cwd": s.task.Layout.Workspace, "model": s.task.Selection.Model, "modelProvider": "openai", "runtimeWorkspaceRoots": []any{},
 		"config": map[string]string{"model_reasoning_effort": s.task.Selection.Effort}, "approvalPolicy": "never",
 		"permissions": c.profile, "developerInstructions": s.instructions + "\nExecute only the supplied approved task. Do not delegate, expand the task or request elevated permissions. Completion is not verification or merge approval."}
+	if s.task.Evaluation != nil {
+		if err := s.checkInstructions(); err != nil {
+			return err
+		}
+	}
 	method := "thread/start"
 	if resume {
 		method = "thread/resume"
@@ -466,6 +557,11 @@ func (s *Session) acceptThread(response nativeThreadResponse, resume bool) error
 	}
 	if err := s.settings(t.nativeSettings); err != nil {
 		return err
+	}
+	if s.task.Evaluation != nil {
+		if err := s.acceptInstructions(response.InstructionSources); err != nil {
+			return err
+		}
 	}
 	if response.TurnsCursor != nil || response.ItemsCursor != nil || (!resume && len(t.Turns) != 0) {
 		return fmt.Errorf("%w: unexpected or incomplete task history", ErrTaskBoundary)
@@ -775,5 +871,13 @@ func (s *Session) finish(err, cleanupErr error) error {
 		s.result.Outcome = SessionFailed
 		err = errors.New("codex session ended without a terminal turn")
 	}
-	return errors.Join(err, cleanupErr, s.terminalObservation())
+	if cleanupErr != nil {
+		s.result.Cleanup.Detail = cleanupErr.Error()
+	}
+	combined := errors.Join(err, cleanupErr, s.terminalObservation())
+	s.result.Error = ""
+	if combined != nil {
+		s.result.Error = combined.Error()
+	}
+	return combined
 }

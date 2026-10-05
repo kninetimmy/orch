@@ -13,6 +13,25 @@ import (
 
 var finalPathName = syscall.NewLazyDLL("kernel32.dll").NewProc("GetFinalPathNameByHandleW")
 
+// Hold only declared instruction files, never credentials or persisted config.
+// FILE_SHARE_READ permits native loading and denies ordinary writes/replacement.
+func holdInstructionFile(path string) (*os.File, error) {
+	name, err := syscall.UTF16PtrFromString(path)
+	if err != nil {
+		return nil, err
+	}
+	handle, err := syscall.CreateFile(name, syscall.GENERIC_READ, syscall.FILE_SHARE_READ, nil, syscall.OPEN_EXISTING, syscall.FILE_FLAG_OPEN_REPARSE_POINT, 0)
+	if err != nil {
+		return nil, err
+	}
+	var info syscall.ByHandleFileInformation
+	if err := syscall.GetFileInformationByHandle(handle, &info); err != nil || info.NumberOfLinks != 1 || info.FileAttributes&syscall.FILE_ATTRIBUTE_REPARSE_POINT != 0 {
+		_ = syscall.CloseHandle(handle)
+		return nil, errors.New("instruction file linked or unverifiable")
+	}
+	return os.NewFile(uintptr(handle), path), nil
+}
+
 // EvalSymlinks alone does not resolve Windows junctions on the supported Go
 // runtime. Ask Windows for the final handle path, including long names for 8.3
 // aliases. For a missing deny target, resolve its deepest existing ancestor.

@@ -157,8 +157,8 @@ func blockers(e *Evaluation) []Blocker {
 	return []Blocker{
 		{"independent-semantic-validation", "Readiness references are opaque; grading-journal validation and judgments are attributed assertions, not authenticated semantic proof.", "Fresh reviewers must independently check pinned sources, semantic mappings, control reproductions and unresolved disputes."},
 		{"exposure", "Readiness references do not establish held-out exposure or training familiarity.", "Review and retain the frozen exposure record before a later trial."},
-		{"worker-access-enforcement", "Guarded storage identity and local permissions do not prove worker read/write denial.", "Implement and independently verify protected runtime access under a separate approved change."},
-		{"native-model-tool-validation", "Every production controller attempt refuses; RunSession and Session.Resume retain their model-turn gates for every role.", "Complete separately approved native model-tool validation and a reviewed refusal change; configuration diagnostics cannot satisfy this prerequisite."},
+		{"worker-access-enforcement", "Actual native protected-path controls and approved instruction sources/hashes are checked per attempted execution; guarded storage/readiness claims alone prove neither.", "Inspect retained per-attempt eligibility/context/cleanup evidence; separately approve and complete bounded live checks before baseline claims."},
+		{"native-model-tool-validation", "Version-2 evaluation integration conditionally admits the supported native boundary; version 1 and unsupported revision/intervention/context/profile controls refuse.", "Complete exact approved live completion, interruption and same-turn recovery checks; synthetic RPC/tool evidence is not subscription inference or a measured baseline."},
 		{"decision-and-measurement", "The decision rule is opaque; model-trial and controller/grader/human-work coverage remain unestablished.", "Validate decision semantics and all claimed measurement coverage before a later finite trial."},
 	}
 }
@@ -175,7 +175,7 @@ func Inspect(storageRoot, id string) (*Report, error) {
 	if err != nil {
 		return nil, err
 	}
-	s := Snapshot{SchemaVersion: 2, EvaluationID: id, EvaluationSHA256: hash, Repository: e.Repository, PreparedAt: e.PreparedAt,
+	s := Snapshot{SchemaVersion: 3, EvaluationID: id, EvaluationSHA256: hash, Repository: e.Repository, PreparedAt: e.PreparedAt,
 		Scope: Scope(&e.Preparation), ApprovalStatus: "unknown; no retained evaluation approval", Progress: *p,
 		Evidence: []DigestedFile{{"evaluation.json", hash}}, EvidenceComplete: terminalState(p.State) && p.State != "incomplete",
 		ProcessLiveness: "unknown; retained progress is not a liveness observation", Attempts: []ReportAttempt{},
@@ -323,7 +323,7 @@ func Inspect(storageRoot, id string) (*Report, error) {
 	}
 	measure(&s)
 	sha := storedDigest(s)
-	return &Report{2, sha, filepath.Join(e.Preparation.Plan.StorageRoot, "reports", id, sha), s}, g.check()
+	return &Report{3, sha, filepath.Join(e.Preparation.Plan.StorageRoot, "reports", id, sha), s}, g.check()
 }
 
 func publicNative(n *NativeEvidence) *NativeEvidence {
@@ -332,6 +332,19 @@ func publicNative(n *NativeEvidence) *NativeEvidence {
 	}
 	copy := *n
 	copy.Status = "unknown; see retained native evidence"
+	if copy.Failure != "" {
+		copy.Failure = "see retained native failure evidence"
+	}
+	if n.Cleanup != nil {
+		cleanup := *n.Cleanup
+		cleanup.Detail = "see retained native cleanup evidence"
+		copy.Cleanup = &cleanup
+	}
+	if n.Instructions != nil {
+		instructions := *n.Instructions
+		instructions.Detail = "see retained declared-context evidence"
+		copy.Instructions = &instructions
+	}
 	for _, id := range []*string{&copy.ThreadID, &copy.SessionID, &copy.TurnID} {
 		if !identifierPattern.MatchString(*id) {
 			*id = ""

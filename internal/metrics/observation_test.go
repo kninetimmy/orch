@@ -2,6 +2,7 @@ package metrics
 
 import (
 	"encoding/json"
+	"errors"
 	"math"
 	"os"
 	"path/filepath"
@@ -54,6 +55,71 @@ func TestObservationReplayAndBaselines(t *testing.T) {
 	got := docs[0].Observations[3]
 	if got.Sample.Counters.InputTokens == nil || *got.Sample.Counters.InputTokens != 0 || got.Sample.Counters.OutputTokens != nil || got.Observed.Effort != "" || !reflect.DeepEqual(got, newSession) {
 		t.Fatalf("presence/profile lost: %+v", got)
+	}
+}
+
+func TestEvaluationObservationIsolationAndCounters(t *testing.T) {
+	identity := EvaluationIdentity{ID: "eval-aaaaaaaaaaaaaaaaaaaaaaaaaa", PlanDigest: "sha256:" + strings.Repeat("a", 64), Unit: 1,
+		CaseID: "public-case", CaseVersion: 2, CaseSHA256: strings.Repeat("b", 64), PacketSHA256: strings.Repeat("c", 64), Repetition: 1,
+		Side: "baseline", Attempt: 1, Kind: "initial", Role: "implementer"}
+	zero, ten := int64(0), int64(10)
+	a := Observation{SchemaVersion: EvaluationObservationVersion, Evaluation: &identity, ID: "first", At: "2026-10-05T12:00:00Z",
+		Source: "codex-app-server", Host: "codex", Role: "implementer", Session: "thread",
+		Sample: &CounterSample{Stream: "thread-total", Mode: "cumulative", Sequence: 1, Counters: Counters{InputTokens: &zero}}}
+	b := a
+	b.ID = "second"
+	b.Sample = &CounterSample{Stream: "thread-total", Mode: "cumulative", Sequence: 2, Counters: Counters{InputTokens: &ten, OutputTokens: &zero}}
+	other := identity
+	other.Attempt, other.Kind = 2, "retry"
+	c := b
+	c.ID, c.Evaluation = "first", &other
+	c.Sample = &CounterSample{Stream: "thread-total", Mode: "cumulative", Sequence: 1, Counters: Counters{InputTokens: &ten}}
+	d := c
+	d.ID, d.Source = "other-source", "session-log"
+	deltas, err := CounterContributions([]Observation{a, b, c, d})
+	if err != nil || *deltas[0].InputTokens != 0 || deltas[0].OutputTokens != nil || *deltas[1].InputTokens != 10 || *deltas[1].OutputTokens != 0 || deltas[1].TotalTokens != nil || *deltas[2].InputTokens != 10 || *deltas[3].InputTokens != 10 {
+		t.Fatalf("evaluation presence/scope/source arithmetic: %+v %v", deltas, err)
+	}
+	root := t.TempDir()
+	if _, err := Record(root, a); err == nil {
+		t.Fatal("evaluation entered Delivery history")
+	}
+	if _, err := os.Stat(filepath.Join(root, ".orchestrator", "metrics")); !errors.Is(err, os.ErrNotExist) {
+		t.Fatal("evaluation created Delivery storage")
+	}
+	if _, err := CounterContributions([]Observation{a, a}); err == nil {
+		t.Fatal("duplicate evaluation sample accepted")
+	}
+	changed := identity
+	changed.CaseVersion++
+	b.Evaluation = &changed
+	if _, err := CounterContributions([]Observation{a, b}); err == nil {
+		t.Fatal("attempt identity drift accepted")
+	}
+	for _, change := range []func(*Observation){
+		func(o *Observation) { o.RunID = "run-fabricated" },
+		func(o *Observation) { o.IssueNumber = 323 },
+		func(o *Observation) { o.Attempt = "implementation-1" },
+		func(o *Observation) { o.SchemaVersion = 2 },
+		func(o *Observation) { o.Evaluation = nil },
+		func(o *Observation) { o.Role = "reviewer" },
+	} {
+		bad := a
+		change(&bad)
+		if err := bad.Validate(); err == nil {
+			t.Fatal("mixed/unbound evaluation observation accepted")
+		}
+	}
+	data, err := json.Marshal(a)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := ParseObservation(data); err != nil {
+		t.Fatal(err)
+	}
+	data = []byte(strings.Replace(string(data), `"schema_version":3`, `"schema_version":2`, 1))
+	if _, err := ParseObservation(data); err == nil {
+		t.Fatal("new identity silently reinterpreted as schema 2")
 	}
 }
 

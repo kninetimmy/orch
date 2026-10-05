@@ -46,7 +46,7 @@ func proposal(p Plan) Proposal {
 		Corpus: p.Corpus, Cases: ids, Partitions: p.Partitions, Baseline: p.Baseline.Selection,
 		Repetitions: p.Repetitions, Limits: p.Limits, Measurement: p.Measurement,
 		DecisionRule: p.DecisionRule, Readiness: p.Readiness, StorageRoot: p.StorageRoot,
-		WorkerRoots: p.WorkerRoots, ScratchRoots: p.ScratchRoots}
+		WorkerRoots: p.WorkerRoots, ScratchRoots: p.ScratchRoots, Instructions: p.Instructions, ProtectedRoots: p.ProtectedRoots}
 	if p.Candidate != nil {
 		candidate := p.Candidate.Selection
 		q.Candidate = &candidate
@@ -72,7 +72,7 @@ func validateRecord(r *Record, root, digest string) error {
 	if err != nil {
 		return err
 	}
-	if r.SchemaVersion != 1 || r.Kind != "maintainer-preparation-record" || r.Plan.Version != 1 ||
+	if (r.SchemaVersion != 1 && r.SchemaVersion != 2) || r.Kind != "maintainer-preparation-record" || r.Plan.Version != r.SchemaVersion ||
 		r.PlanDigest != digest || "sha256:"+evalcorpus.Digest(data) != digest ||
 		r.Plan.StorageRoot != root || r.StorageDestination != filepath.Join(root, name) {
 		return fmt.Errorf("saved preparation identity/schema/digest mismatch")

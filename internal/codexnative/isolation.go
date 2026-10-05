@@ -42,11 +42,12 @@ type IsolationCapabilities struct {
 }
 
 type isolationBoundary struct {
-	workspace string
-	scratch   string
-	protected []string
-	reviewer  bool
-	nonce     string
+	workspace  string
+	scratch    string
+	protected  []string
+	reviewer   bool
+	evaluation bool
+	nonce      string
 }
 
 // IsolationPreflight checks a native profile without model turns or user-file
@@ -57,6 +58,10 @@ func IsolationPreflight(ctx context.Context, options Options, layout IsolationPa
 	if err != nil {
 		return capabilities, err
 	}
+	return isolationPreflight(ctx, options, b)
+}
+
+func isolationPreflight(ctx context.Context, options Options, b isolationBoundary) (capabilities IsolationCapabilities, err error) {
 	if runtime.GOOS != "windows" || runtime.GOARCH != "amd64" {
 		return capabilities, fmt.Errorf("%w: only native Windows elevated sandbox diagnostics are supported", ErrIsolationUnavailable)
 	}
@@ -73,6 +78,9 @@ func IsolationPreflight(ctx context.Context, options Options, layout IsolationPa
 		}
 	}()
 	err = modelToolBoundary(c, b, capabilities)
+	if err == nil && b.evaluation {
+		err = verifyEvaluationConfig(c, b)
+	}
 	capabilities.ModelToolsVerified = err == nil
 	return capabilities, err
 }
@@ -304,6 +312,12 @@ func (b isolationBoundary) args() []string {
 	args := []string{"app-server", "--listen", "stdio://", "-c", `windows.sandbox="elevated"`, "-c", "permissions." + b.profile() + "=" + profile,
 		"-c", "default_permissions=" + quoteTOML(b.profile()), "-c", `shell_environment_policy={inherit="none",set={TEMP=` + quoteTOML(b.scratch) + `,TMP=` + quoteTOML(b.scratch) + `,TMPDIR=` + quoteTOML(b.scratch) + `}}`,
 		"-c", `approval_policy="never"`, "-c", `web_search="disabled"`, "-c", `model_provider="openai"`}
+	if b.evaluation {
+		args = append(args, "-c", "project_doc_max_bytes=0", "-c", "skills.include_instructions=false", "-c", "include_apps_instructions=false", "-c", "include_collaboration_mode_instructions=false", "-c", "include_environment_context=false")
+		for _, feature := range evaluationRestrictedFeatures {
+			args = append(args, "-c", "features."+feature+"=false")
+		}
+	}
 	for _, feature := range append(append([]string(nil), restrictedFeatures...), modelRestrictedFeatures...) {
 		args = append(args, "-c", "features."+feature+"=false")
 	}

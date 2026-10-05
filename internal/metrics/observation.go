@@ -6,12 +6,46 @@ import (
 	"fmt"
 	"math"
 	"reflect"
+	"regexp"
 	"strings"
 	"time"
 	"unicode"
 )
 
 const ObservationVersion = 2
+
+// Evaluation observations are a separate wire contract, never Delivery history.
+const EvaluationObservationVersion = 3
+
+type EvaluationIdentity struct {
+	ID           string `json:"id"`
+	PlanDigest   string `json:"plan_digest"`
+	Unit         int    `json:"unit"`
+	CaseID       string `json:"case_id"`
+	CaseVersion  int    `json:"case_version"`
+	CaseSHA256   string `json:"case_sha256"`
+	PacketSHA256 string `json:"packet_sha256"`
+	Repetition   int64  `json:"repetition"`
+	Side         string `json:"side"`
+	Attempt      int    `json:"attempt"`
+	Kind         string `json:"kind"`
+	Role         string `json:"role"`
+}
+
+var evaluationID = regexp.MustCompile(`^eval-[a-z2-7]{26}$`)
+var evaluationDigest = regexp.MustCompile(`^[0-9a-f]{64}$`)
+var evaluationCase = regexp.MustCompile(`^[a-z0-9][a-z0-9-]{0,95}$`)
+
+func (e EvaluationIdentity) Validate() error {
+	if !evaluationID.MatchString(e.ID) || !strings.HasPrefix(e.PlanDigest, "sha256:") || !evaluationDigest.MatchString(strings.TrimPrefix(e.PlanDigest, "sha256:")) ||
+		!evaluationCase.MatchString(e.CaseID) || !evaluationDigest.MatchString(e.CaseSHA256) || !evaluationDigest.MatchString(e.PacketSHA256) ||
+		e.Unit < 1 || e.CaseVersion < 1 || e.Repetition < 1 || e.Attempt < 1 ||
+		(e.Side != "baseline" && e.Side != "candidate") || (e.Kind != "initial" && e.Kind != "retry" && e.Kind != "repair") ||
+		(e.Role != "scout" && e.Role != "implementer" && e.Role != "reviewer") {
+		return errors.New("invalid evaluation observation identity")
+	}
+	return nil
+}
 
 // Profile is reported evidence, not a routing Selection. Each field may be
 // unknown; an explicit empty variant means the host used no variant.
@@ -59,23 +93,24 @@ type Interval struct {
 // Attempts are caller-assigned identifiers; review cycles are positive ordinals.
 // Neither is inferred from the current lifecycle state.
 type Observation struct {
-	SchemaVersion int            `json:"schema_version"`
-	RunID         string         `json:"run_id"`
-	ID            string         `json:"id"`
-	At            string         `json:"at"`
-	Source        string         `json:"source"`
-	IssueNumber   int            `json:"issue_number,omitempty"`
-	Role          string         `json:"role,omitempty"`
-	Attempt       string         `json:"attempt,omitempty"`
-	ReviewCycle   int            `json:"review_cycle,omitempty"`
-	Host          string         `json:"host,omitempty"`
-	Session       string         `json:"session,omitempty"`
-	Requested     *Profile       `json:"requested,omitempty"`
-	Observed      *Profile       `json:"observed,omitempty"`
-	Sample        *CounterSample `json:"sample,omitempty"`
-	Interval      *Interval      `json:"interval,omitempty"`
-	Outcome       string         `json:"outcome,omitempty"`
-	Unavailable   *Unavailable   `json:"unavailable,omitempty"`
+	SchemaVersion int                 `json:"schema_version"`
+	RunID         string              `json:"run_id,omitempty"`
+	Evaluation    *EvaluationIdentity `json:"evaluation,omitempty"`
+	ID            string              `json:"id"`
+	At            string              `json:"at"`
+	Source        string              `json:"source"`
+	IssueNumber   int                 `json:"issue_number,omitempty"`
+	Role          string              `json:"role,omitempty"`
+	Attempt       string              `json:"attempt,omitempty"`
+	ReviewCycle   int                 `json:"review_cycle,omitempty"`
+	Host          string              `json:"host,omitempty"`
+	Session       string              `json:"session,omitempty"`
+	Requested     *Profile            `json:"requested,omitempty"`
+	Observed      *Profile            `json:"observed,omitempty"`
+	Sample        *CounterSample      `json:"sample,omitempty"`
+	Interval      *Interval           `json:"interval,omitempty"`
+	Outcome       string              `json:"outcome,omitempty"`
+	Unavailable   *Unavailable        `json:"unavailable,omitempty"`
 }
 
 // Unavailable is missing evidence, never a measured zero or a failure outcome.
@@ -89,6 +124,15 @@ func (o *Observation) UnmarshalJSON(data []byte) error {
 	var decoded wire
 	if err := strictDecode(data, &decoded); err != nil {
 		return err
+	}
+	if decoded.SchemaVersion != EvaluationObservationVersion {
+		var fields map[string]json.RawMessage
+		if err := json.Unmarshal(data, &fields); err != nil {
+			return err
+		}
+		if _, present := fields["evaluation"]; present {
+			return errors.New("evaluation requires observation schema_version 3")
+		}
 	}
 	if decoded.SchemaVersion == 1 {
 		var fields struct {
@@ -127,17 +171,32 @@ func ParseObservation(data []byte) (Observation, error) {
 }
 
 func (o Observation) Validate() error {
-	if o.SchemaVersion != 1 && o.SchemaVersion != ObservationVersion {
-		return fmt.Errorf("unsupported observation schema_version %d (supports 1 and %d)", o.SchemaVersion, ObservationVersion)
+	if o.SchemaVersion != 1 && o.SchemaVersion != ObservationVersion && o.SchemaVersion != EvaluationObservationVersion {
+		return fmt.Errorf("unsupported observation schema_version %d (supports 1, 2 and 3)", o.SchemaVersion)
 	}
 	if o.SchemaVersion == 1 && (o.Unavailable != nil || (o.Sample != nil && o.Sample.Counters.ReasoningOutputTokens != nil)) {
 		return errors.New("unavailable and reasoning_output_tokens require observation schema_version 2")
 	}
-	if err := validateRunID(o.RunID); err != nil {
-		return err
-	}
-	if !strings.HasPrefix(o.RunID, "run-") {
-		return errors.New("observation run_id must start with run-")
+	if o.SchemaVersion == EvaluationObservationVersion {
+		if o.Evaluation == nil || o.RunID != "" || o.IssueNumber != 0 || o.Attempt != "" || o.ReviewCycle != 0 {
+			return errors.New("evaluation observations require evaluation identity and forbid Delivery association")
+		}
+		if err := o.Evaluation.Validate(); err != nil {
+			return err
+		}
+		if o.Role != o.Evaluation.Role || o.Host != "codex" {
+			return errors.New("evaluation observation role/host differs from its binding")
+		}
+	} else {
+		if o.Evaluation != nil {
+			return errors.New("evaluation requires observation schema_version 3")
+		}
+		if err := validateRunID(o.RunID); err != nil {
+			return err
+		}
+		if !strings.HasPrefix(o.RunID, "run-") {
+			return errors.New("observation run_id must start with run-")
+		}
 	}
 	if !identifier(o.ID) || !identifier(o.Source) {
 		return errors.New("observation id and source must be nonempty identifiers")
@@ -244,12 +303,21 @@ func CounterContributions(observations []Observation) ([]Counters, error) {
 	}
 	streams := map[streamKey]baseline{}
 	ids := map[[2]string]bool{}
+	bindings := map[string]EvaluationIdentity{}
 	result := make([]Counters, len(observations))
 	for n, o := range observations {
 		if err := o.Validate(); err != nil {
 			return nil, fmt.Errorf("observation %q: %w", o.ID, err)
 		}
-		id := [2]string{o.RunID, o.ID}
+		scope := o.RunID
+		if e := o.Evaluation; e != nil {
+			scope = fmt.Sprintf("%s/unit-%d/attempt-%d", e.ID, e.Unit, e.Attempt)
+			if previous, ok := bindings[scope]; ok && previous != *e {
+				return nil, fmt.Errorf("observation %q: evaluation attempt binding changed", o.ID)
+			}
+			bindings[scope] = *e
+		}
+		id := [2]string{scope, o.ID}
 		if ids[id] {
 			return nil, fmt.Errorf("duplicate stored observation id %q", o.ID)
 		}
@@ -258,7 +326,7 @@ func CounterContributions(observations []Observation) ([]Counters, error) {
 		if s == nil {
 			continue
 		}
-		key := streamKey{o.RunID, o.Host, o.Session, o.Source, s.Stream}
+		key := streamKey{scope, o.Host, o.Session, o.Source, s.Stream}
 		b, exists := streams[key]
 		at, _ := time.Parse(time.RFC3339Nano, o.At)
 		if exists && (b.mode != s.Mode || s.Sequence <= b.sequence || at.Before(b.at)) {
@@ -305,7 +373,7 @@ func (doc Document) validate() error {
 		}
 	}
 	for _, o := range doc.Observations {
-		if o.RunID != doc.RunID {
+		if o.Evaluation != nil || o.RunID != doc.RunID {
 			return errors.New("observation run_id does not match document")
 		}
 	}
@@ -319,6 +387,9 @@ func (doc Document) validate() error {
 func Record(repoRoot string, o Observation) (bool, error) {
 	if err := o.Validate(); err != nil {
 		return false, err
+	}
+	if o.Evaluation != nil {
+		return false, errors.New("evaluation observations cannot enter Delivery metrics history")
 	}
 	doc, err := load(repoRoot, o.RunID)
 	if err != nil {

@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"os"
 	"regexp"
 	"strings"
 
@@ -33,6 +34,10 @@ var hostVersion = regexp.MustCompile(`^(?:orch|codex_cli_rs|codex-cli|Codex Desk
 // Preflight starts a fresh local app-server, inspects native metadata, and shuts
 // it down. It never attempts login, authentication refresh or model work.
 func Preflight(ctx context.Context, options Options, selection manifest.Selection) (capabilities Capabilities, err error) {
+	return preflight(ctx, options, selection, nil)
+}
+
+func preflight(ctx context.Context, options Options, selection manifest.Selection, boundary *isolationBoundary) (capabilities Capabilities, err error) {
 	if strings.TrimSpace(selection.Model) == "" || strings.TrimSpace(selection.Effort) == "" || selection.Variant != "" || selection.NoVariant {
 		return capabilities, errors.New("codex preflight requires an exact model and effort selection")
 	}
@@ -44,7 +49,17 @@ func Preflight(ctx context.Context, options Options, selection manifest.Selectio
 	}
 	ctx, cancel := context.WithTimeout(ctx, preflightTimeout)
 	defer cancel()
-	c, err := start(ctx, execx.Cmd{Name: options.Executable, Args: []string{"app-server", "--listen", "stdio://"}, Dir: options.Dir})
+	command := execx.Cmd{Name: options.Executable, Args: []string{"app-server", "--listen", "stdio://"}, Dir: options.Dir}
+	var c *connection
+	if boundary == nil {
+		c, err = start(ctx, command)
+	} else {
+		command.Args = boundary.args()
+		c, err = startWithEnv(ctx, command, serverEnvironment(os.Environ(), boundary.scratch))
+		if err == nil {
+			c.isolation, c.profile = true, boundary.profile()
+		}
+	}
 	if err != nil {
 		return capabilities, err
 	}
@@ -69,7 +84,11 @@ func inspect(c *connection, clientVersion string, selection manifest.Selection) 
 			Name    string `json:"name"`
 			Version string `json:"version"`
 		} `json:"clientInfo"`
+		Capabilities map[string]bool `json:"capabilities,omitempty"`
 	}{}
+	if c.isolation {
+		params.Capabilities = map[string]bool{"experimentalApi": true}
+	}
 	params.ClientInfo.Name = "orch"
 	params.ClientInfo.Version = clientVersion
 	if err := c.call("initialize", params, &initialize); err != nil {

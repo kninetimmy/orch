@@ -773,7 +773,7 @@ func TestControllerDelayedCancellationSharesCleanupAllowance(t *testing.T) {
 	defer g.close()
 	unit := e.Preparation.Preview.Schedule[0]
 	slot := Slot{Unit: unit, Attempts: []AttemptRef{{Number: 1, Kind: "initial"}}}
-	a, _, err := prepareAttempt(t.Context(), g, e, slot, "initial", sources[unit.CaseID])
+	a, record, err := prepareAttempt(t.Context(), g, e, slot, "initial", sources[unit.CaseID])
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -782,7 +782,7 @@ func TestControllerDelayedCancellationSharesCleanupAllowance(t *testing.T) {
 	defer cancel()
 	started := make(chan struct{})
 	go func() { <-started; cancel() }()
-	result, returned, interrupted, deadline := executeAttempt(ctx, g, e, a, sources[unit.CaseID], unit, scriptedWorker{func(ctx context.Context, r workerRequest) (workerResult, error) {
+	result, returned, interrupted, deadline := executeAttempt(ctx, g, e, a, sources[unit.CaseID], record, scriptedWorker{func(ctx context.Context, r workerRequest) (workerResult, error) {
 		close(started)
 		<-ctx.Done()
 		timer := time.NewTimer(250 * time.Millisecond)

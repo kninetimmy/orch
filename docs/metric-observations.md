@@ -366,6 +366,9 @@ model execution, role default or native-isolation behavior changes.
 
 ## Bounded native Codex sessions (#294)
 
+Before #322, this section described the native session API as dormant and
+unconditionally refusing; that earlier behavior follows:
+
 The dormant internal `codexnative` session API returns schema-2 observations;
 it never records them or submits legacy lifecycle usage. Its production entry
 points require capability and isolation preflight, and the unresolved native
@@ -400,3 +403,24 @@ records `native-completion-not-verification`, never review/merge approval.
 Callers save and submit unchanged evidence through the existing current-run
 recorder before ending the run. Recorder/storage/lifecycle behavior and every
 existing capture source remain unchanged.
+
+After #322 the native gate conditionally admits reviewed controls; after #323
+Delivery tasks still return schema-2 observations, while standalone evaluations
+return explicitly separate schema-3 observations. Schema 3 has `evaluation`
+identity (real ID/plan/unit/case revision/attempt/role) and forbids `run_id`,
+`issue_number`, Delivery `attempt` and review cycle. The same counter validator
+and delta arithmetic scope evaluation streams by evaluation/unit/attempt as well
+as host/thread/source/stream, rejecting changed bindings and duplicate IDs.
+Absent versus zero, cumulative ordering/regression/overflow and distinct capture
+sources retain their original meanings. No second arithmetic or history store
+is introduced.
+
+The former statement "Callers save and submit unchanged evidence through the
+existing current-run recorder" applies only to Delivery callers. Evaluation
+callers retain observations against their originating attempt, never submit
+them to that recorder. `metrics.Record` and Delivery document validation reject
+evaluation identities explicitly; current-run/issue association and schemas 1/2
+stay unchanged. New native evaluation evidence/report shapes are versioned in
+the [workflow](evaluation-workflow.md#native-evaluation-integration-issue-323).
+Native configured profiles, receipt timing and partial counters still supply no
+inference identity, semantic grade, accepted denominator or measured baseline.
