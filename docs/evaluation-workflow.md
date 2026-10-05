@@ -1,7 +1,8 @@
 # P1-C evaluation preview and proposed execution workflow
 
-**Status: preview, bounded controller, explicit approval, public CLI and retained
-reports implemented; verified worker-access/model-tool protection, live trials
+**Status: preview, bounded controller, explicit approval, public CLI, retained
+reports and evidence-backed grading implemented; verified worker-access/model-tool
+protection, live trials
 and a measured baseline remain pending. Phase 1 is open.**
 Before issue #316 this guide stated: "execution CLI, reports and verified
 worker-access protection remain pending." After that increment the CLI and
@@ -28,6 +29,14 @@ measured P1-C baseline delivered here." After that increment,
 scoped historical cases and deterministic preparation controls. Independent
 semantic validation is separately retained; no validated grader, protected
 runtime store or measured P1-C baseline is claimed by author checks.
+Before issue #318, semantic grades and disputes remained unknown and `grade`
+was unsupported. After that increment, the
+[exact grading input, storage, trust limits and blast radius](evaluation-grading.md)
+define `orch eval grade --run ID --storage-root ROOT --unit N --attempt N
+--submission FILE [--json]`. It imports evaluator assertions and data, preserves
+execution bytes and prior reports, and exposes initial/final coverage. The
+fresh independent reviewer must check mappings and reproduce controls; author
+agreement and scripted preparation are not validation or trial performance.
 
 This v1 experience is for maintainers and advanced users screening Orch changes
 against a versioned **Orch reference corpus**. It does not establish tuning
@@ -694,7 +703,9 @@ successful workers remain exclusively `_test.go` and visibly labeled
 `no-model-test-script`. Old evaluation/progress/attempt wire shapes and preview
 bytes/digests are not migrated or rewritten.
 
-A report has schema 1, `snapshot_sha256` (SHA-256 of the canonical indented
+Before issue #318, a report had schema 1. New reports/snapshots use schema 2
+with optional grading projections; earlier schema-1 bundles remain readable
+and unchanged. Both versions retain `snapshot_sha256` (SHA-256 of the canonical indented
 `Snapshot` bytes plus newline), the derived `destination` and that `snapshot`.
 The snapshot retains public scope/provenance, approval limitations, complete
 scheduled slots and consumed initial/retry/repair attempts, observed outcomes,
@@ -702,8 +713,12 @@ typed native identity/counters/intervals, artifact/evidence references, cleanup,
 safety findings and reproduction argument vectors. Arbitrary reason/detail,
 worker output and unavailable-reason prose stay in guarded referenced evidence;
 keys, probes, controls/solutions and credentials are never copied into summaries.
-All semantic grades, annotations, review judgments, disputes/regrades, human work
-and exposure evidence remain explicitly unknown. Requested profiles in frozen
+Before issue #318, this section stated: "All semantic grades, annotations,
+review judgments, disputes/regrades, human work and exposure evidence remain
+explicitly unknown." After that change, attributed evidence-backed grades,
+review judgments, disputes and regrades can appear through the separate
+grading journal. Absent/unvalidated/disputed grades, human work and unobserved
+exposure remain unknown. Requested profiles in frozen
 scope are distinct from observed native identities; configuration diagnostics
 cannot establish inference identity, independent grading or containment.
 

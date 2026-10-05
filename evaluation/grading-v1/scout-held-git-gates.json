@@ -1,0 +1,104 @@
+{
+  "schema_version": 1,
+  "version": 1,
+  "controller_only": true,
+  "corpus_sha256": "2c3724026d5dc586c01c628bc103670eeb084a1abd173b28342c7372aa9a8ddd",
+  "case_id": "scout-held-git-gates",
+  "case_version": 1,
+  "case_sha256": "a3593a2e72f0be1f3b3c970e990de6bbcf6d4cc1fe804bf086c0289ddb9a7f9a",
+  "packet_sha256": "6e3931316f37d5af248c1f12d475f3096f4ced55f836db06e043061d75eb0b63",
+  "key_sha256": "f0fffe6dca27531299e177f62b632aac5f4483ca022fe8bbb79e434a6c18b2c3",
+  "probe_sha256": "47816bd15061245892681d5be208ae32483bbe386b8f3d27ccc95808c1917356",
+  "role": "scout",
+  "author": {
+    "identity": "Codex/issue-318-author",
+    "kind": "agent",
+    "relationship": "author",
+    "independent_of": [],
+    "source_access": [
+      "pinned-source",
+      "key",
+      "controls",
+      "grading-definitions"
+    ],
+    "exposure": [
+      "reference-v1-all-keys",
+      "held-out-source-access",
+      "grading-implementation",
+      "model-training-unknown"
+    ]
+  },
+  "controls": [
+    {
+      "name": "reference",
+      "sha256": "417cc2e8783ea4aafaa8c681fbe50704826c67e092df187b28466a256660356c",
+      "expected_failures": []
+    },
+    {
+      "name": "bad-confirmation",
+      "sha256": "4e1d3d803861b4a826577b6016e073799eaec70b26035b54514eea46c88f1667",
+      "expected_failures": [
+        "TestCorpus/confirmation"
+      ]
+    },
+    {
+      "name": "bad-worktree",
+      "sha256": "49b53af200b6d466a5ffa40968fa8082ffe46faa32e79f29b47fef7e92ff6800",
+      "expected_failures": [
+        "TestCorpus/checked-out"
+      ]
+    },
+    {
+      "name": "bad-forward",
+      "sha256": "e95d004cf300259ac22322d5a75e7d1f66e16587b180303d082651990f8726b0",
+      "expected_failures": [
+        "TestCorpus/fast-forward"
+      ]
+    }
+  ],
+  "requirements": [
+    {
+      "id": "confirmation",
+      "kind": "conclusion",
+      "expectation": "All four named destructive helpers reject a zero Confirmation before issuing commands.",
+      "severity": "critical",
+      "evidence_routes": [
+        "source",
+        "reproduction"
+      ],
+      "checks": [
+        "TestCorpus/confirmation"
+      ]
+    },
+    {
+      "id": "checked-out",
+      "kind": "conclusion",
+      "expectation": "ForceDeleteBranch refuses a branch checked out in any listed worktree; the caller must independently verify the squash merge.",
+      "severity": "critical",
+      "evidence_routes": [
+        "source",
+        "reproduction"
+      ],
+      "checks": [
+        "TestCorpus/checked-out"
+      ]
+    },
+    {
+      "id": "fast-forward",
+      "kind": "conclusion",
+      "expectation": "FastForward checks current branch and clean tree before fetch, proves ancestry before merge, and refuses divergence.",
+      "severity": "major",
+      "evidence_routes": [
+        "source",
+        "reproduction"
+      ],
+      "checks": [
+        "TestCorpus/fast-forward"
+      ]
+    }
+  ],
+  "blockers": [],
+  "alternatives": [
+    "The mechanical gates have one source-defined meaning. Independently tracing all four entry points or supplying the injected-runner command sequences is an acceptable alternate outcome. Claims of GitHub verification or universal concurrency isolation are excluded."
+  ]
+}

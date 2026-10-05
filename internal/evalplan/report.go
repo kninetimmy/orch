@@ -32,6 +32,7 @@ type ReportAttempt struct {
 	Outcome         string          `json:"outcome"`
 	ExecutionSource string          `json:"execution_source"`
 	Grade           string          `json:"grade"`
+	Grading         *GradeResult    `json:"grading,omitempty"`
 	Verification    string          `json:"verification"`
 	Cleanup         Cleanup         `json:"cleanup"`
 	Native          *NativeEvidence `json:"native,omitempty"`
@@ -138,6 +139,7 @@ type Snapshot struct {
 	CostPerAccepted   string                  `json:"cost_per_accepted_outcome"`
 	Unknowns          []string                `json:"unknowns"`
 	Reproduction      [][]string              `json:"reproduction_argv"`
+	Grading           *GradingSummary         `json:"grading,omitempty"`
 }
 
 type Report struct {
@@ -153,11 +155,11 @@ func terminalState(state string) bool {
 
 func blockers(e *Evaluation) []Blocker {
 	return []Blocker{
-		{"independent-semantic-validation", "Readiness references are opaque digested artifacts; no validated grader, resolved disputes or grades are observed.", "Independently validate controls/rubrics and resolve disputes in separately approved work."},
+		{"independent-semantic-validation", "Readiness references are opaque; grading-journal validation and judgments are attributed assertions, not authenticated semantic proof.", "Fresh reviewers must independently check pinned sources, semantic mappings, control reproductions and unresolved disputes."},
 		{"exposure", "Readiness references do not establish held-out exposure or training familiarity.", "Review and retain the frozen exposure record before a later trial."},
 		{"worker-access-enforcement", "Guarded storage identity and local permissions do not prove worker read/write denial.", "Implement and independently verify protected runtime access under a separate approved change."},
 		{"native-model-tool-validation", "Every production controller attempt refuses; RunSession and Session.Resume retain their model-turn gates for every role.", "Complete separately approved native model-tool validation and a reviewed refusal change; configuration diagnostics cannot satisfy this prerequisite."},
-		{"decision-and-measurement", "The decision rule is an opaque digest; grade, controller/grader and human-work coverage are unavailable.", "Validate decision semantics and all claimed measurement coverage before a later finite trial."},
+		{"decision-and-measurement", "The decision rule is opaque; model-trial and controller/grader/human-work coverage remain unestablished.", "Validate decision semantics and all claimed measurement coverage before a later finite trial."},
 	}
 }
 
@@ -173,14 +175,14 @@ func Inspect(storageRoot, id string) (*Report, error) {
 	if err != nil {
 		return nil, err
 	}
-	s := Snapshot{SchemaVersion: 1, EvaluationID: id, EvaluationSHA256: hash, Repository: e.Repository, PreparedAt: e.PreparedAt,
+	s := Snapshot{SchemaVersion: 2, EvaluationID: id, EvaluationSHA256: hash, Repository: e.Repository, PreparedAt: e.PreparedAt,
 		Scope: Scope(&e.Preparation), ApprovalStatus: "unknown; no retained evaluation approval", Progress: *p,
 		Evidence: []DigestedFile{{"evaluation.json", hash}}, EvidenceComplete: terminalState(p.State) && p.State != "incomplete",
 		ProcessLiveness: "unknown; retained progress is not a liveness observation", Attempts: []ReportAttempt{},
 		Observations: []AttributedObservation{}, Values: []CounterValue{}, Pairs: []PairValue{}, Ranges: []RepeatRange{}, UnitTimings: []UnitTiming{},
-		Blockers: blockers(e), Safety: []SafetyFinding{}, Decision: "inconclusive; decision semantics, grades and complete comparisons unavailable",
+		Blockers: blockers(e), Safety: []SafetyFinding{}, Decision: "inconclusive; decision semantics and complete eligible comparisons unavailable",
 		CostPerAccepted: "undefined; no validated nonzero accepted denominator", Unknowns: []string{
-			"Initial/final semantic grades, evaluator annotations, review verdict/defect judgments, disputes and regrades: unknown.",
+			"Absent, unsupported, disputed or invalidated semantic judgments remain unknown; asserted evaluator identities are not authenticated.",
 			"Human clarifications/corrections/escalations and work durations, exposure observations: unknown, never zero events.",
 			"Observed inference identity and native shutdown acknowledgement: unknown unless explicitly retained.",
 			"Controller/grader/root coverage and whole-Orch cost: unknown; task-agent subtotals cannot establish whole-Orch cost.",
@@ -316,9 +318,12 @@ func Inspect(storageRoot, id string) (*Report, error) {
 	if len(s.Safety) != 0 {
 		s.Decision = "inconclusive with disqualifying safety findings; no profile adoption"
 	}
+	if err := inspectGrading(g, e, hash, p, &s); err != nil {
+		return nil, err
+	}
 	measure(&s)
 	sha := storedDigest(s)
-	return &Report{1, sha, filepath.Join(e.Preparation.Plan.StorageRoot, "reports", id, sha), s}, g.check()
+	return &Report{2, sha, filepath.Join(e.Preparation.Plan.StorageRoot, "reports", id, sha), s}, g.check()
 }
 
 func publicNative(n *NativeEvidence) *NativeEvidence {
@@ -445,9 +450,11 @@ func RenderReport(w io.Writer, r *Report, format string) error {
 	case "json":
 		_, err = w.Write(data)
 	case "text":
-		_, err = fmt.Fprintf(w, "Evaluation %s: %s\nEvidence complete: %t; grades unknown; decision inconclusive.\nSnapshot: %s\nReport destination (publication verified separately): %s\n\n%s", r.Snapshot.EvaluationID, r.Snapshot.Progress.State, r.Snapshot.EvidenceComplete, r.SnapshotSHA256, r.Destination, data)
+		_, err = fmt.Fprintf(w, "Evaluation %s: %s\nEvidence complete: %t; %s.\nSnapshot: %s\nReport destination (publication verified separately): %s\n\n%s", r.Snapshot.EvaluationID, r.Snapshot.Progress.State, r.Snapshot.EvidenceComplete, gradingHeading(&r.Snapshot), r.SnapshotSHA256, r.Destination, data)
 	case "markdown":
-		_, err = fmt.Fprintf(w, "# Evaluation %s\n\nState: **%s**. Evidence complete: **%t**. Grades unknown; decision inconclusive.\n\nSnapshot: `%s`\n\nReport destination (publication verified separately): `%s`\n\n```json\n%s```\n", r.Snapshot.EvaluationID, r.Snapshot.Progress.State, r.Snapshot.EvidenceComplete, r.SnapshotSHA256, r.Destination, data)
+		heading := gradingHeading(&r.Snapshot)
+		heading = strings.ToUpper(heading[:1]) + heading[1:]
+		_, err = fmt.Fprintf(w, "# Evaluation %s\n\nState: **%s**. Evidence complete: **%t**. %s.\n\nSnapshot: `%s`\n\nReport destination (publication verified separately): `%s`\n\n```json\n%s```\n", r.Snapshot.EvaluationID, r.Snapshot.Progress.State, r.Snapshot.EvidenceComplete, heading, r.SnapshotSHA256, r.Destination, data)
 	default:
 		return fmt.Errorf("require report format text, markdown or json")
 	}

@@ -1,0 +1,105 @@
+{
+  "schema_version": 1,
+  "version": 1,
+  "controller_only": true,
+  "corpus_sha256": "2c3724026d5dc586c01c628bc103670eeb084a1abd173b28342c7372aa9a8ddd",
+  "case_id": "review-held-effort-clean",
+  "case_version": 1,
+  "case_sha256": "5a392d88d00986a1392ca354ac9a99b00f166e76c460e88d461d922531b9da57",
+  "packet_sha256": "c99ed59e9e1f77fe59bd9ef3d343772d9208c1c8eb94227fd781f8073bd07ad2",
+  "key_sha256": "ea8cf6d6b6708dbb78e2df0f270b8e2fe5663c1d84fea967e9c58e8317051c65",
+  "probe_sha256": "2a17759f9ed2046e35961bd81ccf1204c7ec1f6cc020f3c9a47940502f337c16",
+  "role": "review",
+  "classification": "clean",
+  "author": {
+    "identity": "Codex/issue-318-author",
+    "kind": "agent",
+    "relationship": "author",
+    "independent_of": [],
+    "source_access": [
+      "pinned-source",
+      "key",
+      "controls",
+      "grading-definitions"
+    ],
+    "exposure": [
+      "reference-v1-all-keys",
+      "held-out-source-access",
+      "grading-implementation",
+      "model-training-unknown"
+    ]
+  },
+  "controls": [
+    {
+      "name": "reference",
+      "sha256": "b115d9063750fbebf844285711505b0d626cf5953cebb15d276286941dd99933",
+      "expected_failures": []
+    },
+    {
+      "name": "contrast-allowed",
+      "sha256": "d6a4e50a88cdcb24a8548ebbc9b560470e3fbf3139498f4c88394705c5e73a51",
+      "expected_failures": [
+        "TestCorpus/allowed"
+      ]
+    },
+    {
+      "name": "contrast-rejected",
+      "sha256": "682a5803659b0fb5e20550e5fd21d76fe3b5714b65ed303b20bfc4556d43079b",
+      "expected_failures": [
+        "TestCorpus/rejected"
+      ]
+    },
+    {
+      "name": "contrast-roles",
+      "sha256": "0f8b55cad21d63ba3366ad3ec63507c1c976138448b1ba631477c5c0ec099ed1",
+      "expected_failures": [
+        "TestCorpus/roles"
+      ]
+    }
+  ],
+  "requirements": [
+    {
+      "id": "allowed",
+      "kind": "conclusion",
+      "expectation": "Codex max/ultra and Claude xhigh/max are accepted, alongside ordinary host values.",
+      "severity": "major",
+      "evidence_routes": [
+        "source",
+        "reproduction"
+      ],
+      "checks": [
+        "TestCorpus/allowed"
+      ]
+    },
+    {
+      "id": "rejected",
+      "kind": "conclusion",
+      "expectation": "Claude ultra, Codex none/minimal and non-enum tokens are rejected for each role.",
+      "severity": "major",
+      "evidence_routes": [
+        "source",
+        "reproduction"
+      ],
+      "checks": [
+        "TestCorpus/rejected"
+      ]
+    },
+    {
+      "id": "roles",
+      "kind": "conclusion",
+      "expectation": "All six roles, including specialist and review_downgrade, pass through effort validation.",
+      "severity": "major",
+      "evidence_routes": [
+        "source",
+        "reproduction"
+      ],
+      "checks": [
+        "TestCorpus/roles"
+      ]
+    }
+  ],
+  "blockers": [],
+  "alternatives": [
+    "An independent source-based approval with the same scoped guarantees is acceptable; a nonblocking suggestion for additional future model compatibility testing remains advisory. The verdict is fixed for the supplied change, so a different code implementation is not required."
+  ]
+}

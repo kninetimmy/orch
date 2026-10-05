@@ -1,0 +1,104 @@
+{
+  "schema_version": 1,
+  "version": 1,
+  "controller_only": true,
+  "corpus_sha256": "2c3724026d5dc586c01c628bc103670eeb084a1abd173b28342c7372aa9a8ddd",
+  "case_id": "scout-dev-scan",
+  "case_version": 1,
+  "case_sha256": "d7457b22deed8631955f485923048a936763efec3e98c83a139d6153fe8ab5af",
+  "packet_sha256": "26c6d316fd0d2f42d63e1befbb438f8f35853286d69d223ca06c47e63c2a43cd",
+  "key_sha256": "2eaaafc4c2aa33880e78226e95a47b135c056a6fef8f85ebd1b36f5acd1ee998",
+  "probe_sha256": "1a670c845c3f90d006b73ff2a03642d9e75e36ea7ab03eea847e06f531618586",
+  "role": "scout",
+  "author": {
+    "identity": "Codex/issue-318-author",
+    "kind": "agent",
+    "relationship": "author",
+    "independent_of": [],
+    "source_access": [
+      "pinned-source",
+      "key",
+      "controls",
+      "grading-definitions"
+    ],
+    "exposure": [
+      "reference-v1-all-keys",
+      "held-out-source-access",
+      "grading-implementation",
+      "model-training-unknown"
+    ]
+  },
+  "controls": [
+    {
+      "name": "reference",
+      "sha256": "170c8dae1e6bb12e72b327dd5fd81075d9538788faf3493adebe438a7e277ca1",
+      "expected_failures": []
+    },
+    {
+      "name": "bad-hidden",
+      "sha256": "e496821a78ad9fe6c61e3b8553dcb9493d858741cf0db27291bb814ce37692e1",
+      "expected_failures": [
+        "TestCorpus/hidden"
+      ]
+    },
+    {
+      "name": "bad-root",
+      "sha256": "b61b174def9ce63ca1f1ffa1e3876b1de3114b316e0ae3a39663d6a506d15c1e",
+      "expected_failures": [
+        "TestCorpus/root-pair"
+      ]
+    },
+    {
+      "name": "bad-names",
+      "sha256": "66b77cda517c15cc148945049cd0952f3e65a203b0e436c471c9f68875ee1970",
+      "expected_failures": [
+        "TestCorpus/names"
+      ]
+    }
+  ],
+  "requirements": [
+    {
+      "id": "hidden",
+      "kind": "conclusion",
+      "expectation": "Every dot-prefixed descendant directory is skipped; the root itself is not skipped.",
+      "severity": "major",
+      "evidence_routes": [
+        "source",
+        "reproduction"
+      ],
+      "checks": [
+        "TestCorpus/hidden"
+      ]
+    },
+    {
+      "id": "root-pair",
+      "kind": "conclusion",
+      "expectation": "Root's direct AGENTS.md and CLAUDE.md are excluded from nested conflicts.",
+      "severity": "major",
+      "evidence_routes": [
+        "source",
+        "reproduction"
+      ],
+      "checks": [
+        "TestCorpus/root-pair"
+      ]
+    },
+    {
+      "id": "names",
+      "kind": "conclusion",
+      "expectation": "Both target basenames are recognized case-insensitively; README.md is not a target.",
+      "severity": "major",
+      "evidence_routes": [
+        "source",
+        "reproduction"
+      ],
+      "checks": [
+        "TestCorpus/names"
+      ]
+    }
+  ],
+  "blockers": [],
+  "alternatives": [
+    "Different source-defined behavior is not meaningful. An independently constructed directory fixture and the three subtests are acceptable in place of a line-by-line trace; symlink and unreadable-file behavior lies outside this case's required distinctions."
+  ]
+}

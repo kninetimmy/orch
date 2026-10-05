@@ -1,0 +1,104 @@
+{
+  "schema_version": 1,
+  "version": 1,
+  "controller_only": true,
+  "corpus_sha256": "2c3724026d5dc586c01c628bc103670eeb084a1abd173b28342c7372aa9a8ddd",
+  "case_id": "scout-dev-paths",
+  "case_version": 1,
+  "case_sha256": "7d7219be97a1a425a858c73d9bcdc5aa8a397d1e46e0177e4d37ab956193fc85",
+  "packet_sha256": "e8fe824090302946bf5e93788062bbe9989edef33f042b164f50a5b7c6dc4bf8",
+  "key_sha256": "4266296125bc050b3ebad82d97f784410fc3600416989a0bd8a7475d2de55a53",
+  "probe_sha256": "c4afd36bf2bf0703e14a86fded5ed57ccf0ffff0d0f4c6a58c66d84e2dc284c4",
+  "role": "scout",
+  "author": {
+    "identity": "Codex/issue-318-author",
+    "kind": "agent",
+    "relationship": "author",
+    "independent_of": [],
+    "source_access": [
+      "pinned-source",
+      "key",
+      "controls",
+      "grading-definitions"
+    ],
+    "exposure": [
+      "reference-v1-all-keys",
+      "held-out-source-access",
+      "grading-implementation",
+      "model-training-unknown"
+    ]
+  },
+  "controls": [
+    {
+      "name": "reference",
+      "sha256": "3ad9e9418827120b0d25df7e0694c1ba7dad96bd7dd2cdfd89c46d19a7f6fdad",
+      "expected_failures": []
+    },
+    {
+      "name": "bad-segments",
+      "sha256": "277fb0fb07dc1828709505fa54556532c2842a291f12d916905ba0e39736c1b1",
+      "expected_failures": [
+        "TestCorpus/segments"
+      ]
+    },
+    {
+      "name": "bad-missing-tail",
+      "sha256": "78fd253e1d806805bf9f644cca2da6c225c558054513d078abafd93b3aeaecdb",
+      "expected_failures": [
+        "TestCorpus/missing-tail"
+      ]
+    },
+    {
+      "name": "bad-nearest-root",
+      "sha256": "c7a010adb460794b5afd16fb0b990e3557f2fcf02f2d48ed8c3ce4646607ce5f",
+      "expected_failures": [
+        "TestCorpus/nearest-root"
+      ]
+    }
+  ],
+  "requirements": [
+    {
+      "id": "segments",
+      "kind": "conclusion",
+      "expectation": "Sibling root-name prefixes and parent traversal are outside; root and ordinary children are inside.",
+      "severity": "major",
+      "evidence_routes": [
+        "source",
+        "reproduction"
+      ],
+      "checks": [
+        "TestCorpus/segments"
+      ]
+    },
+    {
+      "id": "missing-tail",
+      "kind": "conclusion",
+      "expectation": "Canonical resolves the deepest existing ancestor and appends missing components; it does not create them.",
+      "severity": "major",
+      "evidence_routes": [
+        "source",
+        "reproduction"
+      ],
+      "checks": [
+        "TestCorpus/missing-tail"
+      ]
+    },
+    {
+      "id": "nearest-root",
+      "kind": "conclusion",
+      "expectation": "FindRoot returns the nearest qualifying ancestor; no qualifying ancestor wraps ErrNotFound.",
+      "severity": "major",
+      "evidence_routes": [
+        "source",
+        "reproduction"
+      ],
+      "checks": [
+        "TestCorpus/nearest-root"
+      ]
+    }
+  ],
+  "blockers": [],
+  "alternatives": [
+    "The facts are fixed by the supplied source, so a different correct conclusion is not meaningful. An independently written trace using filepath.Rel, the rest stack and the upward loop, or the three reproductions, is an acceptable alternative evidence route."
+  ]
+}

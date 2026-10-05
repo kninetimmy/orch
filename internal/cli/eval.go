@@ -7,18 +7,19 @@ import (
 	"fmt"
 	"os"
 	"os/signal"
+	"strconv"
 
 	"github.com/kninetimmy/orch/internal/evalplan"
 )
 
 func runEval(env Env, args []string) error {
 	if len(args) == 0 {
-		return usageError("usage: orch eval preview|run|status|stop|report (orch eval help for arguments)")
+		return usageError("usage: orch eval preview|run|status|stop|report|grade (orch eval help for arguments)")
 	}
 	switch args[0] {
 	case "preview":
 		return runEvalPreview(env, args[1:])
-	case "run", "status", "stop", "report":
+	case "run", "status", "stop", "report", "grade":
 		return runEvalController(env, args[0], args[1:])
 	case "help":
 		if len(args) != 1 {
@@ -37,6 +38,9 @@ const evalUsage = `usage:
   orch eval status --run ID --storage-root ROOT [--json]
   orch eval stop --run ID --storage-root ROOT [--json]
   orch eval report --run ID --storage-root ROOT --format text|markdown|json
+  orch eval grade --run ID --storage-root ROOT --unit N --attempt N --submission FILE [--json]
+Grade retains bounded evaluator assertions/evidence; it executes no supplied code or commands.
+Corrections, disputes and rubric validation are append-only submissions, never execution approval.
 Run returns the exact frozen scope before requiring a single-use human assertion:
 schema_version=1, plan_digest, approved_by, approved_at (preceding 24h), statement=approve-evaluation.
 JSON run output is a scope document followed by the retained snapshot when execution is reached.
@@ -92,6 +96,9 @@ func runEvalController(env Env, verb string, args []string) error {
 	if verb == "report" {
 		allowed["--format"] = true
 	}
+	if verb == "grade" {
+		allowed["--unit"], allowed["--attempt"], allowed["--submission"] = true, true, true
+	}
 	bad := func() error {
 		return usageError("orch eval " + verb + ": require strict explicit arguments; " + evalUsage)
 	}
@@ -113,6 +120,17 @@ func runEvalController(env Env, verb string, args []string) error {
 	root, id := flags["--storage-root"], flags["--run"]
 	if root == "" || verb == "run" && flags["--plan"] == "" || verb != "run" && id == "" {
 		return bad()
+	}
+	if verb == "grade" {
+		unit, unitErr := strconv.Atoi(flags["--unit"])
+		attempt, attemptErr := strconv.Atoi(flags["--attempt"])
+		if unitErr != nil || attemptErr != nil || unit < 1 || attempt < 1 ||
+			strconv.Itoa(unit) != flags["--unit"] || strconv.Itoa(attempt) != flags["--attempt"] || flags["--submission"] == "" {
+			return bad()
+		}
+		if _, err := evalplan.SubmitGrade(env.RepoRoot, root, id, unit, attempt, flags["--submission"]); err != nil {
+			return err
+		}
 	}
 	format := "text"
 	if jsonOutput {

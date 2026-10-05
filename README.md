@@ -367,6 +367,13 @@ Production attempts still refuse. `status` and `stop` take `--run ID
 text|markdown|json`. Every terminal outcome retains immutable report bundles;
 reports also expose incomplete snapshots. See `orch eval help` and the workflow
 for the approval format, strict arguments, exit codes and recovery limits.
+Before issue #318, semantic grades and disputes remained unknown and `grade`
+was unsupported. Now `orch eval grade --run ID --storage-root ROOT --unit N
+--attempt N --submission FILE [--json]` retains evidence-backed evaluator
+assertions, with immutable corrections and initial/final coverage. See the
+[grading input and trust contract](docs/evaluation-grading.md). Unknown or
+disputed judgments remain unknown; scripted preparation never becomes model
+trial acceptance. Existing execution records and older reports stay unchanged.
 Verified worker-access enforcement, native model-tool validation, live trials
 and the measured baseline remain outstanding; Phase 1 is open. Existing metrics
 and Delivery/configuration/merge gates retain their prior contracts.

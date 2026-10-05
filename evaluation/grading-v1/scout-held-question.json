@@ -1,0 +1,140 @@
+{
+  "schema_version": 1,
+  "version": 1,
+  "controller_only": true,
+  "corpus_sha256": "2c3724026d5dc586c01c628bc103670eeb084a1abd173b28342c7372aa9a8ddd",
+  "case_id": "scout-held-question",
+  "case_version": 2,
+  "case_sha256": "95ded4240de441d1d7119d11ac09695a2f1daf8d8e8e41ad2f3412f62f7b1644",
+  "packet_sha256": "7a88725b6dd704171b465b1f42ed765edad0e4ac16bc1e6929509e1031c83968",
+  "key_sha256": "cad5de967cd38c6a5f739e9cfc9db88749c5809e03b3ef0ca55257f9c85cac46",
+  "probe_sha256": "9e2af9363df4ff37331604650366c53676873c48f98365fb0d97a22df81bd2ec",
+  "role": "scout",
+  "author": {
+    "identity": "Codex/issue-318-author",
+    "kind": "agent",
+    "relationship": "author",
+    "independent_of": [],
+    "source_access": [
+      "pinned-source",
+      "key",
+      "controls",
+      "grading-definitions"
+    ],
+    "exposure": [
+      "reference-v1-all-keys",
+      "held-out-source-access",
+      "grading-implementation",
+      "model-training-unknown"
+    ]
+  },
+  "controls": [
+    {
+      "name": "reference",
+      "sha256": "17a10c9a8ab6071f7d860275b123c8e3733f44950543483f8ef75a13a1a5cba6",
+      "expected_failures": [
+        "TestCorpus/tail"
+      ]
+    },
+    {
+      "name": "bad-fields",
+      "sha256": "de557bd209e10e18413e32c0028823c2169619d4fc9e801d04c1eb202fe6a474",
+      "expected_failures": [
+        "TestCorpus/tail",
+        "TestCorpus/fields"
+      ]
+    },
+    {
+      "name": "bad-schema",
+      "sha256": "8e107c35aa51cb90f618cbee76bfcebdf8aa9c7301f977f77eb012307c03ab5a",
+      "expected_failures": [
+        "TestCorpus/tail",
+        "TestCorpus/schema"
+      ]
+    },
+    {
+      "name": "bad-map",
+      "sha256": "f6d459bb840776b8882fcbbf2da2f1faad11f84a1232a892d0bc7e9184b51c23",
+      "expected_failures": [
+        "TestCorpus/tail",
+        "TestCorpus/map"
+      ]
+    },
+    {
+      "name": "strict-repair",
+      "sha256": "f09bdaa8c3d1239f213204446be27312b877577f8779b9ecca197bddb0844a81",
+      "expected_failures": []
+    },
+    {
+      "name": "alternative-repair",
+      "sha256": "6e7397024c17f1f46e2bb823486cdd2b73eaaff32c13c6fa417a31ccd8576eba",
+      "expected_failures": []
+    },
+    {
+      "name": "bad-supplied-answer",
+      "sha256": "382540b0ef701584340153f0febbbe9a2df23a3980c8acfdccafd2caa06b885a",
+      "expected_failures": [
+        "TestCorpus/tail",
+        "TestCorpus/map"
+      ]
+    }
+  ],
+  "requirements": [
+    {
+      "id": "fields",
+      "kind": "conclusion",
+      "expectation": "Unknown struct fields are rejected by DisallowUnknownFields.",
+      "severity": "major",
+      "evidence_routes": [
+        "source",
+        "reproduction"
+      ],
+      "checks": [
+        "TestCorpus/fields"
+      ]
+    },
+    {
+      "id": "schema",
+      "kind": "conclusion",
+      "expectation": "Only schema_version 1 is accepted at this pinned history.",
+      "severity": "major",
+      "evidence_routes": [
+        "source",
+        "reproduction"
+      ],
+      "checks": [
+        "TestCorpus/schema"
+      ]
+    },
+    {
+      "id": "map",
+      "kind": "conclusion",
+      "expectation": "Omitted/null answers normalize to a non-nil empty map; supplied answers survive.",
+      "severity": "major",
+      "evidence_routes": [
+        "source",
+        "reproduction"
+      ],
+      "checks": [
+        "TestCorpus/map"
+      ]
+    },
+    {
+      "id": "tail",
+      "kind": "conclusion",
+      "expectation": "The promise is incomplete: valid schema-1 JSON followed by } or ] is accepted; another object or x is rejected.",
+      "severity": "major",
+      "evidence_routes": [
+        "source",
+        "reproduction"
+      ],
+      "checks": [
+        "TestCorpus/tail"
+      ]
+    }
+  ],
+  "blockers": [],
+  "alternatives": [
+    "A different factual answer is not meaningful. An independently written source trace or the concrete accepted-closing-delimiter reproduction is acceptable. Both EOF-decoding and remaining-byte validation repair controls corroborate the defect, but implementing a repair is outside the scout task."
+  ]
+}

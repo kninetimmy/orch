@@ -1,0 +1,148 @@
+{
+  "schema_version": 1,
+  "version": 1,
+  "controller_only": true,
+  "corpus_sha256": "2c3724026d5dc586c01c628bc103670eeb084a1abd173b28342c7372aa9a8ddd",
+  "case_id": "review-held-question-defective",
+  "case_version": 2,
+  "case_sha256": "249a61673c73f747ba9ff882a554e82fe2e9f796c49d2712e943a2605f98baaa",
+  "packet_sha256": "0454cd26d8022ca38790f9c2943fe8b91af039ae5781a170b4c11f77265ca512",
+  "key_sha256": "75e5c0bdcb07ccb6cade25808ceef9a2933b1c19d4955da2fd337effd81eba82",
+  "probe_sha256": "9e2af9363df4ff37331604650366c53676873c48f98365fb0d97a22df81bd2ec",
+  "role": "review",
+  "classification": "defective",
+  "author": {
+    "identity": "Codex/issue-318-author",
+    "kind": "agent",
+    "relationship": "author",
+    "independent_of": [],
+    "source_access": [
+      "pinned-source",
+      "key",
+      "controls",
+      "grading-definitions"
+    ],
+    "exposure": [
+      "reference-v1-all-keys",
+      "held-out-source-access",
+      "grading-implementation",
+      "model-training-unknown"
+    ]
+  },
+  "controls": [
+    {
+      "name": "reference",
+      "sha256": "e9c0f373687ace01c529194370ddb1a7c37b25c995b8154b50d412396052cfa7",
+      "expected_failures": [
+        "TestCorpus/tail"
+      ]
+    },
+    {
+      "name": "strict-repair",
+      "sha256": "f09bdaa8c3d1239f213204446be27312b877577f8779b9ecca197bddb0844a81",
+      "expected_failures": []
+    },
+    {
+      "name": "alternative-repair",
+      "sha256": "6e7397024c17f1f46e2bb823486cdd2b73eaaff32c13c6fa417a31ccd8576eba",
+      "expected_failures": []
+    },
+    {
+      "name": "bad-fields",
+      "sha256": "de557bd209e10e18413e32c0028823c2169619d4fc9e801d04c1eb202fe6a474",
+      "expected_failures": [
+        "TestCorpus/tail",
+        "TestCorpus/fields"
+      ]
+    },
+    {
+      "name": "bad-schema",
+      "sha256": "8e107c35aa51cb90f618cbee76bfcebdf8aa9c7301f977f77eb012307c03ab5a",
+      "expected_failures": [
+        "TestCorpus/tail",
+        "TestCorpus/schema"
+      ]
+    },
+    {
+      "name": "bad-map",
+      "sha256": "f6d459bb840776b8882fcbbf2da2f1faad11f84a1232a892d0bc7e9184b51c23",
+      "expected_failures": [
+        "TestCorpus/tail",
+        "TestCorpus/map"
+      ]
+    },
+    {
+      "name": "bad-supplied-answer",
+      "sha256": "382540b0ef701584340153f0febbbe9a2df23a3980c8acfdccafd2caa06b885a",
+      "expected_failures": [
+        "TestCorpus/tail",
+        "TestCorpus/map"
+      ]
+    }
+  ],
+  "requirements": [
+    {
+      "id": "tail",
+      "kind": "conclusion",
+      "expectation": "A valid schema-1 object followed by an unmatched } or ] is accepted because dec.More does not enforce EOF.",
+      "severity": "major",
+      "evidence_routes": [
+        "source",
+        "reproduction"
+      ],
+      "checks": [
+        "TestCorpus/tail"
+      ]
+    },
+    {
+      "id": "fields",
+      "kind": "conclusion",
+      "expectation": "Unknown struct fields are correctly rejected; an allegation that they are ignored is unjustified.",
+      "severity": "major",
+      "evidence_routes": [
+        "source",
+        "reproduction"
+      ],
+      "checks": [
+        "TestCorpus/fields"
+      ]
+    },
+    {
+      "id": "schema",
+      "kind": "conclusion",
+      "expectation": "Unsupported schema versions are correctly rejected; an allegation they are accepted is unjustified.",
+      "severity": "major",
+      "evidence_routes": [
+        "source",
+        "reproduction"
+      ],
+      "checks": [
+        "TestCorpus/schema"
+      ]
+    },
+    {
+      "id": "map",
+      "kind": "conclusion",
+      "expectation": "Omitted/null answers correctly become a non-nil map and existing entries survive.",
+      "severity": "major",
+      "evidence_routes": [
+        "source",
+        "reproduction"
+      ],
+      "checks": [
+        "TestCorpus/map"
+      ]
+    }
+  ],
+  "blockers": [
+    {
+      "id": "JSON-TAIL",
+      "severity": "major",
+      "requirement": "tail",
+      "description": "dec.More accepts an unmatched closing brace or bracket after valid schema-1 JSON; both triggers are one defect."
+    }
+  ],
+  "alternatives": [
+    "A single deduplicated finding may use } or ] as the trigger, source analysis or reproduction, and suggest a second Decode requiring io.EOF or non-whitespace remaining-byte validation. Both repair controls pass the same tests. Blocking based only on an agent's claim is unsupported."
+  ]
+}

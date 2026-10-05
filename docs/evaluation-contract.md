@@ -6,9 +6,15 @@ procedures, not observed results. No corpus, validated grader or measured baseli
 is delivered here." After issue #310, the twelve-case
 [reference-v1 corpus](../evaluation/reference-v1/preparation-report.md) supplies
 versioned inputs, external keys and deterministic preparation controls. Its
-report distinguishes author evidence from pending independent validation. No
-validated semantic grader, protected runtime store or measured baseline is
-claimed. Twelve cases can screen a change; they cannot establish general
+report distinguishes author evidence from pending independent validation.
+Before issue #318, this document stated: "No validated semantic grader,
+protected runtime store or measured baseline is claimed." After that increment,
+the [evidence-backed grading contract](evaluation-grading.md) adds a separate
+immutable journal of attributed evaluator judgments, independent validation
+assertions, disputes, corrections and initial/final coverage. Author checks do
+not become fresh independent validation or model results; protected runtime
+access and a measured baseline remain unestablished. Twelve cases can screen a
+change; they cannot establish general
 superiority across repositories, hosts or tasks. Recovery tests and a later live
 pilot supply separate evidence about the complete delivery workflow.
 
@@ -57,6 +63,8 @@ work is preserved; local cleanup is not native shutdown acknowledgement.
 Reported counters/profiles/IDs retain available meanings and missingness, with
 unknown grades and no fabricated totals, active time, human work or metrics
 associations. Current-Delivery recording is not used for standalone evaluations.
+These execution-record grades remain unknown after issue #318; the separate
+grading journal supplies report projections without rewriting those bytes.
 
 Before review-cycle-1 repair, the core could accept a `completed` progress
 record containing unrun slots, or publish malformed native observations that

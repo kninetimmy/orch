@@ -1,0 +1,143 @@
+{
+  "schema_version": 1,
+  "version": 1,
+  "controller_only": true,
+  "corpus_sha256": "2c3724026d5dc586c01c628bc103670eeb084a1abd173b28342c7372aa9a8ddd",
+  "case_id": "implement-held-capture",
+  "case_version": 1,
+  "case_sha256": "4e51f9e4933186909d0343d080fd012caed1aa659b0d06ca6d6f8d6db8358f17",
+  "packet_sha256": "c099e8b187c1b94282487839ff602b777cd9eb41458f9c96f5dfc07c451c14a3",
+  "key_sha256": "6ef57972d9751f61d59eaceb89d03d510165ec1e171ebfac1033d4ca849e81bb",
+  "probe_sha256": "fc4ff7bb624ecd2cf3f8c26138f1ab5eb7ebdfcc74f150cd0ac6154b00de4770",
+  "role": "implementation",
+  "author": {
+    "identity": "Codex/issue-318-author",
+    "kind": "agent",
+    "relationship": "author",
+    "independent_of": [],
+    "source_access": [
+      "pinned-source",
+      "key",
+      "controls",
+      "grading-definitions"
+    ],
+    "exposure": [
+      "reference-v1-all-keys",
+      "held-out-source-access",
+      "grading-implementation",
+      "model-training-unknown"
+    ]
+  },
+  "controls": [
+    {
+      "name": "reference",
+      "sha256": "fd9744f24ef922598c45e2b5d8d97c1664930bcd9c3d12b2461b7ebac306f905",
+      "expected_failures": []
+    },
+    {
+      "name": "unfixed",
+      "sha256": "67eefeb897aaad12414d506d400e581767fa514642eacc83ac361cdd3db86a60",
+      "expected_failures": [
+        "TestCorpus/unrelated"
+      ]
+    },
+    {
+      "name": "bad-identified",
+      "sha256": "e3273f4aff161234e68d3afa6e2c5932804f96def0e1596361267dd81cd5609e",
+      "expected_failures": [
+        "TestCorpus/identified"
+      ]
+    },
+    {
+      "name": "bad-unique",
+      "sha256": "c191ebe528df3f5a3d08a3e90d424cd94f4a7376294087b91a4b150d948c3e4b",
+      "expected_failures": [
+        "TestCorpus/unique"
+      ]
+    },
+    {
+      "name": "bad-attribution",
+      "sha256": "561166bfacd71690413919198d6d221342819bf960ea7e8a1e0cc04d83dd1fa7",
+      "expected_failures": [
+        "TestCorpus/unique"
+      ]
+    },
+    {
+      "name": "bad-delta",
+      "sha256": "ad846bc5b38553cd03ac84f6cd419202135d9a09784e2972f3c8ccdfa1abaf5f",
+      "expected_failures": [
+        "TestCorpus/delta"
+      ]
+    },
+    {
+      "name": "alternative",
+      "sha256": "189a13dc230b2cce0e480f0a9bb14def6c40d2725679e120ed4023c55f0b760b",
+      "expected_failures": []
+    }
+  ],
+  "requirements": [
+    {
+      "id": "unrelated",
+      "kind": "behavior",
+      "expectation": "Unidentified empty, malformed and unrelated-session files leave the exact child total=17 available.",
+      "severity": "major",
+      "evidence_routes": [
+        "reproduction"
+      ],
+      "checks": [
+        "TestCorpus/unrelated"
+      ]
+    },
+    {
+      "id": "identified",
+      "kind": "regression",
+      "expectation": "Any invalid identified-child neighbor poisons an otherwise valid capture; setup requires the valid neighbor.",
+      "severity": "critical",
+      "evidence_routes": [
+        "reproduction"
+      ],
+      "checks": [
+        "TestCorpus/identified"
+      ]
+    },
+    {
+      "id": "unique",
+      "kind": "regression",
+      "expectation": "Two exact child rollouts are unavailable; a different requested parent or task never receives the child's total.",
+      "severity": "critical",
+      "evidence_routes": [
+        "reproduction"
+      ],
+      "checks": [
+        "TestCorpus/unique"
+      ]
+    },
+    {
+      "id": "delta",
+      "kind": "regression",
+      "expectation": "Resume returns exact nonnegative deltas, including measured zero; negative or larger previous totals are unavailable.",
+      "severity": "major",
+      "evidence_routes": [
+        "reproduction"
+      ],
+      "checks": [
+        "TestCorpus/delta"
+      ]
+    },
+    {
+      "id": "scope",
+      "kind": "scope",
+      "expectation": "Satisfy the packet's component/path/dependency restrictions: Fix TotalTokens/rolloutTotal in internal/codexusage/capture.go so unidentified unrelated malformed or empty .jsonl files cannot poison an otherwise exact child capture. Once a rollout identifies the requested child, malformed records, duplicate metadata and unfinished data must still make capture unavailable, even beside a valid matching rollout. Keep exact uniqueness, parent/task attribution and nonnegative resume deltas. Limit changes to capture.go and focused tests; use synthetic local fixtures, never actual session records. Permitted source paths: `internal/codexusage/capture.go`.\nSupplied instructions: ROLE.md and CONTEXT.md. All other history is excluded.\n",
+      "severity": "major",
+      "evidence_routes": [
+        "source",
+        "scope"
+      ],
+      "checks": []
+    }
+  ],
+  "blockers": [],
+  "alternatives": [
+    "A separately constructed collection-based TotalTokens walks the same pinned parser, rejects any identified-invalid input, then accepts exactly one total and validates the baseline before subtraction. This changes the aggregation strategy while preserving the required behavior; it does not independently revalidate every parser branch."
+  ]
+}

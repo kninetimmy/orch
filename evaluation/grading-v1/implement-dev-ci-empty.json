@@ -1,0 +1,117 @@
+{
+  "schema_version": 1,
+  "version": 1,
+  "controller_only": true,
+  "corpus_sha256": "2c3724026d5dc586c01c628bc103670eeb084a1abd173b28342c7372aa9a8ddd",
+  "case_id": "implement-dev-ci-empty",
+  "case_version": 1,
+  "case_sha256": "f1bff03e29a60f98ef346b6f3ace24ee538c22971484a9cb37d3f6974a727f7c",
+  "packet_sha256": "624d3244874b576354046b5e626f688befb58148410c42c3741c48ec3822173e",
+  "key_sha256": "5fad9d8ce86f17300d843c924c2b400ffb29bdac4cf88a00c4c37ecfd5e75c29",
+  "probe_sha256": "7dad82f4b499cc5654717934c03a4f0d9094aead6337dfad4aef12c883cab4b4",
+  "role": "implementation",
+  "author": {
+    "identity": "Codex/issue-318-author",
+    "kind": "agent",
+    "relationship": "author",
+    "independent_of": [],
+    "source_access": [
+      "pinned-source",
+      "key",
+      "controls",
+      "grading-definitions"
+    ],
+    "exposure": [
+      "reference-v1-all-keys",
+      "held-out-source-access",
+      "grading-implementation",
+      "model-training-unknown"
+    ]
+  },
+  "controls": [
+    {
+      "name": "reference",
+      "sha256": "da776b5f9accf16fa528741e3f5210aba315a39917a6b0981b8890ec3842b571",
+      "expected_failures": []
+    },
+    {
+      "name": "unfixed",
+      "sha256": "138d541582570a2c4c37c077fa57c77454438f2db8059df786652352e3a0f4f5",
+      "expected_failures": [
+        "TestCorpus/empty"
+      ]
+    },
+    {
+      "name": "bad-malformed",
+      "sha256": "cabb8f610b6b795eee2e480fa376979940a389c87859460dd6750471d8b0959e",
+      "expected_failures": [
+        "TestCorpus/malformed"
+      ]
+    },
+    {
+      "name": "bad-states",
+      "sha256": "30a66b34188c19330c68baf32796b0856d6d4b9daca1a67111e142e74195d5c0",
+      "expected_failures": [
+        "TestCorpus/states"
+      ]
+    },
+    {
+      "name": "alternative",
+      "sha256": "88f3018c8ef1639cf85d72415f17327c497e8ba0ba39e439d9a99f803f63be7b",
+      "expected_failures": []
+    }
+  ],
+  "requirements": [
+    {
+      "id": "empty",
+      "kind": "behavior",
+      "expectation": "Empty, whitespace and [] responses produce no-checks, preserve Total=1 and have zero Required entries.",
+      "severity": "major",
+      "evidence_routes": [
+        "reproduction"
+      ],
+      "checks": [
+        "TestCorpus/empty"
+      ]
+    },
+    {
+      "id": "malformed",
+      "kind": "regression",
+      "expectation": "Nonempty malformed JSON and unexpected gh exit codes remain errors.",
+      "severity": "major",
+      "evidence_routes": [
+        "reproduction"
+      ],
+      "checks": [
+        "TestCorpus/malformed"
+      ]
+    },
+    {
+      "id": "states",
+      "kind": "regression",
+      "expectation": "No required checks is distinct from passing; pending/cancel/fail precedence is unchanged.",
+      "severity": "major",
+      "evidence_routes": [
+        "reproduction"
+      ],
+      "checks": [
+        "TestCorpus/states"
+      ]
+    },
+    {
+      "id": "scope",
+      "kind": "scope",
+      "expectation": "Satisfy the packet's component/path/dependency restrictions: Fix RequiredCI in internal/ghops/checks.go for repositories whose rollup contains checks but gh pr checks --required emits empty or whitespace-only stdout with exit 0. Return CINoChecks, zero required checks and the existing total count. Preserve rejection of nonempty malformed JSON and unexpected exit codes, and preserve existing pending/failing/passing bucket semantics. Make the smallest change to checks.go; add local tests if useful. Do not call GitHub. Permitted source paths: `internal/ghops/ghops.go`, `internal/ghops/checks.go`, `internal/ghops/errors.go`, `internal/paths/paths.go`, `internal/execx/execx.go`.\nSupplied instructions: ROLE.md and CONTEXT.md. All other history is excluded.\n",
+      "severity": "major",
+      "evidence_routes": [
+        "source",
+        "scope"
+      ],
+      "checks": []
+    }
+  ],
+  "blockers": [],
+  "alternatives": [
+    "The author separately constructed normalization of empty stdout to [] before decoding. It preserves the same required behavior and passes all probes. Construction is separate from the reference function body, not independent-person validation; the fresh reviewer must check it."
+  ]
+}
