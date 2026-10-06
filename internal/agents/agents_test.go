@@ -328,21 +328,26 @@ func TestRenderOverrideSubstitution(t *testing.T) {
 	}
 }
 
-func TestRenderClaudeOverrideChangesOnlyModelLines(t *testing.T) {
+func TestRenderClaudeOverrideChangesOnlyModelAndEffortLines(t *testing.T) {
 	h := defaultClaudeHost()
 	h.Roles.Scout.Model = "claude-haiku-5"
 	h.Roles.Implementer.Model = "claude-sonnet-5"
 	h.Roles.Specialist.Model = "claude-opus-5-1"
 	h.Roles.Reviewer.Model = "claude-opus-5-2"
 	h.Roles.ReviewDowngrade.Model = "claude-sonnet-5-1"
-	// Effort is intentionally different too: this adapter conveys it in
-	// the spawn prompt, so it must change no definition byte.
 	h.Roles.Scout.Effort = "max"
 	h.Roles.Implementer.Effort = "low"
 
 	files, err := agents.Render("claude", h)
 	if err != nil {
 		t.Fatalf("Render: %v", err)
+	}
+	wantEffort := map[string]string{
+		"orch-scout":         h.Roles.Scout.Effort,
+		"orch-implementer":   h.Roles.Implementer.Effort,
+		"orch-specialist":    h.Roles.Specialist.Effort,
+		"orch-reviewer":      h.Roles.Reviewer.Effort,
+		"orch-reviewer-safe": h.Roles.ReviewDowngrade.Effort,
 	}
 	wantModel := map[string]string{
 		"orch-scout":         h.Roles.Scout.Model,
@@ -366,23 +371,26 @@ func TestRenderClaudeOverrideChangesOnlyModelLines(t *testing.T) {
 			if gotLines[i] == wantLines[i] {
 				continue
 			}
-			if !strings.HasPrefix(gotLines[i], "model: ") || !strings.HasPrefix(wantLines[i], "model: ") {
-				t.Errorf("%s line %d changed outside model frontmatter:\n got %q\nwant %q", name, i+1, gotLines[i], wantLines[i])
+			model := strings.HasPrefix(gotLines[i], "model: ") && strings.HasPrefix(wantLines[i], "model: ")
+			effort := strings.HasPrefix(gotLines[i], "effort: ") && strings.HasPrefix(wantLines[i], "effort: ")
+			if !model && !effort {
+				t.Errorf("%s line %d changed outside model/effort frontmatter:\n got %q\nwant %q", name, i+1, gotLines[i], wantLines[i])
 			}
 		}
 		if !strings.Contains(string(f.Content), "\nmodel: \""+wantModel[name]+"\"\n") {
 			t.Errorf("%s does not pin model %q", name, wantModel[name])
 		}
+		content := string(f.Content)
+		if !strings.Contains(content, "\neffort: "+wantEffort[name]+"\n") &&
+			!strings.Contains(content, "\neffort: \""+wantEffort[name]+"\"\n") {
+			t.Errorf("%s does not pin effort %q", name, wantEffort[name])
+		}
 	}
 }
 
-func TestRenderClaudeEffortOnlyIsByteIdentical(t *testing.T) {
+func TestRenderClaudeEffortOnlyChangesOnlyEffortLine(t *testing.T) {
 	h := defaultClaudeHost()
 	h.Roles.Scout.Effort = "max"
-	h.Roles.Implementer.Effort = "low"
-	h.Roles.Specialist.Effort = "medium"
-	h.Roles.Reviewer.Effort = "xhigh"
-	h.Roles.ReviewDowngrade.Effort = "high"
 	files, err := agents.Render("claude", h)
 	if err != nil {
 		t.Fatal(err)
@@ -392,9 +400,29 @@ func TestRenderClaudeEffortOnlyIsByteIdentical(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if string(f.Content) != string(want) {
-			t.Errorf("%s changed for an effort-only override", f.Path)
+		same := string(f.Content) == string(want)
+		if isScout := stem(f) == "orch-scout"; isScout == same {
+			t.Errorf("%s: byte-identical to shipped = %v, want %v", f.Path, same, !isScout)
 		}
+	}
+	if !strings.Contains(string(files[0].Content), "\neffort: \"max\"\n") {
+		t.Errorf("scout effort not pinned:\n%s", files[0].Content)
+	}
+}
+
+func TestRenderClaudeQuotesUnsafeEffort(t *testing.T) {
+	h := defaultClaudeHost()
+	h.Roles.Scout.Effort = "low\ntools: Bash"
+	files, err := agents.Render("claude", h)
+	if err != nil {
+		t.Fatal(err)
+	}
+	content := string(files[0].Content)
+	if !strings.Contains(content, `effort: "low\ntools: Bash"`) {
+		t.Errorf("unsafe effort was not quoted:\n%s", content)
+	}
+	if strings.Count(content, "\ntools:") != 1 {
+		t.Errorf("unsafe effort injected a tools field:\n%s", content)
 	}
 }
 
@@ -420,6 +448,27 @@ func TestRenderClaudeQuotesUnsafeModel(t *testing.T) {
 	}
 	if !strings.Contains(string(files[0].Content), `model: "true"`) {
 		t.Errorf("YAML keyword model was not quoted:\n%s", files[0].Content)
+	}
+}
+
+func TestStaleReportsClaudeEffortOnlyChange(t *testing.T) {
+	root := t.TempDir()
+	h := defaultClaudeHost()
+	files, err := agents.Render("claude", h)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := agents.Write(root, files); err != nil {
+		t.Fatal(err)
+	}
+	h.Roles.Reviewer.Effort = "xhigh"
+	stale, err := agents.Stale(root, "claude", h)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := agents.ClaudeDir + "/orch-reviewer.md"
+	if len(stale) != 1 || stale[0] != want {
+		t.Errorf("Stale = %v, want [%s]", stale, want)
 	}
 }
 

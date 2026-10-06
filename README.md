@@ -669,11 +669,13 @@ before any mutation, which stops Delivery execution cold. Workaround:
 confirm the sandbox actually works on that machine before setting
 `sandbox_mode = "workspace-write"` there.
 
-**Claude Code has no per-subagent effort parameter.** The routed
-effort reaches a Claude subagent as a cue in its prompt, not as a host
-parameter, so the effort in the audit record is what was routed rather
-than something the host applied. The record says so outright, as
-`Effort delivery: prompt-cue`. Codex pins effort in project agent definitions.
+**Claude Code applies effort from the subagent definition.** Each Claude
+project agent definition carries an `effort` frontmatter field that
+overrides the session effort while that subagent runs, and
+`orch render-agents` writes each role's configured effort into it. New
+audit records say `Effort delivery: parameter`; records written earlier
+carry `prompt-cue` and still parse. Which effort levels a Claude model
+accepts depends on the model. Codex pins effort in project agent definitions.
 OpenCode instead pins its optional model-specific variant in the model reference;
 the audit record says `Profile delivery: model-variant`, including an explicit
 no-variant selection when the reference is bare.

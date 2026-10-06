@@ -139,7 +139,7 @@ func Render(host string, h *config.Host) ([]File, error) {
 			ext = ".md"
 			canonical, err = claude.AgentDefinitions.ReadFile("agents/" + rf.stem + ext)
 			if err == nil {
-				content, err = substituteClaude(canonical, profile.Model)
+				content, err = substituteClaude(canonical, profile.Model, profile.Effort)
 			}
 		case "codex":
 			ext = ".toml"
@@ -194,32 +194,54 @@ const claudeFrontmatterStart = "---\n"
 const claudeFrontmatterEnd = "\n---\n"
 
 var claudeModelLine = regexp.MustCompile(`(?m)^model: [^\r\n]*$`)
+var claudeEffortLine = regexp.MustCompile(`(?m)^effort: [^\r\n]*$`)
 
-// substituteClaude replaces only model in canonical's frontmatter.
-// This adapter does not pin Claude effort in project definitions; it
-// continues to travel as the Delivery skill's prompt cue. The unchanged
-// canonical value remains byte-identical; every override is quoted so
-// YAML cannot reinterpret it or let it inject another frontmatter field.
-func substituteClaude(canonical []byte, model string) ([]byte, error) {
+// substituteClaude replaces only model and effort in canonical's
+// frontmatter. Claude Code applies the effort field to the subagent while
+// it runs, overriding the session effort.
+func substituteClaude(canonical []byte, model, effort string) ([]byte, error) {
+	header, rest, err := splitFrontmatter(canonical)
+	if err != nil {
+		return nil, err
+	}
+	if header, err = replaceFrontmatterField(header, claudeModelLine, "model", model); err != nil {
+		return nil, err
+	}
+	if header, err = replaceFrontmatterField(header, claudeEffortLine, "effort", effort); err != nil {
+		return nil, err
+	}
+	return []byte(header + rest), nil
+}
+
+// splitFrontmatter returns canonical's leading frontmatter block (through
+// its closing delimiter's newline) and the remaining bytes.
+func splitFrontmatter(canonical []byte) (header, rest string, err error) {
 	s := string(canonical)
 	if !strings.HasPrefix(s, claudeFrontmatterStart) {
-		return nil, errors.New("canonical Markdown has no leading frontmatter")
+		return "", "", errors.New("canonical Markdown has no leading frontmatter")
 	}
 	end := strings.Index(s[len(claudeFrontmatterStart):], claudeFrontmatterEnd)
 	if end < 0 {
-		return nil, errors.New("canonical Markdown has no closing frontmatter delimiter")
+		return "", "", errors.New("canonical Markdown has no closing frontmatter delimiter")
 	}
 	end += len(claudeFrontmatterStart)
-	header, rest := s[:end], s[end:]
-	value := strconv.Quote(model)
-	if claudeModelLine.FindString(header) == "model: "+model {
-		value = model
+	return s[:end], s[end:], nil
+}
+
+// replaceFrontmatterField sets key's single line in header to value. The
+// unchanged canonical value remains byte-identical; every override is
+// quoted so YAML cannot reinterpret it or let it inject another
+// frontmatter field.
+func replaceFrontmatterField(header string, pattern *regexp.Regexp, key, value string) (string, error) {
+	out := strconv.Quote(value)
+	if pattern.FindString(header) == key+": "+value {
+		out = value
 	}
-	header, err := replaceOneLine(header, claudeModelLine, "model: "+value)
+	header, err := replaceOneLine(header, pattern, key+": "+out)
 	if err != nil {
-		return nil, fmt.Errorf("model: %w", err)
+		return "", fmt.Errorf("%s: %w", key, err)
 	}
-	return []byte(header + rest), nil
+	return header, nil
 }
 
 // substituteOpenCode replaces only model in native V2 frontmatter. OpenCode
@@ -232,7 +254,14 @@ func substituteOpenCode(canonical []byte, model, variant string) ([]byte, error)
 	if variant != "" {
 		model += "#" + variant
 	}
-	return substituteClaude(canonical, model)
+	header, rest, err := splitFrontmatter(canonical)
+	if err != nil {
+		return nil, err
+	}
+	if header, err = replaceFrontmatterField(header, claudeModelLine, "model", model); err != nil {
+		return nil, err
+	}
+	return []byte(header + rest), nil
 }
 
 // replaceOneLine replaces pattern's single match in s with replacement,

@@ -364,8 +364,7 @@ OpenCode manual usage contracts are unchanged.
 
    Effort is a real host parameter on Codex: `model_reasoning_effort` is
    pinned in the dispatched agent's own project TOML and is what
-   actually runs, not layered on afterward, so there is no prompt cue
-   standing in for it the way there is on Claude. The host enforces
+   actually runs, not layered on afterward. The host enforces
    whatever TOML was dispatched, not that it matches the routed
    selection — dispatching the TOML matching the routed selection above
    is Architect discipline the engine does not verify. The opening line

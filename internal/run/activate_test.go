@@ -371,8 +371,8 @@ func TestActivateRecordsApprovedWork(t *testing.T) {
 	if len(m.RequiredTests) != 1 || m.RequiredTests[0] != "go test ./..." {
 		t.Errorf("required_tests = %q, want the plan's", m.RequiredTests)
 	}
-	if m.EffortDelivery != manifest.EffortDeliveryPromptCue {
-		t.Errorf("effort_delivery = %q, want %q for a claude run", m.EffortDelivery, manifest.EffortDeliveryPromptCue)
+	if m.EffortDelivery != manifest.EffortDeliveryParameter {
+		t.Errorf("effort_delivery = %q, want %q for a claude run", m.EffortDelivery, manifest.EffortDeliveryParameter)
 	}
 
 	// Run state carries the same text, so dispatch never has to re-read

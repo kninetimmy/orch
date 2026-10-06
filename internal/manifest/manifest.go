@@ -166,12 +166,14 @@ type EffortDelivery string
 const (
 	// EffortDeliveryParameter means the host applied the routed effort as
 	// an actual model parameter (Codex pins model_reasoning_effort in the
-	// dispatched agent's own TOML).
+	// dispatched agent's own TOML; Claude Code pins effort in the
+	// subagent definition's frontmatter).
 	EffortDeliveryParameter EffortDelivery = "parameter"
-	// EffortDeliveryPromptCue means the host has no per-spawn effort knob,
-	// so the routed effort reached the executor only as a cue in its
-	// prompt (Claude Code subagents). The recorded effort is then the
-	// routing decision, not an enforced setting.
+	// EffortDeliveryPromptCue is carried by audit records written while
+	// Claude effort reached the executor only as a cue in its prompt. It
+	// stays a valid value so those records still parse and re-render; the
+	// recorded effort in them is the routing decision, not an enforced
+	// setting.
 	EffortDeliveryPromptCue EffortDelivery = "prompt-cue"
 	// EffortDeliveryModelVariant keeps the existing audit field compatible
 	// while recording OpenCode's actual mechanism: its optional execution

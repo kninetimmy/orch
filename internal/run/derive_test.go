@@ -52,7 +52,7 @@ func TestHostProfileNormalizesOpenCodeVariants(t *testing.T) {
 func TestEffortDelivery(t *testing.T) {
 	cases := map[string]manifest.EffortDelivery{
 		"codex":    manifest.EffortDeliveryParameter,
-		"claude":   manifest.EffortDeliveryPromptCue,
+		"claude":   manifest.EffortDeliveryParameter,
 		"opencode": manifest.EffortDeliveryModelVariant,
 	}
 	for host, want := range cases {
