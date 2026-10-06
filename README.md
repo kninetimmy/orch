@@ -5,7 +5,7 @@
 <p align="center">
   <img src="https://img.shields.io/badge/License-MIT-2E7D32?style=flat&logo=opensourceinitiative&logoColor=white" alt="License: MIT"/>
   <img src="https://img.shields.io/badge/Go-1.26%2B-00ADD8?style=flat&logo=go&logoColor=white" alt="Go 1.26+"/>
-  <img src="https://img.shields.io/badge/Release%20target-v0.11.1-24292F?style=flat&logo=github&logoColor=white" alt="Release target: v0.11.1"/>
+  <img src="https://img.shields.io/badge/Release%20target-v0.12.0-24292F?style=flat&logo=github&logoColor=white" alt="Release target: v0.12.0"/>
   <br/>
   <img src="https://img.shields.io/badge/Platform-Linux%20%C2%B7%20macOS%20%C2%B7%20Windows-607D8B?style=flat" alt="Platform: Linux, macOS, Windows"/>
   <img src="https://img.shields.io/badge/Hosts-Claude%20Code%20%C2%B7%20Codex%20CLI%20%C2%B7%20OpenCode%20V2-6E56CF?style=flat" alt="Hosts: Claude Code, Codex CLI, and OpenCode V2"/>
@@ -252,10 +252,17 @@ service after upgrading its adapter so the new hooks and skills are loaded.
 source revision `611c645` uses state schema 6, approval contract 1, and these
 manual wire versions: Gate 3, Status 4, Activation 2, Dispatch 4, Review 3,
 Escalate 2, Block 2, Resume 2, and Resolve Block 1. The Claude and Codex
-adapter version 0.8.0 identifies that bundled manual contract; cached 0.7.0
-adapters predate it and are rejected by the existing version check. Release
-and adapter version labels describe compatibility, while the source revision
-and build identity identify the code that was built.
+adapter version 0.9.0 is paired with engine v0.12.0. It keeps the manual wire
+versions above and ships the updated skill and agent definitions; cached 0.8.0
+and older adapters predate it and are rejected by the existing version check.
+Release and adapter version labels describe compatibility, while the source
+revision and build identity identify the code that was built.
+
+After upgrading, re-run `orch render-agents` in every project that uses the
+Claude host. Claude project agent definitions now carry the routed `effort` in
+their frontmatter, so an existing definition rendered before the upgrade is
+reported stale by `orch doctor` and Claude Delivery activation until it is
+re-rendered.
 
 Update the engine and the configured manual adapter together while the
 repository is in Assist, then restart the host and run `orch doctor --host
@@ -511,7 +518,80 @@ Every memhub command runs with the primary checkout as its working
 directory, never inside a per-issue worktree, because worktrees never
 receive a copy of the memhub database.
 
-## v0.11.1 release target
+## v0.12.0 release target
+
+- Evaluation workflow. A reproducible measurement and grading contract defines
+  case selection and held-out handling, independent grader validation, matched
+  comparisons, complete attempt costs and explicit improved, regressed or
+  inconclusive decisions —
+  [#307](https://github.com/kninetimmy/orch/pull/307) — alongside a proposed
+  user workflow for preview, bounded approval, progress, stopping, local
+  reports and a separate adoption decision —
+  [#309](https://github.com/kninetimmy/orch/pull/309). The twelve-case
+  `reference-v1` corpus and its grading controls are prepared —
+  [#311](https://github.com/kninetimmy/orch/pull/311). See the
+  [evaluation workflow](docs/evaluation-workflow.md) and
+  [measurement contract](docs/evaluation-contract.md).
+- `orch eval` commands. `orch eval preview --plan FILE` validates a version 1
+  plan, freezes its bounded schedule and retains an immutable local preparation
+  record, granting no approval —
+  [#313](https://github.com/kninetimmy/orch/pull/313). A guarded evaluation
+  controller and runtime storage retain progress and attempt evidence —
+  [#315](https://github.com/kninetimmy/orch/pull/315). `run` (behind a
+  single-use, digest-bound human assertion), `status`, `stop` and `report`
+  complete the family, with text, Markdown and JSON report bundles retained
+  immutably —
+  [#317](https://github.com/kninetimmy/orch/pull/317). `orch eval grade`
+  retains evidence-backed grading with immutable corrections and disputes —
+  [#319](https://github.com/kninetimmy/orch/pull/319). See the
+  [grading contract](docs/evaluation-grading.md).
+- Native Codex evaluation admission. Isolation validation replays synthetic
+  tool dispatch through the installed Windows Codex dispatcher and pins `TEMP`,
+  `TMP` and `TMPDIR` to scratch —
+  [#321](https://github.com/kninetimmy/orch/pull/321). Native task sessions are
+  admitted only on Windows amd64 with Codex 0.160.0 and verified isolation
+  controls on the actual connection; every other host, platform or Codex
+  version still refuses —
+  [#324](https://github.com/kninetimmy/orch/pull/324). Approved evaluations now
+  run through those sessions: a version 2 plan must declare its approved global
+  instruction artifacts and protected roots, and both selected revisions must
+  match the controller binary's clean embedded build revision, with only the
+  `none` and `requested-profile` interventions executing —
+  [#325](https://github.com/kninetimmy/orch/pull/325). See the
+  [native protocol contract](docs/codex-native-protocol.md).
+- No live model trial, screening run or measured baseline has been performed.
+  Live completion, interruption and recovery checks and the graded baseline
+  remain separate, separately approved work, and Phase 1 stays open. A
+  completed attempt is not a semantic grade.
+- Shipped default profiles. Fresh Codex setup now defaults to Architect
+  `gpt-6-astra`/xhigh, Scout `gpt-5.6-luna`/max, Implementer
+  `gpt-6.1-sol`/xhigh, Specialist `gpt-6.1-sol`/max, Reviewer
+  `gpt-6-astra`/medium and Safe Reviewer `gpt-6.1-sol`/high; prior and custom
+  model IDs stay available through Other —
+  [#305](https://github.com/kninetimmy/orch/pull/305). Fresh Claude setup now
+  defaults to the 5.5 generation: Architect `claude-opus-5-5`/xhigh, Scout
+  `claude-sonnet-5-5`/medium, Implementer `claude-sonnet-5-5`/high,
+  Specialist and Reviewer `claude-opus-5-5`/high, and Safe Reviewer
+  `claude-sonnet-5-5`/high —
+  [#330](https://github.com/kninetimmy/orch/pull/330). Existing explicit
+  configurations keep precedence, and OpenCode defaults are unchanged.
+- Claude routed effort is now pinned in each agent definition's `effort`
+  frontmatter, written by `orch render-agents` alongside `model`, instead of
+  being conveyed as a prompt cue; a definition whose rendered effort differs
+  from the configured one is reported stale —
+  [#331](https://github.com/kninetimmy/orch/pull/331).
+
+Engine release v0.12.0, the Claude/Codex manual-adapter version 0.9.0 and the
+unchanged OpenCode package 0.11.0 are separate identities. To upgrade, update
+the engine and the configured Claude or Codex adapter together between runs
+(see the upgrade commands above), restart the host, re-run `orch render-agents`
+in each Claude project and run `orch doctor --host claude|codex`. State schema 6
+has no active-run migration, so an active run stays on its original pair.
+Metrics schema-2 history requires v0.11.0 or a newer compatible reader, while
+legacy schema-1 history remains readable without rewriting; evaluation
+observations use schema 3 and are rejected by Delivery history.
+
+## v0.11.1 release
 
 - Codex child-usage capture now supports the bounded forked-rollout format,
   validating the fork boundary and exact child attribution while excluding
