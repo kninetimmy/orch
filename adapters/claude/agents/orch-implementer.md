@@ -47,6 +47,13 @@ relevant to the change. Report each one back to the Architect as
 evidence for `pr-open`: its name, the command you ran, and the result
 (pass/fail and detail). Do not report a check you did not actually run.
 
+Run each check in the foreground with a Bash timeout long enough for it
+to finish. A command that outlives its timeout is moved to the background
+rather than killed, and it keeps running after you report back. Never
+write an until or while loop that waits on a condition. If a check has to
+run with run_in_background, wait for that command's completion
+notification before reporting back.
+
 ## Check prose reflows for dropped words
 
 Any commit that reflows a paragraph — rewrapping or restructuring prose

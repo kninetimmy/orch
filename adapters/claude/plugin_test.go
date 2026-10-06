@@ -355,6 +355,35 @@ func TestReviewerReportsCoverageAndVerdictGrounds(t *testing.T) {
 	}
 }
 
+// executorWaitInstructions pin the Verification evidence guidance that keeps
+// a Claude executor from leaving a polling loop running after it reports
+// back (issue #334): Claude Code moves a command that outlives its Bash
+// timeout to the background instead of killing it.
+var executorWaitInstructions = []string{
+	"Run each check in the foreground with a Bash timeout long enough for it to finish",
+	"A command that outlives its timeout is moved to the background rather than killed",
+	"Never write an until or while loop that waits on a condition",
+	"If a check has to run with run_in_background, wait for that command's completion notification before reporting back",
+}
+
+func TestExecutorsTellHowToWaitOnLongChecks(t *testing.T) {
+	for _, stem := range []string{"orch-implementer", "orch-specialist"} {
+		t.Run(stem, func(t *testing.T) {
+			path := filepath.Join("agents", stem+".md")
+			data, err := os.ReadFile(path)
+			if err != nil {
+				t.Fatalf("read %s: %v", path, err)
+			}
+			content := adaptertest.NormalizeWhitespace(string(data))
+			for _, phrase := range executorWaitInstructions {
+				if !strings.Contains(content, adaptertest.NormalizeWhitespace(phrase)) {
+					t.Errorf("%s: missing wait instruction %q", path, phrase)
+				}
+			}
+		})
+	}
+}
+
 // skillGlob is the pattern every shared skill-drift check in this
 // package scans.
 const skillGlob = "skills/*/SKILL.md"
