@@ -46,9 +46,9 @@ func TestHostProfileNormalizesOpenCodeVariants(t *testing.T) {
 }
 
 // TestEffortDelivery pins the per-host mechanism the audit record names:
-// Codex applies the routed effort as a real parameter, Claude only as a
-// prompt cue, OpenCode uses a model variant, and an unrecognized host is an
-// error rather than a guess.
+// Codex and Claude apply the routed effort as a real parameter, OpenCode
+// uses a model variant, and an unrecognized host is an error rather than
+// a guess.
 func TestEffortDelivery(t *testing.T) {
 	cases := map[string]manifest.EffortDelivery{
 		"codex":    manifest.EffortDeliveryParameter,

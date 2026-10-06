@@ -213,8 +213,9 @@ func substituteClaude(canonical []byte, model, effort string) ([]byte, error) {
 	return []byte(header + rest), nil
 }
 
-// splitFrontmatter returns canonical's leading frontmatter block (through
-// its closing delimiter's newline) and the remaining bytes.
+// splitFrontmatter returns canonical's leading frontmatter block (up to,
+// not including, the newline before its closing delimiter) and the
+// remaining bytes, which begin with that newline.
 func splitFrontmatter(canonical []byte) (header, rest string, err error) {
 	s := string(canonical)
 	if !strings.HasPrefix(s, claudeFrontmatterStart) {
