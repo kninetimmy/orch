@@ -55,8 +55,8 @@ func TestMaterializeDefaults(t *testing.T) {
 	if cfg.Hosts.Claude == nil || cfg.Hosts.Codex == nil {
 		t.Fatal("expected both hosts materialized")
 	}
-	if got := cfg.Hosts.Claude.Roles.Architect.Model; got != "claude-opus-5" {
-		t.Errorf("claude architect model = %q, want claude-opus-5", got)
+	if got := cfg.Hosts.Claude.Roles.Architect.Model; got != "claude-opus-5-5" {
+		t.Errorf("claude architect model = %q, want claude-opus-5-5", got)
 	}
 	if got := cfg.Hosts.Codex.Roles.ReviewDowngrade.Effort; got != "high" {
 		t.Errorf("codex review_downgrade effort = %q, want high", got)
@@ -203,7 +203,12 @@ func TestValidateModelAnswerNearMiss(t *testing.T) {
 		{id: roleModelID("claude", "architect"), value: "Claude-Opus-5", wantErr: true, wantText: "claude-opus-5"},
 		{id: roleModelID("codex", "architect"), value: "sol", wantErr: true, wantText: "gpt-5.6-sol"},
 		{id: localRoleModelID("claude", "reviewer"), value: "fable-5", wantErr: true, wantText: "claude-fable-5"},
+		{id: roleModelID("claude", "architect"), value: "claude-opus-5-5"},
 		{id: roleModelID("claude", "architect"), value: "claude-opus-5"},
+		{id: roleModelID("claude", "scout"), value: "claude-sonnet-5"},
+		{id: localRoleModelID("claude", "reviewer"), value: "claude-opus-5"},
+		{id: roleModelID("claude", "architect"), value: "opus-5-5", wantErr: true, wantText: "claude-opus-5-5"},
+		{id: roleModelID("claude", "architect"), value: "Claude-Opus-5-5", wantErr: true, wantText: "claude-opus-5-5"},
 		{id: roleModelID("claude", "architect"), value: "claude-fable-5"},
 		{id: roleModelID("claude", "architect"), value: "claude-opus-6"},
 		{id: roleModelID("claude", "architect"), value: "claude-opus-4-8"},

@@ -2,6 +2,7 @@ package interview
 
 import (
 	"fmt"
+	"slices"
 	"strconv"
 	"strings"
 
@@ -189,6 +190,13 @@ func currentModel(h *config.Host, role string) string {
 	return committedProfile(h, role).Model
 }
 
+// exactModels lists real model ids that are no longer offered but are
+// substrings of an offered id (claude-opus-5 inside claude-opus-5-5), so
+// the substring rule would wrongly reject them as near misses.
+var exactModels = map[string][]string{
+	"claude": {"claude-opus-5", "claude-sonnet-5"},
+}
+
 // nearMissModels returns every known model id for id's host that
 // carries value as a substring, case-insensitively — the did-you-mean
 // set for a shortened form like "fable-5" or a mis-cased
@@ -197,7 +205,11 @@ func currentModel(h *config.Host, role string) string {
 // near miss, and a value resembling no known id yields no suggestions
 // and so passes.
 func nearMissModels(id, value string) []string {
-	known := hostLocalModels[modelHost(id)]
+	host := modelHost(id)
+	if slices.Contains(exactModels[host], value) {
+		return nil
+	}
+	known := hostLocalModels[host]
 	lowered := strings.ToLower(value)
 	var suggestions []string
 	for _, model := range known {

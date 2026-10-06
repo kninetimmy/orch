@@ -85,12 +85,12 @@ var defaultProfiles = map[string]map[string]profile{
 		"review_downgrade": {"gpt-6.1-sol", "high"},
 	},
 	"claude": {
-		"architect":        {"claude-opus-5", "high"},
-		"scout":            {"claude-opus-5", "low"},
-		"implementer":      {"claude-opus-5", "medium"},
-		"specialist":       {"claude-opus-5", "high"},
-		"reviewer":         {"claude-opus-5", "high"},
-		"review_downgrade": {"claude-opus-5", "medium"},
+		"architect":        {"claude-opus-5-5", "xhigh"},
+		"scout":            {"claude-sonnet-5-5", "medium"},
+		"implementer":      {"claude-sonnet-5-5", "high"},
+		"specialist":       {"claude-opus-5-5", "high"},
+		"reviewer":         {"claude-opus-5-5", "high"},
+		"review_downgrade": {"claude-sonnet-5-5", "high"},
 	},
 	"opencode": {
 		"architect":        {"openai/gpt-5.6-sol", "xhigh"},
@@ -120,7 +120,7 @@ func defaultProfileFor(host string) func(string) profile {
 // committed configuration this interview writes never defaults to it.
 var hostModels = map[string][]string{
 	"codex":  {"gpt-6-astra", "gpt-6.1-sol", "gpt-5.6-luna", "gpt-5.6-sol", "gpt-5.6-terra", "x-preview-f-free"},
-	"claude": {"claude-opus-5", "claude-sonnet-5"},
+	"claude": {"claude-opus-5-5", "claude-sonnet-5-5"},
 }
 
 const codexModelHint = "Use Other for any exact model ID, including gpt-5.6-sol, gpt-5.6-terra and x-preview-f-free."

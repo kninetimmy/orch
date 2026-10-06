@@ -430,12 +430,12 @@ tier it belonged to. The defaults `orch init` offers:
 
 | Role | Claude Code | Codex CLI | OpenCode V2 |
 |---|---|---|---|
-| Architect | `claude-opus-5` / high | `gpt-6-astra` / xhigh | `openai/gpt-5.6-sol#xhigh` |
-| Scout | `claude-opus-5` / low | `gpt-5.6-luna` / max | `openai/gpt-5.6-luna#max` |
-| Implementer | `claude-opus-5` / medium | `gpt-6.1-sol` / xhigh | `openai/gpt-5.6-terra#max` |
-| Specialist | `claude-opus-5` / high | `gpt-6.1-sol` / max | `openai/gpt-5.6-sol#max` |
-| Reviewer | `claude-opus-5` / high | `gpt-6-astra` / medium | `openai/gpt-5.6-sol#xhigh` |
-| Review downgrade | `claude-opus-5` / medium | `gpt-6.1-sol` / high | `openai/gpt-5.6-sol#high` |
+| Architect | `claude-opus-5-5` / xhigh | `gpt-6-astra` / xhigh | `openai/gpt-5.6-sol#xhigh` |
+| Scout | `claude-sonnet-5-5` / medium | `gpt-5.6-luna` / max | `openai/gpt-5.6-luna#max` |
+| Implementer | `claude-sonnet-5-5` / high | `gpt-6.1-sol` / xhigh | `openai/gpt-5.6-terra#max` |
+| Specialist | `claude-opus-5-5` / high | `gpt-6.1-sol` / max | `openai/gpt-5.6-sol#max` |
+| Reviewer | `claude-opus-5-5` / high | `gpt-6-astra` / medium | `openai/gpt-5.6-sol#xhigh` |
+| Review downgrade | `claude-sonnet-5-5` / high | `gpt-6.1-sol` / high | `openai/gpt-5.6-sol#high` |
 
 These Codex defaults apply to fresh setup and newly enabled hosts. Existing
 committed profiles and machine-local overrides keep their selections. Codex

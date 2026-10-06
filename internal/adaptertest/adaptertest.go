@@ -65,11 +65,11 @@ func Profile(host string) map[string]RoleSpec {
 	switch host {
 	case "claude":
 		return map[string]RoleSpec{
-			"scout":         {Model: "claude-opus-5", Effort: "low"},
-			"implementer":   {Model: "claude-opus-5", Effort: "medium"},
-			"specialist":    {Model: "claude-opus-5", Effort: "high"},
-			"reviewer":      {Model: "claude-opus-5", Effort: "high"},
-			"reviewer-safe": {Model: "claude-opus-5", Effort: "medium"},
+			"scout":         {Model: "claude-sonnet-5-5", Effort: "medium"},
+			"implementer":   {Model: "claude-sonnet-5-5", Effort: "high"},
+			"specialist":    {Model: "claude-opus-5-5", Effort: "high"},
+			"reviewer":      {Model: "claude-opus-5-5", Effort: "high"},
+			"reviewer-safe": {Model: "claude-sonnet-5-5", Effort: "high"},
 		}
 	case "codex":
 		return map[string]RoleSpec{

@@ -14,12 +14,12 @@
       "kind": "select",
       "options": [
         {
-          "value": "claude-opus-5",
-          "label": "claude-opus-5"
+          "value": "claude-opus-5-5",
+          "label": "claude-opus-5-5"
         },
         {
-          "value": "claude-sonnet-5",
-          "label": "claude-sonnet-5"
+          "value": "claude-sonnet-5-5",
+          "label": "claude-sonnet-5-5"
         }
       ],
       "free_text": true,

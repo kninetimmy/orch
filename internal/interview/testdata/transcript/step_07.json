@@ -14,17 +14,17 @@
       "kind": "select",
       "options": [
         {
-          "value": "claude-opus-5",
-          "label": "claude-opus-5",
-          "recommended": true
+          "value": "claude-opus-5-5",
+          "label": "claude-opus-5-5"
         },
         {
-          "value": "claude-sonnet-5",
-          "label": "claude-sonnet-5"
+          "value": "claude-sonnet-5-5",
+          "label": "claude-sonnet-5-5",
+          "recommended": true
         }
       ],
       "free_text": true,
-      "default": "claude-opus-5"
+      "default": "claude-sonnet-5-5"
     },
     {
       "id": "host.claude.role.review_downgrade.effort",
@@ -38,12 +38,12 @@
         },
         {
           "value": "medium",
-          "label": "medium",
-          "recommended": true
+          "label": "medium"
         },
         {
           "value": "high",
-          "label": "high"
+          "label": "high",
+          "recommended": true
         },
         {
           "value": "xhigh",
@@ -51,7 +51,7 @@
         }
       ],
       "free_text": true,
-      "default": "medium"
+      "default": "high"
     }
   ]
 }

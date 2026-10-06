@@ -290,12 +290,12 @@ child sessions are not compared to the Architect selection.
 
 | Role | Model | Effort |
 |---|---|---|
-| Architect | `claude-opus-5` | `high` |
-| Scout | `claude-opus-5` | `low` |
-| Implementer | `claude-opus-5` | `medium` |
-| Specialist | `claude-opus-5` | `high` |
-| Reviewer | `claude-opus-5` | `high` |
-| Safe review downgrade | `claude-opus-5` | `medium` |
+| Architect | `claude-opus-5-5` | `xhigh` |
+| Scout | `claude-sonnet-5-5` | `medium` |
+| Implementer | `claude-sonnet-5-5` | `high` |
+| Specialist | `claude-opus-5-5` | `high` |
+| Reviewer | `claude-opus-5-5` | `high` |
+| Safe review downgrade | `claude-sonnet-5-5` | `high` |
 
 While available through subscription, a local ignored override may select:
 

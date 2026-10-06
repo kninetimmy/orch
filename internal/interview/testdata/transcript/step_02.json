@@ -14,17 +14,17 @@
       "kind": "select",
       "options": [
         {
-          "value": "claude-opus-5",
-          "label": "claude-opus-5",
+          "value": "claude-opus-5-5",
+          "label": "claude-opus-5-5",
           "recommended": true
         },
         {
-          "value": "claude-sonnet-5",
-          "label": "claude-sonnet-5"
+          "value": "claude-sonnet-5-5",
+          "label": "claude-sonnet-5-5"
         }
       ],
       "free_text": true,
-      "default": "claude-opus-5"
+      "default": "claude-opus-5-5"
     },
     {
       "id": "host.claude.role.architect.effort",
@@ -42,16 +42,16 @@
         },
         {
           "value": "high",
-          "label": "high",
-          "recommended": true
+          "label": "high"
         },
         {
           "value": "xhigh",
-          "label": "xhigh"
+          "label": "xhigh",
+          "recommended": true
         }
       ],
       "free_text": true,
-      "default": "high"
+      "default": "xhigh"
     }
   ]
 }

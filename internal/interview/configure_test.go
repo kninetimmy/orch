@@ -624,7 +624,7 @@ func TestNextConfigureRejectsNearMissModel(t *testing.T) {
 		t.Errorf("error %q does not suggest the full id claude-opus-5", err)
 	}
 
-	doc, err := walk("claude-opus-5")
+	doc, err := walk("claude-opus-5-5")
 	if err != nil {
 		t.Fatalf("NextConfigure after correction: %v", err)
 	}
