@@ -94,28 +94,28 @@ config_revision = "r1"
 mode = "off"
 
 [hosts.claude.roles.architect]
-model  = "claude-opus-5"
-effort = "high"
+model  = "claude-opus-5-5"
+effort = "xhigh"
 
 [hosts.claude.roles.scout]
-model  = "claude-opus-5"
-effort = "low"
-
-[hosts.claude.roles.implementer]
-model  = "claude-opus-5"
+model  = "claude-sonnet-5-5"
 effort = "medium"
 
+[hosts.claude.roles.implementer]
+model  = "claude-sonnet-5-5"
+effort = "high"
+
 [hosts.claude.roles.specialist]
-model  = "claude-opus-5"
+model  = "claude-opus-5-5"
 effort = "high"
 
 [hosts.claude.roles.reviewer]
-model  = "claude-opus-5"
+model  = "claude-opus-5-5"
 effort = "high"
 
 [hosts.claude.roles.review_downgrade]
-model  = "claude-opus-5"
-effort = "medium"
+model  = "claude-sonnet-5-5"
+effort = "high"
 `
 
 var validDefaultBothHostsTOML = validClaudeDefaultTOML + validCodexTOML[strings.Index(validCodexTOML, "[hosts.codex"):]

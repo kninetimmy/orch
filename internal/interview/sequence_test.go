@@ -38,12 +38,12 @@ func TestDefaultProfilesMatchPRD(t *testing.T) {
 			"review_downgrade": {"gpt-6.1-sol", "high"},
 		},
 		"claude": {
-			"architect":        {"claude-opus-5", "high"},
-			"scout":            {"claude-opus-5", "low"},
-			"implementer":      {"claude-opus-5", "medium"},
-			"specialist":       {"claude-opus-5", "high"},
-			"reviewer":         {"claude-opus-5", "high"},
-			"review_downgrade": {"claude-opus-5", "medium"},
+			"architect":        {"claude-opus-5-5", "xhigh"},
+			"scout":            {"claude-sonnet-5-5", "medium"},
+			"implementer":      {"claude-sonnet-5-5", "high"},
+			"specialist":       {"claude-opus-5-5", "high"},
+			"reviewer":         {"claude-opus-5-5", "high"},
+			"review_downgrade": {"claude-sonnet-5-5", "high"},
 		},
 		"opencode": {
 			"architect":        {"openai/gpt-5.6-sol", "xhigh"},
