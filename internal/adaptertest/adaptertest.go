@@ -4,7 +4,7 @@
 // cross-host invariants — the run-verb allowlist, the four
 // anti-forgery statement literals, the plan/merge gate option text, the
 // setup interview's terminal forms, hook command portability, matcher/
-// guard parity, the routed-selection prompt cue, and the blast-radius
+// guard parity, the routed-selection opening line, and the blast-radius
 // acceptance criterion the engine contributes to a risk-domain issue —
 // have exactly one source instead of a copy per adapter that can
 // silently drift apart.
@@ -337,9 +337,8 @@ func CheckHookCommandPortability(t *testing.T, commands []string) {
 
 // routedSelectionCue is the exact opening line every Delivery spawn/
 // dispatch prompt must open with (fenced as its own code block in the
-// skill): the only channel carrying routed effort to a Claude Code
-// subagent, since subagent spawns take no effort parameter, and a plain
-// statement of fact on Codex, where effort is a real host parameter.
+// skill): a plain statement of fact on Claude Code and Codex, where
+// effort is pinned in the agent definition.
 const routedSelectionCue = "Routed selection: <model> @ <effort>"
 
 const openCodeRoutedSelectionCue = "Routed selection: <provider/model#variant or bare provider/model>"

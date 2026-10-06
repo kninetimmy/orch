@@ -39,8 +39,8 @@ func hostProfile(cfg *config.Config, host string) (routing.Profile, error) {
 // effortDelivery reports how host actually applies a routed execution
 // profile to a spawned executor, for the audit record. Codex pins
 // model_reasoning_effort in the dispatched agent's own TOML, so the
-// routed effort is a real parameter there; Claude Code subagent spawns
-// take no effort knob, so it reaches the executor only as a prompt cue.
+// routed effort is a real parameter there; Claude Code pins it in the
+// subagent definition's effort frontmatter field the same way.
 // An unknown host is an error rather than a guess: recording a profile
 // without saying how it was delivered is the claim this field exists to
 // stop making.
@@ -49,7 +49,7 @@ func effortDelivery(host string) (manifest.EffortDelivery, error) {
 	case "codex":
 		return manifest.EffortDeliveryParameter, nil
 	case "claude":
-		return manifest.EffortDeliveryPromptCue, nil
+		return manifest.EffortDeliveryParameter, nil
 	case "opencode":
 		return manifest.EffortDeliveryModelVariant, nil
 	default:

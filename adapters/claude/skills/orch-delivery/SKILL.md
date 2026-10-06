@@ -258,35 +258,33 @@ in flight at once. For each issue:
 2. **Spawn the executor** — spawn `orch-implementer` or
    `orch-specialist` (per the routed role) via the Task tool **by
    name, with no model override**, so the project agent definition's
-   frontmatter `model` is what runs. The Task tool's `model` parameter
-   accepts only the coarse tier aliases `sonnet`, `opus`, `haiku` and
-   `fable` — never an exact version string like `claude-sonnet-5` — so
+   frontmatter `model` and `effort` are what run. The Task tool's
+   `model` parameter accepts only the coarse tier aliases `sonnet`,
+   `opus`, `haiku` and `fable` — never an exact version string like `claude-sonnet-5` — so
    an override can never express a routed selection, and is never the
    way to honor routing. The same-named definition under this project's
    `.claude/agents/` takes precedence over the plugin's canonical copy;
    `orch render-agents` creates it, and activation already fails closed
-   when it is missing or stale. Before spawning, confirm that project
-   definition's frontmatter `model` equals the selection
-   **currently in force**: the most recent `EscalateResult.executor.model`
-   when an escalation has rerouted the issue since dispatch, or
-   `DispatchResult.executor.model` otherwise. **If the routed model
-   matches no project agent's frontmatter,
-   stop and tell the human — never spawn a mismatched agent, and never
-   report the routed selection as if it ran.** Every spawn prompt
-   opens with:
+   when it is missing or stale. Before spawning, the selection
+   **currently in force** — the most recent `EscalateResult.executor`
+   when an escalation has rerouted the issue since dispatch,
+   `DispatchResult.executor` otherwise, as `(model, effort)` — **must
+   match a project agent definition's frontmatter `model` and `effort`
+   exactly**. **If the routed selection matches no project agent's
+   frontmatter, stop and tell the human — never spawn a mismatched
+   agent, and never report the routed selection as if it ran.** Every
+   spawn prompt opens with:
 
    ```
    Routed selection: <model> @ <effort>
    ```
 
-   followed by one sentence: `xhigh`/`high` → "Use maximum reasoning
-   depth for this task."; `low` → "Work fast and economically; this
-   task does not need deep reasoning." Claude Code subagent spawns take
-   no effort parameter, so this sentence is the only way the routed
-   effort reaches the executor: the routed *model* is pinned by the
-   project agent definition the match rule above checks, but the
-   routed *effort* is only *conveyed* as this prompt cue — nothing
-   checks that the executor actually reasoned at that depth. Transcribe
+   Effort is a real host parameter on Claude Code: the project agent
+   definition's `effort` frontmatter overrides the session effort while
+   that subagent runs, so no prompt sentence stands in for it. The
+   levels a model accepts depend on the model, and nothing here checks
+   the effort a running subagent uses. The opening line is a statement
+   of fact, not a behavioral nudge. Transcribe
    `DispatchResult.objective`, `.acceptance_criteria`, and
    `.required_tests` into the prompt **verbatim** — this is the text a
    human approved at the plan gate, not the Architect's recollection of
@@ -343,13 +341,14 @@ in flight at once. For each issue:
    `opus`, `haiku` and `fable`, never an exact version string, so it
    cannot express a routed selection and an override is never the way
    to honor routing — only the project agent definition's
-   frontmatter pins an exact model. Before spawning, confirm that the
-   selected reviewer agent's frontmatter `model` equals the selection
-   **currently in force**: the most recent `EscalateResult.reviewer.model`
-   when an escalation has rerouted the issue since dispatch, or
-   `DispatchResult.reviewer.model` otherwise. Check the same-named file
+   frontmatter pins an exact model and effort. Before spawning, the
+   selection **currently in force** — the most recent
+   `EscalateResult.reviewer` when an escalation has rerouted the issue
+   since dispatch, `DispatchResult.reviewer` otherwise, as
+   `(model, effort)` — **must match the selected reviewer agent's
+   frontmatter `model` and `effort` exactly**. Check the same-named file
    under `.claude/agents/`, which takes precedence over the plugin copy.
-   **If the routed model matches no project agent's frontmatter,
+   **If the routed selection matches no project agent's frontmatter,
    stop and tell the human — never spawn a mismatched agent, and never
    report the routed selection as if it ran.** `reviewed_head_oid`
    must be the PR's **live** head OID at review time (e.g. via
@@ -498,8 +497,8 @@ Result `kind`:
   recent `EscalateResult` and the only one describing the routing in
   force, for both roles even if only one changed. Before spawning
   either into the **same worktree** (never a new one), confirm the new
-  selection's `model` against its project agent definition's
-  frontmatter under the same match rule as the spawn steps above — **if
+  selection's `(model, effort)` against its project agent definition's
+  frontmatter under the same exact-match rule as the spawn steps above — **if
   the new selection matches no project agent's frontmatter, stop and
   tell the human — never spawn a mismatched agent, and never report the
   routed selection as if it ran.**

@@ -204,10 +204,9 @@ bugs:
   routed selection there either. `orch-delivery`'s spawn step therefore
   stops and tells the human on a mismatch, on either host, rather than
   silently substituting a mismatched agent or reporting the routed
-  selection as if it ran. The genuine Codex-specific piece is effort:
-  it is pinned in the project TOML and enforced by the host, whereas
-  Claude Code subagent spawns take no effort parameter at all and the
-  routed effort is only conveyed as a prompt cue. `orch-reviewer-safe`
+  selection as if it ran. Effort is pinned the same way on both hosts: in the
+  project TOML on Codex and in the agent definition's `effort`
+  frontmatter field on Claude Code, and the host applies it. `orch-reviewer-safe`
   exists specifically so the §10 safe-downgrade row has a real
   project TOML to dispatch, instead of dead-ending at that same
   stop-and-tell-human rule on every routine downgrade.

@@ -207,7 +207,8 @@ func splitCSV(s string) []string {
 // agentSpec is the committed §10 Claude profile for one agents/*.md
 // role's Claude-specific fields not already covered by
 // adaptertest.Profile: its exact tool set. Profile("claude") pins the
-// model directly; Claude frontmatter has no effort field to assert.
+// model directly, and each definition's frontmatter pins its effort too,
+// which the render byte-identity tests in internal/agents check.
 type agentSpec struct {
 	tools []string
 }
@@ -219,9 +220,8 @@ type agentSpec struct {
 // cannot express a routed selection. A separate named agent is shipped
 // because its definition carries its own system prompt (the safe-downgrade
 // instructions) and a distinct name this frontmatter-match rule can verify —
-// the effort difference from the full reviewer rides the spawn-time prompt
-// cue, not a frontmatter field (see the comment above on agentSpec: Claude
-// frontmatter has no effort field to assert).
+// its frontmatter pins the review_downgrade effort, which can differ from
+// the full reviewer's.
 var agentRoster = map[string]agentSpec{
 	"orch-scout":         {tools: []string{"Read", "Grep", "Glob", "WebFetch", "WebSearch"}},
 	"orch-implementer":   {tools: []string{"Read", "Grep", "Glob", "Edit", "Write", "NotebookEdit", "Bash"}},

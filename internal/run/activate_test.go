@@ -333,8 +333,8 @@ func TestActivateHappyPathTwoIssuesTwoWaves(t *testing.T) {
 // state (which dispatch transcribes into the spawn prompt) and the
 // issue's audit record (which resume rebuilds state from). It also pins
 // the effort-delivery mechanism the record names for a claude run: the
-// host has no per-spawn effort knob, so the routed effort is a prompt
-// cue, and the record must say so rather than imply an enforcement.
+// host pins effort in the subagent definition's frontmatter, so the
+// record names it as a parameter.
 func TestActivateRecordsApprovedWork(t *testing.T) {
 	root := newActivateRepo(t)
 	taxonomy := fullTaxonomyScript()
@@ -371,8 +371,8 @@ func TestActivateRecordsApprovedWork(t *testing.T) {
 	if len(m.RequiredTests) != 1 || m.RequiredTests[0] != "go test ./..." {
 		t.Errorf("required_tests = %q, want the plan's", m.RequiredTests)
 	}
-	if m.EffortDelivery != manifest.EffortDeliveryPromptCue {
-		t.Errorf("effort_delivery = %q, want %q for a claude run", m.EffortDelivery, manifest.EffortDeliveryPromptCue)
+	if m.EffortDelivery != manifest.EffortDeliveryParameter {
+		t.Errorf("effort_delivery = %q, want %q for a claude run", m.EffortDelivery, manifest.EffortDeliveryParameter)
 	}
 
 	// Run state carries the same text, so dispatch never has to re-read

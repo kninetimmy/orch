@@ -72,9 +72,9 @@ never re-derives a decision the engine already made.
   cannot express a routed selection. A separate named agent is shipped
   because its definition carries its own system prompt — the
   safe-downgrade framing and instructions — and a
-  distinct name the frontmatter-match rule can verify; the effort
-  difference from the full reviewer rides the spawn-time prompt cue,
-  per the Known limitations bullet below, not a frontmatter field.
+  distinct name the frontmatter-match rule can verify; its `effort`
+  frontmatter field carries the review_downgrade effort, which can
+  differ from the full reviewer's.
 
 ## Install order
 
@@ -98,8 +98,8 @@ this adapter.
 
 After `orch init` has been merged in a repository, run `orch
 render-agents` there. It writes all five definitions to
-`.claude/agents/`, substituting only each role's configured `model` and
-preserving the shipped description, tool allowlist, and instructions.
+`.claude/agents/`, substituting only each role's configured `model` and `effort`
+and preserving the shipped description, tool allowlist, and instructions.
 Claude Code's [subagent scope priority
 table](https://code.claude.com/docs/en/sub-agents#choose-the-subagent-scope)
 gives a same-named project definition higher priority than the plugin's
@@ -158,15 +158,16 @@ bugs:
   loudly. Install order, `orch doctor`, and the visible absence of
   session-start context are the mitigations; there is no way to make a
   missing binary fail closed from inside the hook itself.
-- **Reasoning effort has no per-subagent parameter on this host.** Claude
-  Code subagent spawns do not accept an effort knob, so the routed effort
-  (low/high/xhigh) is approximated by a prompt cue in the subagent's
-  instructions rather than an actual host parameter. The exact routed
-  effort is still recorded in the engine's audit trail; only the
-  in-session behavior is an approximation.
+- **Reasoning effort is a frontmatter field; the levels a model accepts
+  depend on the model.** Each project agent definition's `effort` field
+  overrides the session effort while that subagent runs, and the
+  audit record says `Effort delivery: parameter`. Claude Code decides
+  which levels a given model supports; nothing in this repo observes
+  the effort a running subagent actually uses.
   `internal/adaptertest.CheckRoutedSelectionCue`, called from both
-  adapters' `plugin_test.go`, pins that the prompt cue text is present in
-  `orch-delivery/SKILL.md`, not that it changed model behavior.
+  adapters' `plugin_test.go`, pins that the `Routed selection: <model> @
+  <effort>` opening line is present in `orch-delivery/SKILL.md`, not that
+  it changed model behavior.
 - **Configured models take effect through generated project files, not
   automatically.** Run `orch render-agents` after a committed or local
   `hosts.claude.roles` change. `orch doctor` and Claude plan activation
