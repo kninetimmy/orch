@@ -157,12 +157,18 @@ func TestLaunchArgsContainment(t *testing.T) {
 			if role == "implementer" {
 				wantTools, wantAllowed = wantTools+",Edit,Write", append(wantAllowed, "Edit", "Write")
 			}
-			wantAllowed = append(wantAllowed, "Bash(go build)", "Bash(go build *)", "Bash(go test)", "Bash(go test *)", "Bash(go vet)", "Bash(go vet *)", "Bash(gofmt -l *)")
+			wantAllowed = append(wantAllowed, "Bash(go build)", "Bash(go build ./...)", "Bash(go test)", "Bash(go test ./...)", "Bash(go vet)", "Bash(go vet ./...)", "Bash(gofmt -l .)")
 			if got := flagValues(args, "--tools"); len(got) != 1 || got[0] != wantTools {
 				t.Fatalf("%s tools %v", role, got)
 			}
-			if got := flagValues(args, "--allowedTools"); !slices.Equal(got, wantAllowed) {
+			got := flagValues(args, "--allowedTools")
+			if !slices.Equal(got, wantAllowed) {
 				t.Fatalf("%s allowed tools %v", role, got)
+			}
+			for _, rule := range got {
+				if strings.HasPrefix(rule, "Bash") && strings.Contains(rule, "*") {
+					t.Fatalf("%s wildcard Bash rule %q", role, rule)
+				}
 			}
 			if resume != (flagValues(args, "--resume") != nil) || resume == (flagValues(args, "--session-id") != nil) {
 				t.Fatalf("%s resume=%t args %v", role, resume, args)
@@ -177,8 +183,10 @@ func TestLaunchArgsContainment(t *testing.T) {
 }
 
 func TestEnvironmentDropsParentSessionAndKeys(t *testing.T) {
-	env := environment([]string{"CLAUDECODE=1", "ANTHROPIC_API_KEY=x", "ANTHROPIC_BASE_URL=x", "CLAUDE_CODE_USE_BEDROCK=1", "GOFLAGS=-exec=x", "PATH=/bin", "HOME=/h", "CLAUDE_CONFIG_DIR=/c", "TEMP=/t"}, "/scratch", false)
-	want := []string{"PATH=/bin", "HOME=/h", "CLAUDE_CONFIG_DIR=/c", "TEMP=/scratch", "TMP=/scratch", "TMPDIR=/scratch"}
+	env := environment([]string{"CLAUDECODE=1", "ANTHROPIC_API_KEY=x", "ANTHROPIC_BASE_URL=x", "CLAUDE_CODE_USE_BEDROCK=1", "GOFLAGS=-toolexec=x", "PATH=/bin", "HOME=/h", "CLAUDE_CONFIG_DIR=/c", "TEMP=/t",
+		"GOWORK=/w/go.work", "GOTOOLCHAIN=auto", "GOPROXY=https://proxy.golang.org", "GOSUMDB=sum.golang.org", "CGO_ENABLED=1", "gotoolchain=go1.99.0"}, "/scratch", false)
+	want := []string{"PATH=/bin", "HOME=/h", "CLAUDE_CONFIG_DIR=/c", "TEMP=/scratch", "TMP=/scratch", "TMPDIR=/scratch",
+		"GOWORK=off", "GOTOOLCHAIN=local", "GOPROXY=off", "GOSUMDB=off", "CGO_ENABLED=0"}
 	if !slices.Equal(env, want) {
 		t.Fatalf("environment %v", env)
 	}

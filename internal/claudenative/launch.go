@@ -74,8 +74,17 @@ var requiredFlags = []string{"--print", "--verbose", "--output-format", "--input
 var forbiddenArgs = []string{"--bare", "--dangerously-skip-permissions", "--allow-dangerously-skip-permissions", "--fallback-model",
 	"bypassPermissions", "--no-session-persistence", "--fork-session", "--continue", "--mcp-config", "--settings", "--plugin-dir", "--agents"}
 
-// goCommands is the whole Bash allowlist. Every role gets it.
-var goCommands = []string{"Bash(go build)", "Bash(go build *)", "Bash(go test)", "Bash(go test *)", "Bash(go vet)", "Bash(go vet *)", "Bash(gofmt -l *)"}
+// goCommands is the whole Bash allowlist. Every role gets it. Each rule is an
+// exact command with no * wildcard: a wildcard would accept any flag, and
+// -toolexec, -exec, -vettool, -o, -C or gofmt -w run programs or write outside
+// the workspace. Claude Code matches rules against raw command text, so denying
+// individual flags could be bypassed by quoting.
+var goCommands = []string{"Bash(go build)", "Bash(go build ./...)", "Bash(go test)", "Bash(go test ./...)", "Bash(go vet)", "Bash(go vet ./...)", "Bash(gofmt -l .)"}
+
+// goEnvironment is set on every child so a go.mod edit cannot make Go fetch
+// modules or download and run another toolchain. Values must be non-empty:
+// cmd/go treats an empty variable as unset and falls back to the go env file.
+var goEnvironment = []string{"GOWORK=off", "GOTOOLCHAIN=local", "GOPROXY=off", "GOSUMDB=off", "CGO_ENABLED=0"}
 
 var (
 	modelPattern = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._\[\]-]{0,127}$`)
@@ -190,8 +199,9 @@ func launchArgs(task Task, sessionID string, resume bool) ([]string, error) {
 }
 
 // environment passes only what Claude Code needs to find its own subscription
-// login and run Go, dropping API keys, provider overrides and the parent
-// session's CLAUDECODE marker. Temporary files go to the attempt scratch.
+// login and run Go, dropping API keys, provider overrides, every parent Go
+// variable (GOFLAGS included) and the parent session's CLAUDECODE marker, then
+// sets goEnvironment. Temporary files go to the attempt scratch.
 func environment(environ []string, scratch string, resume bool) []string {
 	keep := []string{"SYSTEMROOT", "SYSTEMDRIVE", "WINDIR", "COMSPEC", "PATH", "PATHEXT", "PROGRAMDATA", "PROGRAMFILES",
 		"USERPROFILE", "HOME", "LOCALAPPDATA", "APPDATA", "USERNAME", "USER", "LOGNAME", "LANG",
@@ -204,6 +214,7 @@ func environment(environ []string, scratch string, resume bool) []string {
 		}
 	}
 	env = append(env, "TEMP="+scratch, "TMP="+scratch, "TMPDIR="+scratch)
+	env = append(env, goEnvironment...)
 	if resume {
 		env = append(env, "CLAUDE_CODE_RESUME_INTERRUPTED_TURN=1")
 	}
