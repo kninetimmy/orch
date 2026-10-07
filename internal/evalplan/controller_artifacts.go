@@ -252,8 +252,8 @@ func prepareAttempt(ctx context.Context, g *guardedDir, e *Evaluation, slot Slot
 		CaseSHA256: storedDigest(source.definition),
 		StartedAt:  now(), Outcome: "started", ExecutionSource: "not-started", Grade: "unknown", Verification: "not-performed",
 		Initial: []DigestedFile{}, Artifacts: []DigestedFile{}, Cleanup: Cleanup{Status: "unknown", Detail: "No cleanup observation."}}
-	if p.Version == 2 {
-		record.SchemaVersion = 2
+	if p.Version >= 2 {
+		record.SchemaVersion = p.Version
 	}
 	if err := ctx.Err(); err != nil {
 		return a, record, err

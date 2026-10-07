@@ -5,10 +5,12 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"reflect"
 	"runtime"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -236,7 +238,7 @@ func nativeWorkerFixture(t *testing.T) (*Evaluation, workerRequest, nativeWorker
 	if err != nil {
 		t.Fatal(err)
 	}
-	request := workerRequest{Unit: unit, Role: source.definition.Role, Layout: layout, Task: task, PlanVersion: 2, Intervention: "none", Revisions: []string{e.Preparation.Plan.Baseline.OrchRevision}}
+	request := workerRequest{Unit: unit, Role: source.definition.Role, Layout: layout, Task: task, PlanVersion: 2, Host: "codex", Intervention: "none", Revisions: []string{e.Preparation.Plan.Baseline.OrchRevision}}
 	return e, request, nativeWorker{clientVersion: "fixture-evaluation:complete", executable: executable, revision: e.Preparation.Plan.Baseline.OrchRevision}
 }
 
@@ -269,6 +271,7 @@ func TestNativeEvaluationControllerBindingAndRejections(t *testing.T) {
 		func(r *workerRequest) { r.Task.Selection.Effort = "high" },
 		func(r *workerRequest) { r.Revisions = append(r.Revisions, strings.Repeat("0", 40)) },
 		func(r *workerRequest) { r.Intervention = "orch-revision" },
+		func(r *workerRequest) { r.PlanVersion, r.Host = 3, "claude" },
 	} {
 		bad := request
 		change(&bad)
@@ -313,8 +316,19 @@ func TestNativeEvaluationControllerRetainsExecution(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Setenv("CODEX_HOME", home)
+	// A version-3 codex plan runs through the same Codex worker and checks as version 2.
+	for _, version := range []int{2, 3} {
+		t.Run(fmt.Sprintf("version-%d", version), func(t *testing.T) { nativeExecutionRetained(t, version) })
+	}
+	t.Log("All output is scripted native RPC evidence; no subscription inference, semantic pass or measured baseline.")
+}
+
+func nativeExecutionRetained(t *testing.T, version int) {
 	f := newControllerFixture(t, "screen", 1)
-	f.proposal.Version = 2
+	f.proposal.Version = version
+	if version == 3 {
+		f.proposal.Host = "codex"
+	}
 	instructionPath := filepath.Join(os.Getenv("CODEX_HOME"), "AGENTS.md")
 	instructionBytes := []byte("Generic approved collaboration instructions; no corpus answers.")
 	writeFixture(t, instructionPath, instructionBytes)
@@ -382,7 +396,14 @@ func TestNativeEvaluationControllerRetainsExecution(t *testing.T) {
 	if _, err := run(t.Context(), f.root, e.ID, nativeWorker{}); err == nil {
 		t.Fatal("consumed native schedule replayed")
 	}
-	t.Log("All output is scripted native RPC evidence; no subscription inference, semantic pass or measured baseline.")
+	retained := readAttempt(t, f, e, 1, 1)
+	if err := validateAttemptNative(&retained, e); err != nil || retained.SchemaVersion != version || len(retained.Native.Observations) == 0 {
+		t.Fatalf("retained attempt invalid: %v", err)
+	}
+	retained.Native.Observations[0].Host = "claude"
+	if err := validateAttemptNative(&retained, e); err == nil {
+		t.Fatal("observation from another host accepted for a Codex plan")
+	}
 }
 
 func TestNativeEvaluationEvidenceVersionBinding(t *testing.T) {
@@ -408,5 +429,90 @@ func TestNativeEvaluationEvidenceVersionBinding(t *testing.T) {
 	a := AttemptRecord{SchemaVersion: 1, ExecutionSource: "no-model-test-script", Outcome: "native-completed", Native: legacy}
 	if err := validateAttemptNative(&a, e); err != nil {
 		t.Fatalf("legacy retained evidence became unreadable: %v", err)
+	}
+}
+
+func TestVersion3PlanHostDigestAndClaudeRefusal(t *testing.T) {
+	if controllerTestProcess(t) {
+		return
+	}
+	f := newControllerFixture(t, "screen", 1)
+	instructions, protected := []Artifact{}, []string{}
+	f.proposal.Version, f.proposal.Instructions, f.proposal.ProtectedRoots = 2, &instructions, &protected
+	f.preview(t)
+	if strings.Contains(string(fixtureJSON(t, f.record)), `"host"`) || planHost(f.record.Plan) != "codex" {
+		t.Fatal("version-2 record shape or implicit Codex host changed")
+	}
+	digests := map[string]string{}
+	for _, host := range []string{"codex", "claude"} {
+		f.proposal.Version, f.proposal.Host = 3, host
+		f.preview(t)
+		if f.record.SchemaVersion != 3 || f.record.Plan.Host != host {
+			t.Fatalf("version-3 %s plan not frozen: %+v", host, f.record.Plan)
+		}
+		digests[host] = f.record.PlanDigest
+	}
+	if digests["codex"] == digests["claude"] {
+		t.Fatal("host is not part of the plan digest")
+	}
+	role, _, selection, err := evaluationProfile(f.record.Plan, Unit{Side: "baseline"}, "implementation")
+	if err != nil || role != "implementer" || selection.Model != "claude-sonnet-5" || selection.Effort != "xhigh" {
+		t.Fatalf("claude plan did not use the claude roles: %s %+v %v", role, selection, err)
+	}
+	e, err := PrepareApproved(t.Context(), f.repo, f.root, f.record.PlanDigest, Approval{1, f.record.PlanDigest, "test-human", now(), ApprovalStatement})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Run(t.Context(), f.root, e.ID, ""); err == nil || !strings.Contains(err.Error(), "no claude evaluation worker") {
+		t.Fatalf("Codex worker admitted a claude plan: %v", err)
+	}
+	if p, err := Status(f.root, e.ID); err != nil || p.State != "prepared" || len(p.Inspection) != 1 {
+		t.Fatalf("refused claude plan was consumed: %+v %v", p, err)
+	}
+	if _, err := os.Lstat(filepath.Join(f.root, e.ID, "execution")); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("refused claude plan was claimed: %v", err)
+	}
+	// Version-3 claude attempts are retained and readable through the test-only seam.
+	scripted := f.prepare(t)
+	p, err := run(t.Context(), f.root, scripted.ID, scriptedWorker{func(context.Context, workerRequest) (workerResult, error) {
+		return workerResult{Outcome: "native-completed"}, nil
+	}})
+	if err != nil || p.State != "completed" {
+		t.Fatalf("scripted claude plan: %+v %v", p, err)
+	}
+	if a := readAttempt(t, f, scripted, 1, 1); a.SchemaVersion != 3 || a.ExecutionSource != "no-model-test-script" {
+		t.Fatalf("version-3 attempt record: %+v", a)
+	}
+	if _, err := Status(f.root, scripted.ID); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestExecutionSourceAllowedByAttemptVersionAndHost(t *testing.T) {
+	plans := map[string]Plan{"v1": {Version: 1}, "v2": {Version: 2}, "v3-codex": {Version: 3, Host: "codex"}, "v3-claude": {Version: 3, Host: "claude"}}
+	attemptVersion := map[string]int{"v1": 1, "v2": 2, "v3-codex": 3, "v3-claude": 3}
+	allowed := map[string][]string{
+		"no-model-test-script":       {"v1", "v2", "v3-codex", "v3-claude"},
+		"native-eligibility-only":    {"v1", "v2"},
+		"codex-native-evaluation":    {"v2", "v3-codex"},
+		"claude-native-evaluation":   {"v3-claude"},
+		"opencode-native-evaluation": {},
+	}
+	for source, want := range allowed {
+		for name, plan := range plans {
+			a := AttemptRecord{SchemaVersion: attemptVersion[name], ExecutionSource: source}
+			if got := executionSourceAllowed(&a, plan); got != slices.Contains(want, name) {
+				t.Errorf("%s on %s: allowed=%t", source, name, got)
+			}
+		}
+	}
+	// Host-native sources also require the attempt version to match the plan.
+	for _, source := range []string{"codex-native-evaluation", "claude-native-evaluation"} {
+		for name, plan := range plans {
+			a := AttemptRecord{SchemaVersion: 1, ExecutionSource: source}
+			if executionSourceAllowed(&a, plan) {
+				t.Errorf("%s accepted on a schema-1 attempt of %s", source, name)
+			}
+		}
 	}
 }
