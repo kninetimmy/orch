@@ -100,6 +100,10 @@ func session(dir string) {
 			os.Exit(70)
 		}
 	}
+	// Claude Code 2.1.289 creates this in its temp directory and leaves it empty.
+	if os.MkdirAll(filepath.Join(os.TempDir(), "claude"), 0o700) != nil {
+		os.Exit(78)
+	}
 	name := scenario(dir)
 	id, resume := value(args, "--session-id"), value(args, "--resume")
 	if resume != "" {

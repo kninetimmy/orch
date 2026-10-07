@@ -5,6 +5,7 @@ package claudenative
 import (
 	"errors"
 	"fmt"
+	"os"
 	"os/exec"
 	"syscall"
 	"unsafe"
@@ -98,3 +99,10 @@ func (t *processTree) kill() error {
 
 // close releases the job; kill-on-close ends anything still inside it.
 func (t *processTree) close() { _ = syscall.CloseHandle(syscall.Handle(t.job)) }
+
+// reparsePoint reports a reparse point, or an entry whose attributes are
+// unavailable, so it is never treated as a plain file or directory.
+func reparsePoint(info os.FileInfo) bool {
+	attrs, ok := info.Sys().(*syscall.Win32FileAttributeData)
+	return !ok || attrs.FileAttributes&syscall.FILE_ATTRIBUTE_REPARSE_POINT != 0
+}

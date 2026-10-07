@@ -5,8 +5,11 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
+	"io/fs"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"reflect"
 	"slices"
 	"time"
@@ -126,14 +129,90 @@ func (s *Session) run(ctx context.Context, resume bool) error {
 	s.completed, s.interruptID, s.acked, s.prompted = false, "", nil, resume // a resumed turn gets no new input
 	err := s.launch(ctx, resume)
 	var cleanupErr error
+	gone := true
 	if s.proc != nil {
 		if err == nil {
 			err = s.converse(ctx)
 		}
 		err, cleanupErr = s.shutdown(err)
+		gone = !s.proc.running()
 		s.proc = nil
 	}
+	if gone {
+		pruneEmptyDirs(s.task.Layout.Scratch)
+	}
 	return s.finish(err, cleanupErr)
+}
+
+// pruneEmptyDirs removes empty directories inside the attempt scratch, deepest
+// first, once Claude Code's process tree is gone. Claude Code 2.1.289 leaves an
+// empty "claude" directory in its temp directory, which is the scratch, and the
+// controller rejects any empty directory there. It never removes a file or the
+// scratch itself and never follows a link. It removes nothing at all when the
+// scratch holds a link, reparse point or other irregular entry, or exceeds the
+// controller's 256-entry or depth-16 bound, leaving that to the controller's
+// snapshot exactly as before. Anything it cannot inspect or remove also stays
+// for that snapshot to judge.
+func pruneEmptyDirs(scratch string) {
+	plainDir := func(info os.FileInfo) bool { return info.Mode().Type() == fs.ModeDir && !reparsePoint(info) }
+	if info, err := os.Lstat(scratch); err != nil || !plainDir(info) {
+		return
+	}
+	root, err := os.OpenRoot(scratch)
+	if err != nil {
+		return
+	}
+	defer func() { _ = root.Close() }()
+	var empty []string // post-order, so children precede their parents
+	count := 0
+	var walk func(dir string, depth int) (isEmpty, ok bool)
+	walk = func(dir string, depth int) (bool, bool) {
+		if depth > 16 {
+			return false, false
+		}
+		f, err := root.Open(dir)
+		if err != nil {
+			return false, false
+		}
+		names, err := f.Readdirnames(257)
+		_ = f.Close()
+		if err != nil && !errors.Is(err, io.EOF) {
+			return false, false
+		}
+		isEmpty := true
+		for _, name := range names {
+			if count++; count > 256 {
+				return false, false
+			}
+			name = filepath.Join(dir, name)
+			info, err := root.Lstat(name)
+			switch {
+			case err != nil:
+				return false, false
+			case info.Mode().IsRegular() && !reparsePoint(info):
+				isEmpty = false
+			case plainDir(info):
+				childEmpty, ok := walk(name, depth+1)
+				if !ok {
+					return false, false
+				}
+				if childEmpty {
+					empty = append(empty, name)
+				} else {
+					isEmpty = false
+				}
+			default:
+				return false, false
+			}
+		}
+		return isEmpty, true
+	}
+	if _, ok := walk(".", 0); !ok {
+		return
+	}
+	for _, name := range empty {
+		_ = root.Remove(name) // a failure leaves the directory for the controller's snapshot
+	}
 }
 
 // launch refuses before starting Claude Code unless the workspace is clean,

@@ -4,6 +4,7 @@ package claudenative
 
 import (
 	"errors"
+	"os"
 	"os/exec"
 	"syscall"
 )
@@ -28,3 +29,6 @@ func (t *processTree) kill() error {
 }
 
 func (t *processTree) close() { _ = t.kill() }
+
+// reparsePoint is false: on Unix the file mode type already reports links.
+func reparsePoint(os.FileInfo) bool { return false }

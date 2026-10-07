@@ -7,8 +7,10 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"regexp"
+	"runtime"
 	"slices"
 	"strings"
 	"testing"
@@ -244,8 +246,18 @@ func TestScriptedSessionCompletesAndRecordsEvidence(t *testing.T) {
 				if (role == "implementer") != (err == nil) {
 					t.Fatalf("%s write capability: %v", role, err)
 				}
+				checkScratchEmpty(t, f)
 			})
 		}
+	}
+}
+
+// checkScratchEmpty requires that the empty "claude" directory the stand-in
+// leaves in its temp directory, the scratch, was removed.
+func checkScratchEmpty(t *testing.T, f fixture) {
+	t.Helper()
+	if entries, err := os.ReadDir(f.task.Layout.Scratch); err != nil || len(entries) != 0 {
+		t.Fatalf("scratch after the session: %v %v", entries, err)
 	}
 }
 
@@ -403,6 +415,7 @@ func TestUnresponsiveSessionTreeIsKilled(t *testing.T) {
 		r.Cleanup.InterruptAcknowledged == nil || *r.Cleanup.InterruptAcknowledged || r.Cleanup.ShutdownObserved == nil || *r.Cleanup.ShutdownObserved {
 		t.Fatalf("unresponsive cleanup evidence %+v %v", r, err)
 	}
+	checkScratchEmpty(t, f)
 	pids := readLog[map[string]int](t, filepath.Join(f.config, "pids.jsonl"))
 	if len(pids) != 1 {
 		t.Fatalf("pids %+v", pids)
@@ -484,6 +497,55 @@ func TestBindingRefusals(t *testing.T) {
 	ctx := context.Background()
 	if s, err := RunSession(ctx, Options{}, newFixture(t, "scout", "complete").task); s != nil || err == nil {
 		t.Fatal("session admitted without a deadline")
+	}
+}
+
+func TestPruneEmptyDirsKeepsFilesAndLinks(t *testing.T) {
+	base, err := filepath.EvalSymlinks(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	scratch, outside := filepath.Join(base, "scratch"), filepath.Join(base, "outside")
+	for _, dir := range []string{filepath.Join(scratch, "claude"), filepath.Join(scratch, "a", "b"), filepath.Join(scratch, "kept"), filepath.Join(outside, "empty")} {
+		if err := os.MkdirAll(dir, 0o700); err != nil {
+			t.Fatal(err)
+		}
+	}
+	files := map[string]string{filepath.Join(scratch, "kept", "file.txt"): "kept", filepath.Join(scratch, "top.txt"): "top"}
+	for name, data := range files {
+		if err := os.WriteFile(name, []byte(data), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	pruneEmptyDirs(scratch)
+	for _, gone := range []string{"claude", "a"} {
+		if _, err := os.Lstat(filepath.Join(scratch, gone)); !errors.Is(err, os.ErrNotExist) {
+			t.Fatalf("empty directory %s kept: %v", gone, err)
+		}
+	}
+	for name, data := range files {
+		if got, err := os.ReadFile(name); err != nil || string(got) != data {
+			t.Fatalf("file %s changed: %q %v", name, got, err)
+		}
+	}
+	// A link anywhere in the scratch leaves everything for the controller.
+	if err := os.Mkdir(filepath.Join(scratch, "claude"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	link := filepath.Join(scratch, "link")
+	if runtime.GOOS == "windows" {
+		cmd := exec.Command(filepath.Join(os.Getenv("SYSTEMROOT"), "System32", "cmd.exe"), "/c", "mklink", "/J", link, outside)
+		if output, err := cmd.CombinedOutput(); err != nil {
+			t.Fatalf("junction fixture: %v: %s", err, output)
+		}
+	} else if err := os.Symlink(outside, link); err != nil {
+		t.Fatal(err)
+	}
+	pruneEmptyDirs(scratch)
+	for _, kept := range []string{filepath.Join(scratch, "claude"), link, filepath.Join(outside, "empty")} {
+		if _, err := os.Lstat(kept); err != nil {
+			t.Fatalf("%s removed beside a link: %v", kept, err)
+		}
 	}
 }
 

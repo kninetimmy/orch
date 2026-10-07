@@ -203,8 +203,10 @@ func TestClaudeEvaluationControllerRetainsExecution(t *testing.T) {
 				t.Fatalf("observation %+v", o)
 			}
 		}
-		if wantDirty := n.Binding.Identity.Role == "implementer"; wantDirty != (a.Cleanup.Status == "preserved-dirty") {
-			t.Fatalf("%s cleanup %s", n.Binding.Identity.Role, a.Cleanup.Status)
+		// The stand-in leaves an empty "claude" directory in the scratch, as
+		// Claude Code does; an attempt that changed nothing else is removed clean.
+		if want := map[bool]string{true: "preserved-dirty", false: "removed-clean"}[n.Binding.Identity.Role == "implementer"]; a.Cleanup.Status != want {
+			t.Fatalf("%s cleanup %s: %s", n.Binding.Identity.Role, a.Cleanup.Status, a.Cleanup.Detail)
 		}
 	}
 	for _, args := range launches {
