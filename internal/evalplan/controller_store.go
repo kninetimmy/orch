@@ -549,10 +549,9 @@ func readProgress(g *guardedDir, e *Evaluation, hash string) (*Progress, error) 
 				if err := strictStored(data, &a); err != nil {
 					return nil, err
 				}
-				if (a.SchemaVersion != 1 && a.SchemaVersion != 2) || a.EvaluationID != e.ID || a.PlanDigest != e.Preparation.PlanDigest ||
+				if a.SchemaVersion < 1 || a.SchemaVersion > 3 || a.EvaluationID != e.ID || a.PlanDigest != e.Preparation.PlanDigest ||
 					a.Unit != slot.Unit || a.Number != ref.Number || a.Kind != ref.Kind || a.Grade != "unknown" ||
-					!slices.Contains(outcomes, a.Outcome) || a.FinishedAt == "" ||
-					!slices.Contains([]string{"native-eligibility-only", "no-model-test-script", "codex-native-evaluation"}, a.ExecutionSource) || a.ExecutionSource == "codex-native-evaluation" && (a.SchemaVersion != 2 || e.Preparation.Plan.Version != 2) {
+					!slices.Contains(outcomes, a.Outcome) || a.FinishedAt == "" || !executionSourceAllowed(&a, e.Preparation.Plan) {
 					return nil, fmt.Errorf("invalid attempt identity/outcome")
 				}
 				if ref.Number == len(slot.Attempts) && slot.Status != "running" && slot.Status != a.Outcome {
@@ -624,10 +623,27 @@ func Status(storageRoot, id string) (*Progress, error) {
 	}
 	defer g.close()
 	p, err := readProgress(g, e, hash)
-	if err == nil && e.Preparation.Plan.Version == 2 {
-		p.Inspection = append(p.Inspection, "Version-2 attempts retain native eligibility, declared-context and execution evidence separately; native completion is not a semantic grade or Phase 1 completion.")
+	if err == nil && e.Preparation.Plan.Version >= 2 {
+		p.Inspection = append(p.Inspection, fmt.Sprintf("Version-%d attempts retain native eligibility, declared-context and execution evidence separately; native completion is not a semantic grade or Phase 1 completion.", e.Preparation.Plan.Version))
 	}
 	return p, err
+}
+
+// executionSourceAllowed admits only a source this attempt schema and frozen
+// plan host can have produced. Host-native evaluation sources require the
+// attempt and plan versions to match; Claude evidence needs a version-3 claude plan.
+func executionSourceAllowed(a *AttemptRecord, plan Plan) bool {
+	switch a.ExecutionSource {
+	case "no-model-test-script":
+		return true
+	case "native-eligibility-only":
+		return a.SchemaVersion < 3
+	case "codex-native-evaluation":
+		return a.SchemaVersion == plan.Version && (plan.Version == 2 || plan.Version == 3 && plan.Host == "codex")
+	case "claude-native-evaluation":
+		return a.SchemaVersion == 3 && plan.Version == 3 && plan.Host == "claude"
+	}
+	return false
 }
 
 type stopRecord struct {

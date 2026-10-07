@@ -46,9 +46,10 @@ func evaluationProfile(plan Plan, unit Unit, role string) (string, PinnedSelecti
 	} else if unit.Side != "baseline" {
 		return "", side, manifest.Selection{}, fmt.Errorf("unknown evaluation side")
 	}
-	profiles, ok := side.Configuration.Profiles["codex"]
+	host := planHost(plan)
+	profiles, ok := side.Configuration.Profiles[host]
 	if !ok {
-		return "", side, manifest.Selection{}, fmt.Errorf("selected profile has no Codex roles; no host fallback")
+		return "", side, manifest.Selection{}, fmt.Errorf("selected profile has no %s roles; no host fallback", host)
 	}
 	nativeRole, profile := "", profiles.Scout
 	switch role {
@@ -89,8 +90,11 @@ func (w nativeWorker) execute(ctx context.Context, request workerRequest) (worke
 	refuse := func(detail string) (workerResult, error) {
 		return workerResult{Outcome: "refused", Detail: detail}, nil
 	}
-	if request.PlanVersion != 2 || request.Task.Evaluation == nil {
+	if request.PlanVersion < 2 || request.Task.Evaluation == nil {
 		return refuse("Version-1 evaluation evidence remains readable; execution requires a version-2 frozen plan declaring approved instruction inputs.")
+	}
+	if request.Host != "codex" {
+		return refuse("The Codex worker runs only Codex evaluation plans; no host fallback.")
 	}
 	if !oidPattern.MatchString(w.revision) || request.Task.Evaluation.OrchRevision != w.revision || request.Intervention != "none" && request.Intervention != "requested-profile" {
 		return refuse("Native evaluation requires the exact clean embedded controller revision and none/requested-profile intervention; historical revision execution is unsupported.")
@@ -160,9 +164,10 @@ func validateAttemptNative(a *AttemptRecord, e *Evaluation) error {
 	if a.SchemaVersion != e.Preparation.Plan.Version {
 		return fmt.Errorf("attempt evidence version differs from frozen plan")
 	}
-	if a.SchemaVersion == 2 {
-		if a.Native != nil && a.Native.SchemaVersion != 2 || a.ExecutionSource == "codex-native-evaluation" && a.Outcome == "native-completed" && (a.Native == nil || a.Native.Binding == nil) {
-			return fmt.Errorf("version-2 native execution requires versioned evaluation evidence")
+	if a.SchemaVersion >= 2 {
+		hostExecution := a.ExecutionSource == "codex-native-evaluation" || a.ExecutionSource == "claude-native-evaluation"
+		if a.Native != nil && a.Native.SchemaVersion != 2 || hostExecution && a.Outcome == "native-completed" && (a.Native == nil || a.Native.Binding == nil) {
+			return fmt.Errorf("version-%d native execution requires versioned evaluation evidence", a.SchemaVersion)
 		}
 	} else if a.Native != nil && a.Native.SchemaVersion != 0 {
 		return fmt.Errorf("legacy attempt cannot contain new native evaluation evidence")
@@ -201,7 +206,7 @@ func validateAttemptNative(a *AttemptRecord, e *Evaluation) error {
 		}
 	}
 	for _, o := range a.Native.Observations {
-		if o.Evaluation == nil || *o.Evaluation != want || o.Session != a.Native.ThreadID || o.Requested == nil || *o.Requested != *a.Native.Requested {
+		if o.Evaluation == nil || *o.Evaluation != want || o.Host != planHost(e.Preparation.Plan) || o.Session != a.Native.ThreadID || o.Requested == nil || *o.Requested != *a.Native.Requested {
 			return fmt.Errorf("native observation differs from originating evaluation attempt/session/profile")
 		}
 	}

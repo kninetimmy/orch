@@ -60,6 +60,7 @@ type Readiness struct {
 
 type Proposal struct {
 	Version        int         `json:"version"`
+	Host           string      `json:"host,omitempty"`
 	Scope          string      `json:"scope"`
 	Intervention   string      `json:"intervention"`
 	Corpus         Artifact    `json:"corpus"`
@@ -107,6 +108,7 @@ type PublicCase struct {
 
 type Plan struct {
 	Version                int              `json:"version"`
+	Host                   string           `json:"host,omitempty"`
 	Scope                  string           `json:"scope"`
 	Intervention           string           `json:"intervention"`
 	Corpus                 Artifact         `json:"corpus"`
@@ -302,6 +304,24 @@ func plannedCounts(p Proposal) (Counts, error) {
 	return c, err
 }
 
+// planHost names the host whose worker runs a plan. Version 1 and 2 plans
+// predate the host field and remain Codex plans; version 3 names its host.
+func planHost(p Plan) string {
+	if p.Version < 3 {
+		return "codex"
+	}
+	return p.Host
+}
+
+// validHost requires a version-3 host of claude or codex and no host field on
+// earlier versions, whose frozen bytes and digests must stay unchanged.
+func validHost(version int, host string) bool {
+	if version == 3 {
+		return host == "claude" || host == "codex"
+	}
+	return host == ""
+}
+
 func readArtifact(base string, a Artifact) (Artifact, []byte, error) {
 	if !digestPattern.MatchString(a.SHA256) {
 		return a, nil, fmt.Errorf("artifact sha256 must be 64 lowercase hex digits")
@@ -450,7 +470,7 @@ func evidence(plan Plan, counts Counts) Evidence {
 			"Validate decision-rule semantics and measurement coverage, then obtain approval of the exact frozen finite trial through applicable gates.",
 		},
 	}
-	if plan.Version == 2 {
+	if plan.Version >= 2 {
 		e.WorkerAccessProtection = "not-observed; required on actual native connection"
 		for i := range e.Checks {
 			switch e.Checks[i].Name {
@@ -467,6 +487,23 @@ func evidence(plan Plan, counts Counts) Evidence {
 			"Revalidate the actual native connection's protections, declared instruction sources/hashes and exact role/profile; missing or changed controls refuse.",
 			"Complete separately approved bounded live completion/interruption/recovery checks, decision/measurement validation and screening before the twelve-case baseline; Phase 1 remains open.",
 		}
+	}
+	// Version-2 claims stay byte-identical: saved records regenerate and compare them.
+	if plan.Version == 3 {
+		e.ReadinessBlockers[0] = "Preview observes no native execution/eligibility and grants no approval; version-3 execution requires the plan's named host worker, a matching clean embedded build revision and supported none/requested-profile intervention."
+	}
+	if plan.Version == 3 && plan.Host == "claude" {
+		for i := range e.Checks {
+			switch e.Checks[i].Name {
+			case "native-execution":
+				e.Checks[i].Detail = "evaluation integration requires exact clean build revision, frozen Claude role/profile, no approved instruction files and actual-session admission; no turn occurs in preview"
+			case "worker-access-protection":
+				e.Checks[i].Detail = "Claude session permission and protected-path controls must be checked for each attempted execution; readiness references never establish enforcement"
+			case "approved-instruction-inputs":
+				e.Checks[i] = Check{"approved-instruction-inputs", "none-declared", "Claude plans approve no instruction files; preview refuses any declaration"}
+			}
+		}
+		e.ReadinessBlockers[2] = "Revalidate the actual Claude session's protections, absence of approved instruction files and exact role/profile; missing or changed controls refuse."
 	}
 	pair := 0
 	for _, c := range plan.Cases {
@@ -498,8 +535,8 @@ func Preview(ctx context.Context, repo, file string, runner execx.Runner) (*Reco
 	if err := strictJSON(data, &p); err != nil {
 		return nil, fmt.Errorf("plan JSON: %w", err)
 	}
-	if p.Version != 1 && p.Version != 2 {
-		return nil, fmt.Errorf("plan version %d unsupported; require version 1 or 2", p.Version)
+	if p.Version < 1 || p.Version > 3 {
+		return nil, fmt.Errorf("plan version %d unsupported; require version 1, 2 or 3", p.Version)
 	}
 	base := filepath.Dir(name)
 	record, err := normalize(ctx, repo, base, p, runner)
@@ -516,8 +553,14 @@ func Preview(ctx context.Context, repo, file string, runner execx.Runner) (*Reco
 func normalize(ctx context.Context, repo, base string, p Proposal, runner execx.Runner) (*Record, error) {
 	var data []byte
 	var err error
-	if p.Version != 1 && p.Version != 2 || p.Version == 1 && (p.Instructions != nil || p.ProtectedRoots != nil) || p.Version == 2 && (p.Instructions == nil || len(*p.Instructions) > 1 || p.ProtectedRoots == nil) {
-		return nil, fmt.Errorf("version-2 plans require explicit instructions (zero or one approved global artifact) and protected_roots; version 1 has neither declaration")
+	if p.Version < 1 || p.Version > 3 || p.Version == 1 && (p.Instructions != nil || p.ProtectedRoots != nil) || p.Version >= 2 && (p.Instructions == nil || len(*p.Instructions) > 1 || p.ProtectedRoots == nil) {
+		return nil, fmt.Errorf("version-2 and version-3 plans require explicit instructions (zero or one approved global artifact) and protected_roots; version 1 has neither declaration")
+	}
+	if !validHost(p.Version, p.Host) {
+		return nil, fmt.Errorf("version-3 plans require host claude or codex; version-1 and version-2 plans are Codex plans with no host field")
+	}
+	if p.Host == "claude" && len(*p.Instructions) != 0 {
+		return nil, fmt.Errorf("version-3 claude plans approve no instruction files; declare instructions as an empty array")
 	}
 	p.Corpus, data, err = readArtifact(base, p.Corpus)
 	if err != nil {
@@ -544,7 +587,7 @@ func normalize(ctx context.Context, repo, base string, p Proposal, runner execx.
 	if !identifierPattern.MatchString(p.Measurement.Source) || !slices.Contains([]string{"task-agents", "whole-orch"}, p.Measurement.Scope) {
 		return nil, fmt.Errorf("measurement requires a public source identifier and scope task-agents or whole-orch")
 	}
-	plan := Plan{Version: p.Version, Scope: p.Scope, Intervention: p.Intervention, Corpus: p.Corpus, Cases: cases, ExcludedCases: excluded, Partitions: slices.Clone(p.Partitions), Repetitions: p.Repetitions, Limits: p.Limits, Measurement: p.Measurement, Readiness: p.Readiness}
+	plan := Plan{Version: p.Version, Host: p.Host, Scope: p.Scope, Intervention: p.Intervention, Corpus: p.Corpus, Cases: cases, ExcludedCases: excluded, Partitions: slices.Clone(p.Partitions), Repetitions: p.Repetitions, Limits: p.Limits, Measurement: p.Measurement, Readiness: p.Readiness}
 	if p.Instructions != nil {
 		instructions := []Artifact{}
 		for _, source := range *p.Instructions {
@@ -577,6 +620,16 @@ func normalize(ctx context.Context, repo, base string, p Proposal, runner execx.
 			return nil, fmt.Errorf("candidate: %w", err)
 		}
 		plan.Candidate = &selection
+	}
+	if p.Version == 3 {
+		for _, side := range []*PinnedSelection{&plan.Baseline, plan.Candidate} {
+			if side == nil {
+				continue
+			}
+			if _, ok := side.Configuration.Profiles[p.Host]; !ok {
+				return nil, fmt.Errorf("selected profile %s does not enable host %s; no host fallback", side.Profile.Path, p.Host)
+			}
+		}
 	}
 	plan.DecisionRule, _, err = readArtifact(base, p.DecisionRule)
 	if err != nil {
@@ -612,6 +665,11 @@ func normalize(ctx context.Context, repo, base string, p Proposal, runner execx.
 func WriteText(w io.Writer, r *Record) error {
 	if _, err := fmt.Fprintf(w, "Maintainer preparation record: %s\nStorage: %s\nExecution/worker protection not observed in preview; no approval granted.\n", r.PlanDigest, r.StorageDestination); err != nil {
 		return err
+	}
+	if r.Plan.Host != "" {
+		if _, err := fmt.Fprintf(w, "Host: %s\n", r.Plan.Host); err != nil {
+			return err
+		}
 	}
 	for _, section := range []struct {
 		name  string

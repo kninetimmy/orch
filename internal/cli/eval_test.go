@@ -326,6 +326,67 @@ func TestEvalPreviewRejectsInputsAndLimits(t *testing.T) {
 	}
 }
 
+// The fixture profile enables only the claude host.
+func TestEvalPreviewVersion3Host(t *testing.T) {
+	version3 := func(f *evalFixture, host string) {
+		instructions, protected := []evalplan.Artifact{}, []string{}
+		f.plan.Version, f.plan.Host, f.plan.Instructions, f.plan.ProtectedRoots = 3, host, &instructions, &protected
+	}
+	f := newEvalFixture(t)
+	version3(f, "claude")
+	f.write(t)
+	code, output, failure := f.run(t, "--json")
+	if code != ExitOK {
+		t.Fatalf("claude plan preview: %d %s", code, failure)
+	}
+	var r evalplan.Record
+	if err := json.Unmarshal([]byte(output), &r); err != nil {
+		t.Fatal(err)
+	}
+	if r.SchemaVersion != 3 || r.Plan.Host != "claude" || !strings.Contains(output, `"host": "claude"`) {
+		t.Fatalf("JSON preview lacks the plan host: %+v", r.Plan)
+	}
+	claims := string(evalJSON(t, []any{r.Preview.Checks, r.Preview.ReadinessBlockers}))
+	if strings.Contains(strings.ToLower(claims), "codex") {
+		t.Fatalf("claude preview checks describe Codex: %s", claims)
+	}
+	code, text, failure := f.run(t)
+	if code != ExitOK || !strings.Contains(text, "\nHost: claude\n") {
+		t.Fatalf("text preview lacks the plan host: %d %s %s", code, text, failure)
+	}
+	for _, test := range []struct {
+		name   string
+		mutate func(*evalFixture)
+		want   string
+	}{
+		{"missing-host", func(f *evalFixture) { version3(f, "") }, "require host claude or codex"},
+		{"other-host", func(f *evalFixture) { version3(f, "opencode") }, "require host claude or codex"},
+		{"host-casing", func(f *evalFixture) { version3(f, "Claude") }, "require host claude or codex"},
+		{"version-1-host", func(f *evalFixture) { f.plan.Host = "codex" }, "no host field"},
+		{"version-2-host", func(f *evalFixture) { version3(f, "codex"); f.plan.Version = 2 }, "no host field"},
+		{"host-not-enabled", func(f *evalFixture) { version3(f, "codex") }, "does not enable host codex; no host fallback"},
+		{"claude-instruction-file", func(f *evalFixture) {
+			version3(f, "claude")
+			instructions := []evalplan.Artifact{f.plan.DecisionRule}
+			f.plan.Instructions = &instructions
+		}, "approve no instruction files"},
+		{"codex-non-agents-instruction-file", func(f *evalFixture) {
+			version3(f, "codex")
+			instructions := []evalplan.Artifact{f.plan.DecisionRule}
+			f.plan.Instructions = &instructions
+		}, "global AGENTS file"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			f := newEvalFixture(t)
+			test.mutate(f)
+			f.write(t)
+			if code, output, failure := f.run(t, "--json"); code != ExitError || output != "" || !strings.Contains(failure, test.want) {
+				t.Fatalf("code=%d output=%s failure=%s, want %s", code, output, failure, test.want)
+			}
+		})
+	}
+}
+
 func TestEvalPreviewEffectiveConfigurationAndTamperedCorpus(t *testing.T) {
 	f := newEvalFixture(t)
 	evalWrite(t, filepath.Join(f.repo, ".orchestrator", "config.local.toml"), []byte("[metrics]\nenabled = true\n"))

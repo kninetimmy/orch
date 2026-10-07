@@ -31,6 +31,7 @@ type workerRequest struct {
 	Layout       nativehost.IsolationPaths
 	Task         nativehost.Task
 	PlanVersion  int
+	Host         string
 	Intervention string
 	Revisions    []string
 }
@@ -74,6 +75,10 @@ func runController(ctx context.Context, storageRoot, id string, executor worker)
 	if _, native := executor.(nativeWorker); native {
 		if err := executionApproval(storageRoot, id); err != nil {
 			return nil, err
+		}
+		// The Codex worker never runs another host's plan, so nothing is claimed.
+		if host := planHost(e.Preparation.Plan); host != "codex" {
+			return nil, fmt.Errorf("no %s evaluation worker is available in this build and the Codex worker runs only Codex plans; evaluation %s remains prepared and unconsumed", host, e.ID)
 		}
 	}
 	if _, err := Load(ctx, e.Repository, storageRoot, e.Preparation.PlanDigest); err != nil {
@@ -210,7 +215,7 @@ func runController(ctx context.Context, storageRoot, id string, executor worker)
 			record.ExecutionSource = "no-model-test-script"
 			if _, native := executor.(nativeWorker); native {
 				record.ExecutionSource = "native-eligibility-only"
-				if record.SchemaVersion == 2 {
+				if record.SchemaVersion >= 2 {
 					record.ExecutionSource = "codex-native-evaluation"
 				}
 			}
@@ -377,12 +382,12 @@ func executeAttempt(ctx context.Context, g *guardedDir, e *Evaluation, a *prepar
 	if cause := executionCause(ctx, g, e); cause != nil {
 		return workerResult{Outcome: "interrupted", Detail: cause.Error()}, true, false, time.Time{}
 	}
-	request := workerRequest{Unit: record.Unit, Role: source.definition.Role, Layout: layout, PlanVersion: e.Preparation.Plan.Version, Intervention: e.Preparation.Plan.Intervention}
+	request := workerRequest{Unit: record.Unit, Role: source.definition.Role, Layout: layout, PlanVersion: e.Preparation.Plan.Version, Host: planHost(e.Preparation.Plan), Intervention: e.Preparation.Plan.Intervention}
 	request.Revisions = []string{e.Preparation.Plan.Baseline.OrchRevision}
 	if e.Preparation.Plan.Candidate != nil {
 		request.Revisions = append(request.Revisions, e.Preparation.Plan.Candidate.OrchRevision)
 	}
-	if request.PlanVersion == 2 {
+	if request.PlanVersion >= 2 {
 		request.Task, err = evaluationTask(e, record, source, layout)
 		if err != nil {
 			return workerResult{Outcome: "refused", Detail: err.Error()}, true, false, time.Time{}

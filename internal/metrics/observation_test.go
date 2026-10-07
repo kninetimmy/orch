@@ -103,12 +103,19 @@ func TestEvaluationObservationIsolationAndCounters(t *testing.T) {
 		func(o *Observation) { o.SchemaVersion = 2 },
 		func(o *Observation) { o.Evaluation = nil },
 		func(o *Observation) { o.Role = "reviewer" },
+		func(o *Observation) { o.Host = "opencode" },
+		func(o *Observation) { o.Host = "" },
 	} {
 		bad := a
 		change(&bad)
 		if err := bad.Validate(); err == nil {
 			t.Fatal("mixed/unbound evaluation observation accepted")
 		}
+	}
+	claude := a
+	claude.Host, claude.Source = "claude", "claude-session-log"
+	if err := claude.Validate(); err != nil {
+		t.Fatalf("claude evaluation observation rejected: %v", err)
 	}
 	data, err := json.Marshal(a)
 	if err != nil {

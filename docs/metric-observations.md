@@ -424,3 +424,18 @@ stay unchanged. New native evaluation evidence/report shapes are versioned in
 the [workflow](evaluation-workflow.md#native-evaluation-integration-issue-323).
 Native configured profiles, receipt timing and partial counters still supply no
 inference identity, semantic grade, accepted denominator or measured baseline.
+
+### Claude evaluation observations (#339)
+
+Before #339, `metrics.Observation.Validate` accepted evaluation observations
+(schema 3) only with host `codex`; this document did not state that rule. After
+#339 schema-3 observations are accepted with host `claude` or `codex` and still
+rejected with any other host, including an empty host. Every other schema-3 rule
+above is unchanged: explicit evaluation identity, no Delivery association, a role
+equal to the identity's role, the shared counter validator and delta arithmetic,
+and rejection by `metrics.Record` and Delivery history. Delivery observation
+schemas 1 and 2 keep their own host rule (empty, `claude`, `codex` or
+`opencode`). The evaluation controller also requires each retained observation's
+host to equal its plan's host; see the
+[version-3 workflow](evaluation-workflow.md#evaluation-plan-version-3-and-named-host-issue-339).
+Accepting the host adds no Claude capture source, recorder path or worker.
