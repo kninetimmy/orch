@@ -18,8 +18,9 @@ var (
 	errAttempt = errors.New("evaluation attempt deadline reached")
 )
 
-// The executor seam is package-private. Only nativeWorker is present in normal
-// builds; the successful scripted implementation lives entirely in _test.go.
+// The executor seam is package-private. Only nativeWorker (Codex) and
+// claudeWorker are present in normal builds; the successful scripted
+// implementation lives entirely in _test.go.
 // No exported API accepts an executor, callback, command or bypass option.
 type worker interface {
 	execute(context.Context, workerRequest) (workerResult, error)
@@ -46,15 +47,38 @@ type workerResult struct {
 
 type nativeWorker struct{ clientVersion, executable, revision string }
 
+// productionHost names the host a production worker runs; test workers have none.
+func productionHost(executor worker) (string, bool) {
+	switch executor.(type) {
+	case nativeWorker:
+		return "codex", true
+	case claudeWorker:
+		return "claude", true
+	}
+	return "", false
+}
+
 // Run consumes an evaluation exactly once. It retains a complete bounded
 // controller outcome, including every unrun slot. Every production attempt
-// requires its frozen evaluation binding and actual native gate. Run confers no
-// approval, changes no Delivery state, and cannot resume interrupted execution.
+// requires its frozen evaluation binding and actual native gate. The frozen
+// plan's host selects the worker: claude plans run through Claude Code, every
+// other plan through Codex. Run confers no approval, changes no Delivery state,
+// and cannot resume interrupted execution.
 func Run(ctx context.Context, storageRoot, id, clientVersion string) (*Progress, error) {
 	if err := executionApproval(storageRoot, id); err != nil {
 		return nil, err
 	}
-	return run(ctx, storageRoot, id, nativeWorker{clientVersion: clientVersion, revision: buildRevision()})
+	g, e, _, err := openEvaluation(storageRoot, id)
+	if err != nil {
+		return nil, err
+	}
+	host := planHost(e.Preparation.Plan)
+	g.close()
+	var executor worker = nativeWorker{clientVersion: clientVersion, revision: buildRevision()}
+	if host == "claude" {
+		executor = claudeWorker{revision: buildRevision()}
+	}
+	return run(ctx, storageRoot, id, executor)
 }
 
 func run(ctx context.Context, storageRoot, id string, executor worker) (*Progress, error) {
@@ -72,13 +96,13 @@ func runController(ctx context.Context, storageRoot, id string, executor worker)
 		return nil, err
 	}
 	defer g.close()
-	if _, native := executor.(nativeWorker); native {
+	if host, native := productionHost(executor); native {
 		if err := executionApproval(storageRoot, id); err != nil {
 			return nil, err
 		}
-		// The Codex worker never runs another host's plan, so nothing is claimed.
-		if host := planHost(e.Preparation.Plan); host != "codex" {
-			return nil, fmt.Errorf("no %s evaluation worker is available in this build and the Codex worker runs only Codex plans; evaluation %s remains prepared and unconsumed", host, e.ID)
+		// A production worker never runs another host's plan, so nothing is claimed.
+		if planned := planHost(e.Preparation.Plan); planned != host {
+			return nil, fmt.Errorf("the %s worker runs only %s plans, not this %s plan; evaluation %s remains prepared and unconsumed", host, host, planned, e.ID)
 		}
 	}
 	if _, err := Load(ctx, e.Repository, storageRoot, e.Preparation.PlanDigest); err != nil {
@@ -213,11 +237,14 @@ func runController(ctx context.Context, storageRoot, id string, executor worker)
 			result, returned, interrupted, cleanupDeadline := executeAttempt(execution, g, e, a, source, record, executor)
 			record.Outcome, record.Detail = result.Outcome, result.Detail
 			record.ExecutionSource = "no-model-test-script"
-			if _, native := executor.(nativeWorker); native {
+			switch executor.(type) {
+			case nativeWorker:
 				record.ExecutionSource = "native-eligibility-only"
 				if record.SchemaVersion >= 2 {
 					record.ExecutionSource = "codex-native-evaluation"
 				}
+			case claudeWorker:
+				record.ExecutionSource = "claude-native-evaluation"
 			}
 			record.Native, record.Eligibility = result.Native, result.Eligibility
 			if validationErr := validateAttemptNative(&record, e); validationErr != nil {
