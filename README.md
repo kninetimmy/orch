@@ -580,6 +580,12 @@ receive a copy of the memhub database.
   being conveyed as a prompt cue; a definition whose rendered effort differs
   from the configured one is reported stale —
   [#331](https://github.com/kninetimmy/orch/pull/331).
+- The shipped Claude `orch-implementer` and `orch-specialist` definitions now
+  tell executors to run checks in the foreground with a Bash timeout long
+  enough to finish, never to write `until` or `while` wait loops, and, when a
+  check has to run in the background, to wait for that command's completion
+  notification before reporting back —
+  [#335](https://github.com/kninetimmy/orch/pull/335).
 
 Engine release v0.12.0, the Claude/Codex manual-adapter version 0.9.0 and the
 unchanged OpenCode package 0.11.0 are separate identities. To upgrade, update
