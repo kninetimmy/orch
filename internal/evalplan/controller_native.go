@@ -11,6 +11,7 @@ import (
 	"github.com/kninetimmy/orch/internal/codexnative"
 	"github.com/kninetimmy/orch/internal/manifest"
 	"github.com/kninetimmy/orch/internal/metrics"
+	"github.com/kninetimmy/orch/internal/nativehost"
 )
 
 func buildRevision() string {
@@ -63,25 +64,25 @@ func evaluationProfile(plan Plan, unit Unit, role string) (string, PinnedSelecti
 	return nativeRole, side, manifest.Selection{Model: profile.Model, Effort: profile.Effort, Variant: profile.Variant}, nil
 }
 
-func evaluationTask(e *Evaluation, record AttemptRecord, source caseSource, layout codexnative.IsolationPaths) (codexnative.Task, error) {
+func evaluationTask(e *Evaluation, record AttemptRecord, source caseSource, layout nativehost.IsolationPaths) (nativehost.Task, error) {
 	role, side, selection, err := evaluationProfile(e.Preparation.Plan, record.Unit, source.definition.Role)
 	if err != nil {
-		return codexnative.Task{}, err
+		return nativehost.Task{}, err
 	}
 	prompt, instructions := string(source.public["TASK.md"]), string(source.public["ROLE.md"])
 	instructions += "\nRead CONTEXT.md and the supplied public files. Execute only TASK.md under this approved bounded evaluation. Do not access other packets, repositories, history, controller records or credentials. Do not delegate or perform Git/GitHub lifecycle actions. Return your output and exact verification evidence; completion is not a semantic grade."
-	binding := &codexnative.EvaluationBinding{Identity: metrics.EvaluationIdentity{ID: e.ID, PlanDigest: e.Preparation.PlanDigest,
+	binding := &nativehost.EvaluationBinding{Identity: metrics.EvaluationIdentity{ID: e.ID, PlanDigest: e.Preparation.PlanDigest,
 		Unit: record.Unit.Ordinal, CaseID: record.Unit.CaseID, CaseVersion: record.Unit.CaseVersion, CaseSHA256: record.CaseSHA256,
 		PacketSHA256: record.PacketSHA256, Repetition: record.Unit.Repetition, Side: record.Unit.Side, Attempt: record.Number, Kind: record.Kind, Role: role},
 		OrchRevision: side.OrchRevision, ProfileSHA256: side.Profile.SHA256, Selection: selection, Workspace: layout.Workspace, Scratch: layout.Scratch,
-		PromptSHA256: fmt.Sprintf("%x", sha256.Sum256([]byte(prompt))), InstructionsSHA256: fmt.Sprintf("%x", sha256.Sum256([]byte(instructions))), InstructionSources: []codexnative.InstructionSource{}}
+		PromptSHA256: fmt.Sprintf("%x", sha256.Sum256([]byte(prompt))), InstructionsSHA256: fmt.Sprintf("%x", sha256.Sum256([]byte(instructions))), InstructionSources: []nativehost.InstructionSource{}}
 	if e.Preparation.Plan.Instructions == nil {
-		return codexnative.Task{}, fmt.Errorf("evaluation lacks declared instruction inputs")
+		return nativehost.Task{}, fmt.Errorf("evaluation lacks declared instruction inputs")
 	}
 	for _, artifact := range *e.Preparation.Plan.Instructions {
-		binding.InstructionSources = append(binding.InstructionSources, codexnative.InstructionSource{Path: artifact.Path, SHA256: artifact.SHA256})
+		binding.InstructionSources = append(binding.InstructionSources, nativehost.InstructionSource{Path: artifact.Path, SHA256: artifact.SHA256})
 	}
-	return codexnative.Task{ID: binding.TaskID(), Role: role, Selection: selection, Prompt: prompt, Instructions: instructions, Layout: layout, Evaluation: binding}, nil
+	return nativehost.Task{ID: binding.TaskID(), Role: role, Selection: selection, Prompt: prompt, Instructions: instructions, Layout: layout, Evaluation: binding}, nil
 }
 
 func (w nativeWorker) execute(ctx context.Context, request workerRequest) (workerResult, error) {

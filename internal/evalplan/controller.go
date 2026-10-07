@@ -8,8 +8,8 @@ import (
 	"slices"
 	"time"
 
-	"github.com/kninetimmy/orch/internal/codexnative"
 	"github.com/kninetimmy/orch/internal/evalcorpus"
+	"github.com/kninetimmy/orch/internal/nativehost"
 )
 
 var (
@@ -28,8 +28,8 @@ type worker interface {
 type workerRequest struct {
 	Unit         Unit
 	Role         string
-	Layout       codexnative.IsolationPaths
-	Task         codexnative.Task
+	Layout       nativehost.IsolationPaths
+	Task         nativehost.Task
 	PlanVersion  int
 	Intervention string
 	Revisions    []string

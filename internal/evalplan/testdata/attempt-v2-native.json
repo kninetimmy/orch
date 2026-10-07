@@ -1,0 +1,159 @@
+{
+  "schema_version": 2,
+  "evaluation_id": "eval-abcdefghijklmnopqrstuvwxyz",
+  "plan_digest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "unit": {
+    "ordinal": 3,
+    "case_id": "orch-case-alpha",
+    "case_version": 2,
+    "repetition": 1,
+    "side": "candidate"
+  },
+  "number": 2,
+  "kind": "retry",
+  "packet_sha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+  "case_sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+  "packet": "C:\\evaluations\\workers\\unit-000003-attempt-000002",
+  "scratch": "C:\\evaluations\\scratch\\unit-000003-attempt-000002",
+  "started_at": "2026-10-07T12:00:00Z",
+  "finished_at": "2026-10-07T12:05:00Z",
+  "outcome": "native-completed",
+  "execution_source": "codex-native-evaluation",
+  "detail": "completed",
+  "grade": "unknown",
+  "verification": "not-run",
+  "initial": [
+    {
+      "path": "TASK.md",
+      "sha256": "2222222222222222222222222222222222222222222222222222222222222222"
+    }
+  ],
+  "artifacts": [
+    {
+      "path": "result.txt",
+      "sha256": "3333333333333333333333333333333333333333333333333333333333333333"
+    }
+  ],
+  "output": {
+    "path": "output.txt",
+    "sha256": "4444444444444444444444444444444444444444444444444444444444444444"
+  },
+  "native": {
+    "schema_version": 2,
+    "binding": {
+      "identity": {
+        "id": "eval-abcdefghijklmnopqrstuvwxyz",
+        "plan_digest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "unit": 3,
+        "case_id": "orch-case-alpha",
+        "case_version": 2,
+        "case_sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        "packet_sha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+        "repetition": 1,
+        "side": "candidate",
+        "attempt": 2,
+        "kind": "retry",
+        "role": "implementer"
+      },
+      "orch_revision": "0123456789abcdef0123456789abcdef01234567",
+      "profile_sha256": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+      "selection": {
+        "model": "gpt-5.5-codex",
+        "effort": "high"
+      },
+      "workspace": "C:\\evaluations\\workers\\unit-000003-attempt-000002",
+      "scratch": "C:\\evaluations\\scratch\\unit-000003-attempt-000002",
+      "prompt_sha256": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+      "instructions_sha256": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+      "instruction_sources": [
+        {
+          "path": "C:\\Users\\evaluator\\.codex\\AGENTS.md",
+          "sha256": "1111111111111111111111111111111111111111111111111111111111111111"
+        }
+      ]
+    },
+    "task_id": "eval-abcdefghijklmnopqrstuvwxyz/unit-000003/attempt-000002",
+    "thread_id": "thread-0001",
+    "session_id": "session-0001",
+    "turn_id": "turn-0001",
+    "status": "completed",
+    "requested": {
+      "model": "gpt-5.5-codex",
+      "effort": "high"
+    },
+    "observed": {
+      "model": "gpt-5.5-codex",
+      "effort": "high",
+      "variant": "default"
+    },
+    "observations": [
+      {
+        "schema_version": 3,
+        "evaluation": {
+          "id": "eval-abcdefghijklmnopqrstuvwxyz",
+          "plan_digest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "unit": 3,
+          "case_id": "orch-case-alpha",
+          "case_version": 2,
+          "case_sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "packet_sha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+          "repetition": 1,
+          "side": "candidate",
+          "attempt": 2,
+          "kind": "retry",
+          "role": "implementer"
+        },
+        "id": "sample-1",
+        "at": "2026-10-07T12:00:01Z",
+        "source": "codex-native",
+        "host": "codex",
+        "session": "thread-0001",
+        "sample": {
+          "stream": "reported-thread-total",
+          "mode": "cumulative",
+          "sequence": 1,
+          "counters": {
+            "input_tokens": 1200,
+            "output_tokens": 340,
+            "cache_read_tokens": 800,
+            "total_tokens": 1540,
+            "reasoning_output_tokens": 90
+          }
+        }
+      }
+    ],
+    "instructions": {
+      "schema_version": 1,
+      "status": "verified-sources-and-hashes",
+      "sources": [
+        {
+          "path": "C:\\Users\\evaluator\\.codex\\AGENTS.md",
+          "sha256": "1111111111111111111111111111111111111111111111111111111111111111"
+        }
+      ],
+      "detail": "Native source paths match approved artifacts; hashes checked around execution."
+    },
+    "cleanup": {
+      "interruption_asked": true,
+      "interrupt_acknowledged": true,
+      "shutdown_observed": false,
+      "detail": "direct child exited"
+    },
+    "failure": "native turn reported a recoverable warning"
+  },
+  "eligibility": {
+    "host_version": "0.160.0",
+    "sandbox_ready": true,
+    "profile_allowed": true,
+    "tools_disabled": true,
+    "disabled_mcp": 2,
+    "model_tools_verified": true
+  },
+  "cleanup": {
+    "status": "clean",
+    "detail": "removed",
+    "interruption_asked": true,
+    "worker_returned": true,
+    "native_acknowledged": true
+  }
+}
