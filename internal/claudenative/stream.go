@@ -18,12 +18,17 @@ const (
 	usageStream     = "claude-code-session-model-usage"
 )
 
-// streamEvent is the subset of stream-json output this bridge reads. Pointer
-// and slice fields keep "absent" distinct from a reported empty value.
-type streamEvent struct {
+// envelope is decoded from every stream-json line.
+type envelope struct {
 	Type      string `json:"type"`
 	Subtype   string `json:"subtype"`
 	SessionID string `json:"session_id"`
+}
+
+// streamEvent is the subset of stream-json output this bridge reads. Pointer
+// and slice fields keep "absent" distinct from a reported empty value.
+type streamEvent struct {
+	envelope
 	// system/init
 	Cwd            *string           `json:"cwd"`
 	Tools          []string          `json:"tools"`
@@ -72,7 +77,7 @@ func (s *Session) event(line []byte) error {
 		return fmt.Errorf("%w: event bound exceeded", ErrMalformedMessage)
 	}
 	var e streamEvent
-	if json.Unmarshal(line, &e) != nil || e.Type == "" {
+	if json.Unmarshal(line, &e.envelope) != nil || e.Type == "" || reads(e.envelope) && json.Unmarshal(line, &e) != nil {
 		return fmt.Errorf("%w: invalid stream-json event", ErrMalformedMessage)
 	}
 	if e.SessionID != "" && e.SessionID != s.result.SessionID {
@@ -111,6 +116,17 @@ func (s *Session) event(line []byte) error {
 		}
 	}
 	return nil // rate limits, permission denials and other events cannot authorize work
+}
+
+// reads reports whether Session.event acts on this event type. Only those events are
+// decoded in full, so an ignored event that reuses a field name with another
+// type cannot fail decoding: Claude Code 2.1.289 emits system/permission_denied
+// with a string message each time dontAsk denies a tool call.
+func reads(e envelope) bool {
+	if e.Type == "system" {
+		return e.Subtype == "init" || strings.HasPrefix(e.Subtype, "hook")
+	}
+	return slices.Contains([]string{"control_request", "control_response", "assistant", "user", "result"}, e.Type)
 }
 
 // acceptInit verifies the reported startup state. A model other than the one

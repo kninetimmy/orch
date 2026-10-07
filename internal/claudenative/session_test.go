@@ -486,3 +486,24 @@ func TestBindingRefusals(t *testing.T) {
 		t.Fatal("session admitted without a deadline")
 	}
 }
+
+func TestStreamEventDecoding(t *testing.T) {
+	for line, want := range map[string]error{
+		`[]`:  ErrMalformedMessage,
+		`"x"`: ErrMalformedMessage,
+		`{}`:  ErrMalformedMessage,
+		`{"type":"system","subtype":"permission_denied","message":"Permission to use Bash has been denied.","session_id":"sid","tool_name":"Bash"}`: nil,
+		`{"type":"system","subtype":"thinking_tokens","estimated_tokens":10,"session_id":"sid"}`:                                                    nil,
+		`{"type":"rate_limit_event","message":"limited","session_id":"sid"}`:                                                                        nil,
+		`{"type":"system","subtype":"permission_denied","message":"denied","session_id":"other"}`:                                                   ErrTaskBoundary,
+		`{"type":"system","subtype":"init","message":"x","session_id":"sid"}`:                                                                       ErrMalformedMessage,
+		`{"type":"control_request","message":"x"}`:                                                                                                  ErrMalformedMessage,
+		`{"type":"control_request"}`:                 ErrTaskBoundary,
+		`{"type":"system","subtype":"hook_started"}`: ErrTaskBoundary,
+	} {
+		s := &Session{result: SessionResult{SessionID: "sid"}}
+		if err := s.event([]byte(line)); want == nil && err != nil || want != nil && !errors.Is(err, want) {
+			t.Errorf("%s: %v, want %v", line, err, want)
+		}
+	}
+}

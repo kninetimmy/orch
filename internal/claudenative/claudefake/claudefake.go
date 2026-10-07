@@ -196,6 +196,10 @@ func session(dir string) {
 			assistant["message"].(map[string]any)["content"] = []any{map[string]string{"type": "tool_use", "name": "WebFetch"}}
 		}
 		emit(assistant)
+		// Claude Code 2.1.289 emits this, with a string message, each time
+		// dontAsk denies a tool call.
+		emit(map[string]any{"type": "system", "subtype": "permission_denied", "message": "Permission to use Bash has been denied.",
+			"tool_name": "Bash", "tool_use_id": "toolu_fixture_denied"})
 		switch name {
 		case "slow":
 			continue
