@@ -86,30 +86,43 @@ func evaluationTask(e *Evaluation, record AttemptRecord, source caseSource, layo
 	return nativehost.Task{ID: binding.TaskID(), Role: role, Selection: selection, Prompt: prompt, Instructions: instructions, Layout: layout, Evaluation: binding}, nil
 }
 
-func (w nativeWorker) execute(ctx context.Context, request workerRequest) (workerResult, error) {
-	refuse := func(detail string) (workerResult, error) {
-		return workerResult{Outcome: "refused", Detail: detail}, nil
+// admit applies the checks every production worker makes before launching its
+// host: plan version, the worker's own host, the clean build revision and the
+// request's binding. A non-nil result is the refusal or safety failure.
+func admit(revision string, request workerRequest, host, wrongHost string, boundary error) (*workerResult, error) {
+	refuse := func(detail string) (*workerResult, error) {
+		return &workerResult{Outcome: "refused", Detail: detail}, nil
 	}
 	if request.PlanVersion < 2 || request.Task.Evaluation == nil {
 		return refuse("Version-1 evaluation evidence remains readable; execution requires a version-2 frozen plan declaring approved instruction inputs.")
 	}
-	if request.Host != "codex" {
-		return refuse("The Codex worker runs only Codex evaluation plans; no host fallback.")
+	if request.Host != host {
+		return refuse(wrongHost)
 	}
-	if !oidPattern.MatchString(w.revision) || request.Task.Evaluation.OrchRevision != w.revision || request.Intervention != "none" && request.Intervention != "requested-profile" {
+	if !oidPattern.MatchString(revision) || request.Task.Evaluation.OrchRevision != revision || request.Intervention != "none" && request.Intervention != "requested-profile" {
 		return refuse("Native evaluation requires the exact clean embedded controller revision and none/requested-profile intervention; historical revision execution is unsupported.")
 	}
 	if len(request.Revisions) == 0 {
 		return refuse("Selected controller revisions are unknown.")
 	}
-	for _, revision := range request.Revisions {
-		if revision != w.revision {
+	for _, selected := range request.Revisions {
+		if selected != revision {
 			return refuse("Every selected Orch revision must match this clean controller build; no historical executor is available.")
 		}
 	}
 	role := map[string]string{"scout": "scout", "implementation": "implementer", "review": "reviewer"}[request.Role]
 	if role == "" || role != request.Task.Role || !reflect.DeepEqual(request.Task.Layout, request.Layout) || request.Unit.Ordinal != request.Task.Evaluation.Identity.Unit || request.Unit.CaseID != request.Task.Evaluation.Identity.CaseID || request.Unit.CaseVersion != request.Task.Evaluation.Identity.CaseVersion || request.Unit.Side != request.Task.Evaluation.Identity.Side || request.Unit.Repetition != request.Task.Evaluation.Identity.Repetition {
-		return workerResult{Outcome: "safety-failure", Detail: "Evaluation request differs from its native binding."}, codexnative.ErrTaskBoundary
+		return &workerResult{Outcome: "safety-failure", Detail: "Evaluation request differs from its native binding."}, boundary
+	}
+	return nil, nil
+}
+
+func (w nativeWorker) execute(ctx context.Context, request workerRequest) (workerResult, error) {
+	refuse := func(detail string) (workerResult, error) {
+		return workerResult{Outcome: "refused", Detail: detail}, nil
+	}
+	if result, err := admit(w.revision, request, "codex", "The Codex worker runs only Codex evaluation plans; no host fallback.", codexnative.ErrTaskBoundary); result != nil {
+		return *result, err
 	}
 	options := codexnative.Options{Executable: w.executable, Dir: request.Layout.Workspace, ClientVersion: w.clientVersion}
 	session, err := codexnative.RunSession(ctx, options, request.Task)
@@ -204,6 +217,9 @@ func validateAttemptNative(a *AttemptRecord, e *Evaluation) error {
 		if source.Path != artifact.Path || source.SHA256 != artifact.SHA256 {
 			return fmt.Errorf("native instruction artifact differs from frozen approval")
 		}
+	}
+	if a.ExecutionSource == "claude-native-evaluation" && a.Native.SessionID != a.Native.ThreadID {
+		return fmt.Errorf("claude native evidence names two sessions")
 	}
 	for _, o := range a.Native.Observations {
 		if o.Evaluation == nil || *o.Evaluation != want || o.Host != planHost(e.Preparation.Plan) || o.Session != a.Native.ThreadID || o.Requested == nil || *o.Requested != *a.Native.Requested {

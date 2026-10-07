@@ -439,3 +439,7 @@ schemas 1 and 2 keep their own host rule (empty, `claude`, `codex` or
 host to equal its plan's host; see the
 [version-3 workflow](evaluation-workflow.md#evaluation-plan-version-3-and-named-host-issue-339).
 Accepting the host adds no Claude capture source, recorder path or worker.
+After #340 the Claude evaluation worker produces these observations (source
+`claude-code-stream-json`); see the
+[workflow](evaluation-workflow.md#claude-code-evaluation-worker-issue-340).
+This contract and its validation are unchanged.

@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"github.com/BurntSushi/toml"
+	"github.com/kninetimmy/orch/internal/claudenative/claudefake"
 	"github.com/kninetimmy/orch/internal/codexnative"
 	"github.com/kninetimmy/orch/internal/config"
 	"github.com/kninetimmy/orch/internal/evalcorpus"
@@ -23,6 +24,7 @@ import (
 )
 
 func TestMain(m *testing.M) {
+	claudefake.Main() // exits when this binary is launched as the scripted Claude Code
 	if len(os.Args) >= 4 && reflect.DeepEqual(os.Args[1:4], []string{"app-server", "--listen", "stdio://"}) {
 		evaluationNativeServer()
 		os.Exit(0)
@@ -463,7 +465,9 @@ func TestVersion3PlanHostDigestAndClaudeRefusal(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := Run(t.Context(), f.root, e.ID, ""); err == nil || !strings.Contains(err.Error(), "no claude evaluation worker") {
+	// Before #340 Run refused every claude plan here. The Codex worker still
+	// never runs one: it is refused before the claim and nothing is consumed.
+	if _, err := run(t.Context(), f.root, e.ID, nativeWorker{revision: e.Preparation.Plan.Baseline.OrchRevision}); err == nil || !strings.Contains(err.Error(), "the codex worker runs only codex plans") {
 		t.Fatalf("Codex worker admitted a claude plan: %v", err)
 	}
 	if p, err := Status(f.root, e.ID); err != nil || p.State != "prepared" || len(p.Inspection) != 1 {
@@ -471,6 +475,14 @@ func TestVersion3PlanHostDigestAndClaudeRefusal(t *testing.T) {
 	}
 	if _, err := os.Lstat(filepath.Join(f.root, e.ID, "execution")); !errors.Is(err, os.ErrNotExist) {
 		t.Fatalf("refused claude plan was claimed: %v", err)
+	}
+	// Run now selects the Claude worker for a claude plan. This test binary has
+	// no clean embedded revision, so the first attempt is refused before launch.
+	if p, err := Run(t.Context(), f.root, e.ID, ""); err != nil || p.State != "refused" {
+		t.Fatalf("claude plan did not reach the Claude worker: %+v %v", p, err)
+	}
+	if a := readAttempt(t, f, e, 1, 1); a.ExecutionSource != "claude-native-evaluation" || a.Outcome != "refused" || !strings.Contains(a.Detail, "clean embedded controller revision") {
+		t.Fatalf("claude worker attempt: %+v", a)
 	}
 	// Version-3 claude attempts are retained and readable through the test-only seam.
 	scripted := f.prepare(t)
