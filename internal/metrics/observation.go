@@ -184,7 +184,8 @@ func (o Observation) Validate() error {
 		if err := o.Evaluation.Validate(); err != nil {
 			return err
 		}
-		if o.Role != o.Evaluation.Role || o.Host != "codex" {
+		// Evaluation workers run on exactly the plan's named host: claude or codex.
+		if o.Role != o.Evaluation.Role || o.Host != "claude" && o.Host != "codex" {
 			return errors.New("evaluation observation role/host differs from its binding")
 		}
 	} else {
