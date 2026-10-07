@@ -1235,6 +1235,23 @@ the observed model. A tool use outside the role's tools, output from a
 subagent (a non-null `parent_tool_use_id`), a hook event, or a permission or
 control request from Claude Code is also a safety failure.
 
+After #346: a `system` event with subtype `permission_denied` does not end the
+attempt. Claude Code 2.1.289 emits one, with `message` as a JSON string, each
+time `dontAsk` denies a tool call. A denial asks nothing, so it is not a
+permission request. Before #346 the worker decoded every stream-json line in
+full into one structure whose `message` field is an object, so this event failed
+decoding and the attempt ended as malformed (`protocol-invalid`). That happened
+live when the exact Bash allowlist denied a compound command. Now the worker
+decodes `type`, `subtype` and `session_id` from every line, and the rest only
+from the events it reads: `system`/`init`, `system` hook events,
+`control_request`, `control_response`, `assistant`, `user` and `result`. Every
+other event, such as `permission_denied`, `system`/`thinking_tokens` or
+`rate_limit_event`, is ignored whatever its other fields hold, as the worker
+already intended, but must still not name another session. A line that is not
+a JSON object or has no `type`, and a read event whose fields do not decode,
+still end the attempt as malformed. Every check above still holds with the same
+outcome.
+
 Usage is recorded as evaluation observations with host `claude`, source
 `claude-code-stream-json` and the session id:
 
@@ -1266,6 +1283,25 @@ exited on its own; the attempt ends as `interrupted` or `timeout`. A session
 whose process already exited (a disconnect) is not interrupted. An
 unacknowledged interrupt or a killed process preserves the attempt's resources,
 as for Codex.
+
+After #346: once Claude Code's process has exited and its tree was killed, or
+when only the `claude --help` check ran, the worker removes the empty
+directories inside the attempt scratch, deepest first. If the process cannot be
+confirmed exited, it removes nothing. Claude Code 2.1.289 creates a `claude`
+directory in its temp directory, which is the scratch, and leaves it empty.
+Before #346 the controller's scratch snapshot rejected that directory as an
+undeclared empty worker directory, so every attempt was recorded as
+`invalid-evidence`, replacing its real outcome, and its scratch was never
+removed. The worker never removes a file or the scratch itself and never follows
+a link. It removes nothing when the scratch holds a link, a reparse point (a
+Windows junction included) or another irregular entry, or exceeds the
+controller's 256-entry or depth-16 bound, so the controller judges those exactly
+as before. Every file is still retained as `scratch-output/`. An empty directory
+is removed whatever its name, so a name the controller would reject as an
+artifact name no longer invalidates the attempt when that directory is empty.
+The controller's own rules are unchanged for every worker: an empty directory
+still invalidates a Codex attempt, and one the Claude worker could not remove
+still invalidates a Claude attempt.
 
 `claudenative.Session.Resume` relaunches a disconnected session with
 `--resume <session id>` (never `--fork-session`) and
@@ -1313,7 +1349,10 @@ never call it: a disconnected attempt ends the run as `incomplete`.
 - On Unix, a tool process that starts its own session leaves the process group
   and is not killed with it. On Windows, the job object requires
   `NtResumeProcess` from `ntdll.dll` to resume the suspended child; if job setup
-  fails, the attempt is refused.
+  fails, the attempt is refused. (After #346: such a process can also still
+  write the scratch while the worker removes its empty directories. A directory
+  it fills first is not removed, but on Unix a directory it replaces with a file
+  between the worker's check and its removal could have that file removed.)
 - `go test ./...` covers this worker with a scripted stand-in for Claude Code
   (`internal/claudenative/claudefake`). It launches no real Claude Code, uses no
   model and needs no credentials.
