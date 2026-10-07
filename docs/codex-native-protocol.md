@@ -1196,3 +1196,42 @@ integration. They run no model evaluation. No managed subscription trial or
 measured baseline ran for #323. The separately authorized live procedure above
 and remaining independent grading/screening/baseline work still apply; Phase 1
 and the historical fresh-home cleanup uncertainty remain open.
+
+## Shared host-neutral types and checks (#338)
+
+`internal/nativehost` is now the one home for the dispatch/evaluation types and
+the host-neutral layout and instruction-file checks. The evaluation controller
+and any later native host bridge use it without importing `codexnative`.
+`codexnative` keeps the same names as type aliases. Its behavior, tests, error
+sentinels, error text and JSON wire format are unchanged. Everything Codex-only
+stays in `codexnative`: transport, preflight, profile/argument/environment
+construction, configuration checks, the `CODEX_HOME`/`.codex` protection,
+AGENTS.md precedence and the Session state machine. No behavior is removed.
+
+The shared checks return only the refusal detail, with no sentinel. Every
+`codexnative` call site wraps that detail once with the package's existing
+sentinel: `ErrIsolationUnavailable` for paths/layout and `ErrTaskBoundary` for
+instruction hashes. So each error's `errors.Is` matching and full text, such as
+`codex isolation unavailable: isolation requires absolute literal paths`, stay
+exactly as before. A second bridge wraps the same details with its own sentinel.
+
+### #338 blast radius and compatibility
+
+| Touched element | Before #338 | After #338; does prior behavior still hold? |
+| --- | --- | --- |
+| `codexnative.IsolationPaths`, `Task`, `EvaluationBinding` (with `TaskID`), `InstructionSource`, `InstructionEvidence`, `SessionCleanup` | Struct types declared in `isolation.go`, `session.go` and `session_evaluation.go`. | Yes. Each is now an alias of the identical `nativehost` type: same fields, JSON tags and `TaskID` format. `codexnative` code and tests compile against the same names unchanged. |
+| `isolationPath` | Canonical absolute-literal path check, Windows namespace/alias refusal, final-handle resolution, volume-root refusal, and an optional directory check; errors wrapped `ErrIsolationUnavailable`. | Yes. The body is now `nativehost.CanonicalPath`. The wrapper adds `ErrIsolationUnavailable` with the identical detail text. Every caller, including tests, is unchanged. |
+| `prepareIsolation` | Layout rules plus Codex host homes (`CODEX_HOME`, `HOME/.codex`, `USERPROFILE/.codex`) added after credential paths and before shared-Git paths. | Yes. Layout rules are now in `nativehost.ValidateLayout`. `prepareIsolation` still builds the Codex home list and passes it in at the same position, so protected-path order, de-duplication, error order/text and the partial boundary returned with an error are unchanged. The home protection is a restriction of `prepareIsolation` alone. `ValidateLayout` adds no host home for any bridge; each bridge must pass its own. |
+| `overlap`, `readGitPointer`, `sharedGitPaths` (removed from `isolation.go`) | Private layout helpers. | Moved, not changed: now private to `nativehost` with identical logic. Their error detail is wrapped once by `prepareIsolation`, as before. |
+| `isolation_path_windows.go` / `isolation_path_other.go` (moved to `nativehost/path_windows.go` / `path_other.go`): `finalPathName`, `finalIsolationPath`, `holdInstructionFile` | Windows final-handle resolution and read-sharing instruction hold. Non-Windows had no final-handle resolution, and its hold returned `ErrIsolationUnavailable`. | Yes. The logic is identical. The exported `HoldInstructionFile` returns `nativehost.ErrHoldUnsupported` off Windows. The `codexnative.holdInstructionFile` wrapper maps exactly that sentinel back to `ErrIsolationUnavailable`, so `holdInstructions` still refuses an unsupported platform rather than taking a weaker hold. |
+| `instructionHash` | Canonical non-symlink regular file, same-file identity, 64 KiB UTF-8 bound, raw-byte SHA-256 match; errors wrapped `ErrTaskBoundary`. | Yes. The body is now `nativehost.CheckInstructionHash`, and the wrapper adds `ErrTaskBoundary` with identical detail. The text recorded in `InstructionEvidence.Detail` is unchanged. `checkInstructionFiles`, `nativeInstructionHome` and AGENTS.md precedence stay Codex-side. |
+| `ErrIsolationUnavailable`, `ErrTaskBoundary`, `ErrProfileMismatch`, `ErrMalformedMessage` | `codexnative` sentinels matched by `evalplan` with `errors.Is`. | Yes. They are unchanged and still defined only in `codexnative`. Wrapped errors still match them, and the evaluation outcome mapping is unchanged. |
+| `evalplan`: `workerRequest`, `NativeEvidence`, `preparedAttempt.layout`, `evaluationTask` | Referenced the types through `codexnative`. | Yes. They now name the identical `nativehost` types. Stored attempt-record JSON is byte-identical: `TestVersion2NativeAttemptRecordWireBytes` decodes and re-encodes a version-2 native fixture encoded by the code before the move. |
+| `evalplan` imports | `controller.go`, `controller_artifacts.go`, `controller_native.go` and `controller_store.go` imported `codexnative`. | Narrowed: `controller_native.go`, which launches the Codex worker, is now the only non-test `evalplan` file that imports `codexnative`. The restriction holds for every non-test file in the package. Tests still use the aliases unchanged. |
+| `evalplan/path_windows.go` comment | Named `codexnative`'s `finalIsolationPath`. | Comment only. It names the new location; `verifyDriveRoot` is unchanged. |
+
+`evalplan`'s own `overlaps` helper and plan-time instruction artifact checks are
+not touched. The first checks plan worker/scratch parent roots during
+preparation; the second freezes artifact digests in a plan. Neither is the
+per-attempt layout or instruction-hash check above. Metrics, plan schemas,
+routing and Delivery are unchanged. No Claude bridge is added.

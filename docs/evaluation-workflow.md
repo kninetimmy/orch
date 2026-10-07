@@ -1001,3 +1001,12 @@ metadata-child cleanup. It starts no thread, turn, command probe or inference,
 and changes no global/user configuration. This tagged supplemental check is not
 run by ordinary CI. It does not observe loaded thread instruction sources,
 model usage or live evaluation behavior; those limitations remain above.
+
+### Shared native types (#338)
+
+The `NativeEvidence` binding, instruction and cleanup types, `workerRequest`'s
+layout/task and `evaluationTask` now name `internal/nativehost` types. These
+are the same types `codexnative` exposes through aliases, so stored records and
+the behavior described above are unchanged. Only the Codex worker launch in
+`controller_native.go` imports `codexnative`. See the
+[#338 touched-element table](codex-native-protocol.md#338-blast-radius-and-compatibility).
