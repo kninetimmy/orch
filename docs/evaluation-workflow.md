@@ -203,7 +203,7 @@ lazy fetching and replace objects disabled. No host CLI or GitHub is called.
 
 | Field | Exact meaning and validation |
 | --- | --- |
-| `version` | Integer `1`. All unsupported versions fail. |
+| `version` | Integer `1`. All unsupported versions fail. After #323 and #339 the accepted versions are `1`, `2` ([native integration](#native-evaluation-integration-issue-323)) and `3` ([named host](#evaluation-plan-version-3-and-named-host-issue-339)); every other version still fails. |
 | `scope`, `cases`, `partitions` | `baseline-only` requires all twelve manifest cases and no candidate; `matched` requires all twelve and a candidate. `screen` requires exactly four cases: one scout, implementation, defective review and clean review, with optional candidate. Cases must be unique known IDs; partitions must exactly name their coverage using `development` and/or `held-out`. The existing `evalcorpus.Load` reference-v1 rules validate manifest coverage, lineage, versions and declared packet digests. |
 | `intervention` | `none` without a candidate; otherwise `orch-revision`, `requested-profile` or `combined`. This public classification does not prove that differences are limited to the declared intervention. |
 | `corpus`, `decision_rule` | Required `{path, sha256}` references. The manifest is structurally validated. The decision rule is opaque: only its bytes/digest are checked, not tolerances, endpoint definitions or stop/invalidity semantics. |
@@ -878,7 +878,10 @@ label or repository HEAD alone is not binary provenance.
 
 The frozen selected side's Codex profile maps public `scout` to `roles.scout`,
 `implementation` to `roles.implementer`, and `review` to `roles.reviewer`.
-There is no specialist, safe-review, host, model or effort fallback. The native
+There is no specialist, safe-review, host, model or effort fallback. After #339
+this mapping holds for version-1, version-2 and version-3 codex plans; a version-3
+claude plan maps the same public roles to the same role names in its frozen
+claude profile, still with no fallback. The native
 binding includes the real evaluation ID, plan digest, unit/case version and
 case/packet digests, repetition/side, attempt/kind/role, selected profile digest,
 controller revision, exact selection, canonical packet/scratch, public prompt
@@ -919,7 +922,9 @@ unknown and all disposable resources preserved.
 
 New previews/plans use schema 2, new version-2 attempts use schema 2, native
 evaluation evidence explicitly uses schema 2, and new reports/snapshots use
-schema 3. Evaluation/approval/progress/grading journals retain their existing
+schema 3. After #339 that statement still holds for version-2 proposals; a
+version-3 proposal produces a schema-3 preview and schema-3 attempts, while
+native evidence stays schema 2 and reports stay schema 3. Evaluation/approval/progress/grading journals retain their existing
 versions. Original unversioned native evidence and schema-1/2 reports remain
 readable and immutable. Evaluation observation schema 3 contains an explicit
 evaluation identity and forbids Delivery run/issue/attempt association. It reuses
@@ -1010,3 +1015,82 @@ are the same types `codexnative` exposes through aliases, so stored records and
 the behavior described above are unchanged. Only the Codex worker launch in
 `controller_native.go` imports `codexnative`. See the
 [#338 touched-element table](codex-native-protocol.md#338-blast-radius-and-compatibility).
+
+## Evaluation plan version 3 and named host (issue #339)
+
+Version-3 proposals carry every version-2 field and add a required `host` of
+`claude` or `codex`. The host is part of the normalized plan, so it is part of
+the plan digest, the saved preparation record and the approval scope that
+`orch eval run` displays; changing only the host changes the digest. Preview
+rejects a version-3 proposal that omits `host` or names any other value,
+including other casing. Version-1 and version-2 proposals must not carry a
+`host` field: they remain Codex plans, and their normalized JSON, digests,
+preview claims and stored records are byte-identical to before #339.
+
+A version-3 plan's worker model and effort come from the named host's roles in
+each pinned baseline/candidate profile, through the same scout/implementer/
+reviewer mapping. If a pinned profile does not enable that host, preview refuses
+the plan; there is no fallback to another host. Version 3 keeps the version-2
+`instructions` and `protected_roots` declarations. A `codex` plan keeps the
+existing rule of zero or one approved global `AGENTS.md`/`AGENTS.override.md`
+artifact. A `claude` plan must declare `instructions` as an empty array; preview
+rejects any approved instruction file.
+
+Preview shows the host in JSON (`plan.host`) and in text (a `Host:` line plus the
+normalized plan). Version-3 previews report the version-2 check names and
+statuses. A `claude` plan's `native-execution`, `worker-access-protection` and
+`approved-instruction-inputs` checks and its readiness blockers describe a Claude
+session instead of Codex; `approved-instruction-inputs` reports `none-declared`.
+
+`orch eval run` loads the plan's host from the frozen plan; there is no host
+flag. A version-3 codex plan runs through the Codex worker with the same binding,
+admission, profile, instruction-source and cleanup checks as version 2, and
+records execution source `codex-native-evaluation`. This build has no Claude
+worker. The Codex worker never runs a version-3 claude plan: `orch eval run`
+reports that no claude worker is available before claiming the evaluation, so the
+approved preparation remains `prepared` and unconsumed, and the Codex worker
+itself refuses any request that is not for a Codex plan.
+
+Stored-record validation (`readProgress`, used by run, status, report and
+grading) accepts execution sources as follows. `claude-native-evaluation` is new.
+
+| Execution source | Accepted on |
+| --- | --- |
+| `no-model-test-script` | Every attempt schema (1, 2, 3), as before. |
+| `native-eligibility-only` | Attempt schemas 1 and 2, as before; never schema 3. |
+| `codex-native-evaluation` | Schema-2 attempts of version-2 plans, as before, and schema-3 attempts of version-3 codex plans. |
+| `claude-native-evaluation` | Only schema-3 attempts of version-3 claude plans. |
+
+An attempt's schema must still equal its plan version. A `native-completed`
+attempt with either host-native source must carry versioned native evidence with
+an evaluation binding. Every retained evaluation observation must name the
+plan's host (`codex` for versions 1 and 2). Evaluation observations
+(observation schema 3) are accepted with host `claude` or `codex`; see the
+[metrics contract](metric-observations.md#claude-evaluation-observations-339).
+
+### #339 touched structure and compatibility
+
+| Element | Before #339 | After #339; does prior behavior still hold? |
+| --- | --- | --- |
+| `Proposal`, `Plan` (new `host` field, omitted when empty) | Versions 1/2 only; no host field; a `host` key was an unknown field and failed. | Holds for versions 1/2: the field is omitted, so their bytes and digests are unchanged, and a `host` on them still fails (now with a host-specific error). Version 3 requires `claude` or `codex`. |
+| New `planHost`, `validHost` | None. | `planHost` maps versions 1/2 to `codex` and version 3 to its `host`; every host-dependent check below uses it. `validHost` is the one host rule shared by preview and stored-record validation. |
+| `Preview`, `normalize` | Accepted versions 1/2; the version-2 instruction/protected-roots shape; AGENTS-only artifacts. | Version 1/2 acceptance and rules hold. Version 3 uses the version-2 shape, the host rule, the claude no-instruction rule, and the enabled-host check for every pinned side (baseline and candidate). Only the wording of the unsupported-version and shape errors changed, to name version 3. |
+| `evidence` | Version-2 checks/blockers. | Version-2 claims are byte-identical, so saved version-2 records still match their regenerated preview. Version 3 adds host-specific text as described above. |
+| `WriteText` | Header lines plus the plan and preview JSON. | Unchanged for versions 1/2; a version-3 record adds a `Host:` line. |
+| `validateRecord`, `proposal`, `Load` | Schemas 1/2 only. | Schemas 1/2 still load; schema 3 loads with a valid host. The host rule applies to every saved record, including those read by `openEvaluation`. |
+| `evaluationProfile` | Read `Profiles["codex"]`; "no Codex roles; no host fallback". | Unchanged for versions 1/2 and version-3 codex. Reads the claude profile for version-3 claude plans. The no-fallback restriction holds for every host, not only Codex. |
+| `workerRequest` (new `Host`), `executeAttempt` | Built the evaluation task for version 2 only. | The task is built for versions 2 and 3, and the request names the plan's host. |
+| `runController` | Required approval for `nativeWorker`. | Approval still required. With `nativeWorker`, a non-codex plan is refused before the claim. This refusal applies to `nativeWorker` alone: it is the only production worker. Test-only scripted workers can still run version-3 claude plans. |
+| `nativeWorker.execute` | Refused anything but version 2. | Still refuses version 1 with the same message. Version 3 is admitted only when the request host is `codex`; every other version-2 check holds. This restriction is specific to the Codex worker. |
+| Execution-source choice in `runController` | `codex-native-evaluation` for schema-2 attempts. | Unchanged for schema 2; also used for schema-3 (codex) attempts. |
+| `prepareAttempt` | Attempt schema 2 for version-2 plans, otherwise 1. | Unchanged for versions 1/2; schema 3 for version 3. |
+| `readProgress` execution-source allow-list (new `executionSourceAllowed`) | `native-eligibility-only`, `no-model-test-script` on schemas 1/2; `codex-native-evaluation` only on schema-2 attempts of version-2 plans. | Every source is still accepted in the same cases. Additions are in the table above. The rule applies to every retained attempt read, because run, status, report and grading all read through `readProgress`. |
+| `validateAttemptNative` | Version-2 binding requirement for `codex-native-evaluation`; observations checked for identity/session/profile. | Unchanged for version 2. Also applies to schema 3 and `claude-native-evaluation`. Observations must also name the plan's host; existing version-2 Codex observations always carry `codex`. |
+| `Status` inspection note | A version-2 note. | Same text for version 2; version 3 gets the same note naming version 3. |
+| `metrics.Observation.Validate` | Evaluation observations (schema 3) required host `codex`. | Codex still accepted. Claude is now also accepted; any other host, including empty, is still rejected. Delivery schemas 1/2 are unchanged. |
+| Docs: this guide, `metric-observations.md` | The `version` row stated `1` only; the Codex-profile mapping paragraph; the schema list. | Earlier statements are kept, with #339 after-notes added in place. |
+| Tests: `controller_native_test.go`, `internal/cli/eval_test.go`, `internal/metrics/observation_test.go` | Version-2 native execution and preview checks. | Existing checks hold. The native execution scenario now also runs a version-3 codex plan. New checks cover host validation, digest, claude refusal/no claim, the source matrix, observation host and preview output. |
+
+No Claude worker, CLI flag, dependency, configuration default, approval schema,
+report schema or Delivery behavior is added or changed. A Claude evaluation
+worker is separate later work.
