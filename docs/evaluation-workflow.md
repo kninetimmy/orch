@@ -1157,9 +1157,23 @@ workspace as working directory:
 --tools Read,Glob,Grep,Bash            (implementer: Read,Glob,Grep,Bash,Edit,Write)
 --add-dir <attempt scratch>
 --allowedTools Read Glob Grep [Edit Write]
-  "Bash(go build)" "Bash(go build *)" "Bash(go test)" "Bash(go test *)"
-  "Bash(go vet)" "Bash(go vet *)" "Bash(gofmt -l *)"
+  "Bash(go build)" "Bash(go build ./...)" "Bash(go test)" "Bash(go test ./...)"
+  "Bash(go vet)" "Bash(go vet ./...)" "Bash(gofmt -l .)"
 ```
+
+Before #344 the Bash rules were `"Bash(go build)" "Bash(go build *)"
+"Bash(go test)" "Bash(go test *)" "Bash(go vet)" "Bash(go vet *)"
+"Bash(gofmt -l *)"`. The trailing `*` accepted any added text, including
+`-toolexec`, `-exec` and `-vettool`, which run other programs, and `-o`, `-C`,
+profile flags and `gofmt -w`, which write outside the workspace. After #344
+every Bash rule is an exact command with no `*`: a rule without `*` matches one
+exact command and accepts no added text
+([permissions](https://code.claude.com/docs/en/permissions)). Under `dontAsk`
+any other command is denied. Workers can no longer run targeted commands such as
+`go test -run X` or `gofmt -l file.go`. Deny rules for individual flags would
+not be a fix, because Claude Code matches Bash rules against the raw command
+text, and quoting avoids them (the permissions page shows `git 'push'` escaping
+`Bash(git push *)`). The same seven rules apply to every role.
 
 It never passes `--bare`, `--dangerously-skip-permissions`,
 `--allow-dangerously-skip-permissions`, `--fallback-model`, `bypassPermissions`,
@@ -1179,6 +1193,18 @@ Claude Code and Go need, plus `CLAUDE_CONFIG_DIR` and `CLAUDE_CODE_GIT_BASH_PATH
 It drops everything else, including `CLAUDECODE` from a parent Claude Code
 session, `ANTHROPIC_*` keys and provider overrides, and `GOFLAGS`. `TEMP`, `TMP`
 and `TMPDIR` point at the attempt scratch.
+
+After #344 the environment also sets `GOWORK=off`, `GOTOOLCHAIN=local`,
+`GOPROXY=off`, `GOSUMDB=off` and `CGO_ENABLED=0`, the values the evaluation
+packets and corpus controls use, so an edit to `go.mod` cannot make Go download
+modules or download and run another toolchain. Before #344 every parent Go
+variable, `GOFLAGS` included, was dropped and none was set, so Go fell back to
+the user's `go env` file and defaults. Parent values for these five variables
+are still dropped, never merged; `GOFLAGS` is still dropped and not set. The
+values are non-empty because Go treats an empty variable as unset. A `GOFLAGS`
+or other setting in the user's `go env` file still applies, before and after
+#344; environment values override that file only for the five set variables. The
+session and the `claude --help` child get the same environment.
 
 The child runs in its own process tree: a kill-on-close Windows job object that
 the child joins while still suspended, or its own Unix process group. An npm
@@ -1254,9 +1280,19 @@ never call it: a disconnected attempt ends the run as `incomplete`.
 - Test code the worker runs executes with your rights. `go test` runs arbitrary
   package code, `go build -o` and `gofmt -l -w` can write outside the workspace,
   and `--restricted` confines the file tools, not Bash. The Bash allowlist bounds
-  which commands may start, not what they do.
+  which commands may start, not what they do. (After #344: the allowlist accepts
+  only the seven exact commands, so `go build -o`, `gofmt -l -w` and every other
+  added flag no longer match a rule and are denied. What still holds: `go test`
+  executes package code, including tests the implementer writes, with your
+  rights, so the implementer role can still run arbitrary programs, and that code
+  can write anywhere you can. Scout and reviewer cannot edit files, but their
+  `go test` still runs whatever test code the workspace holds. `--restricted`
+  still confines the file tools, not Bash. The allowlist bounds which commands
+  start, not what the code they run does.)
 - The applied effort is not observable; only the requested effort is recorded.
-- Not yet verified live: the Bash allowlist (a live check was blocked) and
+- Not yet verified live: the Bash allowlist (a live check was blocked; after
+  #344 that includes Claude Code's exact-match behavior for the seven rules, so
+  it is documented, not observed) and
   `AGENTS.md` handling. The built-in `cc-plugin-agents-md` plugin stays loaded
   under safe mode, which is why a workspace-root `AGENTS.md` refuses the attempt;
   whether it loads `AGENTS.md` from subdirectories is unknown.
