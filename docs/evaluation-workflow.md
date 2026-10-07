@@ -1051,6 +1051,14 @@ reports that no claude worker is available before claiming the evaluation, so th
 approved preparation remains `prepared` and unconsumed, and the Codex worker
 itself refuses any request that is not for a Codex plan.
 
+After #340 the build has a Claude worker, and `orch eval run` selects the worker
+from the frozen plan's host: a version-3 claude plan runs through Claude Code
+(see [Claude Code evaluation worker](#claude-code-evaluation-worker-issue-340)),
+every other plan through the Codex worker. The Codex worker still never runs a
+claude plan, and the Claude worker never runs a Codex plan: a worker given another
+host's plan refuses before claiming it, so the preparation stays `prepared` and
+unconsumed. The Codex worker's own refusal of non-Codex requests is unchanged.
+
 Stored-record validation (`readProgress`, used by run, status, report and
 grading) accepts execution sources as follows. `claude-native-evaluation` is new.
 
@@ -1080,7 +1088,7 @@ plan's host (`codex` for versions 1 and 2). Evaluation observations
 | `validateRecord`, `proposal`, `Load` | Schemas 1/2 only. | Schemas 1/2 still load; schema 3 loads with a valid host. The host rule applies to every saved record, including those read by `openEvaluation`. |
 | `evaluationProfile` | Read `Profiles["codex"]`; "no Codex roles; no host fallback". | Unchanged for versions 1/2 and version-3 codex. Reads the claude profile for version-3 claude plans. The no-fallback restriction holds for every host, not only Codex. |
 | `workerRequest` (new `Host`), `executeAttempt` | Built the evaluation task for version 2 only. | The task is built for versions 2 and 3, and the request names the plan's host. |
-| `runController` | Required approval for `nativeWorker`. | Approval still required. With `nativeWorker`, a non-codex plan is refused before the claim. This refusal applies to `nativeWorker` alone: it is the only production worker. Test-only scripted workers can still run version-3 claude plans. |
+| `runController` | Required approval for `nativeWorker`. | Approval still required. With `nativeWorker`, a non-codex plan is refused before the claim. This refusal applies to `nativeWorker` alone: it is the only production worker. Test-only scripted workers can still run version-3 claude plans. After #340 there are two production workers; each refuses another host's plan before the claim, with a reworded error. See the #340 table. |
 | `nativeWorker.execute` | Refused anything but version 2. | Still refuses version 1 with the same message. Version 3 is admitted only when the request host is `codex`; every other version-2 check holds. This restriction is specific to the Codex worker. |
 | Execution-source choice in `runController` | `codex-native-evaluation` for schema-2 attempts. | Unchanged for schema 2; also used for schema-3 (codex) attempts. |
 | `prepareAttempt` | Attempt schema 2 for version-2 plans, otherwise 1. | Unchanged for versions 1/2; schema 3 for version 3. |
@@ -1093,4 +1101,203 @@ plan's host (`codex` for versions 1 and 2). Evaluation observations
 
 No Claude worker, CLI flag, dependency, configuration default, approval schema,
 report schema or Delivery behavior is added or changed. A Claude evaluation
-worker is separate later work.
+worker is separate later work. (After #340: that worker exists; the rest of this
+statement still holds for #339.)
+
+## Claude Code evaluation worker (issue #340)
+
+### Running a claude plan
+
+1. Install Claude Code so that `claude` resolves on `PATH`, and sign in with a
+   Claude subscription (`claude auth`). API keys and third-party providers are
+   refused: the session must report its authentication source as the
+   subscription login.
+2. Write a version-3 proposal with `"host": "claude"`, `"instructions": []` and
+   the `protected_roots` you need, as described in the
+   [version-3 section](#evaluation-plan-version-3-and-named-host-issue-339). The
+   pinned profile's `[hosts.claude.roles.*]` entries supply each role's model and
+   effort. Pin full model identifiers: the worker compares the model the session
+   reports with the pinned value exactly, so an alias such as `opus` that Claude
+   Code expands to a dated identifier ends the attempt as a safety failure.
+   Effort must be one of `low`, `medium`, `high`, `xhigh` or `max`.
+3. Build `orch` from a clean committed checkout and pin that commit in every
+   selected `orch_revision`, then `orch eval preview`, approve, and run
+   `orch eval run --plan sha256:DIGEST --storage-root ROOT` as for any plan.
+   There is no host flag: the frozen plan's host selects the Claude worker.
+
+The worker is evaluation-only. It launches Claude Code once per attempt, never
+resumes or retries a disconnected session, and records execution source
+`claude-native-evaluation`.
+
+### What each attempt does
+
+Before launch, the worker re-checks the attempt's binding (identity, profile,
+public prompt and role-instruction hashes, no declared instruction files) and the
+workspace layout through `nativehost.ValidateLayout`, adding Claude Code's own
+locations (`~/.claude`, `~/.claude.json` for both `HOME` and `USERPROFILE`, and
+`CLAUDE_CONFIG_DIR` when set) to the protected paths. It refuses the attempt,
+without launching Claude Code, when the workspace root contains `CLAUDE.md`,
+`CLAUDE.local.md`, `AGENTS.md` or a `.claude` entry (compared without regard to
+case). `CLAUDE.local.md` is refused for the same reason as the other three.
+
+It then runs `claude --help` and refuses unless every flag below and the
+`dontAsk` permission mode appear in it. This is a capability check, never a
+version comparison. The help child gets the same scrubbed environment as the
+session.
+
+Each attempt then launches exactly this argument vector, with the attempt
+workspace as working directory:
+
+```
+--print --verbose --output-format stream-json --input-format stream-json
+--session-id <new random UUID>
+--model <pinned model> --effort <pinned effort>
+--permission-mode dontAsk --permission-prompts none
+--restricted --safe-mode --strict-mcp-config --include-hook-events
+--tools Read,Glob,Grep,Bash            (implementer: Read,Glob,Grep,Bash,Edit,Write)
+--add-dir <attempt scratch>
+--allowedTools Read Glob Grep [Edit Write]
+  "Bash(go build)" "Bash(go build *)" "Bash(go test)" "Bash(go test *)"
+  "Bash(go vet)" "Bash(go vet *)" "Bash(gofmt -l *)"
+```
+
+It never passes `--bare`, `--dangerously-skip-permissions`,
+`--allow-dangerously-skip-permissions`, `--fallback-model`, `bypassPermissions`,
+`--no-session-persistence` (which would make the session unresumable),
+`--fork-session`, `--continue`, `--mcp-config`, `--settings`, `--plugin-dir` or
+`--agents`. The only directories made accessible are the workspace (the working
+directory) and the scratch directory (`--add-dir`). No free text enters the
+argument vector, and an argument containing a character that `cmd.exe`
+interprets inside quotes (`"%^&|<>!`) refuses the attempt, so an npm `.cmd` shim
+cannot alter the command. The role instructions and the public task are sent on
+stdin as one stream-json user message with two text blocks, instructions first
+([streaming input](https://code.claude.com/docs/en/agent-sdk/streaming-vs-single-mode)).
+The role instructions therefore arrive as user content, not as a system prompt.
+
+The child environment keeps only the system, home, profile and locale variables
+Claude Code and Go need, plus `CLAUDE_CONFIG_DIR` and `CLAUDE_CODE_GIT_BASH_PATH`.
+It drops everything else, including `CLAUDECODE` from a parent Claude Code
+session, `ANTHROPIC_*` keys and provider overrides, and `GOFLAGS`. `TEMP`, `TMP`
+and `TMPDIR` point at the attempt scratch.
+
+The child runs in its own process tree: a kill-on-close Windows job object that
+the child joins while still suspended, or its own Unix process group. An npm
+shim, Claude Code and every tool process it starts are in that tree.
+
+### Startup state, model and usage checks
+
+The first session event must be the `system`/`init` startup state; any session
+output before it refuses the attempt. The worker sends the user message as soon
+as that state is verified, or after three seconds if Claude Code reports it only
+on receiving input. The startup state must report:
+
+| Field | Required value | On mismatch |
+| --- | --- | --- |
+| `session_id` | the launched UUID | refused (an event naming another session is a safety failure) |
+| `model` | the pinned model, exactly | safety failure; observed model recorded |
+| `cwd` | the canonical workspace | refused |
+| `tools` | exactly the role's `--tools` set | refused |
+| `mcp_servers` | an empty list | refused |
+| `plugins` | only entries with path `builtin` and a `@builtin` source | refused |
+| `apiKeySource` | `none` (the subscription login) | refused |
+| `permissionMode` | `dontAsk` | refused |
+
+A refused attempt accepts no output. Every assistant message must carry the
+pinned model, and the final result's per-model usage (`modelUsage`) must name no
+other model; either difference ends the attempt as a safety failure and records
+the observed model. A tool use outside the role's tools, output from a
+subagent (a non-null `parent_tool_use_id`), a hook event, or a permission or
+control request from Claude Code is also a safety failure.
+
+Usage is recorded as evaluation observations with host `claude`, source
+`claude-code-stream-json` and the session id:
+
+- one `applied-effort-not-reported` observation per launch. The requested effort
+  is recorded in every observation's requested profile; the applied effort is
+  never reported by Claude Code, so the observed profile carries no effort;
+- one counter sample per `result`, from `modelUsage` for the pinned model, as the
+  cumulative stream `claude-code-session-model-usage`: `inputTokens`,
+  `outputTokens`, `cacheReadInputTokens`, `cacheCreationInputTokens` and
+  `thinkingTokens` map to input, output, cache read, cache creation and
+  reasoning-output tokens. `modelUsage` is the session's running total, and a
+  resumed invocation's total already includes the earlier invocation's usage
+  ([cost tracking](https://code.claude.com/docs/en/agent-sdk/cost-tracking)), so
+  it is one cumulative stream rather than a sum. A counter Claude Code does not
+  report stays unknown, never zero, and no total is synthesized. A result with
+  subtype `error_during_execution` may carry zeroed counters, so it is recorded as
+  `native-counters-unreliable-after-error`;
+- one terminal observation, as for Codex.
+
+### Stopping, timeouts and resume
+
+Stopping or timing out an attempt sends the stream-json interrupt control
+request and waits a bounded time for its `control_response`
+([Python Agent SDK control protocol](https://github.com/anthropics/claude-agent-sdk-python)).
+The worker then closes stdin, waits a bounded time for Claude Code to exit, and
+kills the process tree, so nothing from the attempt keeps running. The evidence
+records whether the interrupt was asked and acknowledged and whether the process
+exited on its own; the attempt ends as `interrupted` or `timeout`. A session
+whose process already exited (a disconnect) is not interrupted. An
+unacknowledged interrupt or a killed process preserves the attempt's resources,
+as for Codex.
+
+`claudenative.Session.Resume` relaunches a disconnected session with
+`--resume <session id>` (never `--fork-session`) and
+`CLAUDE_CODE_RESUME_INTERRUPTED_TURN=1`, only when the task, binding, layout and
+canonical protected paths are the same, and sends no new input
+([sessions](https://code.claude.com/docs/en/agent-sdk/sessions),
+[CLI reference](https://code.claude.com/docs/en/cli-reference)). Evaluation runs
+never call it: a disconnected attempt ends the run as `incomplete`.
+
+### Known limits
+
+- Test code the worker runs executes with your rights. `go test` runs arbitrary
+  package code, `go build -o` and `gofmt -l -w` can write outside the workspace,
+  and `--restricted` confines the file tools, not Bash. The Bash allowlist bounds
+  which commands may start, not what they do.
+- The applied effort is not observable; only the requested effort is recorded.
+- Not yet verified live: the Bash allowlist (a live check was blocked) and
+  `AGENTS.md` handling. The built-in `cc-plugin-agents-md` plugin stays loaded
+  under safe mode, which is why a workspace-root `AGENTS.md` refuses the attempt;
+  whether it loads `AGENTS.md` from subdirectories is unknown.
+- Not documented by Claude Code and not verified live: whether the startup state
+  arrives before the first user message (both orders are handled), whether a
+  bare stream-json client must send an `initialize` control request (none is
+  sent), the result subtype after an interrupt (the outcome is taken from the
+  worker's own interrupt and acknowledgement, not the subtype), exit codes after
+  an error or interrupt, and whether a resumed session continues the interrupted
+  turn without new input.
+- Strict model comparison. If Claude Code uses a second model internally (for
+  example a small model for a background task) and reports it in `modelUsage`,
+  or emits a locally generated assistant message whose model is `<synthetic>`,
+  the attempt ends as a safety failure. Neither has been observed live.
+- A model difference found while interrupting a stopped or timed-out attempt is
+  recorded in the evidence, but the controller still records the attempt as
+  `interrupted` or `timeout`, as it does for Codex.
+- On Unix, a tool process that starts its own session leaves the process group
+  and is not killed with it. On Windows, the job object requires
+  `NtResumeProcess` from `ntdll.dll` to resume the suspended child; if job setup
+  fails, the attempt is refused.
+- `go test ./...` covers this worker with a scripted stand-in for Claude Code
+  (`internal/claudenative/claudefake`). It launches no real Claude Code, uses no
+  model and needs no credentials.
+
+### #340 touched structure and compatibility
+
+| Element | Before #340 | After #340; does prior behavior still hold? |
+| --- | --- | --- |
+| New `internal/claudenative` (`launch.go`, `session.go`, `stream.go`, `process.go`, `proc_windows.go`, `proc_unix.go`, `proc_other.go`) | None. | New. Its sentinels (`ErrUnavailable`, `ErrProfileMismatch`, `ErrTaskBoundary`, `ErrMalformedMessage`, `ErrProcessExit`) are its own; `codexnative`'s are unchanged and still defined only there. It uses `nativehost` types and `ValidateLayout` unchanged. |
+| New `internal/claudenative/claudefake` | None. | New, test-only. No non-test package imports it; this holds for every package in the module. |
+| `evalplan.Run` | Always ran `nativeWorker`. | Codex plans (versions 1, 2 and version-3 codex) still run `nativeWorker` with the same arguments. Version-3 claude plans now run `claudeWorker`. Approval is checked first, as before. |
+| `runController` host gate (new `productionHost`) | With `nativeWorker`, a non-codex plan was refused before the claim with "no %s evaluation worker is available in this build...". | A Codex plan is still never claimed by the Claude worker and a claude plan never by the Codex worker; both stay `prepared`. The error now reads "the %s worker runs only %s plans, not this %s plan...". The restriction holds for every production worker, not only `nativeWorker`. Test-only scripted workers are unaffected. |
+| Execution-source choice in `runController` | `nativeWorker` attempts: `native-eligibility-only` or `codex-native-evaluation`. | Unchanged for `nativeWorker`. `claudeWorker` attempts record `claude-native-evaluation`, which stored-record validation already accepted only on schema-3 attempts of version-3 claude plans (#339). |
+| `nativeWorker.execute`, new `admit` | Inline version, host, revision, intervention and binding checks. | The checks moved into `admit` with the same order, messages, outcomes and `codexnative.ErrTaskBoundary` sentinel; Codex behavior holds. `claudeWorker` uses the same `admit` with its own host and sentinel. |
+| New `claudeWorker` (`controller_claude.go`) | None. | New. Maps outcomes as the Codex worker does: profile/boundary to `safety-failure`, malformed to `protocol-invalid`, refusal or no verified startup to `refused`, then completed, timeout, interrupted, disconnected, else `infrastructure-failure`. Records the session id in both `thread_id` and `session_id`. `controller_native.go` is still the only non-test `evalplan` file importing `codexnative`, and `controller_claude.go` the only one importing `claudenative`. |
+| `validateAttemptNative` | Observations must match the attempt identity, host, `thread_id` session and requested profile. | Unchanged for every source. Adds one rule for `claude-native-evaluation` only: `session_id` must equal `thread_id`. |
+| `controller_native_test.go`: `TestMain`, `TestVersion3PlanHostDigestAndClaudeRefusal` | `Run` on a claude plan returned "no claude evaluation worker" and left it unclaimed. | `TestMain` first hands Claude-shaped launches to the stand-in; the Codex stand-in detection is unchanged. The test now checks that the Codex worker still refuses a claude plan before the claim, and that `Run` reaches the Claude worker (refused there, because a test binary has no clean revision). |
+| New tests: `internal/claudenative/session_test.go`, `internal/evalplan/controller_claude_test.go` | None. | Cover the criteria above against the stand-in on every OS. |
+| Docs: this guide, `metric-observations.md`, `codex-native-protocol.md` | Stated that no Claude worker existed. | Those statements are kept, with #340 after-notes added in place. |
+
+`internal/codexnative`, `internal/nativehost`, `internal/metrics`, the CLI, plan
+and record schemas, configuration defaults, routing and Delivery are unchanged.
+No dependency is added. No live Claude Code session was run for this change.

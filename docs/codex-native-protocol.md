@@ -1234,4 +1234,7 @@ exactly as before. A second bridge wraps the same details with its own sentinel.
 not touched. The first checks plan worker/scratch parent roots during
 preparation; the second freezes artifact digests in a plan. Neither is the
 per-attempt layout or instruction-hash check above. Metrics, plan schemas,
-routing and Delivery are unchanged. No Claude bridge is added.
+routing and Delivery are unchanged. No Claude bridge is added. (After #340 a
+Claude bridge exists in `internal/claudenative`; it reuses `nativehost`
+unchanged. See the
+[workflow](evaluation-workflow.md#claude-code-evaluation-worker-issue-340).)
