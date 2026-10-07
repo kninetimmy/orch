@@ -5,47 +5,22 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
 	"os"
 	"path/filepath"
 	"strings"
 	"unicode/utf8"
 
-	"github.com/kninetimmy/orch/internal/manifest"
-	"github.com/kninetimmy/orch/internal/metrics"
+	"github.com/kninetimmy/orch/internal/nativehost"
 )
 
-// EvaluationBinding is explicit caller authority, never a synthetic Delivery run.
-// Hashes bind both public task text and separately approved global instructions.
-type EvaluationBinding struct {
-	Identity           metrics.EvaluationIdentity `json:"identity"`
-	OrchRevision       string                     `json:"orch_revision"`
-	ProfileSHA256      string                     `json:"profile_sha256"`
-	Selection          manifest.Selection         `json:"selection"`
-	Workspace          string                     `json:"workspace"`
-	Scratch            string                     `json:"scratch"`
-	PromptSHA256       string                     `json:"prompt_sha256"`
-	InstructionsSHA256 string                     `json:"instructions_sha256"`
-	InstructionSources []InstructionSource        `json:"instruction_sources"`
-}
-
-type InstructionSource struct {
-	Path   string `json:"path"`
-	SHA256 string `json:"sha256"`
-}
-
-type InstructionEvidence struct {
-	SchemaVersion int                 `json:"schema_version"`
-	Status        string              `json:"status"`
-	Sources       []InstructionSource `json:"sources"`
-	Detail        string              `json:"detail"`
-}
+// The evaluation binding and evidence types are shared with every host bridge.
+type (
+	EvaluationBinding   = nativehost.EvaluationBinding
+	InstructionSource   = nativehost.InstructionSource
+	InstructionEvidence = nativehost.InstructionEvidence
+)
 
 var evaluationRestrictedFeatures = []string{"memories", "external_agent_memory_import", "chronicle"}
-
-func (b EvaluationBinding) TaskID() string {
-	return fmt.Sprintf("%s/unit-%06d/attempt-%06d", b.Identity.ID, b.Identity.Unit, b.Identity.Attempt)
-}
 
 func textSHA256(text string) string { return fmt.Sprintf("%x", sha256.Sum256([]byte(text))) }
 
@@ -77,28 +52,19 @@ func nativeInstructionHome() (string, error) {
 }
 
 func instructionHash(source InstructionSource) error {
-	canonical, err := isolationPath(source.Path, false)
-	if err != nil || canonical != source.Path || len(source.SHA256) != 64 {
-		return fmt.Errorf("%w: noncanonical approved instruction artifact", ErrTaskBoundary)
-	}
-	info, err := os.Lstat(source.Path)
-	if err != nil || !info.Mode().IsRegular() {
-		return fmt.Errorf("%w: approved instruction artifact unavailable", ErrTaskBoundary)
-	}
-	f, err := os.Open(source.Path)
-	if err != nil {
-		return fmt.Errorf("%w: approved instruction artifact unreadable", ErrTaskBoundary)
-	}
-	defer func() { _ = f.Close() }()
-	opened, err := f.Stat()
-	if err != nil || !os.SameFile(info, opened) || info.Size() > 64*1024 {
-		return fmt.Errorf("%w: approved instruction artifact identity/size changed", ErrTaskBoundary)
-	}
-	data, err := io.ReadAll(io.LimitReader(f, 64*1024+1))
-	if err != nil || len(data) > 64*1024 || !utf8.Valid(data) || textSHA256(string(data)) != source.SHA256 {
-		return fmt.Errorf("%w: approved instruction artifact hash changed", ErrTaskBoundary)
+	if err := nativehost.CheckInstructionHash(source); err != nil {
+		return fmt.Errorf("%w: %w", ErrTaskBoundary, err)
 	}
 	return nil
+}
+
+// holdInstructionFile reports an unsupported platform as ErrIsolationUnavailable.
+func holdInstructionFile(path string) (*os.File, error) {
+	f, err := nativehost.HoldInstructionFile(path)
+	if errors.Is(err, nativehost.ErrHoldUnsupported) {
+		return nil, ErrIsolationUnavailable
+	}
+	return f, err
 }
 
 func checkInstructionFiles(sources []InstructionSource) error {

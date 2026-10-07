@@ -14,7 +14,7 @@ var finalDrivePath = syscall.NewLazyDLL("kernel32.dll").NewProc("GetFinalPathNam
 
 // EvalSymlinks does not resolve DOS drive mappings such as SUBST. Verify the
 // existing drive root, even for a future directory, using the same native
-// handle-path API as codexnative's finalIsolationPath. Aliases are refused.
+// handle-path API as nativehost's finalIsolationPath. Aliases are refused.
 func verifyDriveRoot(path string) (resultErr error) {
 	root := filepath.VolumeName(path) + string(filepath.Separator)
 	name, err := syscall.UTF16PtrFromString(root)

@@ -13,6 +13,7 @@ import (
 	"github.com/kninetimmy/orch/internal/agents"
 	"github.com/kninetimmy/orch/internal/manifest"
 	"github.com/kninetimmy/orch/internal/metrics"
+	"github.com/kninetimmy/orch/internal/nativehost"
 	"github.com/kninetimmy/orch/internal/paths"
 )
 
@@ -32,22 +33,8 @@ const (
 	maxSessionEvents                   = 1024
 )
 
-// Task is one caller-approved dispatch, not a request for this package to approve
-// or route work. The engine remains responsible for eligibility and approval.
-// ID and Prompt identify the exact task; Selection is its routed native profile.
-type Task struct {
-	ID           string
-	RunID        string
-	IssueNumber  int
-	Role         string
-	Attempt      string
-	ReviewCycle  int
-	Selection    manifest.Selection
-	Prompt       string
-	Layout       IsolationPaths
-	Evaluation   *EvaluationBinding
-	Instructions string // evaluation-only, supplied from the declared public ROLE.md
-}
+// Task is the shared caller-approved dispatch; see nativehost.Task.
+type Task = nativehost.Task
 
 // SessionResult describes execution only. Successful is neither verification
 // nor review/merge approval. Observed contains native configured-profile reports,
@@ -71,12 +58,7 @@ type SessionResult struct {
 	Error           string
 }
 
-type SessionCleanup struct {
-	InterruptionAsked     bool   `json:"interruption_asked"`
-	InterruptAcknowledged *bool  `json:"interrupt_acknowledged,omitempty"`
-	ShutdownObserved      *bool  `json:"shutdown_observed,omitempty"`
-	Detail                string `json:"detail,omitempty"`
-}
+type SessionCleanup = nativehost.SessionCleanup
 
 // Session retains one binding and its replay history in memory. Calls are
 // sequential; cancel the execution context to interrupt. There is no arbitrary

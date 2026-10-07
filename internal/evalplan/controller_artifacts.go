@@ -9,8 +9,8 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/kninetimmy/orch/internal/codexnative"
 	"github.com/kninetimmy/orch/internal/evalcorpus"
+	"github.com/kninetimmy/orch/internal/nativehost"
 	"github.com/kninetimmy/orch/internal/paths"
 )
 
@@ -417,11 +417,11 @@ func equalFiles(a, b map[string][]byte) bool {
 	return true
 }
 
-func (a *preparedAttempt) layout(e *Evaluation) (codexnative.IsolationPaths, error) {
+func (a *preparedAttempt) layout(e *Evaluation) (nativehost.IsolationPaths, error) {
 	p := e.Preparation.Plan
 	credentials, err := runtimeRoots(p)
 	if err != nil {
-		return codexnative.IsolationPaths{}, err
+		return nativehost.IsolationPaths{}, err
 	}
 	protected := protectedSources(p)
 	protected = append(protected, p.WorkerRoots[1:]...)
@@ -429,18 +429,18 @@ func (a *preparedAttempt) layout(e *Evaluation) (codexnative.IsolationPaths, err
 	for _, parent := range []*guardedDir{a.workerParent, a.scratchParent} {
 		entries, err := parent.entries()
 		if err != nil {
-			return codexnative.IsolationPaths{}, err
+			return nativehost.IsolationPaths{}, err
 		}
 		for _, entry := range entries {
 			if err := relativeName(entry.Name()); err != nil {
-				return codexnative.IsolationPaths{}, err
+				return nativehost.IsolationPaths{}, err
 			}
 			if entry.Name() != a.name {
 				protected = append(protected, filepath.Join(parent.path, entry.Name()))
 			}
 		}
 	}
-	return codexnative.IsolationPaths{Workspace: a.packet.path, Scratch: a.scratch.path,
+	return nativehost.IsolationPaths{Workspace: a.packet.path, Scratch: a.scratch.path,
 		MainCheckout: e.Repository, ControllerState: p.StorageRoot,
 		SiblingWorkspaces: protected, CredentialPaths: credentials}, nil
 }

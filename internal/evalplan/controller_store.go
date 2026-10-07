@@ -15,9 +15,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/kninetimmy/orch/internal/codexnative"
 	"github.com/kninetimmy/orch/internal/evalcorpus"
 	"github.com/kninetimmy/orch/internal/metrics"
+	"github.com/kninetimmy/orch/internal/nativehost"
 )
 
 const (
@@ -77,19 +77,19 @@ type DigestedFile struct {
 // NativeEvidence preserves reports with their original counter semantics and
 // missingness. It is never submitted to the current-Delivery metrics recorder.
 type NativeEvidence struct {
-	SchemaVersion int                              `json:"schema_version,omitempty"`
-	Binding       *codexnative.EvaluationBinding   `json:"binding,omitempty"`
-	TaskID        string                           `json:"task_id,omitempty"`
-	ThreadID      string                           `json:"thread_id,omitempty"`
-	SessionID     string                           `json:"session_id,omitempty"`
-	TurnID        string                           `json:"turn_id,omitempty"`
-	Status        string                           `json:"status,omitempty"`
-	Requested     *metrics.Profile                 `json:"requested,omitempty"`
-	Observed      *metrics.Profile                 `json:"observed,omitempty"`
-	Observations  []metrics.Observation            `json:"observations,omitempty"`
-	Instructions  *codexnative.InstructionEvidence `json:"instructions,omitempty"`
-	Cleanup       *codexnative.SessionCleanup      `json:"cleanup,omitempty"`
-	Failure       string                           `json:"failure,omitempty"`
+	SchemaVersion int                             `json:"schema_version,omitempty"`
+	Binding       *nativehost.EvaluationBinding   `json:"binding,omitempty"`
+	TaskID        string                          `json:"task_id,omitempty"`
+	ThreadID      string                          `json:"thread_id,omitempty"`
+	SessionID     string                          `json:"session_id,omitempty"`
+	TurnID        string                          `json:"turn_id,omitempty"`
+	Status        string                          `json:"status,omitempty"`
+	Requested     *metrics.Profile                `json:"requested,omitempty"`
+	Observed      *metrics.Profile                `json:"observed,omitempty"`
+	Observations  []metrics.Observation           `json:"observations,omitempty"`
+	Instructions  *nativehost.InstructionEvidence `json:"instructions,omitempty"`
+	Cleanup       *nativehost.SessionCleanup      `json:"cleanup,omitempty"`
+	Failure       string                          `json:"failure,omitempty"`
 }
 
 // Eligibility reports checked native controls, not observed inference identity,

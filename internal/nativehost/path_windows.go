@@ -1,6 +1,6 @@
 //go:build windows
 
-package codexnative
+package nativehost
 
 import (
 	"errors"
@@ -13,9 +13,10 @@ import (
 
 var finalPathName = syscall.NewLazyDLL("kernel32.dll").NewProc("GetFinalPathNameByHandleW")
 
-// Hold only declared instruction files, never credentials or persisted config.
+// HoldInstructionFile holds only declared instruction files, never credentials
+// or persisted config.
 // FILE_SHARE_READ permits native loading and denies ordinary writes/replacement.
-func holdInstructionFile(path string) (*os.File, error) {
+func HoldInstructionFile(path string) (*os.File, error) {
 	name, err := syscall.UTF16PtrFromString(path)
 	if err != nil {
 		return nil, err

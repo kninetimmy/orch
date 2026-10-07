@@ -6,30 +6,19 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
 	"os"
 	"path/filepath"
 	"runtime"
 	"strings"
-	"unicode/utf8"
 
 	"github.com/kninetimmy/orch/internal/execx"
-	"github.com/kninetimmy/orch/internal/paths"
+	"github.com/kninetimmy/orch/internal/nativehost"
 )
 
 var ErrIsolationUnavailable = errors.New("codex isolation unavailable")
 
-// IsolationPaths must name the complete approved layout. Protected directories
-// may contain one another, but none may overlap the workspace or scratch.
-// Existing Delivery worktrees nested under the main checkout are unsuitable.
-type IsolationPaths struct {
-	Workspace         string
-	Scratch           string
-	MainCheckout      string
-	ControllerState   string
-	SiblingWorkspaces []string
-	CredentialPaths   []string
-}
+// IsolationPaths is the shared approved layout; see nativehost.IsolationPaths.
+type IsolationPaths = nativehost.IsolationPaths
 
 // IsolationCapabilities reports checked controls, not live inference evidence.
 type IsolationCapabilities struct {
@@ -117,172 +106,37 @@ func modelToolBoundary(c *connection, b isolationBoundary, capabilities Isolatio
 	return verifyDisabledCapabilities(c, b)
 }
 
+// isolationPath applies the shared canonical-path check under this package's
+// ErrIsolationUnavailable sentinel.
 func isolationPath(path string, directory bool) (string, error) {
-	if path == "" || !filepath.IsAbs(path) || !utf8.ValidString(path) || strings.ContainsAny(path, "\x00\r\n*?[]{}") {
-		return "", fmt.Errorf("%w: isolation requires absolute literal paths", ErrIsolationUnavailable)
-	}
-	if runtime.GOOS == "windows" {
-		// Device/UNC namespaces, alternate streams and trailing-dot/space aliases
-		// are not supported by this local-drive profile contract.
-		if len(path) < 3 || path[1] != ':' || strings.ContainsAny(path[2:], ":") {
-			return "", fmt.Errorf("%w: isolation requires native local-drive paths", ErrIsolationUnavailable)
-		}
-		for _, part := range strings.Split(filepath.ToSlash(path[2:]), "/") {
-			if part != "." && part != ".." && (strings.HasSuffix(part, ".") || strings.HasSuffix(part, " ")) {
-				return "", fmt.Errorf("%w: unsafe Windows path alias", ErrIsolationUnavailable)
-			}
-		}
-	}
-	canonical, err := paths.Canonical(path)
+	canonical, err := nativehost.CanonicalPath(path, directory)
 	if err != nil {
-		return "", fmt.Errorf("%w: cannot canonicalize isolation path", ErrIsolationUnavailable)
-	}
-	canonical, err = finalIsolationPath(canonical)
-	if err != nil {
-		return "", fmt.Errorf("%w: cannot resolve native isolation path aliases", ErrIsolationUnavailable)
-	}
-	if filepath.Dir(canonical) == canonical {
-		return "", fmt.Errorf("%w: volume roots cannot be isolation locations", ErrIsolationUnavailable)
-	}
-	if directory {
-		info, err := os.Stat(canonical)
-		if err != nil || !info.IsDir() {
-			return "", fmt.Errorf("%w: isolation directory is missing or inaccessible", ErrIsolationUnavailable)
-		}
+		return "", fmt.Errorf("%w: %w", ErrIsolationUnavailable, err)
 	}
 	return canonical, nil
 }
 
-func overlap(a, b string) (bool, error) {
-	in, err := paths.Inside(a, b)
-	if err != nil || in {
-		return in, err
-	}
-	return paths.Inside(b, a)
-}
-
+// prepareIsolation applies the shared layout check, adding only the Codex
+// host's own authentication homes to the protected paths.
 func prepareIsolation(layout IsolationPaths, reviewer bool) (isolationBoundary, error) {
 	b := isolationBoundary{reviewer: reviewer, nonce: rand.Text()}
-	var err error
-	b.workspace, err = isolationPath(layout.Workspace, true)
-	if err != nil {
-		return b, err
-	}
-	b.scratch, err = isolationPath(layout.Scratch, true)
-	if err != nil {
-		return b, err
-	}
-	if overlaps, err := overlap(b.workspace, b.scratch); err != nil || overlaps {
-		return b, fmt.Errorf("%w: workspace and scratch overlap or cannot be compared", ErrIsolationUnavailable)
-	}
-	if len(layout.CredentialPaths) == 0 {
-		return b, fmt.Errorf("%w: credential locations must be protected", ErrIsolationUnavailable)
-	}
-	protected := append([]string{layout.MainCheckout, layout.ControllerState}, layout.SiblingWorkspaces...)
-	protected = append(protected, layout.CredentialPaths...)
 	// The trusted host retains its own authentication; the command sandbox
 	// must deny those locations even when the caller lists synthetic credentials.
+	var homes []string
 	for _, name := range []string{"CODEX_HOME", "HOME", "USERPROFILE"} {
 		if path := os.Getenv(name); path != "" {
 			if name != "CODEX_HOME" {
 				path = filepath.Join(path, ".codex")
 			}
-			protected = append(protected, path)
+			homes = append(homes, path)
 		}
 	}
-	gitPaths, err := sharedGitPaths(b.workspace)
+	checked, err := nativehost.ValidateLayout(layout, homes)
+	b.workspace, b.scratch, b.protected = checked.Workspace, checked.Scratch, checked.Protected
 	if err != nil {
-		return b, err
-	}
-	protected = append(protected, gitPaths...)
-	seen := map[string]bool{}
-	for _, path := range protected {
-		canonical, err := isolationPath(path, false)
-		if err != nil {
-			return b, err
-		}
-		for _, allowed := range []string{b.workspace, b.scratch} {
-			if overlaps, err := overlap(allowed, canonical); err != nil || overlaps {
-				return b, fmt.Errorf("%w: protected path overlaps workspace/scratch or cannot be compared", ErrIsolationUnavailable)
-			}
-		}
-		key := canonical
-		if runtime.GOOS == "windows" || runtime.GOOS == "darwin" {
-			key = strings.ToLower(key)
-		}
-		if !seen[key] {
-			seen[key] = true
-			b.protected = append(b.protected, canonical)
-		}
+		return b, fmt.Errorf("%w: %w", ErrIsolationUnavailable, err)
 	}
 	return b, nil
-}
-
-func readGitPointer(path string) (string, error) {
-	f, err := os.Open(path)
-	if err != nil {
-		return "", err
-	}
-	data, err := io.ReadAll(io.LimitReader(f, 4097))
-	err = errors.Join(err, f.Close())
-	if err != nil || len(data) > 4096 || strings.TrimSpace(string(data)) == "" {
-		return "", fmt.Errorf("%w: invalid shared Git pointer", ErrIsolationUnavailable)
-	}
-	return strings.TrimSpace(string(data)), nil
-}
-
-func sharedGitPaths(workspace string) ([]string, error) {
-	gitDir := filepath.Join(workspace, ".git")
-	info, err := os.Lstat(gitDir)
-	if errors.Is(err, os.ErrNotExist) {
-		return nil, nil // synthetic/non-Git workspace
-	}
-	if err != nil {
-		return nil, fmt.Errorf("%w: cannot inspect workspace Git metadata", ErrIsolationUnavailable)
-	}
-	if info.Mode().IsRegular() {
-		pointer, err := readGitPointer(gitDir)
-		if err != nil || !strings.HasPrefix(pointer, "gitdir: ") {
-			return nil, fmt.Errorf("%w: invalid workspace Git pointer", ErrIsolationUnavailable)
-		}
-		gitDir = strings.TrimPrefix(pointer, "gitdir: ")
-		if !filepath.IsAbs(gitDir) {
-			gitDir = filepath.Join(workspace, gitDir)
-		}
-	}
-	gitDir, err = isolationPath(gitDir, true)
-	if err != nil {
-		return nil, err
-	}
-	metadata := []string{gitDir}
-	commonFile := filepath.Join(gitDir, "commondir")
-	if _, err := os.Lstat(commonFile); err == nil {
-		common, err := readGitPointer(commonFile)
-		if err != nil {
-			return nil, fmt.Errorf("%w: cannot inspect shared Git common directory", ErrIsolationUnavailable)
-		}
-		if !filepath.IsAbs(common) {
-			common = filepath.Join(gitDir, common)
-		}
-		common, err = isolationPath(common, true)
-		if err != nil {
-			return nil, err
-		}
-		metadata = append(metadata, common)
-	} else if !errors.Is(err, os.ErrNotExist) {
-		return nil, fmt.Errorf("%w: cannot inspect shared Git common directory", ErrIsolationUnavailable)
-	}
-	var protected []string
-	for _, path := range metadata {
-		inside, err := paths.Inside(workspace, path)
-		if err != nil {
-			return nil, fmt.Errorf("%w: cannot compare shared Git metadata", ErrIsolationUnavailable)
-		}
-		if !inside {
-			protected = append(protected, path)
-		}
-	}
-	return protected, nil
 }
 
 func (b isolationBoundary) profile() string {
