@@ -194,3 +194,20 @@ func TestHookPreCompact(t *testing.T) {
 		t.Errorf("no repo: exit %d output %q, want silent", code, out)
 	}
 }
+
+func TestHookPreCompactFromSubdirectory(t *testing.T) {
+	env := grantRepo(t, true)
+	sub := filepath.Join(env.RepoRoot, "a", "b")
+	if err := os.MkdirAll(sub, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	env.RepoRoot = sub
+	_, out, _ := runHookVerb(env, hookDoc(map[string]string{"session_id": grantHolder, "trigger": "auto"}), "pre-compact")
+	if !strings.Contains(out, `"decision": "block"`) {
+		t.Errorf("holder started in a subdirectory was not blocked: %q", out)
+	}
+	_, out, _ = runHookVerb(env, hookDoc(map[string]string{"session_id": grantHolder}), "session-start")
+	if !strings.Contains(out, "is the current holder") {
+		t.Errorf("session-start from a subdirectory lost the grant lines: %q", out)
+	}
+}

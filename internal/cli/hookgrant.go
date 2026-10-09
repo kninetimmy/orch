@@ -10,6 +10,7 @@ import (
 
 	"github.com/kninetimmy/orch/internal/claudetranscript"
 	"github.com/kninetimmy/orch/internal/grant"
+	"github.com/kninetimmy/orch/internal/paths"
 )
 
 // claudeHookInput is the part of Claude Code's hook stdin document the grant
@@ -40,9 +41,15 @@ func readClaudeHookInput(env Env) (claudeHookInput, bool) {
 }
 
 // activeGrantOrNil returns the active grant, or nil when there is none or the
-// store cannot be read: every grant hook fails open.
+// store cannot be read: every grant hook fails open. It finds the Orch root
+// first, without git, so a hook started in a subdirectory still reaches the
+// grant and a repository that is not an Orch repository starts no process.
 func activeGrantOrNil(env Env, now time.Time) *grant.Grant {
-	store, err := grant.Open(context.Background(), env.Runner, env.RepoRoot)
+	root, err := paths.FindOutermostRoot(env.RepoRoot)
+	if err != nil {
+		return nil
+	}
+	store, err := grant.Open(context.Background(), env.Runner, root)
 	if err != nil {
 		return nil
 	}
