@@ -148,6 +148,10 @@ type Grant struct {
 	Runs      []Use              `json:"runs"`
 	Merges    []Use              `json:"merges"`
 	Approvals []RecordedApproval `json:"approvals"`
+
+	// Relays is the hand-off chain after the creating session. Optional, so records
+	// written before relays existed stay readable without a schema bump.
+	Relays []Relay `json:"relays,omitempty"`
 }
 
 // Active reports whether g is active at now: not revoked and not yet expired.

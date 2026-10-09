@@ -12,7 +12,7 @@ import (
 	"github.com/kninetimmy/orch/internal/grant"
 )
 
-const grantUsage = "usage: orch grant [revoke] | orch grant preview|create (JSON document on stdin)"
+const grantUsage = "usage: orch grant [revoke|relay] | orch grant preview|create (JSON document on stdin)"
 
 // runGrant shows (no argument) or revokes the active autonomy grant for a
 // human; preview and create are JSON stdin/stdout plumbing for the adapter
@@ -59,6 +59,17 @@ func runGrant(env Env, args []string) error {
 			return err
 		}
 		return writeJSON(env.Stdout, g)
+	case "relay":
+		store, err := grant.Open(context.Background(), env.Runner, env.RepoRoot)
+		if err != nil {
+			return err
+		}
+		g, err := store.Relay(context.Background(), env.Runner, env.RepoRoot, os.Getenv(grant.SessionEnv), now)
+		if err != nil {
+			return err
+		}
+		_, err = fmt.Fprintf(env.Stdout, "Relayed autonomy grant %s to session %s.\n", g.Terms.ID, g.SessionID)
+		return err
 	case "", "revoke":
 		store, err := grant.Open(context.Background(), env.Runner, env.RepoRoot)
 		if err != nil {
@@ -109,6 +120,11 @@ func writeGrant(w io.Writer, g *grant.Grant, now time.Time) error {
 	fmt.Fprintf(&b, "  context threshold:  %d tokens\n", t.ContextThreshold)
 	fmt.Fprintf(&b, "  relay permission:   %s\n", t.RelayPermissionMode)
 	fmt.Fprintf(&b, "  session holder:     %s\n", g.SessionID)
+	b.WriteString("  relay chain:\n")
+	fmt.Fprintf(&b, "    - %s (creator, %s)\n", t.SessionID, g.CreatedAt.Format(time.RFC3339))
+	for _, r := range g.Relays {
+		fmt.Fprintf(&b, "    - %s (took over %s)\n", r.To, r.At.Format(time.RFC3339))
+	}
 	b.WriteString("  scope:\n")
 	for _, s := range t.Scope {
 		fmt.Fprintf(&b, "    - %s: %s\n", s.Name, s.Description)
