@@ -75,6 +75,7 @@ func commands() []command {
 		{"abort", "Stop dispatch and return to Assist", noArgs("abort", runAbort)},
 		{"metrics", "Show local metrics or record JSON observations", runMetrics},
 		{"eval", "Evaluation preview/run/status/stop/report/grade (eval preview --plan FILE; eval help for arguments)", runEval},
+		{"grant", "Show the active autonomy grant; grant revoke ends it; grant preview and grant create propose and record one (JSON stdin/stdout)", runGrant},
 		{"render-agents", "Render project agent definitions for every enabled host", noArgs("render-agents", runRenderAgents)},
 		{"run", "Adapter plumbing: Delivery run verbs (JSON stdin/stdout; not a human command)", runRunVerb},
 		{"guard", "Adapter plumbing: pre-write enforcement for host hooks (not a human command)", runGuard},

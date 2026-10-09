@@ -343,6 +343,7 @@ commands:
   abort            Stop dispatch and return to Assist
   metrics          Show local metrics (or record JSON observations with `metrics record`)
   eval             Evaluation preview/run/status/stop/report (eval help for arguments)
+  grant            Show the active autonomy grant; grant revoke ends it; grant preview and grant create propose and record one (JSON stdin/stdout)
   render-agents    Render project agent definitions for every enabled host
   run              Adapter plumbing: Delivery run verbs (JSON stdin/stdout; not a human command)
   guard            Adapter plumbing: pre-write enforcement for host hooks (not a human command)
@@ -355,6 +356,14 @@ adapters call for you; you never invoke them by hand.
 Previously `metrics` only accepted its read-only report form. That form still
 works; `metrics record` now accepts durable observation JSON. See the
 [observation contract and compatibility notes](docs/metric-observations.md).
+
+Before issue #351, `orch grant` was absent from help and exited 2 as an
+unknown command. Now `orch grant` prints the active autonomy grant (or says
+none is active), `orch grant revoke` ends it, and `orch grant preview` /
+`orch grant create` are the JSON plumbing an adapter uses to show a grant and
+record it from the user's digest-bound `approve-autonomy-grant` approval.
+Grants are machine-local, kept in the clone's git common directory, and no
+command approves anything under a grant yet.
 
 To prepare an evaluation of an Orch change, see the
 [evaluation workflow](docs/evaluation-workflow.md) and its
