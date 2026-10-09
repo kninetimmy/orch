@@ -18,7 +18,7 @@ never re-derives a decision the engine already made.
   version, author). Component directories (`commands/`, `agents/`,
   `skills/`, `hooks/`) are auto-discovered by Claude Code; there is
   nothing else to declare here yet.
-- `hooks/hooks.json` — two hooks:
+- `hooks/hooks.json` — five hook entries:
   - `PreToolUse` on `Write|Edit|MultiEdit|NotebookEdit` — the four
     guarded write tools — runs `orch guard claude`, which reads the
     tool-call event on stdin and denies the write when Orch's policy
@@ -34,6 +34,21 @@ never re-derives a decision the engine already made.
     (`/orch:init`, `/orch:configure`, `/orch:configure-local`). Outside an
     Orch repository, or if the repository is unreadable, it injects
     nothing and never blocks the session.
+    While an autonomy grant is active it also names the grant, its expiry
+    and remaining budgets, and whether this session is the current holder
+    (a holder is told to read the latest handoff session note).
+  - `PostToolUse` and `UserPromptSubmit` run `orch hook claude
+    context-check`. In the grant's holder session (not inside a
+    subagent), once the main session's context passes the grant's
+    threshold, it adds an instruction to relay at the next stopping
+    point; otherwise it prints nothing. Context size comes from the
+    session transcript, whose format is read only for Claude Code
+    versions the reader was checked against (2.1.295); any other version
+    yields no instruction.
+  - `PreCompact` on `auto` runs `orch hook claude pre-compact`, which
+    blocks automatic compaction (`{"decision":"block",...}`) in the
+    grant's holder session. Manual `/compact` and every other session
+    compact as before. All of these hooks fail open.
 - `skills/orch-architect/SKILL.md` — the Architect's standing posture:
   never edit tracked files directly, never re-derive engine policy,
   the `orch run status --json` / PROJECT.md / memhub-recall session

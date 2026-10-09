@@ -48,8 +48,11 @@ type hookMatcher struct {
 // hooksManifest is the strict shape of hooks/hooks.json.
 type hooksManifest struct {
 	Hooks struct {
-		PreToolUse   []hookMatcher `json:"PreToolUse"`
-		SessionStart []hookMatcher `json:"SessionStart"`
+		PreToolUse       []hookMatcher `json:"PreToolUse"`
+		PostToolUse      []hookMatcher `json:"PostToolUse"`
+		UserPromptSubmit []hookMatcher `json:"UserPromptSubmit"`
+		PreCompact       []hookMatcher `json:"PreCompact"`
+		SessionStart     []hookMatcher `json:"SessionStart"`
 	} `json:"hooks"`
 }
 
@@ -93,6 +96,10 @@ func loadHooksManifest(t *testing.T) hooksManifest {
 	return m
 }
 
+func allHookMatchers(m hooksManifest) [][]hookMatcher {
+	return [][]hookMatcher{m.Hooks.PreToolUse, m.Hooks.PostToolUse, m.Hooks.UserPromptSubmit, m.Hooks.PreCompact, m.Hooks.SessionStart}
+}
+
 func TestHooksManifestStrict(t *testing.T) {
 	m := loadHooksManifest(t)
 	if len(m.Hooks.PreToolUse) == 0 {
@@ -101,7 +108,7 @@ func TestHooksManifestStrict(t *testing.T) {
 	if len(m.Hooks.SessionStart) == 0 {
 		t.Fatal("hooks.json has no SessionStart entries")
 	}
-	for _, event := range [][]hookMatcher{m.Hooks.PreToolUse, m.Hooks.SessionStart} {
+	for _, event := range allHookMatchers(m) {
 		for _, matcher := range event {
 			if len(matcher.Hooks) == 0 {
 				t.Errorf("matcher %q has no hooks", matcher.Matcher)
@@ -135,14 +142,11 @@ func TestMatcherGuardParity(t *testing.T) {
 func TestHookCommandsPortable(t *testing.T) {
 	m := loadHooksManifest(t)
 	var commands []string
-	for _, matcher := range m.Hooks.PreToolUse {
-		for _, h := range matcher.Hooks {
-			commands = append(commands, h.Command)
-		}
-	}
-	for _, matcher := range m.Hooks.SessionStart {
-		for _, h := range matcher.Hooks {
-			commands = append(commands, h.Command)
+	for _, event := range allHookMatchers(m) {
+		for _, matcher := range event {
+			for _, h := range matcher.Hooks {
+				commands = append(commands, h.Command)
+			}
 		}
 	}
 	adaptertest.CheckHookCommandPortability(t, commands)
@@ -158,6 +162,16 @@ func TestHookCommandsPinnedToBinaryVerbs(t *testing.T) {
 	}
 	if got := m.Hooks.SessionStart[0].Hooks[0].Command; got != "orch hook claude session-start" {
 		t.Errorf("SessionStart command = %q, want %q", got, "orch hook claude session-start")
+	}
+	// Grant hooks: context-check on both mid-session events, and pre-compact
+	// only on automatic compaction (manual /compact must stay unhooked).
+	for event, matchers := range map[string][]hookMatcher{"PostToolUse": m.Hooks.PostToolUse, "UserPromptSubmit": m.Hooks.UserPromptSubmit} {
+		if len(matchers) != 1 || len(matchers[0].Hooks) != 1 || matchers[0].Hooks[0].Command != "orch hook claude context-check" {
+			t.Errorf("%s hooks = %+v, want exactly one %q", event, matchers, "orch hook claude context-check")
+		}
+	}
+	if pc := m.Hooks.PreCompact; len(pc) != 1 || pc[0].Matcher != "auto" || len(pc[0].Hooks) != 1 || pc[0].Hooks[0].Command != "orch hook claude pre-compact" {
+		t.Errorf("PreCompact hooks = %+v, want one auto-matched %q", pc, "orch hook claude pre-compact")
 	}
 }
 
