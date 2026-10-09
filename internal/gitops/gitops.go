@@ -75,6 +75,12 @@ func Open(ctx context.Context, r execx.Runner, repoRoot string) (*Git, error) {
 // Root returns the canonical primary-checkout root.
 func (g *Git) Root() string { return g.root }
 
+// CommonDir returns the absolute git common directory, which the primary
+// checkout and every linked worktree of the clone share.
+func (g *Git) CommonDir(ctx context.Context) (string, error) {
+	return g.git(ctx, g.root, "rev-parse", "--path-format=absolute", "--git-common-dir")
+}
+
 // run executes git with the fail-closed environment and returns the
 // raw result; callers that treat non-zero exit as data use this.
 func (g *Git) run(ctx context.Context, dir string, args ...string) (execx.Result, error) {
