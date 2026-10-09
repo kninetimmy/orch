@@ -47,6 +47,12 @@ relevant to the change. Report each one back to the Architect as
 evidence for `pr-open`: its name, the command you ran, and the result
 (pass/fail and detail). Do not report a check you did not actually run.
 
+A claim about the branch as a whole (files changed, commit counts, diff
+totals) uses a three-dot diff against the live base: `origin/<base>`
+right after a fetch, or the base OID GitHub reports once the PR exists.
+Never use a local base branch, which in a later-wave worktree can still
+point at the pre-run commit.
+
 ## Check prose reflows for dropped words
 
 Before you push a commit that reflows prose — rewraps or restructures a

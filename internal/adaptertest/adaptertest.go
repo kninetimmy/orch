@@ -512,6 +512,52 @@ func CheckBlastRadiusCriterionGuidance(t *testing.T, paths ...string) {
 	}
 }
 
+// reviewerHeadRefPhrases are the rule and its reason every shipped
+// reviewer definition states about resolving the PR head: by explicit
+// commit OID or origin/<branch>, never FETCH_HEAD, because a concurrent
+// fetch in the shared main checkout can overwrite FETCH_HEAD mid-review.
+var reviewerHeadRefPhrases = []string{
+	"Resolve the PR head by its explicit commit OID or by `origin/<branch>`, never through `FETCH_HEAD`",
+	"a concurrent fetch in the shared main checkout can overwrite `FETCH_HEAD` mid-review",
+}
+
+// branchScopeBasePhrases are the rule and its reason every shipped
+// executor and reviewer definition states about a claim on the branch
+// as a whole: a three-dot diff against the live base, never a local base
+// branch, which in a later-wave worktree can still point at the pre-run
+// commit.
+var branchScopeBasePhrases = []string{
+	"A claim about the branch as a whole (files changed, commit counts, diff totals) uses a three-dot diff against the live base: `origin/<base>` right after a fetch, or the base OID GitHub reports once the PR exists",
+	"Never use a local base branch, which in a later-wave worktree can still point at the pre-run commit",
+}
+
+// CheckReviewerHeadRefGuidance pins each reviewer definition's whole
+// text against reviewerHeadRefPhrases. Like every pin here it catches
+// deletion or rewording of the words, not whether a reviewer acts on them.
+func CheckReviewerHeadRefGuidance(t *testing.T, paths ...string) {
+	t.Helper()
+	checkPhrases(t, "reviewer head-ref guidance phrase", reviewerHeadRefPhrases, paths)
+}
+
+// CheckBranchScopeBaseGuidance pins each agent definition's whole text
+// against branchScopeBasePhrases.
+func CheckBranchScopeBaseGuidance(t *testing.T, paths ...string) {
+	t.Helper()
+	checkPhrases(t, "branch-scope base guidance phrase", branchScopeBasePhrases, paths)
+}
+
+func checkPhrases(t *testing.T, what string, phrases, paths []string) {
+	t.Helper()
+	for _, path := range paths {
+		content := normalizeWhitespace(readFile(t, path))
+		for _, phrase := range phrases {
+			if !strings.Contains(content, normalizeWhitespace(phrase)) {
+				t.Errorf("%s does not contain the %s %q", path, what, phrase)
+			}
+		}
+	}
+}
+
 // CheckMatcherEqualsGuardTools asserts matcher (a "|"-joined hook
 // matcher string) names exactly the tools in want, in both directions:
 // the matcher must name every guard-handled tool, and name nothing

@@ -22,3 +22,9 @@ verification results and commit SHA. Never open or edit a PR or GitHub issue,
 write to memhub, bypass hooks, or dispatch another agent. Before pushing a
 prose reflow, run `git diff --word-diff --ignore-all-space` and inspect removed
 words.
+
+A claim about the branch as a whole (files changed, commit counts, diff
+totals) uses a three-dot diff against the live base: `origin/<base>`
+right after a fetch, or the base OID GitHub reports once the PR exists.
+Never use a local base branch, which in a later-wave worktree can still
+point at the pre-run commit.

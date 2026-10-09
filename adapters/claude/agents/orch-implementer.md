@@ -54,6 +54,12 @@ write an until or while loop that waits on a condition. If a check has to
 run with run_in_background, wait for that command's completion
 notification before reporting back.
 
+A claim about the branch as a whole (files changed, commit counts, diff
+totals) uses a three-dot diff against the live base: `origin/<base>`
+right after a fetch, or the base OID GitHub reports once the PR exists.
+Never use a local base branch, which in a later-wave worktree can still
+point at the pre-run commit.
+
 ## Check prose reflows for dropped words
 
 Any commit that reflows a paragraph — rewrapping or restructuring prose

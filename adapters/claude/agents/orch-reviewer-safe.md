@@ -109,6 +109,16 @@ it. If the change needs a fix the verdict grounds below make blocking,
 that is a `request-changes` verdict sent back to the executor, not
 something you do yourself.
 
+Resolve the PR head by its explicit commit OID or by `origin/<branch>`,
+never through `FETCH_HEAD`: a concurrent fetch in the shared main
+checkout can overwrite `FETCH_HEAD` mid-review.
+
+A claim about the branch as a whole (files changed, commit counts, diff
+totals) uses a three-dot diff against the live base: `origin/<base>`
+right after a fetch, or the base OID GitHub reports once the PR exists.
+Never use a local base branch, which in a later-wave worktree can still
+point at the pre-run commit.
+
 ## Report
 
 List every finding your review turns up — this stage is about
