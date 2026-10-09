@@ -12,7 +12,10 @@ and review to explicitly configured models with appropriate reasoning levels.
 
 Orch reduces unnecessary frontier-model usage without weakening development discipline. Every
 tracked repository mutation must use an issue, isolated feature worktree, pull request,
-independent review, CI or explicit targeted verification, and human-approved merge.
+independent review, CI or explicit targeted verification, and human-approved merge. Before
+autonomy grants (#353) a person approved every merge; now a merge may instead be approved by an
+active autonomy grant the user created, on a Claude Code run that grant activated and only past
+the grant's stops (§8), and the record names the grant, never a person.
 
 ## 2. Problem
 
@@ -44,13 +47,16 @@ Orch must:
 - Maintain behavioral parity through a shared cross-platform core.
 - Integrate with memhub when present.
 - Recover safely from interrupted sessions without losing work.
-- Keep all merge decisions human-controlled.
+- Keep all merge decisions human-controlled. Before autonomy grants (#353) each merge decision
+  was a person's; now a person may delegate merge decisions to an autonomy grant they create,
+  bounded by its expiry, limits and stops (§8), and can revoke it at any time.
 
 ## 4. Non-goals for v1
 
 - IDE-extension or desktop-app integration.
 - GitLab, Bitbucket, or other Git forges.
-- Automatic merging.
+- Automatic merging. An autonomy grant (§8) does not change this: a grant merge is an explicit,
+  bounded delegation a person created, recorded against the grant, not a merge-when-green rule.
 - Direct edits to `main`.
 - Emergency workflow-bypass commands.
 - Moving model aliases as canonical configuration.
@@ -138,7 +144,10 @@ or abandoned.
 
 ## 8. Human gates
 
-The normal workflow has two required human gates.
+The normal workflow has two required human gates. Before autonomy grants (#353) a person had to
+pass both on every run; now an active autonomy grant may pass either gate for the user on a
+Claude Code run (see "Autonomy grant exception" below). A gate a grant cannot pass still needs
+a person, and a human approval works exactly as before.
 
 ### Plan and activation gate
 
@@ -163,13 +172,40 @@ Native choices:
 
 Even a one-line tracked-file change receives a compact one-issue plan.
 
+Before autonomy grants (#353) only a person's approval activated a plan. Now an approval given
+under an active autonomy grant (`grant-approve-and-enter-delivery`, approver `grant:<id>`) also
+activates one, but only when the grant covers the plan gate, its run budget has room, the plan's
+host is `claude`, no issue declares a risk domain, and the calling Claude Code session is the
+grant's current session holder. Any other case is refused, naming the stop, before activation
+changes anything. The run records `grant:<id>` as its plan approver, and every issue's audit
+record says no person reviewed or approved the plan.
+
 ### Merge gate
 
 Every PR requires explicit human merge confirmation. Plan approval, review approval, or prior
 merge approval never authorizes another merge.
 
+Before autonomy grants (#353) that confirmation always came from a person. Now, for an issue in
+a run the same grant activated, an approval given under that grant (`grant-approve-merge`,
+approver `grant:<id>`) may confirm the merge instead. It is refused, and the issue stays
+awaiting merge, when the grant has expired, been revoked, used its merge budget or does not
+cover the merge gate; when the calling session is not the grant's current holder; when the
+issue's history holds any escalation, block or block resolution; when its reviewer was the
+downgraded reviewer; when required CI is anything but passing, including no required checks; or
+when the PR changes a protected path. It is still one approval for one PR at one head.
+
 Exceptional blockers may require clarification. Material changes to scope, architecture, issue
 decomposition, or routing return to the plan gate.
+
+### Autonomy grant exception
+
+In a run a grant activated, the non-approving review that takes an issue past the grant's
+fix-cycle limit (the third under the default limit of 2) blocks the issue as a human decision
+that only `orch run resolve-block` clears. Every grant approval is recorded against the grant
+with its run (and, for a merge, its issue, PR and head commit) and never exceeds the grant's
+run or merge limit. A grant is not a security boundary against a misbehaving model: like a
+human approval, a grant approval is an assertion, and its stops guard against accidents and
+drift.
 
 ## 9. Roles
 
@@ -339,7 +375,8 @@ specified, and unsurprising.
 12. Escalate or resume as required.
 13. Wait for required CI.
 14. Present a ready-to-merge report.
-15. Wait for explicit human approval.
+15. Wait for explicit human approval. Before autonomy grants (#353) always a person's; now an
+    active autonomy grant may give it for the user, past its stops (§8).
 16. Merge using the configured strategy.
 17. Confirm issue closure and record the merge result.
 18. Delete the merged remote branch.
@@ -593,7 +630,9 @@ V1 is acceptable when:
 - Routing and conservative escalation behave as configured.
 - Only one cross-host Delivery run may own a repository.
 - Interrupted runs resume without losing branches or worktrees.
-- No merge occurs without explicit human approval.
+- No merge occurs without explicit human approval. Before autonomy grants (#353) that approval
+  was always a person's; now it may come from an autonomy grant the person created, past the
+  grant's stops (§8), recorded as the grant's.
 - CI and targeted verification are reported honestly.
 - Managed instruction blocks preserve existing content.
 - Required memhub failure blocks Delivery planning.
