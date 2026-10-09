@@ -424,6 +424,21 @@ func TestSelectionWireVersionsMatchEngine(t *testing.T) {
 	adaptertest.CheckSelectionWireVersions(t, deliverySkillPath, architectSkillPath)
 }
 
+// TestAgentsHaveRefGuidance holds every shipped reviewer to resolving the
+// PR head without FETCH_HEAD, and every executor and reviewer to measuring
+// whole-branch claims against the live base rather than a local base branch.
+func TestAgentsHaveRefGuidance(t *testing.T) {
+	reviewers := []string{
+		filepath.Join("agents", "orch-reviewer.md"),
+		filepath.Join("agents", "orch-reviewer-safe.md"),
+	}
+	adaptertest.CheckReviewerHeadRefGuidance(t, reviewers...)
+	adaptertest.CheckBranchScopeBaseGuidance(t, append(reviewers,
+		filepath.Join("agents", "orch-implementer.md"),
+		filepath.Join("agents", "orch-specialist.md"),
+	)...)
+}
+
 func TestDeliverySkillHasBranchScopeVerificationGuidance(t *testing.T) {
 	adaptertest.CheckBranchScopeVerificationGuidance(t, deliverySkillPath)
 }
