@@ -534,11 +534,12 @@ receive a copy of the memhub database.
   `CLAUDE.md` or `AGENTS.md`, and treats any model other than the pinned one as
   a safety failure. It records usage with unreported counters left unknown,
   stops attempts with an interrupt and a process-tree kill, and never resumes a
-  disconnected session —
-  [#343](https://github.com/kninetimmy/orch/pull/343). Each worker refuses
-  another host's plan before claiming it. The host-neutral evaluation types and
-  containment checks the worker shares with the Codex worker now live in a
-  common package, with Codex behavior and stored-record bytes unchanged —
+  disconnected session. Each worker refuses another host's plan before
+  claiming it —
+  [#343](https://github.com/kninetimmy/orch/pull/343). The host-neutral
+  evaluation types and containment checks the worker shares with the Codex
+  worker now live in a common package, with Codex behavior and stored-record
+  bytes unchanged —
   [#341](https://github.com/kninetimmy/orch/pull/341). See the
   [evaluation workflow](docs/evaluation-workflow.md#claude-code-evaluation-worker-issue-340).
 - Claude worker hardening. The Bash allowlist is now seven exact commands
@@ -563,12 +564,14 @@ Engine release v0.12.1, the unchanged Claude/Codex manual-adapter version 0.9.0
 and the unchanged OpenCode package 0.11.0 are separate identities; this release
 changes no adapter or plugin artifact. To upgrade, update the engine between
 runs (see the upgrade commands above), restart the host and run
-`orch doctor --host claude|codex`; an installed 0.9.0 adapter, its rendered
-agent definitions and the 0.11.0 OpenCode package need no update. State schema 6
-has no active-run migration, so an active run stays on its original pair.
-Metrics schema-2 history requires v0.11.0 or a newer compatible reader, while
-legacy schema-1 history remains readable without rewriting; evaluation
-observations use schema 3 and are rejected by Delivery history.
+`orch doctor --host claude|codex`. For an upgrade from v0.12.0, an installed
+0.9.0 adapter, its rendered agent definitions and the 0.11.0 OpenCode package
+need no update; from an earlier release, follow the v0.12.0 release notes
+below. State schema 6 has no active-run migration, so an active run stays on
+its original pair. Metrics schema-2 history requires v0.11.0 or a newer
+compatible reader, while legacy schema-1 history remains readable without
+rewriting; evaluation observations use schema 3 and are rejected by Delivery
+history.
 
 ## v0.12.0 release
 
