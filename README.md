@@ -900,17 +900,21 @@ the next run refuses to start, and `orch doctor` notes that the acquiring
 process is no longer running. Workaround: `orch resume` to reconcile and
 continue, or `orch abort` to end it.
 
-**`orch grant relay` has been checked live on native Windows only.** The
-relay starts the successor with `claude --bg`, Remote Control on, and a
-session id it chooses and passes as `--session-id`. It was exercised against
-Claude Code 2.1.295 on native Windows, not on Linux, macOS, or WSL. If
-`--bg` does not honor the requested `--session-id`, the relay fails with the
-holder unchanged and may leave the started session running. A grant that
-records `default` as its permission mode cannot relay on 2.1.295, whose CLI
-lists `manual` instead. Symptom: `orch grant relay` exits non-zero with the
-launch error. Workaround: stop a stray session with `claude stop <id>`,
-create grants with a mode the CLI lists, and continue in the current session
-if a relay fails.
+**`orch grant relay` is only partly checked live, and only on native
+Windows.** What ran live: on 2026-10-09, Claude Code 2.1.295 on native
+Windows, a manual launch of the same shape (`claude --bg --remote-control
+<name> --permission-mode auto "<prompt>"`, without `--session-id`). That
+session started working on the prompt by itself and connected Remote
+Control, and its `CLAUDE_CODE_SESSION_ID` matched the id `--bg` reported.
+What has not run live: `orch grant relay` end to end, including whether
+`--bg` honors the `--session-id` the relay passes. Until it has, a relay may
+fail closed with the holder unchanged and leave a stray background session;
+`claude agents` lists it and `claude stop <id>` removes it. macOS and Linux
+were never checked live. A grant that records `default` as its permission
+mode cannot relay on 2.1.295, whose CLI lists `manual` instead. Symptom:
+`orch grant relay` exits non-zero with the launch error. Workaround: create
+grants with a mode the CLI lists, and continue in the current session if a
+relay fails.
 
 </details>
 

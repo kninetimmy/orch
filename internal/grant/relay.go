@@ -5,6 +5,7 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"fmt"
+	"slices"
 	"strings"
 	"time"
 
@@ -18,6 +19,9 @@ const ClaudeBinary = "claude"
 // variable is the grant id, which comes from the record.
 const relayPromptFormat = "You continue autonomy grant %s, relayed to you by the previous holder so this work " +
 	"proceeds in a clean context. Follow the Orch grant guidance before acting."
+
+// relayTimeout bounds the launch; `claude --bg` returns immediately.
+var relayTimeout = time.Minute
 
 // Relay is one hand-off of a grant's session holder.
 type Relay struct {
@@ -57,13 +61,27 @@ func (s *Store) Relay(ctx context.Context, r execx.Runner, dir, holder string, n
 		if holder != g.SessionID {
 			return fmt.Errorf("this session (%s=%q) does not hold grant %s; its current holder is %q", SessionEnv, holder, g.Terms.ID, g.SessionID)
 		}
+		// The record is the only source of the launch mode, so it must still be
+		// the record the user approved and a mode a relay may use.
+		if digest, err := Digest(g.Terms); err != nil {
+			return err
+		} else if digest != g.Digest {
+			return fmt.Errorf("grant %s does not match its approved digest; refusing to relay", g.Terms.ID)
+		}
+		if mode := g.Terms.RelayPermissionMode; mode == "bypassPermissions" || !slices.Contains(permissionModes, mode) {
+			return fmt.Errorf("grant %s records relay permission mode %q, which a relay never uses; refusing to relay", g.Terms.ID, mode)
+		}
 		next, err := newSessionID()
 		if err != nil {
 			return err
 		}
+		// The grant lock is held across the launch, so a hung launcher must not
+		// wedge `orch grant revoke`.
+		ctx, cancel := context.WithTimeout(ctx, relayTimeout)
+		defer cancel()
 		res, err := r.Run(ctx, execx.Cmd{Name: ClaudeBinary, Args: RelayArgs(g, next), Dir: dir})
 		if err != nil {
-			return fmt.Errorf("start successor session: %w", err)
+			return fmt.Errorf("start successor session: %w (a session may be running; check `%s agents`; holder unchanged)", err, ClaudeBinary)
 		}
 		if res.ExitCode != 0 {
 			return fmt.Errorf("start successor session: %s exited %d: %s", ClaudeBinary, res.ExitCode, strings.TrimSpace(res.Stderr+" "+res.Stdout))

@@ -15,10 +15,15 @@ import (
 type fakeClaude struct {
 	cmds  []execx.Cmd
 	reply func(args []string) (execx.Result, error)
+	hang  bool
 }
 
-func (f *fakeClaude) Run(_ context.Context, c execx.Cmd) (execx.Result, error) {
+func (f *fakeClaude) Run(ctx context.Context, c execx.Cmd) (execx.Result, error) {
 	f.cmds = append(f.cmds, c)
+	if f.hang {
+		<-ctx.Done()
+		return execx.Result{}, ctx.Err()
+	}
 	if f.reply != nil {
 		return f.reply(c.Args)
 	}
@@ -112,6 +117,60 @@ func TestRelayRefusalsAndFailuresLeaveTheHolder(t *testing.T) {
 			}
 			if len(f.cmds) != tc.runs || !reflect.DeepEqual(before, snapshot(t, s.dir)) {
 				t.Fatalf("launches %d (want %d) or the record changed", len(f.cmds), tc.runs)
+			}
+		})
+	}
+}
+
+func TestRelayTimesOutWithTheHolderUnchanged(t *testing.T) {
+	old := relayTimeout
+	relayTimeout = 20 * time.Millisecond
+	t.Cleanup(func() { relayTimeout = old })
+	s, _ := createdStore(t)
+	before := snapshot(t, s.dir)
+	f := &fakeClaude{hang: true}
+	_, err := s.Relay(context.Background(), f, "/repo", session, now)
+	if err == nil || !errors.Is(err, context.DeadlineExceeded) || !strings.Contains(err.Error(), "claude agents") {
+		t.Fatalf("err = %v", err)
+	}
+	if !reflect.DeepEqual(before, snapshot(t, s.dir)) {
+		t.Fatal("timed-out relay changed the record")
+	}
+	// The lock was released: the user's kill switch still works.
+	if r, err := s.Revoke(now); err != nil || r == nil {
+		t.Fatalf("revoke after timeout = %+v, %v", r, err)
+	}
+}
+
+func TestRelayRefusesATamperedRecord(t *testing.T) {
+	for _, tc := range []struct {
+		name   string
+		tamper func(*Grant)
+		want   string
+	}{
+		{"terms edited", func(g *Grant) { g.Terms.RelayPermissionMode = "plan" }, "approved digest"},
+		{"bypassPermissions with a matching digest", func(g *Grant) {
+			g.Terms.RelayPermissionMode = "bypassPermissions"
+			g.Digest, _ = Digest(g.Terms)
+		}, "never uses"},
+		{"unknown mode with a matching digest", func(g *Grant) {
+			g.Terms.RelayPermissionMode = "--dangerously-skip-permissions"
+			g.Digest, _ = Digest(g.Terms)
+		}, "never uses"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			s, g := createdStore(t)
+			tc.tamper(g)
+			if err := s.write(g); err != nil {
+				t.Fatal(err)
+			}
+			before := snapshot(t, s.dir)
+			f := &fakeClaude{}
+			if _, err := s.Relay(context.Background(), f, "/repo", session, now); err == nil || !strings.Contains(err.Error(), tc.want) {
+				t.Fatalf("err = %v, want %q", err, tc.want)
+			}
+			if len(f.cmds) != 0 || !reflect.DeepEqual(before, snapshot(t, s.dir)) {
+				t.Fatal("tampered relay launched or wrote")
 			}
 		})
 	}
