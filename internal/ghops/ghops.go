@@ -11,7 +11,8 @@
 // closed: any gh error propagates, destructive operations require an
 // explicit Confirmation (PRD §15), and merging is only ever invoked
 // after the human merge gate (PRD §8) — ghops itself never decides to
-// merge.
+// merge. Before #353 that gate was always passed by a person; now an
+// autonomy grant may pass it for one (internal/run/grantgate.go).
 //
 // Operations that pre-check and then act (for example
 // EnsureLabelTaxonomy) are not atomic, and this package adds no locking.
