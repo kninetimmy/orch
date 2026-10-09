@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"os"
+	"path/filepath"
 	"reflect"
 	"strings"
 	"testing"
@@ -580,5 +582,51 @@ func TestGrantFixCycleLimitBounds(t *testing.T) {
 				t.Fatalf("result = %+v, want the issue still in review", res)
 			}
 		})
+	}
+}
+
+// The plan line a grant activation writes survives pr-open in both the
+// issue body and the PR body it creates, beside the executor's evidence,
+// and resume does not mistake it for pr-open evidence.
+func TestGrantPlanLineSurvivesPROpen(t *testing.T) {
+	root := newLifecycleRepo(t)
+	g := seedGrant(t, root, nil)
+	const branch = "orch/issue-1-fix-the-status-lock-race"
+	script := &execxtest.Script{T: t, Calls: validPlanCalls()}
+	env := Env{RepoRoot: root, Runner: muxRunner{git: execx.Local{}, gh: script}, Now: fixedNow}
+	if _, err := Activate(context.Background(), env, activationRequest(t, root, validPlanJSON(), "grant:"+g.Terms.ID, GrantApprovalStatement)); err != nil {
+		t.Fatalf("Activate: %v", err)
+	}
+	script.AssertExhausted()
+	activated := script.StdinAt(len(fullTaxonomyScript()))
+	m, err := manifest.Parse(activated)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if n := evidenceCount(m.Verifications); n != 0 {
+		t.Fatalf("activation-seeded record counts %d evidence entries, want 0", n)
+	}
+
+	runVerb(t, root, Dispatch, `{"schema_version":4,"issue_number":1}`, ghAuth(), ghRepoViewCall("main"), ghSetStatusCall(1, ghops.StatusInProgress))
+	wtDir := filepath.Join(root, ".orchestrator", "worktrees", "issue-1")
+	if err := os.WriteFile(filepath.Join(wtDir, "feature.go"), []byte("package feature\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	rawGit(t, wtDir, "add", "-A")
+	rawGit(t, wtDir, "commit", "-m", "work")
+	_, prOpen := runVerbScript(t, root, PROpen, `{"schema_version":1,"issue_number":1,"verifications":[{"name":"go test","result":"pass"}]}`,
+		ghAuth(), ghRepoViewCall("main"), ghPRListEmptyCall(branch),
+		ghIssueViewCall(t, 1, "OPEN", activated), ghSetIssueBodyCall(1),
+		ghCreatePRCall(branch, "Fix the status lock race", 10), ghSetStatusCall(1, ghops.StatusAwaitingReview))
+
+	line := planApprovedLine(g.Terms.ID)
+	for view, posted := range map[string]string{"issue body": prOpen.StdinAt(4), "PR body": prOpen.StdinAt(5)} {
+		if !strings.Contains(posted, line) || findVerification(t, posted, planApprovalName).Result != line {
+			t.Errorf("%s after pr-open lost the plan line %q", view, line)
+		}
+		findVerification(t, posted, "go test")
+		if got := strings.Count(posted, "**"+planApprovalName+"**"); got != 1 {
+			t.Errorf("%s renders the plan-approval entry %d times, want 1", view, got)
+		}
 	}
 }

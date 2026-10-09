@@ -825,7 +825,9 @@ func observeIssue(ctx context.Context, gh *ghops.GH, git *gitops.Git, worktrees 
 		} else {
 			yes := true
 			obs.manifestOK = &yes
-			obs.verifications = len(m.Verifications)
+			// Before #353 every entry was evidence; a grant run's
+			// plan-approval entry is not, so it is not counted.
+			obs.verifications = evidenceCount(m.Verifications)
 			obs.work = &approvedWork{
 				objective:          m.Objective,
 				acceptanceCriteria: m.AcceptanceCriteria,

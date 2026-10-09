@@ -37,6 +37,31 @@ const (
 	mergeApprovalName = "merge-approval"
 )
 
+// planApprovals is the plan-approval entry among vs, if any: the one
+// verification activation seeds, which pr-open keeps when it replaces the
+// rest. It is empty for every run a human activated.
+func planApprovals(vs []manifest.Verification) []manifest.Verification {
+	var out []manifest.Verification
+	for _, v := range vs {
+		if v.Name == planApprovalName {
+			out = append(out, v)
+		}
+	}
+	return out
+}
+
+// evidenceCount is how many entries of vs are evidence a verb gathered,
+// leaving out the grant-approval entries, which record who approved.
+func evidenceCount(vs []manifest.Verification) int {
+	n := 0
+	for _, v := range vs {
+		if v.Name != planApprovalName && v.Name != mergeApprovalName {
+			n++
+		}
+	}
+	return n
+}
+
 func planApprovedLine(id string) string {
 	return fmt.Sprintf("Plan approved under Orch grant %s; no person reviewed or approved this plan.", id)
 }

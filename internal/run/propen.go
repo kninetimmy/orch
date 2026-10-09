@@ -120,8 +120,10 @@ func PROpen(ctx context.Context, env Env, reqJSON []byte) (*PROpenResult, error)
 	}
 
 	// Push the branch, then record the verifications on the issue body
-	// (its manifest, seeded at activation, carries no verifications yet,
-	// so a write is idempotent on retry) before creating the PR.
+	// before creating the PR. Before #353 the manifest activation seeded
+	// carried no verifications, so replacing the list was idempotent on
+	// retry. Now a grant activation seeds a plan-approval entry: it is
+	// kept, and everything else is replaced, which is still idempotent.
 	if err := git.Push(ctx, worktree, "origin", issue.Branch); err != nil {
 		return nil, err
 	}
@@ -141,7 +143,7 @@ func PROpen(ctx context.Context, env Env, reqJSON []byte) (*PROpenResult, error)
 	if err != nil {
 		return nil, err
 	}
-	m.Verifications = verifications
+	m.Verifications = append(planApprovals(m.Verifications), verifications...)
 	issueBody, err := upsertCapped(iss.Body, m)
 	if err != nil {
 		return nil, err
