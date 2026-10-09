@@ -738,7 +738,7 @@ func TestReviewSuppliedVerificationStillCappedAtVerificationDetailCap(t *testing
 // name matching the review-cycle-<n> pattern Review generates, and one
 // matching the acceptance-criterion-<n> pattern Review writes for the
 // reviewer's per-criterion judgments.
-var engineOwnedVerificationNames = []string{"required-ci", "merge", "abandoned", "review-cycle-1", "acceptance-criterion-1"}
+var engineOwnedVerificationNames = []string{"required-ci", "merge", "abandoned", "review-cycle-1", "acceptance-criterion-1", "plan-approval", "merge-approval"}
 
 // TestReviewRejectsEngineOwnedVerificationNames proves a caller-supplied
 // verification whose name collides with an engine-owned entry is

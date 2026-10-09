@@ -84,6 +84,10 @@ var (
 	// the merge: a wrong statement, a PR/head mismatch, or drift after
 	// approval (PRD §8: approval pins one PR state).
 	ErrMergeApproval = errors.New("merge approval does not authorize this merge")
+	// ErrGrantStop reports an approval given under an autonomy grant that
+	// a stop refuses (activation or merge): the grant cannot approve here,
+	// though a human approval still may.
+	ErrGrantStop = errors.New("autonomy grant cannot approve this")
 	// ErrBodyTooLarge reports an audit body that cannot be brought under
 	// GitHub's 65,536-character limit even after dropping detail text.
 	ErrBodyTooLarge = errors.New("audit body exceeds GitHub's size limit")

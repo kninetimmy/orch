@@ -206,11 +206,24 @@ func Review(ctx context.Context, env Env, reqJSON []byte) (*ReviewResult, error)
 		return nil, fmt.Errorf("%w: reviewed head %q is not the PR's live head %q; the PR changed under the reviewer, re-review", ErrReviewStale, req.ReviewedHeadOID, pr.HeadRefOid)
 	}
 
+	// In a run a grant activated, a non-approving review past the grant's
+	// fix-cycle limit is the human's decision. Before #353 no review
+	// blocked on a cycle count; runs a human activated still never do.
+	fixCycle := ""
+	if id := runGrantID(c.st); id != "" && req.Verdict != VerdictApprove {
+		if fixCycle, err = fixCycleCheck(ctx, env, gh, id, issue.Number); err != nil {
+			return nil, err
+		}
+	}
+
 	issue.ReviewCycles++
 	issue.LastReviewVerdict = req.Verdict
 	issue.Phase = state.PhaseInReview
 	if len(wrong) > 0 {
 		issue.SetBlock(state.BlockWrong, wrongCriteriaReason(wrong, issue.ReviewCycles))
+	}
+	if fixCycle != "" {
+		issue.SetBlock(state.BlockHuman, fixCycle)
 	}
 	if err := c.save(); err != nil {
 		return nil, err
@@ -246,7 +259,7 @@ func Review(ctx context.Context, env Env, reqJSON []byte) (*ReviewResult, error)
 	}
 
 	switch {
-	case len(wrong) > 0:
+	case len(wrong) > 0 || fixCycle != "":
 		if err := gh.SetStatus(ctx, issue.Number, ghops.StatusNeedsHuman); err != nil {
 			return nil, wrapAfterMutation(err)
 		}

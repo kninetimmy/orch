@@ -79,6 +79,24 @@ func TestGrantCommands(t *testing.T) {
 			t.Errorf("show missing %q: %s", want, out)
 		}
 	}
+	store, err := grant.Open(context.Background(), execx.Local{}, root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, a := range []grant.RecordedApproval{
+		{Gate: "plan", RunID: "run-1"},
+		{Gate: "merge", RunID: "run-1", Issue: 7, PR: 9, Head: "abc123"},
+	} {
+		if _, err := store.RecordApproval(pv.Terms.ID, a, time.Now()); err != nil {
+			t.Fatal(err)
+		}
+	}
+	code, out, _ = run("", "grant")
+	for _, want := range []string{"1 of 1 used, 0 remaining", "1 of 2 used, 1 remaining", "- plan gate, run run-1, at ", "- merge gate, run run-1, issue #7, PR #9, head abc123, at "} {
+		if code != ExitOK || !strings.Contains(out, want) {
+			t.Errorf("show missing %q: %s", want, out)
+		}
+	}
 	if code, out, _ := run("", "grant", "revoke"); code != ExitOK || !strings.Contains(out, "Revoked autonomy grant "+pv.Terms.ID) {
 		t.Fatalf("revoke: %d %s", code, out)
 	}

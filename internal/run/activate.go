@@ -14,6 +14,7 @@ import (
 	"github.com/kninetimmy/orch/internal/config"
 	"github.com/kninetimmy/orch/internal/ghops"
 	"github.com/kninetimmy/orch/internal/gitops"
+	"github.com/kninetimmy/orch/internal/grant"
 	"github.com/kninetimmy/orch/internal/manifest"
 	"github.com/kninetimmy/orch/internal/memhub"
 	"github.com/kninetimmy/orch/internal/metrics"
@@ -29,7 +30,9 @@ const ActivationSchemaVersion = 2
 // ApprovalStatement is the exact assertion an adapter's human approval
 // must carry (PRD §8): the engine cannot verify a human, so this
 // string is the recorded proof that one saw the gate and approved it,
-// tied to a specific plan digest.
+// tied to a specific plan digest. Before #353 it was the only statement
+// activation accepted; now GrantApprovalStatement (grantgate.go) also
+// activates a claude run under an active autonomy grant, past its stops.
 const ApprovalStatement = "approve-and-enter-delivery"
 
 // ActivationRequest is the input to Activate: the full plan plus the
@@ -50,17 +53,26 @@ type Approval struct {
 }
 
 // validate checks a against the freshly recomputed digest: the
-// statement must be the exact ApprovalStatement and the digest must
-// match. A mismatch is the "adjust the plan and resubmit" loop, not a
-// retryable condition.
-func (a Approval) validate(digest string) error {
-	if a.Statement != ApprovalStatement {
-		return fmt.Errorf("%w: approval statement %q does not equal %q", ErrBadApproval, a.Statement, ApprovalStatement)
+// statement must be the exact ApprovalStatement, or GrantApprovalStatement
+// for a grant approval (reported by byGrant), and the digest must match. A
+// mismatch is the "adjust the plan and resubmit" loop, not a retryable
+// condition. A human approval may not name a grant approver: the recorded
+// plan approver is what marks a run as one a grant activated.
+func (a Approval) validate(digest string) (byGrant bool, err error) {
+	switch a.Statement {
+	case ApprovalStatement:
+		if strings.HasPrefix(a.ApprovedBy, grantApproverPrefix) {
+			return false, fmt.Errorf("%w: approved_by %q names a grant, which only %q may", ErrBadApproval, a.ApprovedBy, GrantApprovalStatement)
+		}
+	case GrantApprovalStatement:
+		byGrant = true
+	default:
+		return false, fmt.Errorf("%w: approval statement %q does not equal %q", ErrBadApproval, a.Statement, ApprovalStatement)
 	}
 	if a.PlanDigest != digest {
-		return fmt.Errorf("%w: approval plan_digest %q does not match the recomputed digest %q; adjust the plan and resubmit", ErrBadApproval, a.PlanDigest, digest)
+		return false, fmt.Errorf("%w: approval plan_digest %q does not match the recomputed digest %q; adjust the plan and resubmit", ErrBadApproval, a.PlanDigest, digest)
 	}
-	return nil
+	return byGrant, nil
 }
 
 // ActivationResult is the output of a successful Activate.
@@ -117,7 +129,8 @@ func wrapAfterEnter(err error) error {
 //
 //   - Phase 1 (pure validation): decode/validate the plan and its
 //     approval, derive routing and labels for every issue.
-//   - Phase 2 (read-only preflights): Assist+no-lock, configured OpenCode
+//   - Phase 2 (read-only preflights): for a grant approval, every grant
+//     stop first (planGrant); then Assist+no-lock, configured OpenCode
 //     selections present in the project-scoped live catalog, current rendered
 //     project agent files for the plan's host, clean primary
 //     checkout, authenticated GitHub remote, primary on the default
@@ -128,7 +141,8 @@ func wrapAfterEnter(err error) error {
 //   - Phase 3 (idempotent GitHub prep): EnsureLabelTaxonomy — the only
 //     mutation before the lock is held (F6).
 //   - Phase 4: state.EnterDelivery acquires the lock and records the
-//     run.
+//     run; a grant approval then spends the grant's run unit, returning
+//     to Assist if it cannot.
 //   - Phase 5 (per issue, wave order): create the GitHub issue with the
 //     PRD §13 audit record, persist state, add the branch/worktree,
 //     persist state again.
@@ -156,7 +170,8 @@ func Activate(ctx context.Context, env Env, reqJSON []byte) (*ActivationResult, 
 	if err != nil {
 		return nil, err
 	}
-	if err := req.Approval.validate(digest); err != nil {
+	byGrant, err := req.Approval.validate(digest)
+	if err != nil {
 		return nil, err
 	}
 
@@ -186,7 +201,14 @@ func Activate(ctx context.Context, env Env, reqJSON []byte) (*ActivationResult, 
 		waveByID[pi.ID] = pi.Wave
 	}
 
-	// Phase 2: read-only preflights.
+	// Phase 2: read-only preflights, grant stops first.
+	var grants *grant.Store
+	var g *grant.Grant
+	if byGrant {
+		if grants, g, err = planGrant(ctx, env, plan, req.Approval.ApprovedBy); err != nil {
+			return nil, err
+		}
+	}
 	if err := requireAssistNoLock(env.RepoRoot); err != nil {
 		return nil, err
 	}
@@ -298,6 +320,17 @@ func Activate(ctx context.Context, env Env, reqJSON []byte) (*ActivationResult, 
 	if err != nil {
 		return nil, err
 	}
+	// The run unit is spent before the first issue exists, so no later
+	// failure can leave the grant past its run limit. Losing a race for it
+	// (the grant ended or filled since planGrant) returns to Assist.
+	if byGrant {
+		if _, err := grants.RecordApproval(g.Terms.ID, grant.RecordedApproval{Gate: "plan", RunID: st.Run.ID}, env.now()); err != nil {
+			if _, abortErr := state.Abort(env.RepoRoot); abortErr != nil {
+				return nil, wrapAfterEnter(fmt.Errorf("%w: %v; returning to assist also failed: %v", ErrGrantStop, err, abortErr))
+			}
+			return nil, fmt.Errorf("%w: %v", ErrGrantStop, err)
+		}
+	}
 
 	// Phase 5: per issue, wave order, state persisted after every
 	// sub-step.
@@ -306,6 +339,10 @@ func Activate(ctx context.Context, env Env, reqJSON []byte) (*ActivationResult, 
 		d := decisionByID[pi.ID]
 		l := labelsByID[pi.ID]
 
+		var approvals []manifest.Verification
+		if byGrant {
+			approvals = []manifest.Verification{{Name: planApprovalName, Result: planApprovedLine(g.Terms.ID), At: env.nowStamp()}}
+		}
 		body := issueBody(pi, waveByID, digest)
 		body, err = manifest.Upsert(body, manifest.Manifest{
 			SchemaVersion:      manifest.SchemaVersion,
@@ -319,6 +356,7 @@ func Activate(ctx context.Context, env Env, reqJSON []byte) (*ActivationResult, 
 			Reviewer:           d.Reviewer,
 			EffortDelivery:     delivery,
 			ConfigRevision:     cfg.ConfigRevision,
+			Verifications:      approvals,
 		})
 		if err != nil {
 			return nil, wrapAfterEnter(err)
@@ -374,6 +412,7 @@ func Activate(ctx context.Context, env Env, reqJSON []byte) (*ActivationResult, 
 				Reviewer:           &d.Reviewer,
 				ReviewerDowngraded: d.ReviewerDowngraded,
 				Rationale:          d.Rationale,
+				ApprovalSource:     approvalSource(planRef.ApprovedBy, byGrant),
 			}
 			if err := metrics.Append(env.RepoRoot, st.Run.ID, ev); err != nil {
 				return nil, wrapAfterEnter(fmt.Errorf("record metrics: %w", err))
