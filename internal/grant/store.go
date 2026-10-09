@@ -8,6 +8,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"time"
 
@@ -228,24 +229,77 @@ func (s *Store) Revoke(now time.Time) (*Grant, error) {
 
 // RecordRun records one run against grant id, refusing past its run limit.
 func (s *Store) RecordRun(id, ref string, now time.Time) (*Grant, error) {
-	return s.record(id, now, func(g *Grant) *[]Use { return &g.Runs }, func(g *Grant) int { return g.Terms.RunLimit }, "run", ref)
+	return s.record(id, now, runs, "run", ref, nil)
 }
 
 // RecordMerge records one merge against grant id, refusing past its merge limit.
 func (s *Store) RecordMerge(id, ref string, now time.Time) (*Grant, error) {
-	return s.record(id, now, func(g *Grant) *[]Use { return &g.Merges }, func(g *Grant) int { return g.Terms.MergeLimit }, "merge", ref)
+	return s.record(id, now, merges, "merge", ref, nil)
 }
 
-func (s *Store) record(id string, now time.Time, list func(*Grant) *[]Use, limit func(*Grant) int, kind, ref string) (*Grant, error) {
+// MergeRef is the reference a merge approval records: one issue of one run.
+func MergeRef(runID string, issue int) string {
+	return fmt.Sprintf("%s#%d", runID, issue)
+}
+
+// RecordApproval records a gate approval given under grant id together with
+// the unit it spends: a plan approval spends one run (ref a.RunID), a merge
+// approval one merge (ref MergeRef(a.RunID, a.Issue)).
+func (s *Store) RecordApproval(id string, a RecordedApproval, now time.Time) (*Grant, error) {
+	switch a.Gate {
+	case "plan":
+		return s.record(id, now, runs, "run", a.RunID, &a)
+	case "merge":
+		return s.record(id, now, merges, "merge", MergeRef(a.RunID, a.Issue), &a)
+	default:
+		return nil, fmt.Errorf("gate %q spends no autonomy grant unit", a.Gate)
+	}
+}
+
+// Get returns grant id, active or not.
+func (s *Store) Get(id string) (g *Grant, err error) {
+	if s.empty() {
+		return nil, fmt.Errorf("autonomy grant %s is not recorded in this clone", id)
+	}
+	err = s.withLock(func() error {
+		grants, err := s.all()
+		if err != nil {
+			return err
+		}
+		for _, c := range grants {
+			if c.Terms.ID == id {
+				g = c
+				return nil
+			}
+		}
+		return fmt.Errorf("autonomy grant %s is not recorded in this clone", id)
+	})
+	return g, err
+}
+
+func runs(g *Grant) (*[]Use, int)   { return &g.Runs, g.Terms.RunLimit }
+func merges(g *Grant) (*[]Use, int) { return &g.Merges, g.Terms.MergeLimit }
+
+func (s *Store) record(id string, now time.Time, list func(*Grant) (*[]Use, int), kind, ref string, approval *RecordedApproval) (*Grant, error) {
 	if strings.TrimSpace(ref) == "" {
 		return nil, fmt.Errorf("a %s recorded against an autonomy grant needs a reference", kind)
 	}
 	g, err := s.update(now, id, func(g *Grant) error {
-		uses := list(g)
-		if len(*uses) >= limit(g) {
-			return fmt.Errorf("%w: grant %s has used all %d of its %ss", ErrLimitReached, g.Terms.ID, limit(g), kind)
+		uses, limit := list(g)
+		// The same ref again is the same run or merge, as when a verb re-runs
+		// after a crash: it spends nothing more.
+		if slices.ContainsFunc(*uses, func(u Use) bool { return u.Ref == ref }) {
+			return nil
+		}
+		if len(*uses) >= limit {
+			return fmt.Errorf("%w: grant %s has used all %d of its %ss", ErrLimitReached, g.Terms.ID, limit, kind)
 		}
 		*uses = append(*uses, Use{Ref: ref, At: now})
+		if approval != nil {
+			a := *approval
+			a.At = now
+			g.Approvals = append(g.Approvals, a)
+		}
 		return nil
 	})
 	if err == nil && g == nil {

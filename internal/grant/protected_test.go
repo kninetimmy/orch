@@ -13,7 +13,7 @@ func TestProtected(t *testing.T) {
 		"internal/grant/", "adapters/claude/skills/orch-delivery/GRANTS.md",
 		"internal/run/gate.go", "internal/run/activate.go", "internal/run/merge.go",
 		"internal/run/mergereport.go", "internal/run/review.go", "internal/run/resolveblock.go",
-		"internal/run/abandon.go", "internal/run/resume.go", "internal/routing/", "internal/state/",
+		"internal/run/abandon.go", "internal/run/resume.go", "internal/run/grantgate.go", "internal/routing/", "internal/state/",
 		"internal/manifest/", "internal/guard/", "internal/paths/", "internal/lockfile/",
 		"adapters/opencode/src/", "CLAUDE.md", "AGENTS.md", "ORCH-PRD.md", ".github/workflows/",
 		".golangci.yml", "go.mod", "go.sum", ".claude-plugin/", "adapters/claude/.claude-plugin/",
@@ -39,6 +39,10 @@ func TestProtected(t *testing.T) {
 	for _, p := range []string{
 		`internal\grant\grant.go`, "./CLAUDE.md", "claude.md", "internal/../go.mod",
 		"/etc/passwd", "../outside",
+		// Windows aliases of protected names, and names that cannot be verified.
+		"CLAUDE.md.", "CLAUDE.md ", "CLAUDE.md. .", "CLAUDE.md::$DATA", "claude.md:stream:$DATA",
+		"internal/grant./x.go", `internal\grant \x.go`, "internal/run/merge.go...",
+		"CLAUDE~1.MD", "docs/PROGRA~1/x.md", "docs/.../x.md", "docs/:x/y.md",
 	} {
 		if !Protected(p) {
 			t.Errorf("%q not protected", p)
@@ -48,7 +52,7 @@ func TestProtected(t *testing.T) {
 		"README.md", "internal/run/plan.go", "internal/run/gate_test.go", "internal/grantx/a.go",
 		"internal/run", "adapters/claude/skills/orch-delivery/SKILL.md", "adapters/hooks",
 		"adapters/claude/README.md", "docs/CLAUDE.md", "go.modx", "evaluations/x", "cmd/orch/main.go",
-		"adapters/opencode/smoke.mjs",
+		"adapters/opencode/smoke.mjs", "docs/a.b.md", "docs/x~y.md", "./docs/./a.md",
 	} {
 		if Protected(p) {
 			t.Errorf("%q protected", p)
