@@ -343,7 +343,7 @@ commands:
   abort            Stop dispatch and return to Assist
   metrics          Show local metrics (or record JSON observations with `metrics record`)
   eval             Evaluation preview/run/status/stop/report (eval help for arguments)
-  grant            Show the active autonomy grant; grant revoke ends it; grant preview and grant create propose and record one (JSON stdin/stdout)
+  grant            Show the active autonomy grant; grant revoke ends it; grant relay hands it to a fresh Claude Code session; grant preview and grant create propose and record one (JSON stdin/stdout)
   render-agents    Render project agent definitions for every enabled host
   run              Adapter plumbing: Delivery run verbs (JSON stdin/stdout; not a human command)
   guard            Adapter plumbing: pre-write enforcement for host hooks (not a human command)
@@ -363,7 +363,11 @@ none is active), `orch grant revoke` ends it, and `orch grant preview` /
 `orch grant create` are the JSON plumbing an adapter uses to show a grant and
 record it from the user's digest-bound `approve-autonomy-grant` approval.
 Grants are machine-local, kept in the clone's git common directory, and no
-command approves anything under a grant yet.
+command approves anything under a grant yet. `orch grant relay` takes no
+arguments: run by the session currently holding the grant, it starts a
+background Claude Code session (`claude --bg`) with Remote Control on, in the
+permission mode the grant records, and makes that session the holder. `orch
+grant` lists the holders in order.
 
 To prepare an evaluation of an Orch change, see the
 [evaluation workflow](docs/evaluation-workflow.md) and its
@@ -895,6 +899,22 @@ OS-owned and is released automatically when its process exits. Symptom:
 the next run refuses to start, and `orch doctor` notes that the acquiring
 process is no longer running. Workaround: `orch resume` to reconcile and
 continue, or `orch abort` to end it.
+
+**`orch grant relay` is only partly checked live, and only on native
+Windows.** What ran live: on 2026-10-09, Claude Code 2.1.295 on native
+Windows, a manual launch of the same shape (`claude --bg --remote-control
+<name> --permission-mode auto "<prompt>"`, without `--session-id`). That
+session started working on the prompt by itself and connected Remote
+Control, and its `CLAUDE_CODE_SESSION_ID` matched the id `--bg` reported.
+What has not run live: `orch grant relay` end to end, including whether
+`--bg` honors the `--session-id` the relay passes. Until it has, a relay may
+fail closed with the holder unchanged and leave a stray background session;
+`claude agents` lists it and `claude stop <id>` removes it. macOS and Linux
+were never checked live. A grant that records `default` as its permission
+mode cannot relay on 2.1.295, whose CLI lists `manual` instead. Symptom:
+`orch grant relay` exits non-zero with the launch error. Workaround: create
+grants with a mode the CLI lists, and continue in the current session if a
+relay fails.
 
 </details>
 
