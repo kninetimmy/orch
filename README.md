@@ -5,7 +5,7 @@
 <p align="center">
   <img src="https://img.shields.io/badge/License-MIT-2E7D32?style=flat&logo=opensourceinitiative&logoColor=white" alt="License: MIT"/>
   <img src="https://img.shields.io/badge/Go-1.26%2B-00ADD8?style=flat&logo=go&logoColor=white" alt="Go 1.26+"/>
-  <img src="https://img.shields.io/badge/Release%20target-v0.12.0-24292F?style=flat&logo=github&logoColor=white" alt="Release target: v0.12.0"/>
+  <img src="https://img.shields.io/badge/Release%20target-v0.12.1-24292F?style=flat&logo=github&logoColor=white" alt="Release target: v0.12.1"/>
   <br/>
   <img src="https://img.shields.io/badge/Platform-Linux%20%C2%B7%20macOS%20%C2%B7%20Windows-607D8B?style=flat" alt="Platform: Linux, macOS, Windows"/>
   <img src="https://img.shields.io/badge/Hosts-Claude%20Code%20%C2%B7%20Codex%20CLI%20%C2%B7%20OpenCode%20V2-6E56CF?style=flat" alt="Hosts: Claude Code, Codex CLI, and OpenCode V2"/>
@@ -252,11 +252,11 @@ service after upgrading its adapter so the new hooks and skills are loaded.
 source revision `611c645` uses state schema 6, approval contract 1, and these
 manual wire versions: Gate 3, Status 4, Activation 2, Dispatch 4, Review 3,
 Escalate 2, Block 2, Resume 2, and Resolve Block 1. The Claude and Codex
-adapter version 0.9.0 is paired with engine v0.12.0. It keeps the manual wire
-versions above and ships the updated skill and agent definitions; cached 0.8.0
-and older adapters predate it and are rejected by the existing version check.
-Release and adapter version labels describe compatibility, while the source
-revision and build identity identify the code that was built.
+adapter version 0.9.0 is paired with engine v0.12.0 and v0.12.1. It keeps the
+manual wire versions above and ships the updated skill and agent definitions;
+cached 0.8.0 and older adapters predate it and are rejected by the existing
+version check. Release and adapter version labels describe compatibility, while
+the source revision and build identity identify the code that was built.
 
 After upgrading, re-run `orch render-agents` in every project that uses the
 Claude host. Claude project agent definitions now carry the routed `effort` in
@@ -518,7 +518,59 @@ Every memhub command runs with the primary checkout as its working
 directory, never inside a per-issue worktree, because worktrees never
 receive a copy of the memhub database.
 
-## v0.12.0 release target
+## v0.12.1 release target
+
+- Claude Code evaluation worker. Evaluation plans can now name their host:
+  a version 3 plan carries a required `host` of `claude` or `codex`, which is
+  part of the plan digest and the approval scope. Version 1 and 2 plans stay
+  Codex plans with unchanged bytes and digests, a `claude` plan declares no
+  approved instruction files, and evaluation observations are accepted with
+  host `claude` as well as `codex` —
+  [#342](https://github.com/kninetimmy/orch/pull/342). `orch eval run` selects
+  its worker from the frozen plan's host, and a version 3 `claude` plan now runs
+  through a new Claude Code worker that launches one print-mode session per
+  attempt with `--restricted`, `--safe-mode`, `dontAsk` permissions and a fixed
+  tool set. It requires the Claude subscription login, refuses a workspace
+  `CLAUDE.md` or `AGENTS.md`, and treats any model other than the pinned one as
+  a safety failure. It records usage with unreported counters left unknown,
+  stops attempts with an interrupt and a process-tree kill, and never resumes a
+  disconnected session —
+  [#343](https://github.com/kninetimmy/orch/pull/343). Each worker refuses
+  another host's plan before claiming it. The host-neutral evaluation types and
+  containment checks the worker shares with the Codex worker now live in a
+  common package, with Codex behavior and stored-record bytes unchanged —
+  [#341](https://github.com/kninetimmy/orch/pull/341). See the
+  [evaluation workflow](docs/evaluation-workflow.md#claude-code-evaluation-worker-issue-340).
+- Claude worker hardening. The Bash allowlist is now seven exact commands
+  (`go build`, `go test` and `go vet`, each bare or with `./...`, and
+  `gofmt -l .`) instead of wildcard rules that accepted flags such as
+  `-toolexec` or `gofmt -w`, so targeted commands like `go test -run X` are
+  denied; each child also gets `GOWORK=off`, `GOTOOLCHAIN=local`, `GOPROXY=off`,
+  `GOSUMDB=off` and `CGO_ENABLED=0` —
+  [#345](https://github.com/kninetimmy/orch/pull/345). A `permission_denied`
+  event from a denied tool call no longer ends the attempt as malformed, and the
+  worker removes the empty `claude` directory Claude Code 2.1.289 leaves in the
+  attempt scratch, which previously made every Claude attempt invalid evidence —
+  [#347](https://github.com/kninetimmy/orch/pull/347).
+- No live Claude evaluation trial, four-case screening run or twelve-case graded
+  baseline has been completed, and the exact-match behavior of the Bash rules is
+  documented rather than observed. The worker's host-enforced containment is
+  policy enforced by Claude Code, not operating-system isolation, and `go test`
+  still runs workspace test code with your rights. Phase 1 stays open, and a
+  completed attempt is not a semantic grade.
+
+Engine release v0.12.1, the unchanged Claude/Codex manual-adapter version 0.9.0
+and the unchanged OpenCode package 0.11.0 are separate identities; this release
+changes no adapter or plugin artifact. To upgrade, update the engine between
+runs (see the upgrade commands above), restart the host and run
+`orch doctor --host claude|codex`; an installed 0.9.0 adapter, its rendered
+agent definitions and the 0.11.0 OpenCode package need no update. State schema 6
+has no active-run migration, so an active run stays on its original pair.
+Metrics schema-2 history requires v0.11.0 or a newer compatible reader, while
+legacy schema-1 history remains readable without rewriting; evaluation
+observations use schema 3 and are rejected by Delivery history.
+
+## v0.12.0 release
 
 - Evaluation workflow. A reproducible measurement and grading contract defines
   case selection and held-out handling, independent grader validation, matched
