@@ -1,0 +1,6 @@
+{"type":"user","isSidechain":false,"version":"2.1.295"}
+{"type":"assistant","isSidechain":false,"version":"2.1.295","message":{"role":"assistant","usage":{"input_tokens":3,"cache_creation_input_tokens":1000,"cache_read_input_tokens":9000,"output_tokens":50}}}
+{"type":"attachment","isSidechain":false,"version":"2.1.295"}
+{"type":"assistant","isSidechain":false,"version":"2.1.295","message":{"role":"assistant","usage":{"input_tokens":2,"cache_creation_input_tokens":24362,"cache_read_input_tokens":32959,"output_tokens":79}}}
+{"type":"assistant","isSidechain":true,"version":"2.1.295","message":{"role":"assistant","usage":{"input_tokens":9,"cache_creation_input_tokens":900000,"cache_read_input_tokens":900000,"output_tokens":1}}}
+{"type":"last-prompt"}

@@ -3,6 +3,7 @@ package cli
 import (
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/kninetimmy/orch/internal/config"
 	"github.com/kninetimmy/orch/internal/paths"
@@ -11,7 +12,7 @@ import (
 
 // hookUsage is the one-line usage for the adapter plumbing surface,
 // mirroring guardUsage.
-const hookUsage = "orch hook: usage: orch hook <claude|codex> session-start | orch hook opencode session-start [--model provider/model[#variant]] | orch hook codex subagent-usage (JSON document on stdin)"
+const hookUsage = "orch hook: usage: orch hook <claude|codex> session-start | orch hook claude context-check|pre-compact (JSON document on stdin) | orch hook opencode session-start [--model provider/model[#variant]] | orch hook codex subagent-usage (JSON document on stdin)"
 
 // runHook dispatches host adapter-plumbing verbs (PRD §23). Host adapters call
 // it instead of reimplementing their host-specific behavior; it is never
@@ -20,6 +21,10 @@ func runHook(env Env, args []string) error {
 	switch {
 	case len(args) == 2 && args[0] == "claude" && args[1] == "session-start":
 		return hookSessionStart(env, args[0], "")
+	case len(args) == 2 && args[0] == "claude" && args[1] == "context-check":
+		return hookContextCheck(env)
+	case len(args) == 2 && args[0] == "claude" && args[1] == "pre-compact":
+		return hookPreCompact(env)
 	case len(args) == 2 && args[0] == "codex" && args[1] == "session-start":
 		return hookSessionStart(env, args[0], "")
 	case len(args) == 2 && args[0] == "codex" && args[1] == "subagent-usage":
@@ -36,8 +41,9 @@ func runHook(env Env, args []string) error {
 // becomes injected session context, so unlike every other verb in this
 // package it is deliberately fail-OPEN, not fail-closed: a broken or
 // non-orch repository must never break a session from starting. It
-// never reads stdin (the same console-hang concern as `run status
-// --json`) and always exits 0 once its arguments are valid — any
+// reads stdin only for Claude while an autonomy grant is active, and then
+// only when stdin is not a terminal (the console-hang concern of `run
+// status --json`), and always exits 0 once its arguments are valid — any
 // discovery, config, or state failure degrades to silent output, not an
 // error. The architect skill's own `orch run status --json` call surfaces
 // a broken repo loudly later, once a session is actually underway.
@@ -54,7 +60,11 @@ func hookSessionStart(env Env, host, selectedModel string) error {
 	if err != nil {
 		return nil // unreadable/invalid state: silent
 	}
-	fmt.Fprint(env.Stdout, sessionStartContext(cfg, st, host, selectedModel))
+	out := sessionStartContext(cfg, st, host, selectedModel)
+	if host == "claude" {
+		out += grantSessionContext(env, time.Now())
+	}
+	fmt.Fprint(env.Stdout, out)
 	return nil
 }
 
