@@ -374,6 +374,9 @@ func TestActivateRecordsOneMetricPerIssueWhenEnabled(t *testing.T) {
 		if ev.Executor == nil || ev.Rationale == "" {
 			t.Errorf("event[%d] missing executor/rationale: %+v", i, ev)
 		}
+		if ev.ApprovalSource != "human" {
+			t.Errorf("event[%d] approval source = %q, want human", i, ev.ApprovalSource)
+		}
 	}
 }
 

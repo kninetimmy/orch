@@ -3,6 +3,7 @@ package grant
 import (
 	"path"
 	"path/filepath"
+	"regexp"
 	"slices"
 	"strings"
 )
@@ -20,6 +21,7 @@ var protectedPaths = []string{
 	"internal/run/resolveblock.go",
 	"internal/run/abandon.go",
 	"internal/run/resume.go",
+	"internal/run/grantgate.go",
 	"internal/routing",
 	"internal/state",
 	"internal/manifest",
@@ -49,15 +51,37 @@ var protectedPaths = []string{
 // adapterProtectedDirs are protected under every adapter: adapters/<any>/<dir>.
 var adapterProtectedDirs = []string{"hooks", "agents"}
 
+// shortName matches an 8.3 short-name segment such as CLAUDE~1.MD.
+var shortName = regexp.MustCompile(`~[0-9]`)
+
 // Protected reports whether the repository-relative path p is protected.
 // Comparison ignores case, so a case-insensitive filesystem cannot reach a
 // protected file under another spelling. A path that is absolute or escapes
 // the repository cannot be verified and is reported protected.
+//
+// Windows aliases are resolved the way Windows resolves them: a segment's
+// trailing dots and spaces and any ":stream" suffix are dropped, so a
+// committed CLAUDE.md. or CLAUDE.md::$DATA is CLAUDE.md. Before #353 they
+// were compared as written. A segment that is all dots and spaces, or looks
+// like an 8.3 short name (which can alias any long name), cannot be verified
+// and is reported protected.
 func Protected(p string) bool {
 	if filepath.IsAbs(p) || filepath.VolumeName(p) != "" || strings.HasPrefix(p, "/") || strings.HasPrefix(p, `\`) {
 		return true
 	}
-	p = strings.ToLower(path.Clean(strings.ReplaceAll(p, `\`, "/")))
+	segs := strings.Split(strings.ReplaceAll(p, `\`, "/"), "/")
+	for i, seg := range segs {
+		if seg == "." || seg == ".." {
+			continue
+		}
+		name, _, _ := strings.Cut(seg, ":")
+		name = strings.TrimRight(name, ". ")
+		if (name == "" && seg != "") || shortName.MatchString(name) {
+			return true
+		}
+		segs[i] = name
+	}
+	p = strings.ToLower(path.Clean(strings.Join(segs, "/")))
 	if p == ".." || strings.HasPrefix(p, "../") {
 		return true
 	}
@@ -70,6 +94,6 @@ func Protected(p string) bool {
 			return true
 		}
 	}
-	segs := strings.Split(p, "/")
+	segs = strings.Split(p, "/")
 	return len(segs) >= 3 && segs[0] == "adapters" && slices.Contains(adapterProtectedDirs, segs[2])
 }

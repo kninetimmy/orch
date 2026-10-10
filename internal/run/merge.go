@@ -3,9 +3,11 @@ package run
 import (
 	"context"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/kninetimmy/orch/internal/ghops"
+	"github.com/kninetimmy/orch/internal/grant"
 	"github.com/kninetimmy/orch/internal/manifest"
 	"github.com/kninetimmy/orch/internal/metrics"
 	"github.com/kninetimmy/orch/internal/state"
@@ -18,7 +20,9 @@ const MergeSchemaVersion = 1
 // MergeApprovalStatement is the exact assertion a human merge approval
 // must carry (PRD §8): a fresh approval per PR, pinned to the head OID
 // the human saw. The engine cannot verify a human, so this recorded
-// string is the proof one approved this specific merge.
+// string is the proof one approved this specific merge. Before #353 it
+// was the only statement merge accepted; now GrantMergeApprovalStatement
+// (grantgate.go) also merges, past its stops, in a run a grant activated.
 const MergeApprovalStatement = "approve-merge"
 
 // MergeApproval is the adapter's record of the human's merge approval,
@@ -52,6 +56,14 @@ type MergeResult struct {
 // the PR's live head — any drift fails closed. The verb is re-runnable
 // after a crash: if the PR already reads MERGED it skips the merge and
 // proceeds to closure confirmation and the phase transition.
+//
+// A grant approval (GrantMergeApprovalStatement) additionally passes every
+// grant stop (mergeGrant), requires passing required CI (no-checks is not
+// enough) and a complete PR file list touching no protected path, and
+// spends its merge unit before `gh pr merge`, so a failure after the merge
+// never leaves the grant past its limit and a re-run spends nothing more.
+// A PR that reads MERGED with no unit spent was not merged by the grant,
+// so the grant refuses to record it.
 func Merge(ctx context.Context, env Env, reqJSON []byte) (*MergeResult, error) {
 	var req MergeRequest
 	if err := decodeRequest(reqJSON, &req); err != nil {
@@ -60,7 +72,8 @@ func Merge(ctx context.Context, env Env, reqJSON []byte) (*MergeResult, error) {
 	if req.SchemaVersion != MergeSchemaVersion {
 		return nil, fmt.Errorf("%w: schema_version %d is unsupported (this build supports %d)", ErrBadRequest, req.SchemaVersion, MergeSchemaVersion)
 	}
-	if req.Approval.Statement != MergeApprovalStatement {
+	byGrant := req.Approval.Statement == GrantMergeApprovalStatement
+	if req.Approval.Statement != MergeApprovalStatement && !byGrant {
 		return nil, fmt.Errorf("%w: approval statement %q does not equal %q", ErrMergeApproval, req.Approval.Statement, MergeApprovalStatement)
 	}
 
@@ -74,6 +87,13 @@ func Merge(ctx context.Context, env Env, reqJSON []byte) (*MergeResult, error) {
 	}
 	if req.Approval.HeadOID != issue.ApprovedHeadOID {
 		return nil, fmt.Errorf("%w: approval head_oid %q does not match the approved head %q pinned at merge-report; re-run merge-report", ErrMergeApproval, req.Approval.HeadOID, issue.ApprovedHeadOID)
+	}
+	var grants *grant.Store
+	var g *grant.Grant
+	if byGrant {
+		if grants, g, err = mergeGrant(ctx, c, req.Approval.ApprovedBy); err != nil {
+			return nil, err
+		}
 	}
 
 	gh, err := openGitHub(ctx, env)
@@ -93,8 +113,25 @@ func Merge(ctx context.Context, env Env, reqJSON []byte) (*MergeResult, error) {
 		if err != nil {
 			return nil, err
 		}
+		if byGrant && summary.State != ghops.CIPassing {
+			return nil, grantStop("required CI is %s, not passing", summary.State)
+		}
 		if err := requireMergeableCI(summary.State); err != nil {
 			return nil, err
+		}
+		if byGrant {
+			files, err := gh.PRFiles(ctx, issue.PRNumber, issue.ApprovedHeadOID)
+			if err != nil {
+				return nil, grantStop("the PR's complete file list could not be confirmed: %v", err)
+			}
+			if p := protectedFiles(files); len(p) > 0 {
+				return nil, grantStop("PR #%d changes protected paths: %s", issue.PRNumber, strings.Join(p, ", "))
+			}
+			if _, err := grants.RecordApproval(g.Terms.ID, grant.RecordedApproval{
+				Gate: "merge", RunID: c.st.Run.ID, Issue: issue.Number, PR: issue.PRNumber, Head: issue.ApprovedHeadOID,
+			}, env.now()); err != nil {
+				return nil, grantStop("%v", err)
+			}
 		}
 		if err := gh.MergePR(ctx, issue.PRNumber, c.cfg.Merge.Strategy, issue.ApprovedHeadOID, ghops.ExplicitConfirmation()); err != nil {
 			return nil, err
@@ -107,6 +144,8 @@ func Merge(ctx context.Context, env Env, reqJSON []byte) (*MergeResult, error) {
 			return nil, wrapAfterMutation(fmt.Errorf("PR #%d did not reach MERGED (state %s) after merge", merged.Number, merged.State))
 		}
 		pr = merged
+	} else if byGrant && !grantMerged(g, c) {
+		return nil, grantStop("PR #%d already reads MERGED but grant %s spent no merge on it; record the merge with a human approval", pr.Number, g.Terms.ID)
 	}
 
 	// Terminal status (PRD §13): the issue reads delivered from here
@@ -139,6 +178,14 @@ func Merge(ctx context.Context, env Env, reqJSON []byte) (*MergeResult, error) {
 		CommitOID: pr.HeadRefOid,
 		At:        env.nowStamp(),
 	})
+	if byGrant {
+		setVerification(&m, manifest.Verification{
+			Name:      mergeApprovalName,
+			Result:    mergeApprovedLine(g.Terms.ID),
+			CommitOID: pr.HeadRefOid,
+			At:        env.nowStamp(),
+		})
+	}
 	issueBody, err := upsertCapped(iss.Body, m)
 	if err != nil {
 		return nil, wrapAfterMutation(err)
@@ -153,8 +200,9 @@ func Merge(ctx context.Context, env Env, reqJSON []byte) (*MergeResult, error) {
 	}
 
 	if err := c.recordMetric(metrics.Event{
-		Verb:        "merge",
-		IssueNumber: issue.Number,
+		Verb:           "merge",
+		IssueNumber:    issue.Number,
+		ApprovalSource: approvalSource(req.Approval.ApprovedBy, byGrant),
 	}); err != nil {
 		return nil, err
 	}

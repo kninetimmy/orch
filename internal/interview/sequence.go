@@ -176,7 +176,7 @@ var hostLabels = map[string]string{
 
 // assistDeliveryExplanation is the §18 step 3 explanation, shown as
 // the Preamble of the very first question in the interview.
-const assistDeliveryExplanation = "Orch has two modes: Assist (read-only; the default — the Architect and Scouts may inspect and explain, but repository mutation is mechanically denied) and Delivery (a mutation request is investigated read-only, then approved work happens in an isolated per-issue worktree with its own branch and PR; merges are always human-approved). Enable each host CLI you want to drive Orch through; a host can be added later through Delivery."
+const assistDeliveryExplanation = "Orch has two modes: Assist (read-only; the default — the Architect and Scouts may inspect and explain, but repository mutation is mechanically denied) and Delivery (a mutation request is investigated read-only, then approved work happens in an isolated per-issue worktree with its own branch and PR; merges are human-approved: before autonomy grants every merge was approved by a person, now an autonomy grant you create may approve one for you on a Claude Code run, within its limits). Enable each host CLI you want to drive Orch through; a host can be added later through Delivery."
 
 // docSpec is one question.Document's fixed set of grouped, mutually
 // independent Questions — the unit buildSequence assembles and Next

@@ -123,8 +123,9 @@ type Use struct {
 	At  time.Time `json:"at"`
 }
 
-// RecordedApproval is one gate approval given under a grant. No verb records
-// one yet; the list stays empty until gate verbs accept grant approvals.
+// RecordedApproval is one gate approval given under a grant. Before #353 no
+// verb recorded one; now `orch run activate` records each plan approval (run
+// only) and `orch run merge` each merge approval (run, issue, PR and head).
 type RecordedApproval struct {
 	Gate  string    `json:"gate"`
 	RunID string    `json:"run_id"`

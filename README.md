@@ -15,9 +15,9 @@
 
 Left to itself, a coding agent picks its own model for every task, and it can write to any file it can reach. That's fine until the model is wrong for the job — too expensive for something trivial, or too weak for something that actually matters — or until a change lands somewhere you didn't intend it to.
 
-Orch sits underneath the CLI you already use (Claude Code, Codex CLI, or OpenCode V2) and takes over those two decisions. By default it puts the repository in **Assist**: a mechanical, read-only mode where the agent can look around, search, explain and plan, but a write to a file git does not ignore is refused before it happens. When you approve a plan, Orch enters **Delivery**: each task becomes a GitHub issue with its own isolated git worktree, gets implemented there, is reviewed by a separate agent dispatch, runs CI, and is merged only after you approve it. Which model handles which job is not the agent's call either — you route it, per role, to an exact model version and host-native execution profile.
+Orch sits underneath the CLI you already use (Claude Code, Codex CLI, or OpenCode V2) and takes over those two decisions. By default it puts the repository in **Assist**: a mechanical, read-only mode where the agent can look around, search, explain and plan, but a write to a file git does not ignore is refused before it happens. When you approve a plan, Orch enters **Delivery**: each task becomes a GitHub issue with its own isolated git worktree, gets implemented there, is reviewed by a separate agent dispatch, runs CI, and is merged only after you approve it (before autonomy grants, #353, always you in person; now also an autonomy grant you created, on a Claude Code run, within its limits and stops). Which model handles which job is not the agent's call either — you route it, per role, to an exact model version and host-native execution profile.
 
-The payoff: cheap, fast models handle read-only exploration and mechanical work, a frontier model gets spent only where the plan calls for it, and every change that lands is auditable and gated by a human at the one step that matters — the merge.
+The payoff: cheap, fast models handle read-only exploration and mechanical work, a frontier model gets spent only where the plan calls for it, and every change that lands is auditable and gated by a human at the one step that matters — the merge. Before #353 that gate was always a person; now a person may delegate it to an autonomy grant they created, and the record names the grant, never a person.
 
 **[Jump to Quickstart →](#quickstart)** · **[See how it works →](#how-it-works)**
 
@@ -362,8 +362,12 @@ unknown command. Now `orch grant` prints the active autonomy grant (or says
 none is active), `orch grant revoke` ends it, and `orch grant preview` /
 `orch grant create` are the JSON plumbing an adapter uses to show a grant and
 record it from the user's digest-bound `approve-autonomy-grant` approval.
-Grants are machine-local, kept in the clone's git common directory, and no
-command approves anything under a grant yet. `orch grant relay` takes no
+Grants are machine-local, kept in the clone's git common directory. Before
+#353 no command approved anything under a grant; now `orch run activate`
+(statement `grant-approve-and-enter-delivery`) and `orch run merge`
+(statement `grant-approve-merge`) accept an approval from the active grant
+on a Claude Code run, approver `grant:<id>`, past the stops ORCH-PRD.md §8
+lists, and `orch grant` lists each approval given. `orch grant relay` takes no
 arguments: run by the session currently holding the grant, it starts a
 background Claude Code session (`claude --bg`) with Remote Control on, in the
 permission mode the grant records, and makes that session the holder. `orch
@@ -1225,7 +1229,8 @@ states — `passing`, `failing`, `pending`, or the explicit `no-checks`,
 which is never conflated with passing) → `merge-report` (pins the
 approved head SHA, and carries a `no_ci_statement` whenever
 `no-checks` is what gates the merge, so "nothing gates this" is always
-said outright) → `merge` (human-approved, re-checked against the live
+said outright) → `merge` (human-approved — before #353 only by a person,
+now also by an autonomy grant past its stops — re-checked against the live
 PR, pinned with `--match-head-commit`, setting the issue's terminal
 `delivered` label) → `cleanup` → `complete` (fast-forward the primary
 checkout, return to Assist). Failures route through `escalate` (the
@@ -1314,7 +1319,9 @@ its own.
   `internal/run` alone decides when and why.
 - **Humans gate merges.** Orch pins the approved head SHA and refuses
   if the pull request moved after approval; the merge itself happens
-  on GitHub.
+  on GitHub. Before #353 the approving human was always present; now
+  they may delegate a merge to an autonomy grant they created, which
+  refuses whenever one of its stops applies.
 - **Everything auditable.** The exact model, its host-native execution profile,
   how the host delivered that profile, and the routing rationale live in the
   issue's audit record and are mirrored onto its pull request.

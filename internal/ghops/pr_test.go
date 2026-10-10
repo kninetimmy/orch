@@ -3,6 +3,8 @@ package ghops
 import (
 	"context"
 	"errors"
+	"fmt"
+	"slices"
 	"strings"
 	"testing"
 
@@ -220,4 +222,51 @@ func TestClosePRNotConfirmed(t *testing.T) {
 		t.Fatalf("err = %v, want ErrNotConfirmed", err)
 	}
 	script.AssertExhausted()
+}
+
+func TestPRFiles(t *testing.T) {
+	view := func(head string, changed int) execxtest.Call {
+		return execxtest.Call{
+			Name: "gh", Args: []string{"pr", "view", "43", "--json", "headRefOid,changedFiles"}, Env: ghTestEnv,
+			Stdout: fmt.Sprintf(`{"headRefOid":%q,"changedFiles":%d}`, head, changed),
+		}
+	}
+	list := func(stdout string, exit int) execxtest.Call {
+		return execxtest.Call{
+			Name: "gh", Args: []string{"api", "--paginate", "repos/{owner}/{repo}/pulls/43/files?per_page=100", "--jq", `.[] | [.filename, (.previous_filename // "")]`},
+			Env: ghTestEnv, Stdout: stdout, Exit: exit, Stderr: "boom",
+		}
+	}
+	const two = "[\"README.md\",\"\"]\n[\"docs/new.md\",\"CLAUDE.md\"]\n"
+
+	root := tempRoot(t)
+	g, script := openScripted(t, root, view("abc", 2), list(two, 0))
+	files, err := g.PRFiles(context.Background(), 43, "abc")
+	if err != nil {
+		t.Fatalf("PRFiles: %v", err)
+	}
+	script.AssertExhausted()
+	if want := []string{"README.md", "docs/new.md", "CLAUDE.md"}; !slices.Equal(files, want) {
+		t.Errorf("files = %q, want %q (a rename names its previous path too)", files, want)
+	}
+
+	for name, tc := range map[string]struct {
+		calls []execxtest.Call
+		want  string
+	}{
+		"head moved":           {[]execxtest.Call{view("def", 2)}, "not \"abc\""},
+		"list truncated":       {[]execxtest.Call{view("abc", 3), list(two, 0)}, "incomplete"},
+		"api error":            {[]execxtest.Call{view("abc", 2), list("", 1)}, "boom"},
+		"unreadable entry":     {[]execxtest.Call{view("abc", 1), list("README.md\n", 0)}, "unreadable entry"},
+		"entry without a path": {[]execxtest.Call{view("abc", 1), list(`["",""]`, 0)}, "unreadable entry"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			g, script := openScripted(t, tempRoot(t), tc.calls...)
+			files, err := g.PRFiles(context.Background(), 43, "abc")
+			if err == nil || !strings.Contains(err.Error(), tc.want) || files != nil {
+				t.Fatalf("PRFiles = %q, %v; want no list and an error naming %q", files, err, tc.want)
+			}
+			script.AssertExhausted()
+		})
+	}
 }

@@ -2,6 +2,7 @@ package ghops
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"strconv"
 	"strings"
@@ -133,7 +134,8 @@ func (g *GH) SetPRBody(ctx context.Context, number int, body string) error {
 }
 
 // MergePR merges an approved PR with the configured strategy. It is
-// only ever invoked after the human merge gate (PRD §8) and requires
+// only ever invoked after the human merge gate (PRD §8), which since
+// #353 an autonomy grant may pass for the human, and requires
 // ExplicitConfirmation. headOID pins the commit the human approved
 // (--match-head-commit): if the PR moved after approval, gh refuses
 // and the merge fails mechanically instead of merging unreviewed
@@ -164,4 +166,49 @@ func (g *GH) ClosePR(ctx context.Context, number int, c Confirmation) error {
 	}
 	_, err := g.gh(ctx, "pr", "close", strconv.Itoa(number))
 	return err
+}
+
+// PRFiles returns every path pull request number changes at headOID, plus the
+// previous path of each renamed file. It fails closed unless the list is
+// provably complete: the PR must still be at headOID, and the paginated REST
+// file list (which GitHub stops at 3,000 files) must hold exactly as many
+// files as GitHub reports changed. A push landing between the two reads is
+// caught by the caller's --match-head-commit merge, not here.
+func (g *GH) PRFiles(ctx context.Context, number int, headOID string) ([]string, error) {
+	var pr struct {
+		HeadRefOid   string `json:"headRefOid"`
+		ChangedFiles int    `json:"changedFiles"`
+	}
+	if err := g.ghJSON(ctx, &pr, "pr", "view", strconv.Itoa(number), "--json", "headRefOid,changedFiles"); err != nil {
+		return nil, err
+	}
+	if pr.HeadRefOid != headOID {
+		return nil, fmt.Errorf("PR #%d is at head %q, not %q; its file list was not read", number, pr.HeadRefOid, headOID)
+	}
+	// One JSON array per file, so no path character can split or merge lines.
+	out, err := g.gh(ctx, "api", "--paginate", fmt.Sprintf("repos/{owner}/{repo}/pulls/%d/files?per_page=100", number),
+		"--jq", `.[] | [.filename, (.previous_filename // "")]`)
+	if err != nil {
+		return nil, err
+	}
+	var paths []string
+	count := 0
+	for _, line := range strings.Split(out, "\n") {
+		if strings.TrimSpace(line) == "" {
+			continue
+		}
+		var f []string
+		if err := json.Unmarshal([]byte(line), &f); err != nil || len(f) != 2 || f[0] == "" {
+			return nil, fmt.Errorf("PR #%d file list holds an unreadable entry %q", number, line)
+		}
+		count++
+		paths = append(paths, f[0])
+		if f[1] != "" {
+			paths = append(paths, f[1])
+		}
+	}
+	if count != pr.ChangedFiles {
+		return nil, fmt.Errorf("PR #%d file list holds %d files but GitHub reports %d changed; the list is incomplete", number, count, pr.ChangedFiles)
+	}
+	return paths, nil
 }

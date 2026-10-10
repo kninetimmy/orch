@@ -138,11 +138,15 @@ func prHeadOID(pr *ghops.PR) string {
 // engineVerificationNames are the singleton verification names the
 // engine's own verbs write through setVerification's replace-by-name
 // path: required-ci (civerb.go), merge (merge.go), and abandoned
-// (abandon.go).
+// (abandon.go). Before #353 that was the whole set; plan-approval
+// (activate.go) and merge-approval (merge.go), which name a grant
+// approval, joined it so a caller can neither forge nor overwrite one.
 var engineVerificationNames = map[string]bool{
-	"required-ci": true,
-	"merge":       true,
-	"abandoned":   true,
+	"required-ci":     true,
+	"merge":           true,
+	"abandoned":       true,
+	planApprovalName:  true,
+	mergeApprovalName: true,
 }
 
 // reviewCycleNamePattern matches the per-cycle names Review appends

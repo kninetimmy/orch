@@ -134,7 +134,12 @@ func writeGrant(w io.Writer, g *grant.Grant, now time.Time) error {
 	} else {
 		b.WriteString("  approvals:\n")
 		for _, a := range g.Approvals {
-			fmt.Fprintf(&b, "    - %s gate, run %s, issue #%d, PR #%d, head %s, at %s\n", a.Gate, a.RunID, a.Issue, a.PR, a.Head, a.At.Format(time.RFC3339))
+			fmt.Fprintf(&b, "    - %s gate, run %s", a.Gate, a.RunID)
+			// A plan approval covers a whole run, so it names no issue, PR or head.
+			if a.Issue != 0 {
+				fmt.Fprintf(&b, ", issue #%d, PR #%d, head %s", a.Issue, a.PR, a.Head)
+			}
+			fmt.Fprintf(&b, ", at %s\n", a.At.Format(time.RFC3339))
 		}
 	}
 	_, err := io.WriteString(w, b.String())

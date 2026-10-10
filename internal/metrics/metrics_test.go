@@ -239,3 +239,20 @@ func TestUsageValidate(t *testing.T) {
 		}
 	}
 }
+
+// A document written before events carried an approval source still loads,
+// and an event carrying one round-trips.
+func TestApprovalSourceIsOptional(t *testing.T) {
+	root := t.TempDir()
+	writeDoc(t, root, "run-1", `{"schema_version":2,"run_id":"run-1","events":[{"at":"2026-07-13T00:00:00Z","verb":"merge","issue_number":1}]}`)
+	if err := Append(root, "run-1", Event{At: "2026-07-13T00:00:01Z", Verb: "merge", IssueNumber: 2, ApprovalSource: "grant:g"}); err != nil {
+		t.Fatalf("Append: %v", err)
+	}
+	docs, err := LoadAll(root)
+	if err != nil {
+		t.Fatalf("LoadAll: %v", err)
+	}
+	if evs := docs[0].Events; len(evs) != 2 || evs[0].ApprovalSource != "" || evs[1].ApprovalSource != "grant:g" {
+		t.Fatalf("events = %+v", evs)
+	}
+}

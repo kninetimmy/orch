@@ -425,3 +425,47 @@ func TestRecordConcurrentProcesses(t *testing.T) {
 		t.Fatalf("recorded = %d, runs = %+v, err = %v", recorded, got, err)
 	}
 }
+
+// A recorded approval spends its unit once: recording the same run or merge
+// again (a verb re-run after a crash) spends nothing, and no approval is
+// recorded past a limit. Get still reads the grant after it ends.
+func TestRecordApproval(t *testing.T) {
+	s := newStore(t)
+	p := proposal()
+	p.MergeLimit = 1
+	g, err := s.Create(approved(t, p), session, now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	id := g.Terms.ID
+	merge := RecordedApproval{Gate: "merge", RunID: "run-1", Issue: 7, PR: 9, Head: "abc"}
+	for range 2 {
+		if _, err := s.RecordApproval(id, RecordedApproval{Gate: "plan", RunID: "run-1"}, now); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := s.RecordApproval(id, merge, now); err != nil {
+			t.Fatal(err)
+		}
+	}
+	merge.Issue = 8
+	if _, err := s.RecordApproval(id, merge, now); !errors.Is(err, ErrLimitReached) {
+		t.Fatalf("second merge: %v", err)
+	}
+	if _, err := s.RecordApproval(id, RecordedApproval{Gate: "wrap-up", RunID: "run-1"}, now); err == nil {
+		t.Fatal("recorded a wrap-up approval, which spends no unit")
+	}
+	if _, err := s.Revoke(now); err != nil {
+		t.Fatal(err)
+	}
+	got, err := s.Get(id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []RecordedApproval{{Gate: "plan", RunID: "run-1", At: now}, {Gate: "merge", RunID: "run-1", Issue: 7, PR: 9, Head: "abc", At: now}}
+	if got.RevokedAt == nil || len(got.Runs) != 1 || got.Merges[0].Ref != MergeRef("run-1", 7) || len(got.Merges) != 1 || !reflect.DeepEqual(got.Approvals, want) {
+		t.Fatalf("grant = %+v", got)
+	}
+	if _, err := s.Get("grant-20260101T000000Z-00000000"); err == nil {
+		t.Fatal("got a grant that was never recorded")
+	}
+}

@@ -123,6 +123,10 @@ type Event struct {
 	Merged             int                 `json:"merged,omitempty"`
 	Abandoned          int                 `json:"abandoned,omitempty"`
 	Usage              *Usage              `json:"usage,omitempty"`
+	// ApprovalSource is who approved an activate or merge event: "human",
+	// or "grant:<id>" for an autonomy grant. Events written before it
+	// existed carry none and still load.
+	ApprovalSource string `json:"approval_source,omitempty"`
 }
 
 // validate reports the first violation in ev: At and Verb are
