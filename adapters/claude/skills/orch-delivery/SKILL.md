@@ -562,6 +562,7 @@ still needs `orch run cleanup` before `orch run complete` can succeed.
 ## Under an autonomy grant
 
 While `orch grant` shows an active autonomy grant, or when the user asks to
-set one up, read `GRANTS.md` in this skill's directory: it covers setting one up, approving inside it, stopping and
-telling the user, wrap-up, and relaying. Without an active grant every gate
+set one up, read `GRANTS.md` in this skill's directory: it covers setting one
+up, approving inside it, stopping and telling the user, wrap-up, and
+relaying. Without an active grant every gate
 stays with the user exactly as described above.
