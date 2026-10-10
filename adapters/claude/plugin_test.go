@@ -14,12 +14,16 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"regexp"
 	"sort"
 	"strings"
 	"testing"
 
 	"github.com/kninetimmy/orch/internal/adaptertest"
+	"github.com/kninetimmy/orch/internal/cli"
+	"github.com/kninetimmy/orch/internal/grant"
 	"github.com/kninetimmy/orch/internal/guard"
+	"github.com/kninetimmy/orch/internal/run"
 )
 
 // pluginManifest is the strict shape of .claude-plugin/plugin.json.
@@ -412,6 +416,96 @@ func TestSkillOrchRunVerbsAreReal(t *testing.T) {
 
 func TestSkillStatementLiteralsPinnedToRunConstants(t *testing.T) {
 	adaptertest.CheckStatementLiterals(t, skillGlob)
+}
+
+// grantsPath is the grant guidance file; it is not a SKILL.md, so skillGlob
+// does not reach it.
+const grantsPath = "skills/orch-delivery/GRANTS.md"
+const grantsGlob = "skills/*/GRANTS.md"
+
+func TestGrantsOrchRunVerbsAreReal(t *testing.T) {
+	adaptertest.CheckRunVerbTokens(t, grantsGlob)
+}
+
+// TestGrantsStatementLiteralsPinnedToEngineConstants requires every
+// "statement" literal GRANTS.md quotes to equal an engine constant, and every
+// grant constant to be quoted, so renaming one in the engine fails here.
+func TestGrantsStatementLiteralsPinnedToEngineConstants(t *testing.T) {
+	data, err := os.ReadFile(grantsPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := map[string]string{
+		grant.ApprovalStatement:         "grant.ApprovalStatement",
+		run.GrantApprovalStatement:      "run.GrantApprovalStatement",
+		run.GrantMergeApprovalStatement: "run.GrantMergeApprovalStatement",
+	}
+	seen := map[string]bool{}
+	for _, m := range regexp.MustCompile(`"statement":\s*"([a-z-]+)"`).FindAllStringSubmatch(string(data), -1) {
+		if _, ok := want[m[1]]; !ok {
+			t.Errorf("%s: statement literal %q equals no grant statement constant", grantsPath, m[1])
+		}
+		seen[m[1]] = true
+	}
+	for literal, name := range want {
+		if !seen[literal] {
+			t.Errorf("%s does not quote the statement literal for %s (%q)", grantsPath, name, literal)
+		}
+	}
+}
+
+// TestGrantsSubcommandsAreReal runs every `orch grant <sub>` GRANTS.md names
+// against an empty directory: the CLI answers an unsupported subcommand with
+// a usage error and a real one with anything else. The directory is not a
+// repository, so no real grant can be touched.
+func TestGrantsSubcommandsAreReal(t *testing.T) {
+	data, err := os.ReadFile(grantsPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	exec := func(sub string) int {
+		var out, errOut bytes.Buffer
+		return cli.Run([]string{"grant", sub}, cli.Env{RepoRoot: t.TempDir(), Stdin: strings.NewReader(""), Stdout: &out, Stderr: &errOut})
+	}
+	if got := exec("no-such-subcommand"); got != cli.ExitUsage {
+		t.Fatalf("an unsupported grant subcommand exits %d, want %d; the subcommand check cannot tell real from unreal", got, cli.ExitUsage)
+	}
+	named := map[string]bool{}
+	for _, m := range regexp.MustCompile(`orch grant ([a-z-]+)`).FindAllStringSubmatch(string(data), -1) {
+		named[m[1]] = true
+	}
+	// The subcommands the guidance depends on, whatever else it names.
+	for _, sub := range []string{"preview", "create", "revoke", "relay"} {
+		if !named[sub] {
+			t.Errorf("%s never names `orch grant %s`", grantsPath, sub)
+		}
+	}
+	for sub := range named {
+		if got := exec(sub); got == cli.ExitUsage {
+			t.Errorf("%s names `orch grant %s`, which the CLI rejects as an unsupported subcommand", grantsPath, sub)
+		}
+	}
+}
+
+// TestSkillsPointToGrants requires both skills to send the reader to
+// GRANTS.md and to say that without a grant the gates stay with the user.
+func TestSkillsPointToGrants(t *testing.T) {
+	for _, path := range []string{deliverySkillPath, architectSkillPath} {
+		data, err := os.ReadFile(path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		content := adaptertest.NormalizeWhitespace(string(data))
+		if !strings.Contains(content, "GRANTS.md") {
+			t.Errorf("%s does not point to GRANTS.md", path)
+		}
+		if !strings.Contains(content, "or when the user asks to set one up") {
+			t.Errorf("%s does not say GRANTS.md also covers setting up a grant", path)
+		}
+		if !strings.Contains(content, "Without an active grant every gate stays with the user exactly as") {
+			t.Errorf("%s does not say that without a grant every gate stays with the user", path)
+		}
+	}
 }
 
 func TestDeliverySkillHasPlanGateOptions(t *testing.T) {

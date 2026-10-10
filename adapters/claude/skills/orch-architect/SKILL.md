@@ -135,3 +135,10 @@ plan construction, the plan gate, activation, and the per-issue
 dispatch/review/merge loop it describes. That skill owns the wire
 contracts and presentation duties for Delivery; this skill only governs
 your standing posture as Architect.
+
+## Autonomy grants
+
+While an autonomy grant is active (the SessionStart hook names it, and
+`orch grant` shows it), or when the user asks to set one up, read `GRANTS.md`
+in the `orch-delivery` skill's directory for how to work under it. Without an active grant every gate stays
+with the user exactly as today.
