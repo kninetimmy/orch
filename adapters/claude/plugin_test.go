@@ -499,6 +499,9 @@ func TestSkillsPointToGrants(t *testing.T) {
 		if !strings.Contains(content, "GRANTS.md") {
 			t.Errorf("%s does not point to GRANTS.md", path)
 		}
+		if !strings.Contains(content, "or when the user asks to set one up") {
+			t.Errorf("%s does not say GRANTS.md also covers setting up a grant", path)
+		}
 		if !strings.Contains(content, "Without an active grant every gate stays with the user exactly as") {
 			t.Errorf("%s does not say that without a grant every gate stays with the user", path)
 		}

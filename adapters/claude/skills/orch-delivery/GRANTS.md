@@ -1,8 +1,9 @@
 # Working under an autonomy grant
 
 Read this only while an autonomy grant is active (`orch grant` shows it; the
-SessionStart hook names it). A grant lets the Architect approve the plan gate,
-the merge gate, and its own wrap-up drafts, within terms the user approved.
+SessionStart hook names it) or when the user asks to set one up. A grant lets
+the Architect approve the gates it covers (`plan`, `merge`, `wrap-up`), within
+terms the user approved.
 Without an active grant every gate stays with the user exactly as the
 orch-delivery skill describes. Everything else in orch-delivery still applies;
 this file only changes who approves and what you do when you must stop.
@@ -81,8 +82,9 @@ yourself before approving; the approval is fresh for every PR.
 A refused grant approval fails with "autonomy grant cannot approve this: ...".
 That decision now waits for the user: present stderr verbatim, notify, and
 continue with independent issues. Never retry it as a human approval. The same
-applies when a third non-approving review blocks an issue as a human decision;
-only the user resolves that.
+applies when the review that passes the grant's fix-cycle limit (the third
+under the default of 2) is still non-approving and blocks the issue as a human
+decision; only the user resolves that.
 
 ## Judgment stops
 
@@ -105,8 +107,9 @@ under the grant.
 
 ## Wrap-up and relay
 
-Under a grant you approve your own wrap-up drafts. Facts and decisions stay
-staged for the user's `memhub review accept`. Never make machine-global memhub
+When the grant covers the `wrap-up` gate, you approve your own wrap-up drafts.
+When it does not, the user approves the wrap-up drafts as usual, and a relay
+waits for that wrap-up. Facts and decisions stay staged for the user's `memhub review accept`. Never make machine-global memhub
 writes, and leave architecture-narrative updates for the user. Make no git
 commit for the wrap-up.
 
@@ -119,6 +122,10 @@ at the next stopping point (no subagent in flight, no verb half-done). In order:
 3. Run `orch grant relay`. It hands the grant to a background successor.
 4. Your last message says you handed off and this session should not be used
    again. Then stop using the session.
+
+If `orch grant relay` fails, the holder is unchanged: this session still holds
+the grant. Keep working in it and do not stop. Notify the user with a decision
+packet that reports the failure, and check `claude agents` for a stray session.
 
 A newly started session that holds the grant reads the latest handoff session
 note before acting.
