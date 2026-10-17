@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -94,6 +95,60 @@ func TestHookSessionStartGrantContext(t *testing.T) {
 		if !strings.Contains(out, "could not be determined") || strings.Contains(out, "handoff") {
 			t.Errorf("stdin %q: undetermined holder output wrong:\n%s", stdin, out)
 		}
+	}
+}
+
+// claudeVersionRunner answers `claude --version` and runs everything else
+// (the grant store's git) for real.
+type claudeVersionRunner struct {
+	execx.Runner
+	stdout string
+	err    error
+}
+
+func (r claudeVersionRunner) Run(ctx context.Context, c execx.Cmd) (execx.Result, error) {
+	if c.Name == "claude" {
+		return execx.Result{Stdout: r.stdout}, r.err
+	}
+	return r.Runner.Run(ctx, c)
+}
+
+func TestHookSessionStartReportsUnrecognizedClaudeVersionToHolder(t *testing.T) {
+	env := grantRepo(t, true)
+	real := env.Runner
+	env.LookPath = func(name string) (string, error) { return "/fake/" + name, nil }
+	holder := hookDoc(map[string]string{"session_id": grantHolder})
+	other := hookDoc(map[string]string{"session_id": "someone-else"})
+	const wontFire = "the context-relay instruction will not fire in this session"
+
+	env.Runner = claudeVersionRunner{Runner: real, stdout: "2.1.301 (Claude Code)\n"}
+	if _, out, _ := runHookVerb(env, holder, "session-start"); strings.Contains(out, "Warning") || strings.Contains(out, wontFire) {
+		t.Errorf("recognized version added text:\n%s", out)
+	}
+
+	env.Runner = claudeVersionRunner{Runner: real, stdout: "9.9.9 (Claude Code)\n"}
+	_, out, _ := runHookVerb(env, holder, "session-start")
+	if !strings.Contains(out, "version 9.9.9 is not one the transcript reader recognizes, so "+wontFire) {
+		t.Errorf("holder output missing unrecognized-version statement:\n%s", out)
+	}
+	if _, out, _ := runHookVerb(env, other, "session-start"); strings.Contains(out, wontFire) {
+		t.Errorf("non-holder got the statement:\n%s", out)
+	}
+	if _, out, _ := runHookVerb(env, "", "session-start"); strings.Contains(out, wontFire) {
+		t.Errorf("undetermined session got the statement:\n%s", out)
+	}
+
+	env.Runner = claudeVersionRunner{Runner: real, err: errors.New("claude not found on PATH")}
+	if _, out, _ := runHookVerb(env, holder, "session-start"); !strings.Contains(out, "could not be determined (claude not found on PATH), so "+wontFire) {
+		t.Errorf("holder output missing undetermined-version statement:\n%s", out)
+	}
+
+	// With no grant the session-start output is unchanged, version or not.
+	noGrant := grantRepo(t, false)
+	_, want, _ := runHookVerb(noGrant, holder, "session-start")
+	noGrant.Runner = claudeVersionRunner{Runner: noGrant.Runner, stdout: "9.9.9 (Claude Code)\n"}
+	if _, got, _ := runHookVerb(noGrant, holder, "session-start"); got != want {
+		t.Errorf("no-grant output changed:\n%s\nvs\n%s", got, want)
 	}
 }
 

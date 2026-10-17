@@ -83,7 +83,11 @@ func grantSessionContext(env Env, now time.Time) string {
 	case !ok || in.SessionID == "":
 		return text + "Whether this session is the current holder of the grant could not be determined.\n"
 	case isHolder(g, in):
-		return text + fmt.Sprintf("This session is the current holder of the grant. Before acting, read the latest handoff session note. Relay once your context passes %d tokens.\n", t.ContextThreshold)
+		text += fmt.Sprintf("This session is the current holder of the grant. Before acting, read the latest handoff session note. Relay once your context passes %d tokens.\n", t.ContextThreshold)
+		if _, problem := claudeVersionProblem(env); problem != "" {
+			text += fmt.Sprintf("Warning: %s, so the context-relay instruction will not fire in this session; watch your own context size and relay without waiting for it.\n", problem)
+		}
+		return text
 	default:
 		return text + "This session is not the current holder of the grant.\n"
 	}

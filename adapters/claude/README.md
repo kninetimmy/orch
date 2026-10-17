@@ -43,8 +43,19 @@ never re-derives a decision the engine already made.
     threshold, it adds an instruction to relay at the next stopping
     point; otherwise it prints nothing. Context size comes from the
     session transcript, whose format is read only for Claude Code
-    versions the reader was checked against (2.1.295); any other version
-    yields no instruction.
+    versions the reader was checked against (2.1.295 and 2.1.301); any
+    other version yields no instruction. So that this is not silent,
+    `orch doctor` prints one line with the installed version (from
+    `claude --version`) and whether the reader recognizes it, and the
+    holder session's session-start text says when the version is
+    unrecognized or could not be determined, and that the context-relay
+    instruction will not fire in that session. The doctor line never
+    changes its exit status. To add a version: confirm that a
+    real transcript of that version has main-session assistant entries
+    with the `input_tokens`, `cache_creation_input_tokens` and
+    `cache_read_input_tokens` usage fields, add a synthetic fixture for
+    it under `internal/claudetranscript/testdata/`, then add the version
+    to `supportedVersions` in `internal/claudetranscript/usage.go`.
   - `PreCompact` on `auto` runs `orch hook claude pre-compact`, which
     blocks automatic compaction (`{"decision":"block",...}`) in the
     grant's holder session. Manual `/compact` and every other session

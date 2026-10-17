@@ -80,17 +80,22 @@ func testEnv(t *testing.T) (Env, *bytes.Buffer, *bytes.Buffer) {
 // fakeRunner answers the doctor probes: git and gh with scripted exits,
 // plus each host's plugin listing (zero values report healthy).
 type fakeRunner struct {
-	toplevel            string
-	gitExit             int
-	gitStderr           string
-	authExit            int
-	repoExit            int
-	repoJSON            string
-	beforeRun           func(execx.Cmd)
-	claudePluginJSON    string
-	claudePluginExit    int
-	claudePluginStderr  string
-	claudePluginErr     error
+	toplevel           string
+	gitExit            int
+	gitStderr          string
+	authExit           int
+	repoExit           int
+	repoJSON           string
+	beforeRun          func(execx.Cmd)
+	claudePluginJSON   string
+	claudePluginExit   int
+	claudePluginStderr string
+	claudePluginErr    error
+	// claudeVersion scripts `claude --version` (empty reports a version the
+	// transcript reader recognizes); claudeVersionErr models a spawn failure.
+	claudeVersion       string
+	claudeVersionExit   int
+	claudeVersionErr    error
 	codexPluginJSON     string
 	codexPluginExit     int
 	codexPluginStderr   string
@@ -166,6 +171,16 @@ func (f fakeRunner) Run(_ context.Context, c execx.Cmd) (execx.Result, error) {
 			return execx.Result{Stdout: tag + "\n"}, nil
 		}
 	case "claude", "codex":
+		if c.Name == "claude" && len(c.Args) == 1 && c.Args[0] == "--version" {
+			if f.claudeVersionErr != nil {
+				return execx.Result{}, f.claudeVersionErr
+			}
+			version := f.claudeVersion
+			if version == "" {
+				version = "2.1.301 (Claude Code)"
+			}
+			return execx.Result{Stdout: version + "\n", ExitCode: f.claudeVersionExit}, nil
+		}
 		if len(c.Args) != 3 || c.Args[0] != "plugin" || c.Args[1] != "list" || c.Args[2] != "--json" {
 			return execx.Result{}, fmt.Errorf("fakeRunner: unexpected command %s %v", c.Name, c.Args)
 		}

@@ -1410,3 +1410,30 @@ func TestDoctorInstructionAdvisoryFollowsEnabledHosts(t *testing.T) {
 		})
 	}
 }
+
+func TestDoctorReportsClaudeCodeVersion(t *testing.T) {
+	tests := []struct {
+		name   string
+		runner fakeRunner
+		want   string
+	}{
+		{"recognized", fakeRunner{claudeVersion: "2.1.295 (Claude Code)"}, "ok    claude code version: 2.1.295; the transcript reader recognizes it\n"},
+		{"unrecognized", fakeRunner{claudeVersion: "9.9.9 (Claude Code)"}, "note  claude code: the installed Claude Code version 9.9.9 is not one the transcript reader recognizes; under an autonomy grant the context-relay instruction will not fire\n"},
+		{"missing executable", fakeRunner{claudeVersionErr: errors.New("claude not found on PATH")}, "note  claude code: the installed Claude Code version could not be determined (claude not found on PATH); under an autonomy grant the context-relay instruction will not fire\n"},
+		{"failing version", fakeRunner{claudeVersionExit: 3}, "note  claude code: the installed Claude Code version could not be determined (`claude --version` exited 3: ); under an autonomy grant the context-relay instruction will not fire\n"},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			env, stdout, _ := testEnv(t)
+			writeConfig(t, env.RepoRoot, validTOML)
+			tc.runner.toplevel = env.RepoRoot
+			env.Runner = tc.runner
+			if code := Run([]string{"doctor"}, env); code != ExitOK {
+				t.Fatalf("exit = %d, want %d\n%s", code, ExitOK, stdout.String())
+			}
+			if !strings.Contains(stdout.String(), tc.want) {
+				t.Errorf("output missing %q:\n%s", tc.want, stdout.String())
+			}
+		})
+	}
+}

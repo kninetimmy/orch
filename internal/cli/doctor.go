@@ -152,6 +152,13 @@ func runDoctor(env Env, args []string) error {
 	if cfgErr == nil {
 		if cfg.Hosts.Claude != nil {
 			checkHost("claude", "claude adapter", checkAdapter(env, claudeAdapter))
+			// A note, never a failure: an unchecked Claude Code version
+			// only silences the grant's relay instruction.
+			if version, problem := claudeVersionProblem(env); problem == "" {
+				fmt.Fprintf(env.Stdout, "ok    claude code version: %s; the transcript reader recognizes it\n", version)
+			} else {
+				fmt.Fprintf(env.Stdout, "note  claude code: %s; under an autonomy grant the context-relay instruction will not fire\n", problem)
+			}
 		}
 		if cfg.Hosts.Codex != nil {
 			checkHost("codex", "codex adapter", checkAdapter(env, codexAdapter))
