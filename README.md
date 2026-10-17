@@ -5,7 +5,7 @@
 <p align="center">
   <img src="https://img.shields.io/badge/License-MIT-2E7D32?style=flat&logo=opensourceinitiative&logoColor=white" alt="License: MIT"/>
   <img src="https://img.shields.io/badge/Go-1.26%2B-00ADD8?style=flat&logo=go&logoColor=white" alt="Go 1.26+"/>
-  <img src="https://img.shields.io/badge/Release%20target-v0.13.0-24292F?style=flat&logo=github&logoColor=white" alt="Release target: v0.13.0"/>
+  <img src="https://img.shields.io/badge/Release%20target-v0.13.1-24292F?style=flat&logo=github&logoColor=white" alt="Release target: v0.13.1"/>
   <br/>
   <img src="https://img.shields.io/badge/Platform-Linux%20%C2%B7%20macOS%20%C2%B7%20Windows-607D8B?style=flat" alt="Platform: Linux, macOS, Windows"/>
   <img src="https://img.shields.io/badge/Hosts-Claude%20Code%20%C2%B7%20Codex%20CLI%20%C2%B7%20OpenCode%20V2-6E56CF?style=flat" alt="Hosts: Claude Code, Codex CLI, and OpenCode V2"/>
@@ -252,9 +252,9 @@ service after upgrading its adapter so the new hooks and skills are loaded.
 source revision `611c645` uses state schema 6, approval contract 1, and these
 manual wire versions: Gate 3, Status 4, Activation 2, Dispatch 4, Review 3,
 Escalate 2, Block 2, Resume 2, and Resolve Block 1. The Claude and Codex
-adapter version 0.10.0 is paired with engine v0.13.0; version 0.9.0 was paired
-with engine v0.12.0 and v0.12.1. Engine v0.13.0 keeps the manual wire versions
-above and state schema 6 unchanged from v0.12.1. `orch doctor` reports an
+adapter version 0.10.0 is paired with engine v0.13.0 and v0.13.1; version 0.9.0
+was paired with engine v0.12.0 and v0.12.1. Engine v0.13.0 keeps the manual wire
+versions above and state schema 6 unchanged from v0.12.1. `orch doctor` reports an
 installed 0.9.0 adapter as a version mismatch, and the existing version check
 rejects cached 0.9.0 and older adapters. The OpenCode package stays 0.11.0:
 its exported source and skills are unchanged since v0.12.1, and its agent
@@ -539,6 +539,31 @@ too. Anything a subagent wants remembered comes back in its report.
 Every memhub command runs with the primary checkout as its working
 directory, never inside a per-issue worktree, because worktrees never
 receive a copy of the memhub database.
+
+## v0.13.1 release target
+
+- Relay fix for Claude Code 2.1.301. On 2.1.301 `claude --bg` ignored the
+  `--session-id` that `orch grant relay` passed and started a session under an
+  id of its own, so on v0.13.0 the relay's own check refused to record it and
+  failed closed with the holder unchanged. The relay now records the full
+  session id of the one background session `claude agents --json` lists under
+  the short id `claude --bg` printed. If it cannot identify exactly one such
+  session it fails with the record unchanged and names `claude stop <id>` for
+  the background session that was started —
+  [#371](https://github.com/kninetimmy/orch/pull/371). See the `orch grant
+  relay` entry under known issues and limitations for the before and after.
+- What has not happened yet. The corrected relay has not yet run live. The push
+  from a background session and the PreCompact block have not been checked live
+  either, and no plan or merge has been approved under a grant.
+
+Engine release v0.13.1, the unchanged Claude/Codex manual-adapter version 0.10.0
+and the unchanged OpenCode package 0.11.0 are separate identities; this release
+changes no adapter or plugin artifact. The manual wire versions and state schema
+6 are unchanged from v0.13.0. To upgrade, update the engine between runs (see
+the upgrade commands above), restart the host and run
+`orch doctor --host claude|codex`; an installed 0.10.0 adapter and the 0.11.0
+OpenCode package need no update, and `orch render-agents` does not need to be
+re-run.
 
 ## v0.13.0 release target
 
