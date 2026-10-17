@@ -993,9 +993,20 @@ Windows, a manual launch of the same shape (`claude --bg --remote-control
 <name> --permission-mode auto "<prompt>"`, without `--session-id`). That
 session started working on the prompt by itself and connected Remote
 Control, and its `CLAUDE_CODE_SESSION_ID` matched the id `--bg` reported.
-What has not run live: `orch grant relay` end to end, including whether
-`--bg` honors the `--session-id` the relay passes. Until it has, a relay may
-fail closed with the holder unchanged and leave a stray background session;
+Before issue #370, `orch grant relay` passed a `--session-id` it generated
+and succeeded only if `--bg` printed that id's first 8 characters; whether
+`--bg` honored the passed `--session-id` had not run live. On 2026-10-17,
+Claude Code 2.1.301 on native Windows, it ran live and did not: `--bg`
+ignored the passed `--session-id`, printed `backgrounded · 20b2927b`, the
+first 8 characters of the started session's id, and the relay failed closed
+with the holder unchanged, leaving that session running. Now the relay passes
+no `--session-id`. It reads the short id from the `backgrounded · <id>` line
+`--bg` prints, runs `claude agents --json`, and records as the holder the
+`sessionId` of the one entry with that `id` and `kind` `background`. If no
+short id is printed, or that listing fails or does not name exactly one such
+entry, the relay fails closed with the holder unchanged, and once a short id
+was printed the error names `claude stop <id>`. This corrected path has not
+yet run live. A failed relay can still leave a stray background session;
 `claude agents` lists it and `claude stop <id>` removes it. macOS and Linux
 were never checked live. A grant that records `default` as its permission
 mode cannot relay on 2.1.295, whose CLI lists `manual` instead. Symptom:
