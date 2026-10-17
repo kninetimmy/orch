@@ -5,7 +5,7 @@
 <p align="center">
   <img src="https://img.shields.io/badge/License-MIT-2E7D32?style=flat&logo=opensourceinitiative&logoColor=white" alt="License: MIT"/>
   <img src="https://img.shields.io/badge/Go-1.26%2B-00ADD8?style=flat&logo=go&logoColor=white" alt="Go 1.26+"/>
-  <img src="https://img.shields.io/badge/Release%20target-v0.12.1-24292F?style=flat&logo=github&logoColor=white" alt="Release target: v0.12.1"/>
+  <img src="https://img.shields.io/badge/Release%20target-v0.13.0-24292F?style=flat&logo=github&logoColor=white" alt="Release target: v0.13.0"/>
   <br/>
   <img src="https://img.shields.io/badge/Platform-Linux%20%C2%B7%20macOS%20%C2%B7%20Windows-607D8B?style=flat" alt="Platform: Linux, macOS, Windows"/>
   <img src="https://img.shields.io/badge/Hosts-Claude%20Code%20%C2%B7%20Codex%20CLI%20%C2%B7%20OpenCode%20V2-6E56CF?style=flat" alt="Hosts: Claude Code, Codex CLI, and OpenCode V2"/>
@@ -252,10 +252,15 @@ service after upgrading its adapter so the new hooks and skills are loaded.
 source revision `611c645` uses state schema 6, approval contract 1, and these
 manual wire versions: Gate 3, Status 4, Activation 2, Dispatch 4, Review 3,
 Escalate 2, Block 2, Resume 2, and Resolve Block 1. The Claude and Codex
-adapter version 0.9.0 is paired with engine v0.12.0 and v0.12.1. It keeps the
-manual wire versions above and ships the updated skill and agent definitions;
-cached 0.8.0 and older adapters predate it and are rejected by the existing
-version check. Release and adapter version labels describe compatibility, while
+adapter version 0.10.0 is paired with engine v0.13.0; version 0.9.0 was paired
+with engine v0.12.0 and v0.12.1. Engine v0.13.0 keeps the manual wire versions
+above and state schema 6 unchanged from v0.12.1. `orch doctor` reports an
+installed 0.9.0 adapter as a version mismatch, and the existing version check
+rejects cached 0.9.0 and older adapters. The OpenCode package stays 0.11.0:
+its exported source and skills are unchanged since v0.12.1, and its agent
+definitions are embedded in the engine and written by `orch render-agents`.
+Because #358 changed the agent definitions on all three hosts, re-run
+`orch render-agents` in every project that uses Orch. Release and adapter version labels describe compatibility, while
 the source revision and build identity identify the code that was built.
 
 After upgrading, re-run `orch render-agents` in every project that uses the
@@ -534,6 +539,84 @@ too. Anything a subagent wants remembered comes back in its report.
 Every memhub command runs with the primary checkout as its working
 directory, never inside a per-issue worktree, because worktrees never
 receive a copy of the memhub database.
+
+## v0.13.0 release target
+
+- Autonomy grants. A grant is a machine-local record of what you have delegated:
+  its scope as named items, the gates it covers (plan, merge, wrap-up), an
+  expiry, run, merge and fix-cycle limits, a context threshold in tokens, the
+  Claude Code permission mode relayed sessions start in, and the one session
+  allowed to approve under it. `orch grant` shows it, `orch grant revoke` ends
+  it for good, and creation takes an approval that carries the grant's digest
+  and the exact statement `approve-autonomy-grant`. Creation is refused while
+  another grant is active, without `CLAUDE_CODE_SESSION_ID`, or for the
+  `bypassPermissions` mode. Records live in the clone's git common directory,
+  so every worktree sees one grant and `git status` never changes —
+  [#359](https://github.com/kninetimmy/orch/pull/359).
+- Approving under a grant. `orch run activate` and `orch run merge` now accept
+  an approval from the active grant on a Claude Code run, recorded as approver
+  `grant:<id>`, and the issue and PR bodies say that no person reviewed or
+  approved the plan or merge. Engine-checked hard stops refuse it for a plan
+  with a risk domain or a host other than `claude`, a caller that is not the
+  grant's holder, an exhausted budget, an issue with any escalation or block,
+  the downgraded reviewer, anything but passing required CI, and a PR touching a
+  protected path. An issue that uses up the grant's fix cycles is blocked for
+  you to resolve. Human approvals work exactly as before, and the metrics events
+  gain an approval source of `human` or `grant:<id>` —
+  [#362](https://github.com/kninetimmy/orch/pull/362). The protected-path list
+  now also covers the kill switch (`orch grant revoke`), the grant hooks, the
+  transcript reader and `orch run pr-open`, so a grant cannot merge a change to
+  them — [#366](https://github.com/kninetimmy/orch/pull/366).
+- Relay and context hooks. `orch grant relay` takes no arguments: run by the
+  session that holds the grant, it starts a successor as a background Claude
+  Code session (`claude --bg`) with Remote Control on, in the grant's permission
+  mode, and makes the successor the holder, so the previous session can no
+  longer approve —
+  [#360](https://github.com/kninetimmy/orch/pull/360). With an active grant, the
+  Claude SessionStart text names the grant and whether this session holds it, a
+  hook asks the holder to relay at the next stopping point once its context
+  passes the threshold, and the PreCompact hook blocks automatic compaction for
+  the holder. Manual `/compact` and other sessions are unaffected, and every
+  hook fails open —
+  [#361](https://github.com/kninetimmy/orch/pull/361). The Claude
+  `orch-delivery` skill gains `GRANTS.md`, telling the Architect how to set up a
+  grant, approve inside it, stop and send a decision packet, wrap up and relay;
+  tests pin its statement literals and subcommands to the engine —
+  [#363](https://github.com/kninetimmy/orch/pull/363).
+- Claude Code 2.1.301. The transcript reader that sizes the holder's context
+  now recognizes Claude Code 2.1.301 as well as 2.1.295. `orch doctor` prints
+  one line with the installed Claude Code version and whether the reader
+  recognizes it, and the holder's session-start text says when the relay
+  instruction will not fire for an unrecognized version —
+  [#367](https://github.com/kninetimmy/orch/pull/367).
+- Agent definitions. The reviewer definitions now tell the reviewer to resolve
+  the PR head by its commit OID or `origin/<branch>`, never `FETCH_HEAD`, and
+  all four working roles use a three-dot diff against the live base instead of a
+  local base branch for claims about the whole branch. This changes the agent
+  definitions on all three hosts —
+  [#358](https://github.com/kninetimmy/orch/pull/358). The v0.12.1 notes below
+  also had two misplaced statements corrected —
+  [#357](https://github.com/kninetimmy/orch/pull/357).
+- What has not happened yet. No autonomy grant has been created or run, so no
+  plan or merge has been approved under one. The live checks of `orch grant
+  relay`, of a push from a background session with the phone app closed, and of
+  the PreCompact block have not been run. Grants work only with the Claude host.
+  The transcript reader recognizes only Claude Code 2.1.295 and 2.1.301, and any
+  other version gets no relay instruction. See the grant entries under known
+  issues and limitations.
+
+Engine release v0.13.0 pairs with Claude/Codex manual-adapter version 0.10.0.
+The manual wire versions and state schema 6 are unchanged from v0.12.1, and
+the OpenCode package stays 0.11.0: it exports only `src/index.js`, and nothing
+under its `src` or skills changed since v0.12.1. Its agent definitions are
+embedded in the engine and written into each project by `orch render-agents`,
+so they arrive with the engine. To upgrade, update the engine and the
+configured Claude or Codex adapter together between runs (see the upgrade
+commands above), restart the host and run `orch doctor --host claude|codex`.
+`orch doctor` reports an installed 0.9.0 adapter as a version mismatch. Re-run
+`orch render-agents` in every project that uses Orch, because #358 changed the
+agent definitions on all three hosts. State schema 6 has no active-run
+migration, so an active run stays on its original pair.
 
 ## v0.12.1 release target
 
