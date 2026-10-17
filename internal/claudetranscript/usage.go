@@ -15,9 +15,12 @@ import (
 )
 
 // supportedVersions are the Claude Code versions whose transcript format this
-// reader was checked against (via testdata/usage_2.1.295.jsonl). Add a version
+// reader was checked against (via testdata/usage_<version>.jsonl). Add a version
 // only after confirming its usage entries still have this shape.
-var supportedVersions = []string{"2.1.295"}
+var supportedVersions = []string{"2.1.295", "2.1.301"}
+
+// Recognized reports whether version is one this reader was checked against.
+func Recognized(version string) bool { return slices.Contains(supportedVersions, version) }
 
 // tailBytes bounds how much of the transcript end is read: transcripts grow
 // large and hooks run often. shortcut: when no main-session assistant entry
@@ -89,7 +92,7 @@ func parse(line []byte) (tokens int64, recognized, isAssistant bool) {
 		return 0, false, false
 	}
 	u := e.Message.Usage
-	if !slices.Contains(supportedVersions, e.Version) || u == nil || u.Input == nil || u.CacheCreation == nil || u.CacheRead == nil {
+	if !Recognized(e.Version) || u == nil || u.Input == nil || u.CacheCreation == nil || u.CacheRead == nil {
 		return 0, false, true
 	}
 	return *u.Input + *u.CacheCreation + *u.CacheRead, true, true

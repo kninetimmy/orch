@@ -16,6 +16,15 @@ func TestContextTokensReadsLatestMainEntryOfVersion2_1_295(t *testing.T) {
 	}
 }
 
+func TestContextTokensReadsLatestMainEntryOfVersion2_1_301(t *testing.T) {
+	got, ok := ContextTokens(filepath.Join("testdata", "usage_2.1.301.jsonl"))
+	// 1 input + 12345 cache creation + 40000 cache read; output and the later
+	// sidechain entry are excluded.
+	if !ok || got != 52346 {
+		t.Fatalf("ContextTokens = %d, %v; want 52346, true", got, ok)
+	}
+}
+
 func TestContextTokensYieldsNothingOnUnrecognizedInput(t *testing.T) {
 	good := `{"type":"assistant","isSidechain":false,"version":"2.1.295","message":{"usage":{"input_tokens":1,"cache_creation_input_tokens":2,"cache_read_input_tokens":3}}}`
 	for name, content := range map[string]string{
@@ -25,6 +34,7 @@ func TestContextTokensYieldsNothingOnUnrecognizedInput(t *testing.T) {
 		"missing version":     strings.Replace(good, `"version":"2.1.295",`, "", 1),
 		"missing cache field": strings.Replace(good, `"cache_read_input_tokens":3`, `"other":3`, 1),
 		"newer unknown entry": good + "\n" + strings.Replace(good, "2.1.295", "2.2.0", 1),
+		"between versions":    strings.Replace(good, "2.1.295", "2.1.300", 1),
 		"not json":            "garbage",
 		"only sidechain":      strings.Replace(good, `"isSidechain":false`, `"isSidechain":true`, 1),
 	} {
