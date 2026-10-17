@@ -2,9 +2,9 @@ package grant
 
 import (
 	"context"
-	"crypto/rand"
-	"encoding/hex"
+	"encoding/json"
 	"fmt"
+	"regexp"
 	"slices"
 	"strings"
 	"time"
@@ -20,8 +20,13 @@ const ClaudeBinary = "claude"
 const relayPromptFormat = "You continue autonomy grant %s, relayed to you by the previous holder so this work " +
 	"proceeds in a clean context. Follow the Orch grant guidance before acting."
 
-// relayTimeout bounds the launch; `claude --bg` returns immediately.
+// relayTimeout bounds each `claude` call a relay makes; `claude --bg` returns
+// immediately and `claude agents --json` only reads.
 var relayTimeout = time.Minute
+
+// backgrounded matches the line `claude --bg` prints for the session it
+// started, such as "backgrounded · 20b2927b".
+var backgrounded = regexp.MustCompile(`(?m)^[ \t]*backgrounded[^\w\n]+([0-9a-f]+)\b`)
 
 // Relay is one hand-off of a grant's session holder.
 type Relay struct {
@@ -32,15 +37,25 @@ type Relay struct {
 
 // RelayArgs returns the exact `claude` argument vector that starts g's
 // successor as a background session with Remote Control on. Every element
-// comes from this build, the grant record, or the pre-generated session id.
-func RelayArgs(g *Grant, sessionID string) []string {
+// comes from this build or the grant record.
+func RelayArgs(g *Grant) []string {
 	return []string{
 		"--bg",
-		"--session-id", sessionID,
 		"--remote-control", g.Terms.ID,
 		"--permission-mode", g.Terms.RelayPermissionMode,
 		fmt.Sprintf(relayPromptFormat, g.Terms.ID),
 	}
+}
+
+// agentsArgs lists Claude Code's sessions as JSON; the bare listing refuses
+// to run without a terminal.
+var agentsArgs = []string{"agents", "--json"}
+
+// agent is the part of one `claude agents --json` entry a relay reads.
+type agent struct {
+	ID        string `json:"id"`
+	Kind      string `json:"kind"`
+	SessionID string `json:"sessionId"`
 }
 
 // Relay starts a successor session for the active grant on behalf of holder
@@ -48,11 +63,11 @@ func RelayArgs(g *Grant, sessionID string) []string {
 // write share one lock, so two relays cannot both succeed. If the launch
 // fails the record is unchanged.
 //
-// The successor's id is chosen here and passed as --session-id, because
-// `claude --bg` prints only an 8-character prefix of the id. The launch is
-// accepted only when that printed prefix matches, so a CLI that ignores the
-// requested id fails the relay instead of recording an id nothing holds. Such
-// a failure can leave a started session behind; the error names it.
+// `claude --bg` prints only a short id for the session it started, and
+// Claude Code 2.1.301 ignores a requested --session-id. The successor's full
+// id is therefore read from the one background entry `claude agents --json`
+// lists under that short id; anything else fails the relay. A failure after
+// the launch can leave a started session behind; the error names it.
 func (s *Store) Relay(ctx context.Context, r execx.Runner, dir, holder string, now time.Time) (*Grant, error) {
 	g, err := s.update(now, "", func(g *Grant) error {
 		if holder == "" {
@@ -71,23 +86,22 @@ func (s *Store) Relay(ctx context.Context, r execx.Runner, dir, holder string, n
 		if mode := g.Terms.RelayPermissionMode; mode == "bypassPermissions" || !slices.Contains(permissionModes, mode) {
 			return fmt.Errorf("grant %s records relay permission mode %q, which a relay never uses; refusing to relay", g.Terms.ID, mode)
 		}
-		next, err := newSessionID()
-		if err != nil {
-			return err
-		}
-		// The grant lock is held across the launch, so a hung launcher must not
+		// The grant lock is held across every call, so a hung claude must not
 		// wedge `orch grant revoke`.
-		ctx, cancel := context.WithTimeout(ctx, relayTimeout)
-		defer cancel()
-		res, err := r.Run(ctx, execx.Cmd{Name: ClaudeBinary, Args: RelayArgs(g, next), Dir: dir})
+		res, err := runClaude(ctx, r, dir, RelayArgs(g))
 		if err != nil {
 			return fmt.Errorf("start successor session: %w (a session may be running; check `%s agents`; holder unchanged)", err, ClaudeBinary)
 		}
 		if res.ExitCode != 0 {
 			return fmt.Errorf("start successor session: %s exited %d: %s", ClaudeBinary, res.ExitCode, strings.TrimSpace(res.Stderr+" "+res.Stdout))
 		}
-		if !strings.Contains(res.Stdout, next[:8]) {
-			return fmt.Errorf("start successor session: %s did not report session %s; a session may be running, check `%s agents` (output: %q); holder unchanged", ClaudeBinary, next[:8], ClaudeBinary, strings.TrimSpace(res.Stdout))
+		m := backgrounded.FindStringSubmatch(res.Stdout)
+		if m == nil {
+			return fmt.Errorf("start successor session: %s did not report a backgrounded session id; a session may be running, check `%s agents` (output: %q); holder unchanged", ClaudeBinary, ClaudeBinary, strings.TrimSpace(res.Stdout))
+		}
+		next, err := backgroundSession(ctx, r, dir, m[1])
+		if err != nil {
+			return fmt.Errorf("identify successor session %s: %w; it may be running, `%s stop %s` removes it; holder unchanged", m[1], err, ClaudeBinary, m[1])
 		}
 		g.Relays = append(g.Relays, Relay{From: g.SessionID, To: next, At: now})
 		g.SessionID = next
@@ -99,14 +113,39 @@ func (s *Store) Relay(ctx context.Context, r execx.Runner, dir, holder string, n
 	return g, err
 }
 
-// newSessionID returns a random version 4 UUID.
-func newSessionID() (string, error) {
-	var b [16]byte
-	if _, err := rand.Read(b[:]); err != nil {
-		return "", fmt.Errorf("generate session id: %w", err)
+// runClaude runs one bounded `claude` call.
+func runClaude(ctx context.Context, r execx.Runner, dir string, args []string) (execx.Result, error) {
+	ctx, cancel := context.WithTimeout(ctx, relayTimeout)
+	defer cancel()
+	return r.Run(ctx, execx.Cmd{Name: ClaudeBinary, Args: args, Dir: dir})
+}
+
+// backgroundSession returns the full session id of the one background
+// session `claude agents --json` lists under short.
+func backgroundSession(ctx context.Context, r execx.Runner, dir, short string) (string, error) {
+	res, err := runClaude(ctx, r, dir, agentsArgs)
+	if err != nil {
+		return "", fmt.Errorf("%s %s: %w", ClaudeBinary, strings.Join(agentsArgs, " "), err)
 	}
-	b[6] = b[6]&0x0f | 0x40
-	b[8] = b[8]&0x3f | 0x80
-	h := hex.EncodeToString(b[:])
-	return h[:8] + "-" + h[8:12] + "-" + h[12:16] + "-" + h[16:20] + "-" + h[20:], nil
+	if res.ExitCode != 0 {
+		return "", fmt.Errorf("%s %s exited %d: %s", ClaudeBinary, strings.Join(agentsArgs, " "), res.ExitCode, strings.TrimSpace(res.Stderr+" "+res.Stdout))
+	}
+	var agents []agent
+	if err := json.Unmarshal([]byte(res.Stdout), &agents); err != nil {
+		return "", fmt.Errorf("decode %s %s: %w", ClaudeBinary, strings.Join(agentsArgs, " "), err)
+	}
+	var found []string
+	for _, a := range agents {
+		if a.ID == short && a.Kind == "background" {
+			found = append(found, a.SessionID)
+		}
+	}
+	if len(found) != 1 {
+		return "", fmt.Errorf("%s %s lists %d background sessions with id %s, want exactly 1", ClaudeBinary, strings.Join(agentsArgs, " "), len(found), short)
+	}
+	// An empty holder could never relay or approve again, so refuse it.
+	if found[0] == "" {
+		return "", fmt.Errorf("%s %s lists background session %s without a sessionId", ClaudeBinary, strings.Join(agentsArgs, " "), short)
+	}
+	return found[0], nil
 }

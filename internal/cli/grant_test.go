@@ -108,6 +108,10 @@ func TestGrantCommands(t *testing.T) {
 	}
 }
 
+// relaySession is the full id the fake `claude agents --json` reports for
+// the session the fake `claude --bg` started.
+const relaySession = "20b2927b-b189-4cf5-825f-a78cd2fcfea8"
+
 // relayRunner sends claude to a fake and everything else (git) to the real runner.
 type relayRunner struct{ launches [][]string }
 
@@ -115,8 +119,11 @@ func (r *relayRunner) Run(ctx context.Context, c execx.Cmd) (execx.Result, error
 	if c.Name != "claude" {
 		return (execx.Local{}).Run(ctx, c)
 	}
+	if c.Args[0] == "agents" {
+		return execx.Result{Stdout: `[{"id":"20b2927b","kind":"background","sessionId":"` + relaySession + `"}]`}, nil
+	}
 	r.launches = append(r.launches, c.Args)
-	return execx.Result{Stdout: "backgrounded · " + c.Args[2][:8] + " (idle)\n"}, nil
+	return execx.Result{Stdout: "backgrounded · 20b2927b\n  claude stop 20b2927b      stop this session"}, nil
 }
 
 func TestGrantRelayCommand(t *testing.T) {
@@ -165,10 +172,10 @@ func TestGrantRelayCommand(t *testing.T) {
 	}
 	t.Setenv(grant.SessionEnv, "session-cli")
 	code, out, stderr := run("", "grant", "relay")
-	if code != ExitOK || len(runner.launches) != 1 || !strings.Contains(out, "Relayed autonomy grant "+pv.Terms.ID) {
+	if code != ExitOK || len(runner.launches) != 1 || out != "Relayed autonomy grant "+pv.Terms.ID+" to session "+relaySession+".\n" {
 		t.Fatalf("relay: %d %q %s", code, out, stderr)
 	}
-	next := runner.launches[0][2]
+	next := relaySession
 	_, out, _ = run("", "grant")
 	for _, want := range []string{"session holder:     " + next, "- session-cli (creator,", "- " + next + " (took over "} {
 		if !strings.Contains(out, want) {
