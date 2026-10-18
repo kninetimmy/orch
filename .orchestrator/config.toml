@@ -3,7 +3,7 @@
 # a Delivery PR.
 
 schema_version  = 1
-config_revision = "sha256:600db1d3fcd7"
+config_revision = "sha256:f5984db27861"
 
 [concurrency]
 max_subagents = 3
@@ -88,3 +88,114 @@ effort = "xhigh"
 [hosts.opencode.roles.review_downgrade]
 model  = "openai/gpt-5.6-sol"
 effort = "high"
+
+[protected]
+methodology_version = 1
+
+[[protected.paths]]
+path   = "internal/grant"
+reason = "The grant engine: approval digests, limits, holder check, protected-path matching and relay decide what an unattended grant may do."
+
+[[protected.paths]]
+path   = "internal/cli/grant.go"
+reason = "The orch grant preview/create/revoke surface that records a grant's terms."
+
+[[protected.paths]]
+path   = "internal/cli/hookgrant.go"
+reason = "The grant hooks that tell a holder session it holds a grant and when to relay."
+
+[[protected.paths]]
+path   = "internal/run/grantgate.go"
+reason = "Applies a grant to a gate, including the holder check, protected-file match and fix-cycle limit."
+
+[[protected.paths]]
+path   = "internal/run/merge.go"
+reason = "The merge gate: required-CI-passing and protected-file checks before a grant merge."
+
+[[protected.paths]]
+path   = "internal/run/gate.go"
+reason = "The plan gate that binds an approval to the effective contract."
+
+[[protected.paths]]
+path   = "internal/run/activate.go"
+reason = "Records each plan approval, by a human or a grant, and enters Delivery."
+
+[[protected.paths]]
+path   = "internal/run/plandoc.go"
+reason = "The plan document and digest that every plan approval binds to."
+
+[[protected.paths]]
+path   = "internal/config"
+reason = "Parses and validates the committed config, including this protected list and its methodology version."
+
+[[protected.paths]]
+path   = "internal/ghops/checks.go"
+reason = "Decides whether a PR's required CI counts as passing, which the merge gate trusts."
+
+[[protected.paths]]
+path   = "internal/guard"
+reason = "The write-enforcement core that confines agents to Assist read-only and their Delivery worktree."
+
+[[protected.paths]]
+path   = "internal/paths"
+reason = "Canonical-path and containment primitives every guard and protected-path check relies on."
+
+[[protected.paths]]
+path   = "internal/cli/guard.go"
+reason = "Maps guard verdicts to the hook protocol's blocking exit."
+
+[[protected.paths]]
+path   = "adapters/claude/hooks"
+reason = "Wires orch guard into Claude Code's Write/Edit hooks; loosening it silently disables enforcement."
+
+[[protected.paths]]
+path   = "adapters/codex/hooks"
+reason = "Wires orch guard into Codex's apply_patch hook; loosening it silently disables enforcement."
+
+[[protected.paths]]
+path   = "adapters/opencode/src"
+reason = "The OpenCode plugin that routes every mutation through orch guard check."
+
+[[protected.paths]]
+path   = "internal/claudenative/launch.go"
+reason = "Launches native Claude sessions and refuses permission-bypass flags."
+
+[[protected.paths]]
+path   = "internal/codexnative/isolation.go"
+reason = "The Codex native isolation preflight that confirms the sandbox and restricted features."
+
+[[protected.paths]]
+path   = "internal/codexnative/isolation_config.go"
+reason = "The restricted-feature set and credential discarding for Codex native isolation."
+
+[[protected.paths]]
+path   = "internal/execx"
+reason = "The command runner that only takes argument vectors, so external input never reaches a shell."
+
+[[protected.paths]]
+path   = "internal/gitops"
+reason = "Forced and irreversible git operations (worktree remove --force, branch -D) and their guards."
+
+[[protected.paths]]
+path   = "internal/run/cleanup.go"
+reason = "Post-merge cleanup that force-deletes the issue branch and removes its worktree."
+
+[[protected.paths]]
+path   = ".claude-plugin"
+reason = "The shared marketplace manifest and version that decide what adapters users install."
+
+[[protected.paths]]
+path   = "adapters/claude/.claude-plugin"
+reason = "The Claude adapter version stamp; a bump is what ships adapter changes to installed sessions."
+
+[[protected.paths]]
+path   = "adapters/codex/.codex-plugin"
+reason = "The Codex adapter version stamp; a bump is what ships adapter changes to installed sessions."
+
+[[protected.paths]]
+path   = "internal/cli/version.go"
+reason = "The version variable the release workflow stamps through -ldflags -X."
+
+[[protected.paths]]
+path   = ".golangci.yml"
+reason = "The lint rules CI enforces; loosening them weakens the CI gate every grant merge relies on."
