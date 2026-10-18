@@ -219,11 +219,23 @@ func Review(ctx context.Context, env Env, reqJSON []byte) (*ReviewResult, error)
 	issue.ReviewCycles++
 	issue.LastReviewVerdict = req.Verdict
 	issue.Phase = state.PhaseInReview
+	blocksBefore := len(issue.Blocks)
 	if len(wrong) > 0 {
 		issue.SetBlock(state.BlockWrong, wrongCriteriaReason(wrong, issue.ReviewCycles))
 	}
 	if fixCycle != "" {
 		issue.SetBlock(state.BlockHuman, fixCycle)
+	}
+	// SetBlock keeps an unresolved decision, so the cause is read from the
+	// block this review actually added, not from which conditions held.
+	blockCause := ""
+	if len(issue.Blocks) > blocksBefore {
+		switch issue.Blocks[len(issue.Blocks)-1].Cause {
+		case state.BlockWrong:
+			blockCause = metrics.BlockCauseWrongCriterion
+		case state.BlockHuman:
+			blockCause = metrics.BlockCauseFixCycleLimit
+		}
 	}
 	if err := c.save(); err != nil {
 		return nil, err
@@ -270,12 +282,13 @@ func Review(ctx context.Context, env Env, reqJSON []byte) (*ReviewResult, error)
 	}
 
 	if err := c.recordMetric(metrics.Event{
-		Verb:         "review",
-		IssueNumber:  issue.Number,
-		Verdict:      req.Verdict,
-		ReviewCycles: issue.ReviewCycles,
-		Reviewer:     &req.Reviewer,
-		Usage:        req.Usage,
+		Verb:             "review",
+		IssueNumber:      issue.Number,
+		Verdict:          req.Verdict,
+		ReviewCycles:     issue.ReviewCycles,
+		Reviewer:         &req.Reviewer,
+		Usage:            req.Usage,
+		ReviewBlockCause: blockCause,
 	}); err != nil {
 		return nil, err
 	}

@@ -53,8 +53,8 @@ type routeKey struct {
 	approval   string
 }
 
-type routeGroup struct {
-	key           routeKey
+// outcomes tallies issue outcomes for one group of issues.
+type outcomes struct {
 	issues        int
 	merged        int
 	abandoned     int
@@ -64,6 +64,93 @@ type routeGroup struct {
 	firstApproved int
 	reviewCycles  int
 	mergeApproval map[string]int
+	// fixCycles counts request-changes reviews that blocked nothing;
+	// reviewBlocks counts reviews that blocked their issue, by cause;
+	// causeUnrecorded counts request-changes reviews from runs that predate
+	// the cause, which may have been either.
+	fixCycles       int
+	reviewBlocks    map[string]int
+	causeUnrecorded int
+}
+
+type routeGroup struct {
+	key routeKey
+	outcomes
+}
+
+// dimension is one value issue outcomes are also broken down by. A run that
+// did not record it is grouped under unknownValue.
+type dimension struct {
+	title string
+	value func(*issueFacts) string
+}
+
+var reportDimensions = []dimension{
+	{"host", func(f *issueFacts) string { return f.host }},
+	{"any risk domain declared", func(f *issueFacts) string { return f.riskDomain }},
+	{"unusually difficult", func(f *issueFacts) string { return f.difficult }},
+	{"downgrade fact mechanical", func(f *issueFacts) string { return f.mechanical }},
+	{"downgrade fact low risk", func(f *issueFacts) string { return f.lowRisk }},
+	{"downgrade fact fully specified", func(f *issueFacts) string { return f.fullySpecified }},
+	{"downgrade fact unsurprising", func(f *issueFacts) string { return f.unsurprising }},
+}
+
+type dimensionGroup struct {
+	value string
+	outcomes
+}
+
+type dimensionReport struct {
+	title  string
+	groups []dimensionGroup
+}
+
+func (o *outcomes) add(f *issueFacts) {
+	if o.mergeApproval == nil {
+		o.mergeApproval = map[string]int{}
+		o.reviewBlocks = map[string]int{}
+	}
+	o.issues++
+	if f.merged {
+		o.merged++
+		o.mergeApproval[f.mergeSource]++
+	}
+	if f.abandoned {
+		o.abandoned++
+	}
+	if f.blocked {
+		o.blocked++
+	}
+	o.escalations += f.escalations
+	if f.firstVerdict != "" {
+		o.reviewed++
+		o.reviewCycles += f.cycles
+		if f.firstVerdict == "approve" {
+			o.firstApproved++
+		}
+	}
+	o.fixCycles += f.fixCycles
+	o.causeUnrecorded += f.causeUnrecorded
+	for cause, n := range f.reviewBlocks {
+		o.reviewBlocks[cause] += n
+	}
+}
+
+// print writes o's outcome lines under an already printed group header.
+func (o outcomes) print(w io.Writer) {
+	merged := fmt.Sprint(o.merged)
+	if o.merged > 0 {
+		merged += " (by merge approval: " + sortedCounts(o.mergeApproval) + ")"
+	}
+	cycles := "unknown (no reviewed issues)"
+	if o.reviewed > 0 {
+		cycles = fmt.Sprintf("%.2f", float64(o.reviewCycles)/float64(o.reviewed))
+	}
+	fmt.Fprintf(w, "    issues %d; merged %s; abandoned %d; blocked %d; escalations %d; first-review approvals %d of %d reviewed; review cycles per reviewed issue %s\n",
+		o.issues, merged, o.abandoned, o.blocked, o.escalations, o.firstApproved, o.reviewed, cycles)
+	wrong, limit := o.reviewBlocks[metrics.BlockCauseWrongCriterion], o.reviewBlocks[metrics.BlockCauseFixCycleLimit]
+	fmt.Fprintf(w, "    request-changes fix cycles %d; reviews that blocked their issue %d (wrong criterion %d, fix-cycle limit %d); request-changes reviews with block cause not recorded %d\n",
+		o.fixCycles, wrong+limit, wrong, limit, o.causeUnrecorded)
 }
 
 // reportUsageKey separates usage recorded on lifecycle events (no host,
@@ -93,6 +180,7 @@ type runElapsed struct {
 type metricsReport struct {
 	runs               int
 	routes             []routeGroup
+	dimensions         []dimensionReport
 	usage              []reportUsageGroup
 	runsWithoutArchUse int
 	elapsed            []runElapsed
@@ -101,6 +189,15 @@ type metricsReport struct {
 // issueFacts is everything one run recorded about one issue.
 type issueFacts struct {
 	role, executor, reviewer, downgraded, approval, mergeSource string
+	// The run host and the activate event's routing facts, each unknownValue
+	// when the run did not record it.
+	host, riskDomain, difficult, mechanical, lowRisk, fullySpecified, unsurprising string
+
+	// Request-changes reviews that blocked nothing, reviews that blocked the
+	// issue by cause, and request-changes reviews of a run that recorded no
+	// cause.
+	fixCycles, causeUnrecorded int
+	reviewBlocks               map[string]int
 
 	merged, abandoned, blocked bool
 	escalations, cycles        int
@@ -135,6 +232,10 @@ func buildMetricsReport(docs []metrics.Document) (metricsReport, error) {
 	r := metricsReport{runs: len(docs)}
 	routes := map[routeKey]*routeGroup{}
 	usage := map[reportUsageKey]*reportUsageGroup{}
+	byDimension := make([]map[string]*outcomes, len(reportDimensions))
+	for i := range byDimension {
+		byDimension[i] = map[string]*outcomes{}
+	}
 
 	for _, doc := range docs {
 		issues := map[int]*issueFacts{}
@@ -145,7 +246,10 @@ func buildMetricsReport(docs []metrics.Document) (metricsReport, error) {
 			f := issues[ev.IssueNumber]
 			if f == nil {
 				f = &issueFacts{role: unknownValue, executor: unknownValue, reviewer: unknownValue,
-					downgraded: unknownValue, approval: unknownValue, mergeSource: unknownValue}
+					downgraded: unknownValue, approval: unknownValue, mergeSource: unknownValue,
+					host: orUnknown(doc.Host), riskDomain: unknownValue, difficult: unknownValue, mechanical: unknownValue,
+					lowRisk: unknownValue, fullySpecified: unknownValue, unsurprising: unknownValue,
+					reviewBlocks: map[string]int{}}
 				issues[ev.IssueNumber] = f
 			}
 			switch ev.Verb {
@@ -165,6 +269,14 @@ func buildMetricsReport(docs []metrics.Document) (metricsReport, error) {
 				}
 				if ev.Verb == "activate" {
 					f.approval = orUnknown(ev.ApprovalSource)
+					if rf := ev.RoutingFacts; rf != nil {
+						f.riskDomain = yesNo(len(rf.RiskDomains) > 0)
+						f.difficult = yesNo(rf.UnusuallyDifficult)
+						f.mechanical = yesNo(rf.Mechanical)
+						f.lowRisk = yesNo(rf.LowRisk)
+						f.fullySpecified = yesNo(rf.FullySpecified)
+						f.unsurprising = yesNo(rf.Unsurprising)
+					}
 				}
 			case "escalate":
 				f.escalations++
@@ -186,6 +298,15 @@ func buildMetricsReport(docs []metrics.Document) (metricsReport, error) {
 					if f.firstVerdict == "" {
 						f.firstVerdict = ev.Verdict
 					}
+					switch {
+					case ev.ReviewBlockCause != "":
+						f.reviewBlocks[ev.ReviewBlockCause]++
+					case ev.Verdict != "request-changes":
+					case doc.Host == "": // the run predates the cause
+						f.causeUnrecorded++
+					default:
+						f.fixCycles++
+					}
 				}
 			}
 		}
@@ -198,27 +319,16 @@ func buildMetricsReport(docs []metrics.Document) (metricsReport, error) {
 			key := routeKey{f.role, f.executor, f.reviewer, f.downgraded, f.approval}
 			g := routes[key]
 			if g == nil {
-				g = &routeGroup{key: key, mergeApproval: map[string]int{}}
+				g = &routeGroup{key: key}
 				routes[key] = g
 			}
-			g.issues++
-			if f.merged {
-				g.merged++
-				g.mergeApproval[f.mergeSource]++
-			}
-			if f.abandoned {
-				g.abandoned++
-			}
-			if f.blocked {
-				g.blocked++
-			}
-			g.escalations += f.escalations
-			if f.firstVerdict != "" {
-				g.reviewed++
-				g.reviewCycles += f.cycles
-				if f.firstVerdict == "approve" {
-					g.firstApproved++
+			g.add(f)
+			for i, d := range reportDimensions {
+				v := d.value(f)
+				if byDimension[i][v] == nil {
+					byDimension[i][v] = &outcomes{}
 				}
+				byDimension[i][v].add(f)
 			}
 		}
 
@@ -297,6 +407,14 @@ func buildMetricsReport(docs []metrics.Document) (metricsReport, error) {
 		a, b := r.routes[i].key, r.routes[j].key
 		return fmt.Sprint(a) < fmt.Sprint(b)
 	})
+	for i, d := range reportDimensions {
+		dr := dimensionReport{title: d.title}
+		for v, o := range byDimension[i] {
+			dr.groups = append(dr.groups, dimensionGroup{value: v, outcomes: *o})
+		}
+		sort.Slice(dr.groups, func(a, b int) bool { return dr.groups[a].value < dr.groups[b].value })
+		r.dimensions = append(r.dimensions, dr)
+	}
 	for _, g := range usage {
 		r.usage = append(r.usage, *g)
 	}
@@ -315,18 +433,16 @@ func printMetricsReport(w io.Writer, r metricsReport) {
 	fmt.Fprintln(w, "\nissue outcomes by role, executor, reviewer, reviewer downgraded and approval at activation:")
 	for _, g := range r.routes {
 		k := g.key
-		merged := fmt.Sprint(g.merged)
-		if g.merged > 0 {
-			merged += " (by merge approval: " + sortedCounts(g.mergeApproval) + ")"
-		}
-		cycles := "unknown (no reviewed issues)"
-		if g.reviewed > 0 {
-			cycles = fmt.Sprintf("%.2f", float64(g.reviewCycles)/float64(g.reviewed))
-		}
 		fmt.Fprintf(w, "  role %s; executor [%s]; reviewer [%s]; reviewer downgraded %s; approval at activation %s\n",
 			k.role, k.executor, k.reviewer, k.downgraded, k.approval)
-		fmt.Fprintf(w, "    issues %d; merged %s; abandoned %d; blocked %d; escalations %d; first-review approvals %d of %d reviewed; review cycles per reviewed issue %s\n",
-			g.issues, merged, g.abandoned, g.blocked, g.escalations, g.firstApproved, g.reviewed, cycles)
+		g.print(w)
+	}
+	for _, d := range r.dimensions {
+		fmt.Fprintf(w, "\nissue outcomes by %s:\n", d.title)
+		for _, g := range d.groups {
+			fmt.Fprintf(w, "  %s %s\n", d.title, g.value)
+			g.print(w)
+		}
 	}
 
 	fmt.Fprintln(w, "\ntoken counters by host, source and stream (no total across groups):")

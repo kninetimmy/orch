@@ -256,3 +256,32 @@ func TestApprovalSourceIsOptional(t *testing.T) {
 		t.Fatalf("events = %+v", evs)
 	}
 }
+
+// Host and the event fields recorded for cross-run reporting are optional: a
+// document written without them loads with them absent, and they round-trip.
+func TestHostAndRoutingFieldsAreOptional(t *testing.T) {
+	root := t.TempDir()
+	writeDoc(t, root, "run-1", `{"schema_version":2,"run_id":"run-1","events":[{"at":"2026-07-13T00:00:00Z","verb":"activate","issue_number":1}]}`)
+	if err := SetHost(root, "run-1", "codex"); err != nil {
+		t.Fatalf("SetHost: %v", err)
+	}
+	if err := Append(root, "run-1", Event{At: "2026-07-13T00:00:01Z", Verb: "review", IssueNumber: 1, PRNumber: 7, ReviewBlockCause: BlockCauseFixCycleLimit,
+		RoutingFacts: &RoutingFacts{RiskDomains: []string{"concurrency"}, Mechanical: true}}); err != nil {
+		t.Fatalf("Append: %v", err)
+	}
+	docs, err := LoadAll(root)
+	if err != nil {
+		t.Fatalf("LoadAll: %v", err)
+	}
+	doc := docs[0]
+	old, ev := doc.Events[0], doc.Events[1]
+	if doc.Host != "codex" || old.RoutingFacts != nil || old.PRNumber != 0 || old.ReviewBlockCause != "" {
+		t.Errorf("host = %q, old event = %+v", doc.Host, old)
+	}
+	if ev.PRNumber != 7 || ev.ReviewBlockCause != BlockCauseFixCycleLimit || ev.RoutingFacts == nil || !ev.RoutingFacts.Mechanical || ev.RoutingFacts.LowRisk {
+		t.Errorf("event = %+v", ev)
+	}
+	if err := SetHost(root, "run-1", "emacs"); err == nil {
+		t.Error("SetHost accepted an unknown host")
+	}
+}

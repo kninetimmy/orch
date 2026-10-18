@@ -127,6 +127,33 @@ type Event struct {
 	// or "grant:<id>" for an autonomy grant. Events written before it
 	// existed carry none and still load.
 	ApprovalSource string `json:"approval_source,omitempty"`
+	// RoutingFacts is the plan's routing facts for an activate event. A nil
+	// pointer means the event predates them (unknown), which is not the same
+	// as every fact being false.
+	RoutingFacts *RoutingFacts `json:"routing_facts,omitempty"`
+	// PRNumber is the issue's PR number on a pr-open or merge event.
+	PRNumber int `json:"pr_number,omitempty"`
+	// ReviewBlockCause is set on a review event whose review blocked its
+	// issue: BlockCauseWrongCriterion or BlockCauseFixCycleLimit. A review
+	// that blocked nothing records none.
+	ReviewBlockCause string `json:"review_block_cause,omitempty"`
+}
+
+// The causes a review event can record in Event.ReviewBlockCause.
+const (
+	BlockCauseWrongCriterion = "wrong_criterion"
+	BlockCauseFixCycleLimit  = "fix_cycle_limit"
+)
+
+// RoutingFacts mirrors the routing facts a plan declared for one issue.
+// Every field is recorded explicitly, so a false is a recorded false.
+type RoutingFacts struct {
+	RiskDomains        []string `json:"risk_domains,omitempty"`
+	UnusuallyDifficult bool     `json:"unusually_difficult"`
+	Mechanical         bool     `json:"mechanical"`
+	LowRisk            bool     `json:"low_risk"`
+	FullySpecified     bool     `json:"fully_specified"`
+	Unsurprising       bool     `json:"unsurprising"`
 }
 
 // validate reports the first violation in ev: At and Verb are
@@ -144,10 +171,13 @@ func (ev Event) validate() error {
 // Document is one Delivery run's metrics history, schema-versioned
 // like internal/state and internal/manifest.
 type Document struct {
-	SchemaVersion int           `json:"schema_version"`
-	RunID         string        `json:"run_id"`
-	Events        []Event       `json:"events"`
-	Observations  []Observation `json:"observations,omitempty"`
+	SchemaVersion int    `json:"schema_version"`
+	RunID         string `json:"run_id"`
+	// Host is the run's host (claude, codex or opencode). Documents written
+	// before it was recorded carry none.
+	Host         string        `json:"host,omitempty"`
+	Events       []Event       `json:"events"`
+	Observations []Observation `json:"observations,omitempty"`
 }
 
 func dirPath(repoRoot string) string {
@@ -181,6 +211,25 @@ func strictDecode(data []byte, v any) error {
 		return errors.New("trailing data after document")
 	}
 	return nil
+}
+
+// SetHost records the run's host in its metrics document, creating the
+// document if needed. It requires the same external serialization as Append.
+func SetHost(repoRoot, runID, host string) error {
+	if err := validateRunID(runID); err != nil {
+		return err
+	}
+	switch host {
+	case "claude", "codex", "opencode":
+	default:
+		return fmt.Errorf("invalid metrics host %q", host)
+	}
+	doc, err := load(repoRoot, runID)
+	if err != nil {
+		return err
+	}
+	doc.Host = host
+	return save(repoRoot, doc)
 }
 
 // Append records ev under repoRoot's run-scoped metrics document

@@ -139,3 +139,48 @@ func readDir(t *testing.T, dir string) string {
 	}
 	return b.String()
 }
+
+func TestMetricsReportBreaksOutcomesDownByHostAndRoutingFacts(t *testing.T) {
+	env, stdout, _ := testEnv(t)
+	writeConfig(t, env.RepoRoot, validTOML)
+	facts := func(difficult, mechanical bool, risk ...string) *metrics.RoutingFacts {
+		return &metrics.RoutingFacts{RiskDomains: risk, UnusuallyDifficult: difficult, Mechanical: mechanical}
+	}
+	newRun := metrics.Document{SchemaVersion: 2, RunID: "run-20260715T000000Z-cccccccc", Host: "codex",
+		Events: []metrics.Event{
+			{At: "2026-07-15T00:00:00Z", Verb: "activate", IssueNumber: 1, RoutingFacts: facts(false, true)},
+			{At: "2026-07-15T00:01:00Z", Verb: "review", IssueNumber: 1, Verdict: "request-changes", ReviewCycles: 1},
+			{At: "2026-07-15T00:02:00Z", Verb: "merge", IssueNumber: 1, PRNumber: 5},
+			{At: "2026-07-15T00:03:00Z", Verb: "activate", IssueNumber: 2, RoutingFacts: facts(true, false, "concurrency")},
+			{At: "2026-07-15T00:04:00Z", Verb: "review", IssueNumber: 2, Verdict: "request-changes", ReviewCycles: 1, ReviewBlockCause: metrics.BlockCauseWrongCriterion},
+			{At: "2026-07-15T00:05:00Z", Verb: "review", IssueNumber: 2, Verdict: "request-changes", ReviewCycles: 2, ReviewBlockCause: metrics.BlockCauseFixCycleLimit},
+		}}
+	oldRun := metrics.Document{SchemaVersion: 2, RunID: "run-20260714T000000Z-bbbbbbbb",
+		Events: []metrics.Event{
+			{At: "2026-07-14T00:00:00Z", Verb: "activate", IssueNumber: 3},
+			{At: "2026-07-14T00:01:00Z", Verb: "review", IssueNumber: 3, Verdict: "request-changes", ReviewCycles: 1},
+		}}
+	writeMetricsFixture(t, env.RepoRoot, newRun.RunID, newRun)
+	writeMetricsFixture(t, env.RepoRoot, oldRun.RunID, oldRun)
+
+	if code := Run([]string{"metrics", "report"}, env); code != ExitOK {
+		t.Fatalf("exit = %d, want %d\n%s", code, ExitOK, stdout.String())
+	}
+	out := stdout.String()
+	for _, want := range []string{
+		"issue outcomes by host:\n  host codex\n    issues 2;",
+		"  host unknown\n    issues 1;",
+		"request-changes fix cycles 1; reviews that blocked their issue 2 (wrong criterion 1, fix-cycle limit 1); request-changes reviews with block cause not recorded 0",
+		"request-changes fix cycles 0; reviews that blocked their issue 0 (wrong criterion 0, fix-cycle limit 0); request-changes reviews with block cause not recorded 1",
+		"issue outcomes by any risk domain declared:\n  any risk domain declared no\n    issues 1;",
+		"  any risk domain declared yes\n    issues 1;",
+		"  any risk domain declared unknown\n    issues 1;",
+		"  unusually difficult yes\n",
+		"  downgrade fact mechanical yes\n    issues 1; merged 1",
+		"  downgrade fact unsurprising unknown\n    issues 1;",
+	} {
+		if !strings.Contains(out, want) {
+			t.Errorf("output missing %q:\n%s", want, out)
+		}
+	}
+}

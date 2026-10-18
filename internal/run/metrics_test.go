@@ -12,6 +12,7 @@ import (
 	"github.com/kninetimmy/orch/internal/execx"
 	"github.com/kninetimmy/orch/internal/execx/execxtest"
 	"github.com/kninetimmy/orch/internal/ghops"
+	"github.com/kninetimmy/orch/internal/manifest"
 	"github.com/kninetimmy/orch/internal/metrics"
 	"github.com/kninetimmy/orch/internal/state"
 )
@@ -138,6 +139,9 @@ func TestReviewRecordsMetricWhenEnabled(t *testing.T) {
 	ev := docs[0].Events[0]
 	if ev.Verb != "review" || ev.IssueNumber != 1 {
 		t.Errorf("event verb/issue = %q/%d", ev.Verb, ev.IssueNumber)
+	}
+	if ev.ReviewBlockCause != "" {
+		t.Errorf("event block cause = %q, want none for a review that blocked nothing", ev.ReviewBlockCause)
 	}
 	if ev.Verdict != "approve" || ev.ReviewCycles != 1 {
 		t.Errorf("event verdict/cycles = %q/%d, want approve/1", ev.Verdict, ev.ReviewCycles)
@@ -326,6 +330,9 @@ func TestPROpenRecordsExecutorRoleWhenEnabled(t *testing.T) {
 	if prOpenEv.Role != "implementer" {
 		t.Errorf("pr-open event role = %q, want the issue's executor role %q", prOpenEv.Role, "implementer")
 	}
+	if prOpenEv.PRNumber != 10 {
+		t.Errorf("pr-open event PR number = %d, want 10", prOpenEv.PRNumber)
+	}
 	if prOpenEv.Usage == nil || prOpenEv.Usage.InputTokens != 10 {
 		t.Errorf("pr-open event usage = %+v, want the request's usage", prOpenEv.Usage)
 	}
@@ -395,4 +402,121 @@ func TestActivateMetricsDisabledCreatesNoStorage(t *testing.T) {
 	}
 	script.AssertExhausted()
 	assertNoMetricsDir(t, root)
+}
+
+// TestActivateRecordsHostAndRoutingFacts pins that a run's host is recorded in
+// its document and each activate event records the facts its plan declared.
+func TestActivateRecordsHostAndRoutingFacts(t *testing.T) {
+	root := newActivateRepoWithConfig(t, metricsEnabledConfigTOML)
+	calls := fullTaxonomyScript()
+	calls = append(calls,
+		ghIssueCreateCall("Issue A", []string{"ready", "feature", "implementer", "standard"}, 1),
+		ghIssueCreateCall("Issue B", []string{"ready", "feature", "specialist", "critical"}, 2),
+	)
+	script := &execxtest.Script{T: t, Calls: calls}
+	env := Env{RepoRoot: root, Runner: muxRunner{git: execx.Local{}, gh: script}, Now: fixedNow}
+	if _, err := Activate(context.Background(), env, activationJSON(t, root, twoIssuePlanJSON())); err != nil {
+		t.Fatalf("Activate: %v", err)
+	}
+	script.AssertExhausted()
+
+	doc := loadMetricsDocs(t, root)[0]
+	if doc.Host != "claude" {
+		t.Errorf("host = %q, want claude", doc.Host)
+	}
+	a, b := doc.Events[0].RoutingFacts, doc.Events[1].RoutingFacts
+	if a == nil || b == nil {
+		t.Fatalf("routing facts = %+v / %+v, want both recorded", a, b)
+	}
+	if len(a.RiskDomains) != 0 || len(b.RiskDomains) != 1 || b.RiskDomains[0] != "concurrency" {
+		t.Errorf("risk domains = %v / %v", a.RiskDomains, b.RiskDomains)
+	}
+	if a.UnusuallyDifficult || a.Mechanical || a.LowRisk || a.FullySpecified || a.Unsurprising {
+		t.Errorf("issue a facts = %+v, want all recorded false", a)
+	}
+}
+
+// TestMergeRecordsPRNumber pins the merge event's PR number.
+func TestMergeRecordsPRNumber(t *testing.T) {
+	iss := fixtureIssue("a", 1, state.PhaseAwaitingMerge)
+	iss.ApprovedHeadOID = "head-oid-2"
+	root := setupDeliveryRepoWithConfig(t, metricsEnabledConfigTOML, "r1", []state.Issue{iss})
+	body := baseManifestBody(t)
+	script := &execxtest.Script{T: t, Calls: []execxtest.Call{
+		ghAuth(), ghPRViewCall(10, "OPEN", "head-oid-2"), ghRollupEmptyCall(10),
+		ghMergePRCall(10, "head-oid-2"), ghPRViewCall(10, "MERGED", "head-oid-2"),
+		ghSetStatusCall(1, ghops.StatusDelivered),
+		ghIssueViewCall(t, 1, "OPEN", body), ghCloseIssueCall(1), ghSetIssueBodyCall(1),
+	}}
+	req := `{"schema_version":1,"issue_number":1,"approval":{"pr_number":10,"head_oid":"head-oid-2","approved_by":"a","approved_at":"2026-07-11T12:00:00Z","statement":"approve-merge"}}`
+	if _, err := Merge(context.Background(), ghEnv(root, script), []byte(req)); err != nil {
+		t.Fatalf("Merge: %v", err)
+	}
+	script.AssertExhausted()
+	events := loadMetricsDocs(t, root)[0].Events
+	if ev := events[len(events)-1]; ev.Verb != "merge" || ev.PRNumber != 10 {
+		t.Errorf("merge event = %+v, want PR number 10", ev)
+	}
+}
+
+// reviewMetricEvent runs Review over a metrics-enabled run and returns the
+// review event it recorded.
+func reviewMetricEvent(t *testing.T, root, body, verdict, judgments string) metrics.Event {
+	t.Helper()
+	script := &execxtest.Script{T: t, Calls: []execxtest.Call{
+		ghAuth(), ghPRViewCall(10, "OPEN", "head-oid-1"),
+		ghIssueViewCall(t, 1, "OPEN", body), ghSetIssueBodyCall(1), ghSetPRBodyCall(10),
+		ghSetStatusCall(1, ghops.StatusNeedsHuman),
+	}}
+	if _, err := Review(context.Background(), ghEnv(root, script), []byte(reviewReq(verdict, judgments))); err != nil {
+		t.Fatalf("Review: %v", err)
+	}
+	script.AssertExhausted()
+	events := loadMetricsDocs(t, root)[0].Events
+	return events[len(events)-1]
+}
+
+// TestReviewRecordsTheBlockItCaused pins the review event's block cause for
+// both blocking producers, and that an ordinary fix cycle records none.
+func TestReviewRecordsTheBlockItCaused(t *testing.T) {
+	wrong := `[{"criterion":1,"judgment":"satisfied","reason":"ok"},{"criterion":2,"judgment":"wrong","reason":"unanswerable"}]`
+	root := setupDeliveryRepoWithConfig(t, metricsEnabledConfigTOML, "r1", []state.Issue{twoCriteriaIssue(state.PhaseInReview)})
+	if ev := reviewMetricEvent(t, root, twoCriteriaBody(t), "request-changes", wrong); ev.ReviewBlockCause != metrics.BlockCauseWrongCriterion {
+		t.Errorf("wrong-criterion review cause = %q", ev.ReviewBlockCause)
+	}
+
+	root = newLifecycleRepoWithConfig(t, metricsEnabledConfigTOML) // the grant store needs a git repo
+	issues := []state.Issue{fixtureIssue("a", 1, state.PhaseInReview)}
+	st, err := state.EnterDelivery(root, "claude", approvedPlanRef(t, root, "r1"), []state.Issue{{PlanID: "a", Phase: state.PhasePlanned}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	st.Run.Issues = issues
+	createBranchWorktree(t, root, "orch/issue-1")
+	g := seedGrant(t, root, nil)
+	st.Run.Plan.ApprovedBy = "grant:" + g.Terms.ID
+	if err := state.Save(root, st); err != nil {
+		t.Fatal(err)
+	}
+	m := baseManifest()
+	for i, verdict := range []string{VerdictRequestChanges, VerdictApprove, VerdictRequestChanges} {
+		m.Verifications = append(m.Verifications, manifest.Verification{Name: fmt.Sprintf("review-cycle-%d", i+1), Result: verdict})
+	}
+	body, err := manifest.Upsert("**Objective**\n\ndo it\n", m)
+	if err != nil {
+		t.Fatal(err)
+	}
+	script := &execxtest.Script{T: t, Calls: []execxtest.Call{
+		ghAuth(), ghPRViewCall(10, "OPEN", "head-oid-1"), ghIssueViewCall(t, 1, "OPEN", body),
+		ghIssueViewCall(t, 1, "OPEN", body), ghSetIssueBodyCall(1), ghSetPRBodyCall(10),
+		ghSetStatusCall(1, ghops.StatusNeedsHuman),
+	}}
+	env := Env{RepoRoot: root, Runner: muxRunner{git: execx.Local{}, gh: script}, Now: fixedNow}
+	if _, err := Review(context.Background(), env, []byte(reviewReq(VerdictRequestChanges, unsatisfied))); err != nil {
+		t.Fatalf("Review: %v", err)
+	}
+	events := loadMetricsDocs(t, root)[0].Events
+	if ev := events[len(events)-1]; ev.ReviewBlockCause != metrics.BlockCauseFixCycleLimit {
+		t.Errorf("fix-cycle-limit review cause = %q", ev.ReviewBlockCause)
+	}
 }
