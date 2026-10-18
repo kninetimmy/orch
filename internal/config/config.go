@@ -5,6 +5,8 @@
 // policy-bearing key set locally is rejected (see overlay.go).
 package config
 
+import "fmt"
+
 // Config is the root of the committed configuration schema, after any
 // machine-local overlay has been merged in.
 type Config struct {
@@ -16,12 +18,52 @@ type Config struct {
 	Metrics        Metrics     `toml:"metrics"`
 	Hosts          Hosts       `toml:"hosts"`
 
+	// Protected is the repository's own grant-protected path list, added to
+	// the floor every repository gets (grant.Protected). Nil when the
+	// committed file has no [protected] section; it is omitted from the
+	// revision then, so pre-#397 revisions are unchanged.
+	Protected *Protected `toml:"protected" json:",omitempty"`
+
 	// Overrides lists, sorted, the dotted keys applied from
 	// config.local.toml. It is the audit surface for PRD §23: which
 	// exact model/execution-profile values are in effect must always be visible.
 	// Empty (nil) when no local override file exists or it sets
 	// nothing. Never itself read from either TOML file.
 	Overrides []string `toml:"-"`
+}
+
+// SurveyMethodologyVersion is the version of the survey methodology this
+// binary uses to propose a repository's protected list. A grant refuses to
+// start or merge under a list approved under any other version.
+const SurveyMethodologyVersion = 1
+
+// Protected is the committed [protected] section: the survey methodology
+// version it was approved under and its paths, each with a one-line reason.
+// It is policy: config.local.toml can set none of it.
+type Protected struct {
+	MethodologyVersion int             `toml:"methodology_version"`
+	Paths              []ProtectedPath `toml:"paths"`
+}
+
+// ProtectedPath is one repository-relative path a grant can never merge a
+// change to; a directory covers everything under it.
+type ProtectedPath struct {
+	Path   string `toml:"path"`
+	Reason string `toml:"reason"`
+}
+
+// CheckGrantProtected returns why no grant may start or merge under c: it
+// has no [protected] section, or one approved under another survey
+// methodology version than this binary's. Nil when the section is usable,
+// including one with no paths.
+func (c *Config) CheckGrantProtected() error {
+	switch {
+	case c.Protected == nil:
+		return fmt.Errorf("%s has no [protected] section, so this repository has no approved grant-protected path list; run /orch:configure to survey and approve one", Path)
+	case c.Protected.MethodologyVersion != SurveyMethodologyVersion:
+		return fmt.Errorf("%s's [protected] section was approved under survey methodology version %d, not this binary's version %d; run /orch:configure to re-survey and approve it", Path, c.Protected.MethodologyVersion, SurveyMethodologyVersion)
+	}
+	return nil
 }
 
 // Concurrency caps concurrent subagents (PRD §14; default 3).
