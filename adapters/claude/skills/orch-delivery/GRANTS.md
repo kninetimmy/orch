@@ -143,13 +143,23 @@ at the next stopping point (no subagent in flight, no verb half-done). In order:
 1. Wrap up.
 2. Log a handoff session note recording anything in flight that Orch's run
    state does not hold.
-3. Run `orch grant relay`. It hands the grant to a background successor.
+3. Run `orch grant relay`. It hands the grant to a background successor and
+   prints whether this session is a background session, an interactive session,
+   or one whose kind could not be determined.
 4. Your last message says you handed off and this session should not be used
-   again. Then stop using the session.
+   again. Then stop using the session. A background holder cannot stop itself,
+   so its successor stops it with `claude stop` (which keeps the conversation)
+   when the successor starts: the relay may be a background holder's last
+   action, and the successor may stop it before it sends a last message. An
+   interactive holder is never stopped by Orch, and a holder of undetermined
+   kind may not be: the last message tells the user to `/exit` it.
 
 If `orch grant relay` fails, the holder is unchanged: this session still holds
 the grant. Keep working in it and do not stop. Notify the user with a decision
 packet that reports the failure, and check `claude agents` for a stray session.
 
 A newly started session that holds the grant reads the latest handoff session
-note before acting.
+note before acting. If its session context says Orch could not stop the
+previous holder, it runs the `claude stop` command that context names (never
+`claude rm`); if the previous holder is interactive, it asks the user to
+`/exit` it.

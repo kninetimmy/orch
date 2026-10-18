@@ -45,6 +45,7 @@ type fakeClaude struct {
 	cmds   []execx.Cmd
 	launch func() (execx.Result, error)
 	agents func() (execx.Result, error)
+	stop   func() (execx.Result, error)
 	hang   string // first argument of the call that blocks until its context ends
 }
 
@@ -55,7 +56,12 @@ func (f *fakeClaude) Run(ctx context.Context, c execx.Cmd) (execx.Result, error)
 		return execx.Result{}, ctx.Err()
 	}
 	answer := f.launch
-	if c.Args[0] == "agents" {
+	if c.Args[0] == "stop" {
+		answer = f.stop
+		if answer == nil {
+			answer = prints("")
+		}
+	} else if c.Args[0] == "agents" {
 		answer = f.agents
 		if answer == nil {
 			answer = prints(agentsOutput(liveShort, liveSession))
@@ -80,7 +86,7 @@ func TestRelayHandsOffTheHolder(t *testing.T) {
 	s, g := createdStore(t)
 	f := &fakeClaude{}
 	at := now.Add(time.Minute)
-	got, err := s.Relay(context.Background(), f, "/repo", session, at)
+	got, _, err := s.Relay(context.Background(), f, "/repo", session, at)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -111,7 +117,7 @@ func TestRelayHandsOffTheHolder(t *testing.T) {
 	}
 	// The previous holder can no longer relay, and the chain extends.
 	before := snapshot(t, s.dir)
-	if _, err := s.Relay(context.Background(), f, "/repo", session, at); err == nil || !strings.Contains(err.Error(), "does not hold") {
+	if _, _, err := s.Relay(context.Background(), f, "/repo", session, at); err == nil || !strings.Contains(err.Error(), "does not hold") {
 		t.Fatalf("old holder relay: %v", err)
 	}
 	if len(f.cmds) != 2 || !reflect.DeepEqual(before, snapshot(t, s.dir)) {
@@ -120,7 +126,7 @@ func TestRelayHandsOffTheHolder(t *testing.T) {
 	const short, third = "0c1d2e3f", "0c1d2e3f-0000-4000-8000-000000000001"
 	f = &fakeClaude{launch: prints(launchOutput(short)), agents: prints(agentsOutput(liveShort, liveSession, short, third))}
 	later := at.Add(time.Minute)
-	again, err := s.Relay(context.Background(), f, "/repo", liveSession, later)
+	again, _, err := s.Relay(context.Background(), f, "/repo", liveSession, later)
 	if err != nil || again.SessionID != third || len(again.Relays) != 2 || again.Relays[1] != (Relay{From: liveSession, To: third, At: later}) {
 		t.Fatalf("second relay = %+v, %v", again, err)
 	}
@@ -129,7 +135,7 @@ func TestRelayHandsOffTheHolder(t *testing.T) {
 func TestRelayRefusalsAndFailuresLeaveTheHolder(t *testing.T) {
 	empty := newStore(t)
 	f := &fakeClaude{}
-	if _, err := empty.Relay(context.Background(), f, "/repo", session, now); !errors.Is(err, ErrNoActiveGrant) || len(f.cmds) != 0 {
+	if _, _, err := empty.Relay(context.Background(), f, "/repo", session, now); !errors.Is(err, ErrNoActiveGrant) || len(f.cmds) != 0 {
 		t.Fatalf("no grant: %v, launches %d", err, len(f.cmds))
 	}
 	failed := func(err error) func() (execx.Result, error) {
@@ -166,7 +172,7 @@ func TestRelayRefusalsAndFailuresLeaveTheHolder(t *testing.T) {
 			s, _ := createdStore(t)
 			before := snapshot(t, s.dir)
 			f := &fakeClaude{launch: tc.launch, agents: tc.agents}
-			_, err := s.Relay(context.Background(), f, "/repo", tc.holder, now)
+			_, _, err := s.Relay(context.Background(), f, "/repo", tc.holder, now)
 			for _, want := range tc.want {
 				if err == nil || !strings.Contains(err.Error(), want) {
 					t.Fatalf("err = %v, want %q", err, want)
@@ -194,7 +200,7 @@ func TestRelayTimesOutWithTheHolderUnchanged(t *testing.T) {
 			s, _ := createdStore(t)
 			before := snapshot(t, s.dir)
 			f := &fakeClaude{hang: tc.hang}
-			_, err := s.Relay(context.Background(), f, "/repo", session, now)
+			_, _, err := s.Relay(context.Background(), f, "/repo", session, now)
 			if err == nil || !errors.Is(err, context.DeadlineExceeded) || !strings.Contains(err.Error(), tc.want) || len(f.cmds) != tc.runs {
 				t.Fatalf("err = %v, calls %d", err, len(f.cmds))
 			}
@@ -233,12 +239,104 @@ func TestRelayRefusesATamperedRecord(t *testing.T) {
 			}
 			before := snapshot(t, s.dir)
 			f := &fakeClaude{}
-			if _, err := s.Relay(context.Background(), f, "/repo", session, now); err == nil || !strings.Contains(err.Error(), tc.want) {
+			if _, _, err := s.Relay(context.Background(), f, "/repo", session, now); err == nil || !strings.Contains(err.Error(), tc.want) {
 				t.Fatalf("err = %v, want %q", err, tc.want)
 			}
 			if len(f.cmds) != 0 || !reflect.DeepEqual(before, snapshot(t, s.dir)) {
 				t.Fatal("tampered relay launched or wrote")
 			}
 		})
+	}
+}
+
+// TestRelayReportsTheHoldersKind pins the three kinds a relay can report for
+// the session that ran it, read from the listing the relay already fetched.
+func TestRelayReportsTheHoldersKind(t *testing.T) {
+	entry := func(kind, id string) string {
+		return `{"pid":1,"kind":"` + kind + `","sessionId":"` + id + `"}`
+	}
+	next := agentsOutput(liveShort, liveSession)
+	withHolder := func(kind string) string {
+		return strings.TrimSuffix(next, "]") + "," + entry(kind, session) + "]"
+	}
+	for _, tc := range []struct {
+		name, agents string
+		want         HolderKind
+	}{
+		{"background", withHolder("background"), KindBackground},
+		{"interactive", withHolder("interactive"), KindInteractive},
+		{"not listed", next, KindUnknown},
+		{"unrecognized kind", withHolder("daemon"), KindUnknown},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			s, _ := createdStore(t)
+			f := &fakeClaude{agents: prints(tc.agents)}
+			_, kind, err := s.Relay(context.Background(), f, "/repo", session, now)
+			if err != nil || kind != tc.want {
+				t.Fatalf("kind = %q, %v; want %q", kind, err, tc.want)
+			}
+		})
+	}
+}
+
+func TestStopPredecessor(t *testing.T) {
+	const (
+		from  = "11111111-0000-4000-8000-000000000001"
+		other = "22222222-0000-4000-8000-000000000002"
+	)
+	listing := func(kind string) string {
+		return strings.TrimSuffix(agentsOutput(liveShort, other), "]") +
+			`,{"pid":2,"id":"abcd1234","kind":"` + kind + `","sessionId":"` + from + `"}]`
+	}
+	failed := func(err error) func() (execx.Result, error) {
+		return func() (execx.Result, error) { return execx.Result{}, err }
+	}
+	exited := func() (execx.Result, error) { return execx.Result{ExitCode: 1, Stderr: "no such session"}, nil }
+	stopFrom := []string{"stop", "abcd1234"}
+	for _, tc := range []struct {
+		name      string
+		agents    func() (execx.Result, error)
+		stop      func() (execx.Result, error)
+		wantKind  HolderKind
+		wantShort string
+		wantErr   string
+		wantStop  bool
+	}{
+		{"background source is stopped", prints(listing("background")), nil, KindBackground, "abcd1234", "", true},
+		{"interactive source is left alone", prints(listing("interactive")), nil, KindInteractive, "", "", false},
+		{"unlisted source is left alone", prints(agentsOutput(liveShort, other)), nil, KindUnknown, "", "", false},
+		{"listing fails", failed(errors.New("agents broke")), nil, KindUnknown, "", "agents broke", false},
+		{"listing is not JSON", prints("nope"), nil, KindUnknown, "", "decode", false},
+		{"stop exits non-zero", prints(listing("background")), exited, KindBackground, "abcd1234", "no such session", true},
+		{"stop cannot run", prints(listing("background")), failed(errors.New("claude gone")), KindBackground, "abcd1234", "claude gone", true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			f := &fakeClaude{agents: tc.agents, stop: tc.stop}
+			kind, short, err := StopPredecessor(context.Background(), f, "/repo", from)
+			if kind != tc.wantKind || short != tc.wantShort || (err == nil) != (tc.wantErr == "") || (err != nil && !strings.Contains(err.Error(), tc.wantErr)) {
+				t.Fatalf("got %q %q %v, want %q %q %q", kind, short, err, tc.wantKind, tc.wantShort, tc.wantErr)
+			}
+			var stops [][]string
+			for _, c := range f.cmds {
+				if c.Args[0] != "agents" {
+					stops = append(stops, c.Args)
+				}
+			}
+			// The only call besides the listing is `claude stop` of the source's
+			// short id: never rm, and never the other background session.
+			if tc.wantStop != (len(stops) == 1) || (tc.wantStop && !reflect.DeepEqual(stops[0], stopFrom)) || (!tc.wantStop && len(stops) != 0) {
+				t.Fatalf("non-listing calls = %q", stops)
+			}
+		})
+	}
+}
+
+func TestStopPredecessorTimesOut(t *testing.T) {
+	old := stopTimeout
+	stopTimeout = 20 * time.Millisecond
+	t.Cleanup(func() { stopTimeout = old })
+	f := &fakeClaude{hang: "agents"}
+	if _, _, err := StopPredecessor(context.Background(), f, "/repo", "x"); !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("err = %v", err)
 	}
 }

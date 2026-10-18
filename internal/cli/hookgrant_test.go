@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"reflect"
 	"strconv"
 	"strings"
 	"testing"
@@ -331,5 +332,96 @@ func enableMetrics(t *testing.T, root string) {
 	t.Helper()
 	if err := os.WriteFile(filepath.Join(root, ".orchestrator", "config.toml"), []byte(validTOML+"\n[metrics]\nenabled = true\n"), 0o644); err != nil {
 		t.Fatal(err)
+	}
+}
+
+// stopRunner answers the claude calls a relayed-to session's start makes and
+// runs git (the grant store's) for real.
+type stopRunner struct {
+	execx.Runner
+	agents execx.Result
+	stop   execx.Result
+	calls  [][]string
+}
+
+func (r *stopRunner) Run(ctx context.Context, c execx.Cmd) (execx.Result, error) {
+	if c.Name != "claude" {
+		return r.Runner.Run(ctx, c)
+	}
+	r.calls = append(r.calls, c.Args)
+	switch c.Args[0] {
+	case "--version":
+		return execx.Result{Stdout: "2.1.301 (Claude Code)\n"}, nil
+	case "agents":
+		return r.agents, nil
+	case "stop":
+		return r.stop, nil
+	}
+	return execx.Result{Stdout: "backgrounded · 20b2927b\n"}, nil
+}
+
+func TestHookSessionStartStopsThePreviousHolder(t *testing.T) {
+	const successor = "20b2927b-b189-4cf5-825f-a78cd2fcfea8"
+	listing := func(kind string) execx.Result {
+		return execx.Result{Stdout: `[{"id":"20b2927b","kind":"background","sessionId":"` + successor + `"},` +
+			`{"id":"ab12cd34","kind":"` + kind + `","sessionId":"` + grantHolder + `"},` +
+			`{"id":"99999999","kind":"background","sessionId":"bystander"}]`}
+	}
+	for _, tc := range []struct {
+		name     string
+		agents   execx.Result
+		stop     execx.Result
+		wantStop bool
+		want     []string
+	}{
+		{"background previous holder", listing("background"), execx.Result{}, true, []string{"stopped the previous holder", "background session " + grantHolder}},
+		{"interactive previous holder", listing("interactive"), execx.Result{}, false, []string{"/exit", grantHolder}},
+		{"previous holder not listed", execx.Result{Stdout: `[]`}, execx.Result{}, false, nil},
+		{"listing fails", execx.Result{ExitCode: 1, Stderr: "no daemon"}, execx.Result{}, false, []string{"could not stop the previous holder", grantHolder, "claude stop <id>"}},
+		{"stop fails", listing("background"), execx.Result{ExitCode: 1, Stderr: "boom"}, true, []string{"could not stop the previous holder", grantHolder, "`claude stop ab12cd34`"}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			env := grantRepo(t, true)
+			runner := &stopRunner{Runner: env.Runner, agents: listing("background")}
+			env.Runner = runner
+			store, err := grant.Open(context.Background(), env.Runner, env.RepoRoot)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if _, _, err := store.Relay(context.Background(), runner, env.RepoRoot, grantHolder, time.Now()); err != nil {
+				t.Fatal(err)
+			}
+			runner.calls, runner.agents, runner.stop = nil, tc.agents, tc.stop
+
+			code, out, _ := runHookVerb(env, hookDoc(map[string]string{"session_id": successor}), "session-start")
+			if code != ExitOK || !strings.Contains(out, "is the current holder") {
+				t.Fatalf("session did not start as the holder: %d\n%s", code, out)
+			}
+			for _, want := range tc.want {
+				if !strings.Contains(out, want) {
+					t.Errorf("output missing %q:\n%s", want, out)
+				}
+			}
+			var stops [][]string
+			for _, c := range runner.calls {
+				if c[0] != "--version" && c[0] != "agents" {
+					stops = append(stops, c)
+				}
+			}
+			if tc.wantStop != (len(stops) == 1) || (tc.wantStop && !reflect.DeepEqual(stops[0], []string{"stop", "ab12cd34"})) {
+				t.Errorf("stop calls = %q", stops)
+			}
+
+			// The previous holder's own start, and any other session's, stops nothing.
+			runner.calls = nil
+			for _, id := range []string{grantHolder, "bystander"} {
+				runHookVerb(env, hookDoc(map[string]string{"session_id": id}), "session-start")
+			}
+			for _, c := range runner.calls {
+				if c[0] != "--version" {
+					t.Errorf("non-holder start ran claude %q", c)
+				}
+			}
+		})
 	}
 }

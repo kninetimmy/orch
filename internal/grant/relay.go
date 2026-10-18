@@ -58,8 +58,32 @@ type agent struct {
 	SessionID string `json:"sessionId"`
 }
 
+// HolderKind is what `claude agents --json` says a session is.
+type HolderKind string
+
+// Holder kinds. KindUnknown covers a session the listing does not include.
+const (
+	KindBackground  HolderKind = "background"
+	KindInteractive HolderKind = "interactive"
+	KindUnknown     HolderKind = "unknown"
+)
+
+// kindOf returns the kind the listing gives the session with the full id id.
+func kindOf(agents []agent, id string) HolderKind {
+	for _, a := range agents {
+		if a.SessionID == id {
+			switch HolderKind(a.Kind) {
+			case KindBackground, KindInteractive:
+				return HolderKind(a.Kind)
+			}
+		}
+	}
+	return KindUnknown
+}
+
 // Relay starts a successor session for the active grant on behalf of holder
-// and records it as the current holder. The holder check, the launch and the
+// and records it as the current holder. It also reports holder's own kind,
+// read from the same listing, so the caller can say who ends the holder. The holder check, the launch and the
 // write share one lock, so two relays cannot both succeed. If the launch
 // fails the record is unchanged.
 //
@@ -68,7 +92,8 @@ type agent struct {
 // id is therefore read from the one background entry `claude agents --json`
 // lists under that short id; anything else fails the relay. A failure after
 // the launch can leave a started session behind; the error names it.
-func (s *Store) Relay(ctx context.Context, r execx.Runner, dir, holder string, now time.Time) (*Grant, error) {
+func (s *Store) Relay(ctx context.Context, r execx.Runner, dir, holder string, now time.Time) (*Grant, HolderKind, error) {
+	kind := KindUnknown
 	g, err := s.update(now, "", func(g *Grant) error {
 		if holder == "" {
 			return fmt.Errorf("%s is absent from the environment; only the session holding grant %s can relay it", SessionEnv, g.Terms.ID)
@@ -99,18 +124,23 @@ func (s *Store) Relay(ctx context.Context, r execx.Runner, dir, holder string, n
 		if m == nil {
 			return fmt.Errorf("start successor session: %s did not report a backgrounded session id; a session may be running, check `%s agents` (output: %q); holder unchanged", ClaudeBinary, ClaudeBinary, strings.TrimSpace(res.Stdout))
 		}
-		next, err := backgroundSession(ctx, r, dir, m[1])
+		agents, err := listAgents(ctx, r, dir)
+		var next string
+		if err == nil {
+			next, err = backgroundSession(agents, m[1])
+		}
 		if err != nil {
 			return fmt.Errorf("identify successor session %s: %w; it may be running, `%s stop %s` removes it; holder unchanged", m[1], err, ClaudeBinary, m[1])
 		}
+		kind = kindOf(agents, holder)
 		g.Relays = append(g.Relays, Relay{From: g.SessionID, To: next, At: now})
 		g.SessionID = next
 		return nil
 	})
 	if err == nil && g == nil {
-		return nil, ErrNoActiveGrant
+		return nil, KindUnknown, ErrNoActiveGrant
 	}
-	return g, err
+	return g, kind, err
 }
 
 // runClaude runs one bounded `claude` call.
@@ -120,20 +150,25 @@ func runClaude(ctx context.Context, r execx.Runner, dir string, args []string) (
 	return r.Run(ctx, execx.Cmd{Name: ClaudeBinary, Args: args, Dir: dir})
 }
 
-// backgroundSession returns the full session id of the one background
-// session `claude agents --json` lists under short.
-func backgroundSession(ctx context.Context, r execx.Runner, dir, short string) (string, error) {
+// listAgents runs `claude agents --json` and decodes the sessions it lists.
+func listAgents(ctx context.Context, r execx.Runner, dir string) ([]agent, error) {
 	res, err := runClaude(ctx, r, dir, agentsArgs)
 	if err != nil {
-		return "", fmt.Errorf("%s %s: %w", ClaudeBinary, strings.Join(agentsArgs, " "), err)
+		return nil, fmt.Errorf("%s %s: %w", ClaudeBinary, strings.Join(agentsArgs, " "), err)
 	}
 	if res.ExitCode != 0 {
-		return "", fmt.Errorf("%s %s exited %d: %s", ClaudeBinary, strings.Join(agentsArgs, " "), res.ExitCode, strings.TrimSpace(res.Stderr+" "+res.Stdout))
+		return nil, fmt.Errorf("%s %s exited %d: %s", ClaudeBinary, strings.Join(agentsArgs, " "), res.ExitCode, strings.TrimSpace(res.Stderr+" "+res.Stdout))
 	}
 	var agents []agent
 	if err := json.Unmarshal([]byte(res.Stdout), &agents); err != nil {
-		return "", fmt.Errorf("decode %s %s: %w", ClaudeBinary, strings.Join(agentsArgs, " "), err)
+		return nil, fmt.Errorf("decode %s %s: %w", ClaudeBinary, strings.Join(agentsArgs, " "), err)
 	}
+	return agents, nil
+}
+
+// backgroundSession returns the full session id of the one background
+// session agents lists under short.
+func backgroundSession(agents []agent, short string) (string, error) {
 	var found []string
 	for _, a := range agents {
 		if a.ID == short && a.Kind == "background" {
@@ -148,4 +183,42 @@ func backgroundSession(ctx context.Context, r execx.Runner, dir, short string) (
 		return "", fmt.Errorf("%s %s lists background session %s without a sessionId", ClaudeBinary, strings.Join(agentsArgs, " "), short)
 	}
 	return found[0], nil
+}
+
+// stopTimeout bounds the whole of StopPredecessor, which runs inside a
+// session-start hook that must not hang.
+var stopTimeout = 30 * time.Second
+
+// StopPredecessor ends the session a relay handed the grant over from, which
+// cannot stop itself. It stops only a session `claude agents --json` lists as
+// a background session, with `claude stop`, which keeps the conversation for
+// audits; it never runs `claude rm`. It reports the kind it found and, for a
+// background session, the short id it stopped (or failed to stop). An
+// interactive or unlisted session is left alone: only the user can end an
+// interactive one.
+func StopPredecessor(ctx context.Context, r execx.Runner, dir, from string) (kind HolderKind, short string, err error) {
+	ctx, cancel := context.WithTimeout(ctx, stopTimeout)
+	defer cancel()
+	agents, err := listAgents(ctx, r, dir)
+	if err != nil {
+		return KindUnknown, "", err
+	}
+	for _, a := range agents {
+		if a.SessionID != from || a.Kind != string(KindBackground) {
+			continue
+		}
+		if a.ID == "" {
+			return KindBackground, "", fmt.Errorf("%s %s lists background session %s without an id", ClaudeBinary, strings.Join(agentsArgs, " "), from)
+		}
+		args := []string{"stop", a.ID}
+		res, err := runClaude(ctx, r, dir, args)
+		if err != nil {
+			return KindBackground, a.ID, fmt.Errorf("%s %s: %w", ClaudeBinary, strings.Join(args, " "), err)
+		}
+		if res.ExitCode != 0 {
+			return KindBackground, a.ID, fmt.Errorf("%s %s exited %d: %s", ClaudeBinary, strings.Join(args, " "), res.ExitCode, strings.TrimSpace(res.Stderr+" "+res.Stdout))
+		}
+		return KindBackground, a.ID, nil
+	}
+	return kindOf(agents, from), "", nil
 }
