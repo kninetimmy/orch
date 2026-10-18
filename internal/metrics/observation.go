@@ -368,6 +368,11 @@ func (doc Document) validate() error {
 	if doc.SchemaVersion == 1 && len(doc.Observations) != 0 {
 		return errors.New("schema-1 document cannot contain observations")
 	}
+	for _, s := range doc.ArchitectSessions {
+		if !identifier(s) {
+			return fmt.Errorf("invalid architect session %q", s)
+		}
+	}
 	for _, ev := range doc.Events {
 		if err := ev.validate(); err != nil {
 			return err
