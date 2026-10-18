@@ -5,7 +5,7 @@
 <p align="center">
   <img src="https://img.shields.io/badge/License-MIT-2E7D32?style=flat&logo=opensourceinitiative&logoColor=white" alt="License: MIT"/>
   <img src="https://img.shields.io/badge/Go-1.26%2B-00ADD8?style=flat&logo=go&logoColor=white" alt="Go 1.26+"/>
-  <img src="https://img.shields.io/badge/Release%20target-v0.14.1-24292F?style=flat&logo=github&logoColor=white" alt="Release target: v0.14.1"/>
+  <img src="https://img.shields.io/badge/Release%20target-v0.15.0-24292F?style=flat&logo=github&logoColor=white" alt="Release target: v0.15.0"/>
   <br/>
   <img src="https://img.shields.io/badge/Platform-Linux%20%C2%B7%20macOS%20%C2%B7%20Windows-607D8B?style=flat" alt="Platform: Linux, macOS, Windows"/>
   <img src="https://img.shields.io/badge/Hosts-Claude%20Code%20%C2%B7%20Codex%20CLI%20%C2%B7%20OpenCode%20V2-6E56CF?style=flat" alt="Hosts: Claude Code, Codex CLI, and OpenCode V2"/>
@@ -252,14 +252,17 @@ service after upgrading its adapter so the new hooks and skills are loaded.
 source revision `611c645` uses state schema 6, approval contract 1, and these
 manual wire versions: Gate 3, Status 4, Activation 2, Dispatch 4, Review 3,
 Escalate 2, Block 2, Resume 2, and Resolve Block 1. The Claude and Codex
-adapter version 0.11.1 is paired with engine v0.14.1; version 0.11.0 was
-paired with engine v0.14.0, and version 0.10.0 with engine v0.13.0 and v0.13.1.
-Engine v0.14.1 keeps the manual wire
+adapter version 0.12.0 is paired with engine v0.15.0; version 0.11.1 was
+paired with engine v0.14.1, version 0.11.0 with engine v0.14.0, and version
+0.10.0 with engine v0.13.0 and v0.13.1. Engine v0.15.0 keeps the manual wire
 versions above, state schema 6 and metrics document schema 2 unchanged from
-v0.14.0. `orch doctor` reports an installed 0.11.0 adapter as a version
+v0.14.1. `orch doctor` reports an installed 0.11.1 adapter as a version
 mismatch. The OpenCode package stays 0.12.0 because none of its files changed
-since v0.14.0; its exported source is unchanged, and its agent
+since v0.14.1; its exported source is unchanged, and its agent
 definitions are embedded in the engine and written by `orch render-agents`.
+Engine v0.14.1 and earlier refuse a config that contains a `[protected]`
+section, so upgrade the engine on every machine that uses a repository before
+that repository's list is merged.
 Because #358 changed the agent definitions on all three hosts in v0.13.0, when
 upgrading from a release before v0.13.0 re-run `orch render-agents` in every
 project that uses Orch. Release and adapter version labels describe compatibility, while
@@ -541,6 +544,72 @@ too. Anything a subagent wants remembered comes back in its report.
 Every memhub command runs with the primary checkout as its working
 directory, never inside a per-issue worktree, because worktrees never
 receive a copy of the memhub database.
+
+## v0.15.0 release target
+
+- Relay stop for the previous grant holder. `orch grant relay` now reports
+  whether the session that ran it is a background session, an interactive
+  session or of unknown kind. When the successor starts, its session-start hook
+  stops a background predecessor with `claude stop`, never `claude rm`, so the
+  conversation is kept. An interactive predecessor is never stopped by Orch: the
+  successor asks you to end it with `/exit`. If listing or stopping fails, the
+  hook names the `claude stop` command to run by hand —
+  [#399](https://github.com/kninetimmy/orch/pull/399).
+- Grant protection that left the binary. Before v0.15.0 the engine itself
+  protected Orch's own source: the paths the #366 and #391 entries name (the
+  kill switch, the grant hooks, the transcript reader, `orch run pr-open`, and
+  every adapter's skills, hooks and agents directories) and the rest of its
+  compiled list. From v0.15.0 those paths are protected only when a repository's
+  committed `[protected]` list in `.orchestrator/config.toml` names them. The
+  built-in floor protects every repository: instruction files (`CLAUDE.md`,
+  `AGENTS.md`), git attributes and ignore files, CI workflows, the
+  `.orchestrator` directory, the license, and dependency manifests, lockfiles
+  and install or build scripts at any depth. Each `[protected]` entry is a
+  repository-relative path and a one-line reason, and the section records the
+  survey methodology version it was approved under. From v0.15.0 `orch grant
+  preview`, `orch grant create` and grant-approved merges refuse in every
+  repository, Orch's own included, until that repository's `[protected]` list is
+  approved through `/orch:configure` or `/orch:init` at the binary's survey
+  methodology version; a merge that a grant cannot approve comes to you. The
+  #366 and #391 entries above are left as written, describing what v0.13.0 and
+  v0.14.1 did —
+  [#400](https://github.com/kninetimmy/orch/pull/400).
+- Survey and approve the protected list. `/orch:init` and `/orch:configure` now
+  ask for the repository's `[protected]` list: the answer can be deferred, an
+  approved empty list, or a list of path and reason entries, and configure
+  offers it by default when the committed list is missing or from another
+  methodology version. The `orch-setup` skill ships the survey methodology and
+  tells the Architect to survey with `orch-scout` subagents and let you add,
+  drop or defer entries before the answer is submitted. A Claude session start
+  shows a one-line note while the repository's list is missing or out of date —
+  [#401](https://github.com/kninetimmy/orch/pull/401).
+- What has run live since v0.14.1. The run that delivered #399, #400 and #401
+  was the first Claude Delivery run on an installed 0.11.1 adapter. You approved
+  every gate and no grant was active. The Architect started the 60-second timer
+  before each usage wait, and no subagent notification wait stalled.
+- What has not happened yet. `claude stop` on a background predecessor has not
+  run live. The protected-paths survey has not run from an installed adapter.
+  No grant has run under the floor-plus-list rules.
+
+Engine release v0.15.0 pairs with Claude/Codex manual-adapter version 0.12.0 and
+OpenCode package 0.12.0; these are separate identities, and 0.11.1 was paired
+with v0.14.1. The Claude/Codex version moved because the Claude `orch-delivery`
+and `orch-setup` skills changed. A Codex install must also move to 0.12.0
+because the two share one version that `orch doctor` checks exactly, so `orch
+doctor` reports an installed 0.11.1 adapter as a version mismatch, although no
+Codex adapter file changed. The OpenCode package stays 0.12.0 because none of
+its files changed since v0.14.1. The manual wire versions, state schema 6 and
+metrics document schema 2 are unchanged from v0.14.1. Agent definitions and hook
+configuration are unchanged since v0.13.0, so `orch render-agents` does not need
+to be re-run when upgrading from v0.13.0 or later. Engine v0.14.1 and earlier
+refuse a config that contains a `[protected]` section (the installed v0.14.1
+`orch status` fails with `unknown keys: protected, protected.methodology_version`),
+so upgrade the engine on every machine that uses a repository before that
+repository's list is merged. To upgrade, update the engine and the configured
+Claude or Codex adapter together between runs (see the upgrade commands above),
+restart the host and run `orch doctor --host claude|codex`. Then approve each
+repository's `[protected]` list through `/orch:configure` before starting a
+grant.
 
 ## v0.14.1 release target
 
