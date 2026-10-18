@@ -5,7 +5,7 @@
 <p align="center">
   <img src="https://img.shields.io/badge/License-MIT-2E7D32?style=flat&logo=opensourceinitiative&logoColor=white" alt="License: MIT"/>
   <img src="https://img.shields.io/badge/Go-1.26%2B-00ADD8?style=flat&logo=go&logoColor=white" alt="Go 1.26+"/>
-  <img src="https://img.shields.io/badge/Release%20target-v0.13.1-24292F?style=flat&logo=github&logoColor=white" alt="Release target: v0.13.1"/>
+  <img src="https://img.shields.io/badge/Release%20target-v0.14.0-24292F?style=flat&logo=github&logoColor=white" alt="Release target: v0.14.0"/>
   <br/>
   <img src="https://img.shields.io/badge/Platform-Linux%20%C2%B7%20macOS%20%C2%B7%20Windows-607D8B?style=flat" alt="Platform: Linux, macOS, Windows"/>
   <img src="https://img.shields.io/badge/Hosts-Claude%20Code%20%C2%B7%20Codex%20CLI%20%C2%B7%20OpenCode%20V2-6E56CF?style=flat" alt="Hosts: Claude Code, Codex CLI, and OpenCode V2"/>
@@ -252,15 +252,16 @@ service after upgrading its adapter so the new hooks and skills are loaded.
 source revision `611c645` uses state schema 6, approval contract 1, and these
 manual wire versions: Gate 3, Status 4, Activation 2, Dispatch 4, Review 3,
 Escalate 2, Block 2, Resume 2, and Resolve Block 1. The Claude and Codex
-adapter version 0.10.0 is paired with engine v0.13.0 and v0.13.1; version 0.9.0
-was paired with engine v0.12.0 and v0.12.1. Engine v0.13.0 keeps the manual wire
-versions above and state schema 6 unchanged from v0.12.1. `orch doctor` reports an
-installed 0.9.0 adapter as a version mismatch, and the existing version check
-rejects cached 0.9.0 and older adapters. The OpenCode package stays 0.11.0:
-its exported source and skills are unchanged since v0.12.1, and its agent
+adapter version 0.11.0 is paired with engine v0.14.0; version 0.10.0
+was paired with engine v0.13.0 and v0.13.1. Engine v0.14.0 keeps the manual wire
+versions above, state schema 6 and metrics document schema 2 unchanged from
+v0.13.1. `orch doctor` reports an installed 0.10.0 adapter as a version
+mismatch. The OpenCode package is 0.12.0 because its `orch-delivery` skill
+changed in v0.14.0 (#383); its exported source is unchanged, and its agent
 definitions are embedded in the engine and written by `orch render-agents`.
-Because #358 changed the agent definitions on all three hosts, re-run
-`orch render-agents` in every project that uses Orch. Release and adapter version labels describe compatibility, while
+Because #358 changed the agent definitions on all three hosts in v0.13.0, when
+upgrading from a release before v0.13.0 re-run `orch render-agents` in every
+project that uses Orch. Release and adapter version labels describe compatibility, while
 the source revision and build identity identify the code that was built.
 
 After upgrading, re-run `orch render-agents` in every project that uses the
@@ -539,6 +540,98 @@ too. Anything a subagent wants remembered comes back in its report.
 Every memhub command runs with the primary checkout as its working
 directory, never inside a per-issue worktree, because worktrees never
 receive a copy of the memhub database.
+
+## v0.14.0 release target
+
+- Claude subagent usage from the task notification. The Claude `orch-delivery`
+  skill now tells the Architect to wait for a subagent's task notification
+  before calling `orch run pr-open` or `orch run review` for its work, and to
+  fill `usage` and `executor_usage` from the notification
+  (`subagent_tokens` as total tokens, and `duration_ms`), never from the
+  hand-back that arrives first and carries no usage. Usage is omitted, not
+  estimated, when no notification has arrived or for a fix cycle done by a
+  subagent resumed with `SendMessage`. The skill also shows how to record each
+  scout's usage with `orch metrics record`, including scouts that ran before
+  activation, and a test parses every example observation in it with the
+  engine's parser. This changes the Claude skill only, and no engine behavior —
+  [#376](https://github.com/kninetimmy/orch/pull/376).
+- Cross-run metrics report. `orch metrics report` prints one read-only rollup
+  across every recorded run and writes no file. Issue outcomes are grouped by
+  role, executor and reviewer profile, reviewer downgrade and approval source,
+  with merged, abandoned and blocked counts, escalations, first-review
+  approvals and review cycles. A dimension a run did not record is its own
+  `unknown` group, token counters are summed only within one host, source and
+  stream with no total across groups, and run time is wall-clock time from the
+  first to the last recorded event, not active time —
+  [#377](https://github.com/kninetimmy/orch/pull/377).
+- Codex spawn-source test. This is a test-only change: it adds a test to
+  `internal/codexusage` that fails if the check that a Codex child rollout names
+  its parent were made to pass unconditionally. It changes no behavior for a
+  user of orch —
+  [#381](https://github.com/kninetimmy/orch/pull/381).
+- More facts in run metrics. A run activated by this release records its host,
+  and each issue's activate event records the risk domains, unusual difficulty
+  and four downgrade facts its plan declared. The `pr-open` and merge events
+  record the PR number, and a review that blocks its issue records whether a
+  wrong criterion or the autonomy grant's fix-cycle limit caused it. Events and
+  documents written before this release keep reporting those facts as
+  `unknown`, never as false. `orch metrics report` breaks outcomes down by host
+  and by each routing fact and counts blocking reviews by cause apart from
+  request-changes fix cycles —
+  [#382](https://github.com/kninetimmy/orch/pull/382).
+- Escaped defects. A plan issue may carry a `fixes` list of merged PR numbers.
+  `orch run plan` refuses a number that is not positive or is repeated,
+  `orch run activate` refuses before creating anything when a listed PR does not
+  exist or is not merged, the plan gate and the GitHub issue body show the PRs
+  fixed, and the `plan_digest` is unchanged for a plan that lists none.
+  `orch metrics report` attributes each fixed PR to the original issue's run,
+  profiles and review history, counts it under that issue's outcome group, and
+  counts fixed PRs no recorded merge names as unattributed. The PlanDoc section
+  of the `orch-delivery` skill documents `fixes` on all three hosts —
+  [#383](https://github.com/kninetimmy/orch/pull/383).
+- Claude Architect usage. When a Claude-host run completes with metrics enabled,
+  `orch run complete` records the Architect's own input, output, cache-read and
+  cache-creation tokens, read from the transcripts of the Claude Code sessions
+  that ran an `orch run` verb other than `status`, between activation and
+  completion and counting each assistant message once. The SessionStart hook
+  records each starting session's id and transcript path under
+  `.orchestrator/metrics/claude-sessions/` for this, prints the same text and
+  exits the same way as before, and with `[metrics] enabled = false` nothing new
+  is written. A session whose usage cannot be established is recorded as
+  unavailable with a reason, not guessed, and `orch metrics report` shows the
+  recorded counts as architect usage —
+  [#385](https://github.com/kninetimmy/orch/pull/385).
+- What has not happened yet. Architect usage capture (#385) has not run on a
+  released binary. Whether `CLAUDE_CODE_SESSION_ID` changes after `/clear` has
+  not been checked; if it does not, Architect usage after a `/clear` is missed.
+  Resume and fork have not been checked live, and a forked session that runs an
+  `orch run` verb is reported as transcript-path-unrecorded. Architect usage
+  capture recognizes only Claude Code 2.1.289, 2.1.295 and 2.1.301
+  transcripts.
+- What has run live since v0.13.1, all on native Windows with Claude Code
+  2.1.301 and engine v0.13.1. The corrected `orch grant relay` recorded as
+  holder the session that `claude agents --json` listed and whose own
+  `CLAUDE_CODE_SESSION_ID` matched (2026-10-17), and has since handed one grant
+  on three more times (2026-10-18). A push from a background session arrived
+  with the phone app closed (2026-10-17). One grant approved two plans and the
+  merges of #376 and #377 (2026-10-18). With `/autocompact` set to 100k the
+  grant holder passed about 132k tokens without compacting while a session
+  holding no grant compacted, but the holder showed no sign that the PreCompact
+  block ran (2026-10-17).
+
+Engine release v0.14.0 pairs with Claude/Codex manual-adapter version 0.11.0 and
+OpenCode package 0.12.0; these are separate identities. Both adapter versions
+moved because the `orch-delivery` skill changed on all three hosts (#376 on
+Claude, #383 on all three). The manual wire versions, state schema 6 and
+metrics document schema 2 are unchanged from v0.13.1; #382, #383 and #385 added
+optional fields under document schema 2. An `orch` binary older than v0.14.0
+refuses a metrics document that carries a field added by #382, #383 or #385
+rather than ignoring it. Agent definitions and hook configuration are unchanged
+since v0.13.0, so `orch render-agents` does not need to be re-run when
+upgrading from v0.13.0 or v0.13.1. To upgrade, update the engine and the
+configured Claude or Codex adapter together between runs (see the upgrade
+commands above), update the OpenCode package checkout and run `npm ci --prefix
+adapters/opencode`, restart the host and run `orch doctor --host claude|codex`.
 
 ## v0.13.1 release target
 
@@ -1030,8 +1123,10 @@ no `--session-id`. It reads the short id from the `backgrounded · <id>` line
 `sessionId` of the one entry with that `id` and `kind` `background`. If no
 short id is printed, or that listing fails or does not name exactly one such
 entry, the relay fails closed with the holder unchanged, and once a short id
-was printed the error names `claude stop <id>`. This corrected path has not
-yet run live. A failed relay can still leave a stray background session;
+was printed the error names `claude stop <id>`. Before 2026-10-17 this corrected path had not
+run live; on 2026-10-17, on native Windows with Claude Code 2.1.301, it ran
+live and recorded the right successor, the session that `claude agents --json`
+listed and whose own `CLAUDE_CODE_SESSION_ID` matched. A failed relay can still leave a stray background session;
 `claude agents` lists it and `claude stop <id>` removes it. macOS and Linux
 were never checked live. A grant that records `default` as its permission
 mode cannot relay on 2.1.295, whose CLI lists `manual` instead. Symptom:
