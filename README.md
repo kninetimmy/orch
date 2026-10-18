@@ -346,7 +346,7 @@ commands:
   configure-local  Interview and apply machine-local overrides
   resume           Reconcile an interrupted Delivery run against GitHub and continue
   abort            Stop dispatch and return to Assist
-  metrics          Show local metrics (or record JSON observations with `metrics record`)
+  metrics          Show local metrics (`metrics report` rolls up every run; `metrics record` records JSON observations)
   eval             Evaluation preview/run/status/stop/report (eval help for arguments)
   grant            Show the active autonomy grant; grant revoke ends it; grant relay hands it to a fresh Claude Code session; grant preview and grant create propose and record one (JSON stdin/stdout)
   render-agents    Render project agent definitions for every enabled host
