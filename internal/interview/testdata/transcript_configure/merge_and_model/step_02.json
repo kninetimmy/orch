@@ -3,54 +3,26 @@
   "kind": "questions",
   "progress": {
     "index": 2,
-    "total": 8
+    "total": 9
   },
   "questions": [
     {
-      "id": "host.claude.role.architect.model",
-      "header": "Architect",
-      "prompt": "Architect model (Claude Code)",
-      "preamble": "Architect: requirements discovery, architecture and design, issue decomposition, routing and escalation, the plan gate, and final review judgment. Never edits tracked files directly.",
+      "id": "pick.protected",
+      "header": "Protected",
+      "prompt": "Review or change the grant-protected paths?",
       "kind": "select",
       "options": [
         {
-          "value": "claude-opus-5-5",
-          "label": "claude-opus-5-5"
-        },
-        {
-          "value": "claude-sonnet-5-5",
-          "label": "claude-sonnet-5-5"
-        }
-      ],
-      "free_text": true,
-      "default": "claude-opus-4-8"
-    },
-    {
-      "id": "host.claude.role.architect.effort",
-      "header": "Architect",
-      "prompt": "Architect reasoning effort (Claude Code)",
-      "kind": "select",
-      "options": [
-        {
-          "value": "low",
-          "label": "low"
-        },
-        {
-          "value": "medium",
-          "label": "medium"
-        },
-        {
-          "value": "high",
-          "label": "high"
-        },
-        {
-          "value": "xhigh",
-          "label": "xhigh",
+          "value": "yes",
+          "label": "Yes",
           "recommended": true
+        },
+        {
+          "value": "no",
+          "label": "No"
         }
       ],
-      "free_text": true,
-      "default": "xhigh"
+      "default": "yes"
     }
   ]
 }

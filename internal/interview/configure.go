@@ -177,7 +177,7 @@ func readCommittedRaw(repoRoot string) ([]byte, error) {
 // nothing about it could be offered — including the one state `orch
 // doctor` reports and nothing could fix.
 func buildSequenceConfigure(facts Facts, committed *config.Config, answers map[string]string) ([]docSpec, error) {
-	docs := []docSpec{pickerDocConfigure(committed)}
+	docs := []docSpec{pickerDocConfigure(committed), {questions: []question.Question{pickProtectedQuestion(committed)}}}
 	if committed.Hosts.OpenCode != nil {
 		docs = append(docs, docSpec{questions: []question.Question{{
 			ID: idPickRolesOpenCode, Header: "OpenCode", Prompt: "Review or change OpenCode V2's role profiles?",
@@ -247,6 +247,10 @@ func buildSequenceConfigure(facts Facts, committed *config.Config, answers map[s
 
 	if answers[idPickSettings] == "yes" {
 		docs = append(docs, settingsDoc(committedSettingsDefaults(committed)))
+	}
+
+	if answers[idPickProtected] == "yes" {
+		docs = append(docs, protectedDoc(true))
 	}
 
 	docs = append(docs, seedDocs(facts, configureSeedScope(committed, claudeEnabled, codexEnabled, openEnabled))...)
@@ -464,6 +468,9 @@ func materializeConfigure(committed *config.Config, answers map[string]string, c
 	}
 	if v, ok := answers[idMetricsEnabled]; ok {
 		cfg.Metrics.Enabled = v == "yes"
+	}
+	if err := applyProtected(cfg, answers); err != nil {
+		return nil, err
 	}
 
 	rev, err := config.Revision(cfg)

@@ -226,6 +226,7 @@ func TestGoldenTranscriptConfigureOpenCodeRoleModels(t *testing.T) {
 		idPickHosts:         "no",
 		idPickRolesOpenCode: "yes",
 		idPickSettings:      "no",
+		idPickProtected:     "no",
 	}, root)
 	if err != nil {
 		t.Fatalf("NextConfigure: %v", err)
@@ -239,6 +240,7 @@ func openCodeConfigureSummary(t *testing.T, root string, overrides map[string]st
 		idPickHosts:         "no",
 		idPickRolesOpenCode: "yes",
 		idPickSettings:      "no",
+		idPickProtected:     "no",
 	}
 	for i := 0; i < 100; i++ {
 		doc, err := NextConfigure(withOpenCodeTestCatalog(configureFacts()), answers, root)
@@ -409,7 +411,7 @@ func TestNextConfigurePreservesExplicitCodexProfiles(t *testing.T) {
 	committed.Hosts.Codex.Roles.Specialist = config.RoleProfile{Model: "custom-model-v1", Effort: "ultra"}
 	writeCommittedConfig(t, root, committed)
 	writeLocalOverrideFile(t, root, "[hosts.codex.roles.architect]\nmodel = \"gpt-6.1-sol\"\neffort = \"max\"\n")
-	answers := map[string]string{idPickHosts: "no", idPickRolesClaude: "no", idPickRolesCodex: "yes", idPickSettings: "no"}
+	answers := map[string]string{idPickHosts: "no", idPickRolesClaude: "no", idPickRolesCodex: "yes", idPickSettings: "no", idPickProtected: "no"}
 	for _, rs := range roleSpecs {
 		doc, err := NextConfigure(configureFacts(), answers, root)
 		if err != nil {
@@ -479,7 +481,7 @@ func TestNextConfigureSeedingIgnoresLocalOverride(t *testing.T) {
 	writeLocalOverrideFile(t, root, "[hosts.claude.roles.architect]\nmodel = \"claude-fable-5\"\n")
 	facts := configureFacts()
 
-	answers := map[string]string{idPickHosts: "no", idPickRolesClaude: "yes", idPickRolesCodex: "no", idPickSettings: "no"}
+	answers := map[string]string{idPickHosts: "no", idPickRolesClaude: "yes", idPickRolesCodex: "no", idPickSettings: "no", idPickProtected: "no"}
 	doc, err := NextConfigure(facts, answers, root)
 	if err != nil {
 		t.Fatalf("NextConfigure: %v", err)

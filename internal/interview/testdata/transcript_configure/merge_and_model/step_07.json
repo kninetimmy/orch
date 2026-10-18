@@ -3,14 +3,14 @@
   "kind": "questions",
   "progress": {
     "index": 7,
-    "total": 8
+    "total": 10
   },
   "questions": [
     {
-      "id": "host.claude.role.review_downgrade.model",
-      "header": "Downgrade",
-      "prompt": "Safe review downgrade model (Claude Code)",
-      "preamble": "Safe review downgrade: a weaker model may review only when a change is affirmatively mechanical, low-risk, fully specified, and unsurprising.",
+      "id": "host.claude.role.reviewer.model",
+      "header": "Reviewer",
+      "prompt": "Reviewer model (Claude Code)",
+      "preamble": "Reviewer: independently verifies acceptance criteria, scope discipline, correctness, test evidence, CI state, and security/data-safety concerns.",
       "kind": "select",
       "options": [
         {
@@ -23,12 +23,12 @@
         }
       ],
       "free_text": true,
-      "default": "claude-sonnet-5"
+      "default": "claude-opus-4-8"
     },
     {
-      "id": "host.claude.role.review_downgrade.effort",
-      "header": "Downgrade",
-      "prompt": "Safe review downgrade reasoning effort (Claude Code)",
+      "id": "host.claude.role.reviewer.effort",
+      "header": "Reviewer",
+      "prompt": "Reviewer reasoning effort (Claude Code)",
       "kind": "select",
       "options": [
         {

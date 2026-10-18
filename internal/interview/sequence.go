@@ -244,7 +244,7 @@ func buildSequence(facts Facts, answers map[string]string) ([]docSpec, error) {
 		docs = append(docs, openDocs...)
 	}
 	if claudeKnown && codexKnown && openKnown {
-		docs = append(docs, settingsDoc(initSettingsDefaults(facts)))
+		docs = append(docs, settingsDoc(initSettingsDefaults(facts)), protectedDoc(false))
 		docs = append(docs, seedDocs(facts, initSeedScope(claudeEnabled, codexEnabled || openEnabled))...)
 	}
 	return docs, nil

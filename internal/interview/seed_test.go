@@ -638,6 +638,7 @@ func TestConfigureRepairStaleYesRejectedOnceTheFileHasConventions(t *testing.T) 
 		idPickRolesClaude: "no",
 		idPickRolesCodex:  "no",
 		idPickSettings:    "no",
+		idPickProtected:   "no",
 		seedID("codex"):   "yes",
 	}
 	if _, err := NextConfigure(withInstructions(configureFacts(), root), answers, root); err != nil {
@@ -673,6 +674,7 @@ func TestConfigureRepairNeverOverwritesContentWrittenAfterTheAnswer(t *testing.T
 		idPickRolesClaude: "no",
 		idPickRolesCodex:  "no",
 		idPickSettings:    "no",
+		idPickProtected:   "no",
 		seedID("codex"):   "yes",
 	}
 	doc, err := NextConfigure(staleFacts, answers, root)

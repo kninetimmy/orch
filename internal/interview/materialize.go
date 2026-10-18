@@ -64,6 +64,9 @@ func materializeWithCatalog(answers map[string]string, catalog opencode.Catalog)
 	cfg.Merge.Strategy = answers[idMergeStrategy]
 	cfg.Memhub.Mode = answers[idMemhubMode]
 	cfg.Metrics.Enabled = answers[idMetricsEnabled] == "yes"
+	if err := applyProtected(cfg, answers); err != nil {
+		return nil, err
+	}
 
 	rev, err := config.Revision(cfg)
 	if err != nil {

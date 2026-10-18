@@ -3,63 +3,47 @@
   "kind": "questions",
   "progress": {
     "index": 3,
-    "total": 8
+    "total": 4
   },
   "questions": [
     {
-      "id": "host.codex.role.architect.model",
-      "header": "Architect",
-      "prompt": "Architect model (Codex CLI)",
+      "id": "host.claude.enabled",
+      "header": "Claude",
+      "prompt": "Enable Claude Code as a host?",
+      "preamble": "Orch has two modes: Assist (read-only; the default — the Architect and Scouts may inspect and explain, but repository mutation is mechanically denied) and Delivery (a mutation request is investigated read-only, then approved work happens in an isolated per-issue worktree with its own branch and PR; merges are human-approved: before autonomy grants every merge was approved by a person, now an autonomy grant you create may approve one for you on a Claude Code run, within its limits). Enable each host CLI you want to drive Orch through; a host can be added later through Delivery.",
       "kind": "select",
       "options": [
         {
-          "value": "gpt-6-astra",
-          "label": "gpt-6-astra",
+          "value": "yes",
+          "label": "Yes",
           "recommended": true
         },
         {
-          "value": "gpt-6.1-sol",
-          "label": "gpt-6.1-sol"
-        },
-        {
-          "value": "gpt-5.6-luna",
-          "label": "gpt-5.6-luna"
-        },
-        {
-          "value": "gpt-5.6-sol",
-          "label": "gpt-5.6-sol"
+          "value": "no",
+          "label": "No"
         }
       ],
-      "free_text": true,
-      "default": "gpt-6-astra",
-      "hint": "Use Other for any exact model ID, including gpt-5.6-sol, gpt-5.6-terra and x-preview-f-free."
+      "default": "yes",
+      "hint": "claude CLI detected on PATH"
     },
     {
-      "id": "host.codex.role.architect.effort",
-      "header": "Architect",
-      "prompt": "Architect reasoning effort (Codex CLI)",
+      "id": "host.codex.enabled",
+      "header": "Codex",
+      "prompt": "Enable Codex CLI as a host?",
       "kind": "select",
       "options": [
         {
-          "value": "low",
-          "label": "low"
+          "value": "yes",
+          "label": "Yes"
         },
         {
-          "value": "medium",
-          "label": "medium"
-        },
-        {
-          "value": "high",
-          "label": "high"
-        },
-        {
-          "value": "xhigh",
-          "label": "xhigh",
+          "value": "no",
+          "label": "No",
           "recommended": true
         }
       ],
-      "free_text": true,
-      "default": "xhigh"
+      "default": "no",
+      "hint": "codex CLI detected on PATH"
     }
   ]
 }

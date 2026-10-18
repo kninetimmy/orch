@@ -205,3 +205,16 @@ func effortList(host string) string {
 }
 
 func legacyOpenCodeEffortList() string { return "low, medium, high, xhigh, max" }
+
+// CheckProtectedPath reports why e cannot be a protected-list entry — the same
+// rules validate applies to a committed [protected] section — or nil. The
+// interview uses it to reject a bad entry at the question that carried it.
+func CheckProtectedPath(e ProtectedPath) error {
+	if why := badProtectedPath(e.Path); why != "" {
+		return fmt.Errorf("path %q %s", e.Path, why)
+	}
+	if strings.TrimSpace(e.Reason) == "" {
+		return fmt.Errorf("reason: must give a one-line reason for %q", e.Path)
+	}
+	return nil
+}

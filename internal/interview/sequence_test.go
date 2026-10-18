@@ -155,9 +155,9 @@ func TestSequenceQuestionsSpecCheck(t *testing.T) {
 			answers[q.ID] = q.Default
 		}
 	}
-	// 2 (host toggles) + 6 roles * 2 questions * 2 hosts + 4 (settings) = 30.
-	if len(seen) != 30 {
-		t.Errorf("saw %d distinct question ids, want 30: %v", len(seen), seen)
+	// 2 (host toggles) + 6 roles * 2 questions * 2 hosts + 4 (settings) + 1 (protected paths) = 31.
+	if len(seen) != 31 {
+		t.Errorf("saw %d distinct question ids, want 31: %v", len(seen), seen)
 	}
 }
 

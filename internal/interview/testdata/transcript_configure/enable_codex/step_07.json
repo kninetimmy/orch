@@ -3,23 +3,23 @@
   "kind": "questions",
   "progress": {
     "index": 7,
-    "total": 8
+    "total": 10
   },
   "questions": [
     {
-      "id": "host.codex.role.reviewer.model",
-      "header": "Reviewer",
-      "prompt": "Reviewer model (Codex CLI)",
+      "id": "host.codex.role.specialist.model",
+      "header": "Specialist",
+      "prompt": "Specialist model (Codex CLI)",
       "kind": "select",
       "options": [
         {
           "value": "gpt-6-astra",
-          "label": "gpt-6-astra",
-          "recommended": true
+          "label": "gpt-6-astra"
         },
         {
           "value": "gpt-6.1-sol",
-          "label": "gpt-6.1-sol"
+          "label": "gpt-6.1-sol",
+          "recommended": true
         },
         {
           "value": "gpt-5.6-luna",
@@ -31,23 +31,18 @@
         }
       ],
       "free_text": true,
-      "default": "gpt-6-astra",
+      "default": "gpt-6.1-sol",
       "hint": "Use Other for any exact model ID, including gpt-5.6-sol, gpt-5.6-terra and x-preview-f-free."
     },
     {
-      "id": "host.codex.role.reviewer.effort",
-      "header": "Reviewer",
-      "prompt": "Reviewer reasoning effort (Codex CLI)",
+      "id": "host.codex.role.specialist.effort",
+      "header": "Specialist",
+      "prompt": "Specialist reasoning effort (Codex CLI)",
       "kind": "select",
       "options": [
         {
-          "value": "low",
-          "label": "low"
-        },
-        {
           "value": "medium",
-          "label": "medium",
-          "recommended": true
+          "label": "medium"
         },
         {
           "value": "high",
@@ -56,10 +51,15 @@
         {
           "value": "xhigh",
           "label": "xhigh"
+        },
+        {
+          "value": "max",
+          "label": "max",
+          "recommended": true
         }
       ],
       "free_text": true,
-      "default": "medium"
+      "default": "max"
     }
   ]
 }
