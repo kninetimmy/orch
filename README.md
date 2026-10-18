@@ -5,7 +5,7 @@
 <p align="center">
   <img src="https://img.shields.io/badge/License-MIT-2E7D32?style=flat&logo=opensourceinitiative&logoColor=white" alt="License: MIT"/>
   <img src="https://img.shields.io/badge/Go-1.26%2B-00ADD8?style=flat&logo=go&logoColor=white" alt="Go 1.26+"/>
-  <img src="https://img.shields.io/badge/Release%20target-v0.15.0-24292F?style=flat&logo=github&logoColor=white" alt="Release target: v0.15.0"/>
+  <img src="https://img.shields.io/badge/Release%20target-v0.15.1-24292F?style=flat&logo=github&logoColor=white" alt="Release target: v0.15.1"/>
   <br/>
   <img src="https://img.shields.io/badge/Platform-Linux%20%C2%B7%20macOS%20%C2%B7%20Windows-607D8B?style=flat" alt="Platform: Linux, macOS, Windows"/>
   <img src="https://img.shields.io/badge/Hosts-Claude%20Code%20%C2%B7%20Codex%20CLI%20%C2%B7%20OpenCode%20V2-6E56CF?style=flat" alt="Hosts: Claude Code, Codex CLI, and OpenCode V2"/>
@@ -252,13 +252,14 @@ service after upgrading its adapter so the new hooks and skills are loaded.
 source revision `611c645` uses state schema 6, approval contract 1, and these
 manual wire versions: Gate 3, Status 4, Activation 2, Dispatch 4, Review 3,
 Escalate 2, Block 2, Resume 2, and Resolve Block 1. The Claude and Codex
-adapter version 0.12.0 is paired with engine v0.15.0; version 0.11.1 was
-paired with engine v0.14.1, version 0.11.0 with engine v0.14.0, and version
-0.10.0 with engine v0.13.0 and v0.13.1. Engine v0.15.0 keeps the manual wire
+adapter version 0.12.1 is paired with engine v0.15.1; version 0.12.0 was
+paired with engine v0.15.0, version 0.11.1 with engine v0.14.1, version 0.11.0
+with engine v0.14.0, and version 0.10.0 with engine v0.13.0 and v0.13.1. Engine
+v0.15.1 keeps the manual wire
 versions above, state schema 6 and metrics document schema 2 unchanged from
-v0.14.1. `orch doctor` reports an installed 0.11.1 adapter as a version
+v0.15.0. `orch doctor` reports an installed 0.12.0 adapter as a version
 mismatch. The OpenCode package stays 0.12.0 because none of its files changed
-since v0.14.1; its exported source is unchanged, and its agent
+since v0.15.0; its exported source is unchanged, and its agent
 definitions are embedded in the engine and written by `orch render-agents`.
 Engine v0.14.1 and earlier refuse a config that contains a `[protected]`
 section, so upgrade the engine on every machine that uses a repository before
@@ -544,6 +545,38 @@ too. Anything a subagent wants remembered comes back in its report.
 Every memhub command runs with the primary checkout as its working
 directory, never inside a per-issue worktree, because worktrees never
 receive a copy of the memhub database.
+
+## v0.15.1 release target
+
+- Protected-paths survey judged by what CI, review and revert cannot catch. The
+  Claude `orch-setup` skill's `PROTECTED_PATHS_SURVEY.md` now proposes a path
+  only when a bad change there, after passing CI and review, would widen what
+  an unattended agent may do, silently disable enforcement, or do damage a
+  revert cannot undo. It reports near misses that you can promote to entries,
+  and it asks for the recent change rate of large files. The document records
+  the old rule ("when in doubt, propose; a redundant entry is harmless") and
+  the new one as a before-and-after —
+  [#410](https://github.com/kninetimmy/orch/pull/410).
+- What has run live since v0.15.0. On 2026-10-18 the protected-paths survey ran
+  for the first time from an installed adapter (0.12.0) through
+  `/orch:configure` in Orch. It proposed 62 entries, which would have sent
+  nearly every grant merge to you. You approved a 27-entry list judged by the
+  new test instead ([#405](https://github.com/kninetimmy/orch/pull/405)). The
+  revised survey text was then tried read-only on the memhub repository, where
+  it proposed 7 entries, led by memhub's automatically applied database
+  migrations.
+
+Engine release v0.15.1 pairs with Claude/Codex manual-adapter version 0.12.1 and
+OpenCode package 0.12.0; these are separate identities, and 0.12.0 was paired
+with v0.15.0. The Claude/Codex version moved because the Claude `orch-setup`
+skill changed; Claude Code caches plugins per version, so an installed Claude
+session loads the new survey text only once the adapter version moves. A Codex
+install must also move to 0.12.1 because the two share one version that `orch
+doctor` checks exactly. The OpenCode package stays 0.12.0 because none of its
+files changed since v0.15.0. The survey methodology version is still 1, so a
+`[protected]` list approved under v0.15.0 stays current and needs no new
+approval. No wire version, state schema, metrics schema, agent definition or
+hook configuration changed since v0.15.0.
 
 ## v0.15.0 release target
 
