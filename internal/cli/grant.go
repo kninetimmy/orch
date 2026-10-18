@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/kninetimmy/orch/internal/config"
 	"github.com/kninetimmy/orch/internal/grant"
 )
 
@@ -26,6 +27,11 @@ func runGrant(env Env, args []string) error {
 		verb = args[0]
 	}
 	now := time.Now()
+	if verb == "preview" || verb == "create" {
+		if err := checkGrantProtected(env.RepoRoot); err != nil {
+			return err
+		}
+	}
 	switch verb {
 	case "preview":
 		input, err := io.ReadAll(env.Stdin)
@@ -96,6 +102,20 @@ func runGrant(env Env, args []string) error {
 	default:
 		return usageError(fmt.Sprintf("orch grant: unsupported verb %q; %s", verb, grantUsage))
 	}
+}
+
+// checkGrantProtected refuses a grant in a repository whose committed
+// configuration has no approved protected list for this binary's survey
+// methodology version.
+func checkGrantProtected(repoRoot string) error {
+	cfg, err := config.Load(repoRoot)
+	if err != nil {
+		return err
+	}
+	if err := cfg.CheckGrantProtected(); err != nil {
+		return fmt.Errorf("autonomy grant refused: %w", err)
+	}
+	return nil
 }
 
 func writeJSON(w io.Writer, v any) error {

@@ -124,7 +124,7 @@ func Merge(ctx context.Context, env Env, reqJSON []byte) (*MergeResult, error) {
 			if err != nil {
 				return nil, grantStop("the PR's complete file list could not be confirmed: %v", err)
 			}
-			if p := protectedFiles(files); len(p) > 0 {
+			if p := protectedFiles(files, c.cfg); len(p) > 0 {
 				return nil, grantStop("PR #%d changes protected paths: %s", issue.PRNumber, strings.Join(p, ", "))
 			}
 			if _, err := grants.RecordApproval(g.Terms.ID, grant.RecordedApproval{
