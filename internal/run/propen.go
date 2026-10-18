@@ -181,6 +181,7 @@ func PROpen(ctx context.Context, env Env, reqJSON []byte) (*PROpenResult, error)
 	if err := c.recordMetric(metrics.Event{
 		Verb:        "pr-open",
 		IssueNumber: issue.Number,
+		PRNumber:    prNumber,
 		Role:        string(issue.Decision.Role),
 		Usage:       req.Usage,
 	}); err != nil {

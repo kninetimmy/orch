@@ -116,8 +116,29 @@ lifecycle verbs as its own group; no total across groups is printed, and a group
 measured counter shows `unknown`, not zero. The Architect's share is shown only for a group
 holding architect-role counters, otherwise the report says Architect usage is unavailable and
 for how many runs. Run elapsed time is wall-clock time from each run's first to last recorded
-event, not active time. Host on lifecycle events, structured routing facts, PR numbers and
-escaped-defect links are not recorded yet and are absent here.
+event, not active time. Escaped-defect links are not recorded yet and are absent here.
+
+Fields recorded for this report, all optional with the metrics schema still at 2, so a
+document written before them loads unchanged (an older orch binary reading a newer document
+fails closed on the unknown field):
+
+- Document `host` (claude, codex or opencode): written when the run is activated.
+- Activate event `routing_facts`: the plan's `risk_domains`, `unusually_difficult` and the four
+  downgrade facts `mechanical`, `low_risk`, `fully_specified` and `unsurprising`. Every fact is
+  written explicitly, so an event without `routing_facts` predates them (unknown), which is not
+  the same as every fact being false.
+- Pr-open and merge event `pr_number`: the issue's PR number.
+- Review event `review_block_cause`: `wrong_criterion` or `fix_cycle_limit` when that review
+  blocked its issue (the block the review actually added); absent for a review that blocked
+  nothing, and never set on the executor-usage review event.
+
+Besides the role/executor/reviewer grouping, the report breaks issue outcomes down on their
+own by host, whether any risk domain was declared, unusually difficult, and each downgrade
+fact. Each group value is `yes`/`no` (host: its name), or `unknown` for a run that did not
+record it, shown as a group of its own. Every outcome summary also counts request-changes fix
+cycles (request-changes reviews that blocked nothing) separately from reviews that blocked
+their issue, by cause. A run with no recorded host predates the cause, so its request-changes
+reviews are counted under "block cause not recorded", never as fix cycles.
 
 ## Read-only report and P1-A boundary
 

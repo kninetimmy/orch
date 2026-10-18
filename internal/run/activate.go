@@ -400,9 +400,13 @@ func Activate(ctx context.Context, env Env, reqJSON []byte) (*ActivationResult, 
 	// has no verbCtx to hang recordMetric off, so this is a small
 	// gated loop rather than a restructure.
 	if cfg.Metrics.Enabled {
+		if err := metrics.SetHost(env.RepoRoot, st.Run.ID, st.Run.Host); err != nil {
+			return nil, wrapAfterEnter(fmt.Errorf("record metrics: %w", err))
+		}
 		for j := range st.Run.Issues {
 			iss := &st.Run.Issues[j]
 			d := iss.Decision
+			f := ordered[j].Facts // state issues are in wave order, as ordered is
 			ev := metrics.Event{
 				At:                 env.nowStamp(),
 				Verb:               "activate",
@@ -413,6 +417,14 @@ func Activate(ctx context.Context, env Env, reqJSON []byte) (*ActivationResult, 
 				ReviewerDowngraded: d.ReviewerDowngraded,
 				Rationale:          d.Rationale,
 				ApprovalSource:     approvalSource(planRef.ApprovedBy, byGrant),
+				RoutingFacts: &metrics.RoutingFacts{
+					RiskDomains:        f.RiskDomains,
+					UnusuallyDifficult: f.UnusuallyDifficult,
+					Mechanical:         f.Downgrade.Mechanical,
+					LowRisk:            f.Downgrade.LowRisk,
+					FullySpecified:     f.Downgrade.FullySpecified,
+					Unsurprising:       f.Downgrade.Unsurprising,
+				},
 			}
 			if err := metrics.Append(env.RepoRoot, st.Run.ID, ev); err != nil {
 				return nil, wrapAfterEnter(fmt.Errorf("record metrics: %w", err))

@@ -202,6 +202,7 @@ func Merge(ctx context.Context, env Env, reqJSON []byte) (*MergeResult, error) {
 	if err := c.recordMetric(metrics.Event{
 		Verb:           "merge",
 		IssueNumber:    issue.Number,
+		PRNumber:       issue.PRNumber,
 		ApprovalSource: approvalSource(req.Approval.ApprovedBy, byGrant),
 	}); err != nil {
 		return nil, err
