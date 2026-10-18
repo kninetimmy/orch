@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/kninetimmy/orch/internal/config"
 	"github.com/kninetimmy/orch/internal/ghops"
 	"github.com/kninetimmy/orch/internal/grant"
 	"github.com/kninetimmy/orch/internal/manifest"
@@ -185,6 +186,9 @@ func mergeGrant(ctx context.Context, c *verbCtx, approvedBy string) (*grant.Stor
 	if !grantMerged(g, c) && len(g.Merges) >= g.Terms.MergeLimit {
 		return nil, nil, grantStop("grant %s has used all %d of its merges", id, g.Terms.MergeLimit)
 	}
+	if err := c.cfg.CheckGrantProtected(); err != nil {
+		return nil, nil, grantStop("%v", err)
+	}
 	return store, g, nil
 }
 
@@ -195,11 +199,18 @@ func grantMerged(g *grant.Grant, c *verbCtx) bool {
 	return slices.ContainsFunc(g.Merges, func(u grant.Use) bool { return u.Ref == ref })
 }
 
-// protectedFiles is the subset of files grant.Protected reports protected.
-func protectedFiles(files []string) []string {
+// protectedFiles is the subset of files grant.Protected reports protected
+// under the floor and cfg's committed protected list.
+func protectedFiles(files []string, cfg *config.Config) []string {
+	var repo []string
+	if cfg.Protected != nil {
+		for _, e := range cfg.Protected.Paths {
+			repo = append(repo, e.Path)
+		}
+	}
 	var out []string
 	for _, f := range files {
-		if grant.Protected(f) {
+		if grant.Protected(f, repo) {
 			out = append(out, f)
 		}
 	}

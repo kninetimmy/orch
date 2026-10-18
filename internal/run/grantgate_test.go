@@ -23,6 +23,17 @@ import (
 
 const grantSession = "session-grant"
 
+// approvedEmptyProtectedTOML is a [protected] section with no paths,
+// approved under this binary's survey methodology version.
+const approvedEmptyProtectedTOML = "\n[protected]\nmethodology_version = 1\n"
+
+// grantConfigTOML is testConfigTOML with an approved protected list.
+const grantConfigTOML = testConfigTOML + approvedEmptyProtectedTOML + `
+[[protected.paths]]
+path   = "internal/guard"
+reason = "the write guard"
+`
+
 func openGrants(t *testing.T, root string) *grant.Store {
 	t.Helper()
 	s, err := grant.Open(context.Background(), execx.Local{}, root)
@@ -324,7 +335,7 @@ func runMerge(t *testing.T, root string, req []byte, calls []execxtest.Call) (*M
 }
 
 func TestGrantMerge(t *testing.T) {
-	root, g := grantMergeRun(t, metricsEnabledConfigTOML, nil, nil, "grant")
+	root, g := grantMergeRun(t, metricsEnabledConfigTOML+approvedEmptyProtectedTOML, nil, nil, "grant")
 	id := g.Terms.ID
 	runID := loadRun(t, root).Run.ID
 	calls := joinCalls([]execxtest.Call{ghAuth(), ghPRViewCall(10, "OPEN", "head-oid-2")}, ciCalls("pass"),
@@ -355,7 +366,7 @@ func TestGrantMerge(t *testing.T) {
 // A grant merge that fails after `gh pr merge` has already spent its unit;
 // the re-run finds the PR merged and spends nothing more.
 func TestGrantMergeRerunSpendsOneUnit(t *testing.T) {
-	root, g := grantMergeRun(t, testConfigTOML, nil, nil, "grant")
+	root, g := grantMergeRun(t, grantConfigTOML, nil, nil, "grant")
 	req := mergeRequest(GrantMergeApprovalStatement, "grant:"+g.Terms.ID)
 	readBack := execxtest.Call{Name: "gh", Args: ghPRViewCall(10, "MERGED", "head-oid-2").Args, Exit: 1, Stderr: "network down"}
 	_, script, err := runMerge(t, root, req, joinCalls([]execxtest.Call{ghAuth(), ghPRViewCall(10, "OPEN", "head-oid-2")}, ciCalls("pass"),
@@ -385,6 +396,7 @@ func TestGrantMergeRerunSpendsOneUnit(t *testing.T) {
 func TestGrantMergeStops(t *testing.T) {
 	start := []execxtest.Call{ghAuth(), ghPRViewCall(10, "OPEN", "head-oid-2")}
 	type tc struct {
+		toml       string // the committed config; default grantConfigTOML
 		edit       func(*grant.Proposal)
 		issue      func(*state.Issue)
 		approvedBy string // the run's plan approver; default "grant"
@@ -426,6 +438,18 @@ func TestGrantMergeStops(t *testing.T) {
 			calls: joinCalls(start, ciCalls("pass"), prFilesCalls(2, "[\"README.md\",\"\"]\n[\"CLAUDE.md.\",\"\"]")),
 			want:  "changes protected paths: CLAUDE.md.",
 		},
+		"PR changes a dependency manifest below the root": {
+			calls: joinCalls(start, ciCalls("pass"), prFilesCalls(1, `["tools/web/Package-Lock.json",""]`)),
+			want:  "changes protected paths: tools/web/Package-Lock.json",
+		},
+		"PR changes a path the repository's list protects": {
+			calls: joinCalls(start, ciCalls("pass"), prFilesCalls(1, `["internal/Guard/x_test.go",""]`)),
+			want:  "changes protected paths: internal/Guard/x_test.go",
+		},
+		"no protected section": {toml: testConfigTOML, want: "no [protected] section"},
+		"protected list from another methodology version": {
+			toml: testConfigTOML + "\n[protected]\nmethodology_version = 2\n", want: "survey methodology version 2, not this binary's version 1",
+		},
 		"PR renames a protected path away": {
 			calls: joinCalls(start, ciCalls("pass"), prFilesCalls(1, `["docs/guard.go","internal/guard/guard.go"]`)),
 			want:  "changes protected paths: internal/guard/guard.go",
@@ -446,7 +470,11 @@ func TestGrantMergeStops(t *testing.T) {
 			if approvedBy == "" {
 				approvedBy = "grant"
 			}
-			root, g := grantMergeRun(t, testConfigTOML, c.edit, c.issue, approvedBy)
+			toml := c.toml
+			if toml == "" {
+				toml = grantConfigTOML
+			}
+			root, g := grantMergeRun(t, toml, c.edit, c.issue, approvedBy)
 			id := g.Terms.ID
 			if c.after != nil {
 				c.after(t, root, g)

@@ -47,7 +47,8 @@ func roleProfileOf(r Roles, role string) RoleProfile {
 // (schema/revision header, concurrency, merge, memhub, metrics, then
 // claude before codex — EnabledHosts' and the interview's own
 // question-sequence order), only enabled hosts get a [hosts.X] table,
-// and output uses LF line endings and %q string quoting throughout.
+// a [protected] section, when present, comes last with its paths in
+// list order, and output uses LF line endings and %q string quoting throughout.
 //
 // Render is a hand-written template rather than toml.Encoder
 // specifically so golden-file tests can byte-compare its output and
@@ -86,6 +87,15 @@ func Render(c *Config) ([]byte, error) {
 	}
 	if c.Hosts.OpenCode != nil {
 		renderHost(&b, "opencode", c.Hosts.OpenCode)
+	}
+	if c.Protected != nil {
+		b.WriteString("\n[protected]\n")
+		fmt.Fprintf(&b, "methodology_version = %d\n", c.Protected.MethodologyVersion)
+		for _, e := range c.Protected.Paths {
+			b.WriteString("\n[[protected.paths]]\n")
+			fmt.Fprintf(&b, "path   = %q\n", e.Path)
+			fmt.Fprintf(&b, "reason = %q\n", e.Reason)
+		}
 	}
 
 	return []byte(b.String()), nil
