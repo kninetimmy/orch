@@ -58,6 +58,25 @@ yourself only when all of these hold; otherwise take the normal user gate.
 - No issue declares a risk domain. The grant cannot approve such a plan; it
   waits for the user's plan gate.
 
+When the run starts, whether the grant or the user approved the plan, work out
+each issue's merge path now and tell the user (see "Telling the user"). The
+engine refuses a grant merge for these reasons you can know before dispatch:
+
+- A person activated the run. The engine refuses every grant merge in a run
+  a person approved, so every merge in it comes to the user. This covers any
+  plan with an issue that declares a risk domain, since the grant cannot
+  approve that plan.
+- The issue is routed to the downgraded reviewer.
+- The issue's expected change touches a grant-protected path: a file or
+  directory in the compiled list in `internal/grant/protected.go` (the grant
+  code, the merge and gate engine, `GRANTS.md`, hooks, agents, routing,
+  state, the manifests, CI workflows, `CLAUDE.md`, `.orchestrator`, and the
+  like). The list is the same in every repository.
+
+Other refusals only show up later (an escalation or block in the issue's
+history, a spent merge budget, required CI not passing); handle those when they
+occur.
+
 Plan activation is the same `ActivationRequest` as a human approval, with:
 
 ```json
@@ -100,10 +119,15 @@ continue.
 
 ## Telling the user
 
-On every stop, when the grant ends, and at each run's completion, send a
-PushNotification and give a decision packet: what stopped, why, the options,
-and your recommendation. At each run's completion, also list the PRs merged
-under the grant.
+On every stop, when the grant ends, at the start of each run under an active
+grant, and at each run's completion, send a PushNotification and give a
+decision packet: what stopped, why, the options, and your recommendation. At
+each run's completion, also list the PRs merged under the grant.
+
+At the start of a run, the notification is the per-issue merge statement: for
+each issue, whether the grant can approve its merge or it will come to the
+user, and why. Send it even when the grant approved the plan and no person
+saw a plan gate, so the user knows in advance which merges will wait for them.
 
 ## Wrap-up and relay
 
