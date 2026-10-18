@@ -13,8 +13,11 @@ import (
 	"testing"
 	"time"
 
+	"github.com/kninetimmy/orch/internal/claudeusage"
 	"github.com/kninetimmy/orch/internal/execx"
 	"github.com/kninetimmy/orch/internal/grant"
+	"github.com/kninetimmy/orch/internal/lockfile"
+	"github.com/kninetimmy/orch/internal/metrics"
 )
 
 const grantHolder = "session-holder"
@@ -264,5 +267,69 @@ func TestHookPreCompactFromSubdirectory(t *testing.T) {
 	_, out, _ = runHookVerb(env, hookDoc(map[string]string{"session_id": grantHolder}), "session-start")
 	if !strings.Contains(out, "is the current holder") {
 		t.Errorf("session-start from a subdirectory lost the grant lines: %q", out)
+	}
+}
+
+func TestHookSessionStartRecordsClaudeSessionOnlyWithMetrics(t *testing.T) {
+	const session = "aaaaaaaa-0000-4000-8000-000000000001"
+	transcript := filepath.Join(t.TempDir(), session+".jsonl")
+	doc := hookDoc(map[string]string{"session_id": session, "transcript_path": transcript, "source": "startup"})
+	sessions := func(root string) string { return filepath.Join(root, filepath.FromSlash(claudeusage.SessionsDir)) }
+
+	disabled := grantRepo(t, false)
+	code, want, _ := runHookVerb(disabled, "", "session-start")
+	if c, got, _ := runHookVerb(disabled, doc, "session-start"); c != code || got != want {
+		t.Errorf("disabled metrics: output changed:\n%s\nvs\n%s", got, want)
+	}
+	if _, err := os.Stat(filepath.Join(disabled.RepoRoot, filepath.FromSlash(metrics.Dir))); !os.IsNotExist(err) {
+		t.Errorf("disabled metrics wrote storage (stat err %v)", err)
+	}
+
+	env := grantRepo(t, false)
+	enableMetrics(t, env.RepoRoot)
+	code, want, _ = runHookVerb(env, "", "session-start")
+	// Bad documents and identities record nothing and print the same.
+	for _, stdin := range []string{"not json", "{}", hookDoc(map[string]string{"session_id": "../" + session, "transcript_path": transcript}),
+		hookDoc(map[string]string{"session_id": session, "transcript_path": "relative.jsonl"})} {
+		if c, got, _ := runHookVerb(env, stdin, "session-start"); c != code || got != want {
+			t.Errorf("stdin %q: output changed:\n%s\nvs\n%s", stdin, got, want)
+		}
+	}
+	if _, err := os.Stat(sessions(env.RepoRoot)); !os.IsNotExist(err) {
+		t.Errorf("an invalid document was recorded (stat err %v)", err)
+	}
+
+	// A run verb holding the Delivery mutation lock does not hold the hook up.
+	lock, err := lockfile.AcquireMutation(env.RepoRoot)
+	if err != nil {
+		t.Fatal(err)
+	}
+	c, got, _ := runHookVerb(env, doc, "session-start")
+	if err := lock.Release(); err != nil {
+		t.Fatal(err)
+	}
+	if c != code || got != want {
+		t.Errorf("recording changed the output:\n%s\nvs\n%s", got, want)
+	}
+	data, err := os.ReadFile(filepath.Join(sessions(env.RepoRoot), session+".json"))
+	if err != nil || !strings.Contains(string(data), `"transcript_path":`+strconv.Quote(transcript)) {
+		t.Errorf("record = %s (%v)", data, err)
+	}
+}
+
+func TestHookSessionStartWithMetricsStillReadsTheGrantHolder(t *testing.T) {
+	env := grantRepo(t, true)
+	enableMetrics(t, env.RepoRoot)
+	_, out, _ := runHookVerb(env, hookDoc(map[string]string{"session_id": grantHolder}), "session-start")
+	if !strings.Contains(out, "is the current holder") {
+		t.Errorf("the one stdin read did not reach the grant check:\n%s", out)
+	}
+}
+
+// enableMetrics rewrites a repository's validTOML config with metrics enabled.
+func enableMetrics(t *testing.T, root string) {
+	t.Helper()
+	if err := os.WriteFile(filepath.Join(root, ".orchestrator", "config.toml"), []byte(validTOML+"\n[metrics]\nenabled = true\n"), 0o644); err != nil {
+		t.Fatal(err)
 	}
 }

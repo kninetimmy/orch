@@ -98,6 +98,9 @@ func (c *verbCtx) worktreeAbs() string {
 //  5. When issueNumber > 0, exactly one matching run issue whose phase is
 //     in allowed; issueNumber == 0 is a run-level verb with no issue.
 //
+// Between 4 and 5 it records the invoking Claude Code session as one that
+// ran a verb for the run (recordArchitectSession), its only write.
+//
 // It returns the loaded context; the verb performs its ordered
 // operations and persists on the success path.
 func loadVerb(env Env, issueNumber int, allowed []state.Phase, exemptStop bool) (*verbCtx, error) {
@@ -129,6 +132,10 @@ func loadVerb(env Env, issueNumber int, allowed []state.Phase, exemptStop bool) 
 	}
 	if !exemptStop && st.Run.StoppedReason != "" {
 		return nil, fmt.Errorf("%w (%s); run `orch abort` to return to assist, or `orch resume` to continue", ErrRunStopped, st.Run.StoppedReason)
+	}
+
+	if err := recordArchitectSession(env, cfg, st.Run); err != nil {
+		return nil, err
 	}
 
 	c := &verbCtx{env: env, cfg: cfg, st: st, owner: owner, idx: -1}

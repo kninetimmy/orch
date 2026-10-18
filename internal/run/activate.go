@@ -406,6 +406,9 @@ func Activate(ctx context.Context, env Env, reqJSON []byte) (*ActivationResult, 
 		if err := metrics.SetHost(env.RepoRoot, st.Run.ID, st.Run.Host); err != nil {
 			return nil, wrapAfterEnter(fmt.Errorf("record metrics: %w", err))
 		}
+		if err := recordArchitectSession(env, cfg, st.Run); err != nil {
+			return nil, wrapAfterEnter(err)
+		}
 		for j := range st.Run.Issues {
 			iss := &st.Run.Issues[j]
 			d := iss.Decision

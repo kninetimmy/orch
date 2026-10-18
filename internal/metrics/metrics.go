@@ -5,7 +5,8 @@
 // Metrics.Enabled gate, event timestamps, and event content all belong
 // to callers (internal/run, internal/cli); this package only knows how
 // to validate, append to, and load documents. Disabled metrics means
-// callers simply never call Append or Record; LoadAll never creates the
+// callers simply never call a writer (Append, Record, SetHost or
+// AddArchitectSession); LoadAll never creates the
 // directory itself, so a repository that has never enabled metrics
 // gains no storage from merely reading (PRD §23: disabled metrics
 // create no storage).
@@ -36,6 +37,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"sort"
 
 	"github.com/kninetimmy/orch/internal/manifest"
@@ -179,9 +181,13 @@ type Document struct {
 	RunID         string `json:"run_id"`
 	// Host is the run's host (claude, codex or opencode). Documents written
 	// before it was recorded carry none.
-	Host         string        `json:"host,omitempty"`
-	Events       []Event       `json:"events"`
-	Observations []Observation `json:"observations,omitempty"`
+	Host string `json:"host,omitempty"`
+	// ArchitectSessions are the Claude Code session ids that ran the run's
+	// verbs, for orch run complete to read their usage. Documents written
+	// before it was recorded carry none.
+	ArchitectSessions []string      `json:"architect_sessions,omitempty"`
+	Events            []Event       `json:"events"`
+	Observations      []Observation `json:"observations,omitempty"`
 }
 
 func dirPath(repoRoot string) string {
@@ -234,6 +240,37 @@ func SetHost(repoRoot, runID, host string) error {
 	}
 	doc.Host = host
 	return save(repoRoot, doc)
+}
+
+// AddArchitectSession adds session to the run's ArchitectSessions, creating
+// the document if needed and writing nothing when it is already there. It
+// requires the same external serialization as Append.
+func AddArchitectSession(repoRoot, runID, session string) error {
+	if err := validateRunID(runID); err != nil {
+		return err
+	}
+	if !identifier(session) {
+		return fmt.Errorf("invalid architect session %q", session)
+	}
+	doc, err := load(repoRoot, runID)
+	if err != nil {
+		return err
+	}
+	if slices.Contains(doc.ArchitectSessions, session) {
+		return nil
+	}
+	doc.ArchitectSessions = append(doc.ArchitectSessions, session)
+	return save(repoRoot, doc)
+}
+
+// ArchitectSessions returns the run's recorded ArchitectSessions; a run with
+// no document has none.
+func ArchitectSessions(repoRoot, runID string) ([]string, error) {
+	if err := validateRunID(runID); err != nil {
+		return nil, err
+	}
+	doc, err := load(repoRoot, runID)
+	return doc.ArchitectSessions, err
 }
 
 // Append records ev under repoRoot's run-scoped metrics document

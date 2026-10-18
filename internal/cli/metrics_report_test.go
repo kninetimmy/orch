@@ -227,3 +227,32 @@ func TestMetricsReportAttributesEscapedDefects(t *testing.T) {
 		t.Errorf("declared fixes reported as none:\n%s", out)
 	}
 }
+
+func TestMetricsReportShowsClaudeArchitectUsage(t *testing.T) {
+	n := int64(7)
+	run := "run-20261018T120000Z-aaaaaaaa"
+	session := "aaaaaaaa-0000-4000-8000-000000000001"
+	r, err := buildMetricsReport([]metrics.Document{{SchemaVersion: 2, RunID: run, Host: "claude", ArchitectSessions: []string{session, "invalid-session-id"},
+		Events: []metrics.Event{{At: "2026-10-18T12:00:00Z", Verb: "complete"}},
+		Observations: []metrics.Observation{
+			{SchemaVersion: 2, RunID: run, ID: "claude-architect:" + session, At: "2026-10-18T12:00:00Z", Source: "claude-transcript", Role: "architect", Host: "claude", Session: session,
+				Sample: &metrics.CounterSample{Stream: "claude-main-assistant-usage", Mode: "delta", Sequence: 1,
+					Counters: metrics.Counters{InputTokens: &n, OutputTokens: &n, CacheReadTokens: &n, CacheCreationTokens: &n}}},
+			{SchemaVersion: 2, RunID: run, ID: "claude-architect:invalid-session-id", At: "2026-10-18T12:00:00Z", Source: "claude-transcript", Role: "architect", Host: "claude",
+				Session: "invalid-session-id", Unavailable: &metrics.Unavailable{Reason: "session-id-not-uuid"}},
+		}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var out strings.Builder
+	printMetricsReport(&out, r)
+	for _, want := range []string{
+		"host claude; source claude-transcript; stream claude-main-assistant-usage; 1 runs; 1 samples",
+		"architect share 100.0% (7 of 7)",
+		"architect usage: architect-role counters recorded in all 1 runs",
+	} {
+		if !strings.Contains(out.String(), want) {
+			t.Errorf("output missing %q:\n%s", want, out.String())
+		}
+	}
+}
