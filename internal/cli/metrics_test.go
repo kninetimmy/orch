@@ -152,7 +152,7 @@ func TestMetricsReportsPerEventUsageAttributedByRoleAndCycle(t *testing.T) {
 		"role reviewer",
 		"cycle 1",
 		"cycle 2",
-		"total 420",
+		"  4. review; issue #1; role implementer; review cycle 1; input 300, output 120, cache read unknown, cache creation unknown, total 420, reasoning output unknown; unclassified reported duration unknown",
 	} {
 		if !strings.Contains(out, want) {
 			t.Errorf("output missing %q:\n%s", want, out)

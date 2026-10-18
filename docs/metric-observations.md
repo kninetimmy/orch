@@ -103,6 +103,22 @@ baseline store; temp-file write, sync, and atomic replacement commit evidence
 and baselines together. Retry the identical request after a storage failure or
 an uncertain response. There is no separate checkpoint to advance or repair.
 
+## Cross-run report
+
+`orch metrics report` is a read-only rollup of every recorded run document; it creates or
+modifies no file. It reports only what runs already record. Issue outcomes are grouped by
+role, executor profile, reviewer profile, reviewer downgrade and the approval source
+recorded on activation, with merges split by the approval source recorded on each merge. A
+dimension a run did not record is its own `unknown` group and is never counted under another
+value; in particular a run without an approval source is never counted as human-approved.
+Counters are summed only within one host, source and stream, with usage recorded on
+lifecycle verbs as its own group; no total across groups is printed, and a group with no
+measured counter shows `unknown`, not zero. The Architect's share is shown only for a group
+holding architect-role counters, otherwise the report says Architect usage is unavailable and
+for how many runs. Run elapsed time is wall-clock time from each run's first to last recorded
+event, not active time. Host on lifecycle events, structured routing facts, PR numbers and
+escaped-defect links are not recorded yet and are absent here.
+
 ## Read-only report and P1-A boundary
 
 `orch metrics` reports the evidence already present in every supported schema-1

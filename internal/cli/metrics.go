@@ -19,8 +19,11 @@ func runMetrics(env Env, args []string) error {
 	if len(args) == 0 {
 		return cmdMetrics(env)
 	}
+	if len(args) == 1 && args[0] == "report" {
+		return cmdMetricsReport(env)
+	}
 	if len(args) != 1 || args[0] != "record" {
-		return usageError(fmt.Sprintf("orch metrics: unexpected argument %q; usage: orch metrics [record (JSON on stdin)]", args[0]))
+		return usageError(fmt.Sprintf("orch metrics: unexpected argument %q; usage: orch metrics [record (JSON on stdin) | report]", args[0]))
 	}
 	data, err := io.ReadAll(env.Stdin)
 	if err != nil {
