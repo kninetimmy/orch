@@ -67,9 +67,9 @@ func isHolder(g *grant.Grant, in claudeHookInput) bool {
 }
 
 // grantSessionContext is the text SessionStart appends while a grant is
-// active, or "" when none is. It reads stdin only once a grant is known, so a
-// repository without one behaves exactly as before.
-func grantSessionContext(env Env, now time.Time) string {
+// active, or "" when none is. It calls input, the hook's one stdin read, only
+// once a grant is known, so a repository without one prints exactly as before.
+func grantSessionContext(env Env, now time.Time, input func() (claudeHookInput, bool)) string {
 	g := activeGrantOrNil(env, now)
 	if g == nil {
 		return ""
@@ -78,7 +78,7 @@ func grantSessionContext(env Env, now time.Time) string {
 	text := fmt.Sprintf("An autonomy grant is active: %s, expiring %s (in %s). Remaining budgets: %d of %d runs, %d of %d merges.\n",
 		t.ID, t.ExpiresAt.Format(time.RFC3339), t.ExpiresAt.Sub(now).Round(time.Minute),
 		t.RunLimit-len(g.Runs), t.RunLimit, t.MergeLimit-len(g.Merges), t.MergeLimit)
-	in, ok := readClaudeHookInput(env)
+	in, ok := input()
 	switch {
 	case !ok || in.SessionID == "":
 		return text + "Whether this session is the current holder of the grant could not be determined.\n"

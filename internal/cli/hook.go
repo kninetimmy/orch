@@ -3,8 +3,10 @@ package cli
 import (
 	"fmt"
 	"strings"
+	"sync"
 	"time"
 
+	"github.com/kninetimmy/orch/internal/claudeusage"
 	"github.com/kninetimmy/orch/internal/config"
 	"github.com/kninetimmy/orch/internal/paths"
 	"github.com/kninetimmy/orch/internal/state"
@@ -41,9 +43,10 @@ func runHook(env Env, args []string) error {
 // becomes injected session context, so unlike every other verb in this
 // package it is deliberately fail-OPEN, not fail-closed: a broken or
 // non-orch repository must never break a session from starting. It
-// reads stdin only for Claude while an autonomy grant is active, and then
-// only when stdin is not a terminal (the console-hang concern of `run
-// status --json`), and always exits 0 once its arguments are valid — any
+// reads stdin only for Claude while an autonomy grant is active or metrics
+// are enabled, at most once, and then only when stdin is not a terminal
+// (the console-hang concern of `run status --json`), and always exits 0
+// once its arguments are valid — any
 // discovery, config, or state failure degrades to silent output, not an
 // error. The architect skill's own `orch run status --json` call surfaces
 // a broken repo loudly later, once a session is actually underway.
@@ -62,10 +65,25 @@ func hookSessionStart(env Env, host, selectedModel string) error {
 	}
 	out := sessionStartContext(cfg, st, host, selectedModel)
 	if host == "claude" {
-		out += grantSessionContext(env, time.Now())
+		input := sync.OnceValues(func() (claudeHookInput, bool) { return readClaudeHookInput(env) })
+		if cfg.Metrics.Enabled {
+			recordClaudeSession(root, input)
+		}
+		out += grantSessionContext(env, time.Now(), input)
 	}
 	fmt.Fprint(env.Stdout, out)
 	return nil
+}
+
+// recordClaudeSession records the starting session's transcript path for
+// orch run complete to count its Architect usage. Like the rest of the hook
+// it fails open: an unreadable document, a session id that is not a UUID or a
+// failed write records nothing and changes nothing the hook prints. It takes
+// no lock, so it never waits on a Delivery run verb.
+func recordClaudeSession(root string, input func() (claudeHookInput, bool)) {
+	if in, ok := input(); ok && claudeusage.ValidSession(in.SessionID) {
+		_ = claudeusage.RecordSession(root, in.SessionID, in.TranscriptPath, time.Now())
+	}
 }
 
 // deliveryPhaseOrder lists state.Phase in the lifecycle order state.go
