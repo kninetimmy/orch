@@ -232,6 +232,26 @@ func TestTotalTokensValidatesThreadSpawnSource(t *testing.T) {
 	}
 }
 
+// An identified child that names no spawn source is not attributable to the
+// parent even when it ends in a complete final token count and task_complete.
+// It sits alone in its directory so only the source check can reject it.
+func TestTotalTokensRejectsIdentifiedChildWithoutSpawnSource(t *testing.T) {
+	dir := t.TempDir()
+	rollout := "{\"type\":\"session_meta\",\"payload\":{\"id\":\"child-executor\",\"session_id\":\"parent-139\",\"parent_thread_id\":\"parent-139\",\"thread_source\":\"subagent\",\"agent_path\":\"/root/issue_139_executor\"}}\n" +
+		"{\"type\":\"event_msg\",\"payload\":{\"type\":\"token_count\",\"info\":{\"total_token_usage\":{\"total_tokens\":782763}}}}\n" +
+		"{\"type\":\"event_msg\",\"payload\":{\"type\":\"task_complete\"}}\n"
+	if err := os.WriteFile(filepath.Join(dir, "rollout.jsonl"), []byte(rollout), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	if got, ok := TotalTokens(dir, parentThread, executorTask, nil); ok {
+		t.Errorf("TotalTokens reported %d for a child naming no spawn source", got)
+	}
+	if got := Completed(dir, parentThread, executorTask); got.Reason == "" {
+		t.Errorf("Completed accepted a child naming no spawn source: %+v", got)
+	}
+}
+
 func TestTotalTokensReturnsExactResumeDelta(t *testing.T) {
 	for _, tc := range []struct {
 		name     string
