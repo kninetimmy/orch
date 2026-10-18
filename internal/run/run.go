@@ -55,4 +55,7 @@ type Env struct {
 	// A document currently carries a timestamp field, so no verb reads
 	// it yet — PR B's lifecycle verbs will.
 	Now func() time.Time
+	// ClaudeSession is the invoking Claude Code session's id
+	// (CLAUDE_CODE_SESSION_ID), unvalidated; empty outside Claude Code.
+	ClaudeSession string
 }

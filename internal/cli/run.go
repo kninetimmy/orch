@@ -5,9 +5,11 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"os"
 	"strings"
 	"time"
 
+	"github.com/kninetimmy/orch/internal/grant"
 	"github.com/kninetimmy/orch/internal/lockfile"
 	"github.com/kninetimmy/orch/internal/run"
 )
@@ -112,7 +114,7 @@ func withDeliveryMutation(repoRoot string, fn func() error) (err error) {
 
 // emitRunResult runs one verb and writes its JSON result to stdout.
 func emitRunResult(env Env, verb string, fn func(context.Context, run.Env) (any, error)) error {
-	runEnv := run.Env{RepoRoot: env.RepoRoot, Runner: env.Runner, Now: time.Now}
+	runEnv := run.Env{RepoRoot: env.RepoRoot, Runner: env.Runner, Now: time.Now, ClaudeSession: os.Getenv(grant.SessionEnv)}
 	out, err := fn(context.Background(), runEnv)
 	if err != nil {
 		return err

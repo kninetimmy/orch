@@ -97,6 +97,9 @@ func Complete(ctx context.Context, env Env, reqJSON []byte) (*CompleteResult, er
 	}); err != nil {
 		return nil, err
 	}
+	if err := c.recordArchitectUsage(c.env.now()); err != nil {
+		return nil, err
+	}
 
 	return &CompleteResult{
 		SchemaVersion:   CompleteSchemaVersion,
