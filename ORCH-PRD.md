@@ -194,6 +194,15 @@ issue's history holds any escalation, block or block resolution; when its review
 downgraded reviewer; when required CI is anything but passing, including no required checks; or
 when the PR changes a protected path. It is still one approval for one PR at one head.
 
+Before #397 the protected paths were one list compiled into the binary for Orch's own source, the
+same in every repository, and a grant needed nothing from the repository's configuration. Now
+they are a built-in floor every repository gets (instruction files, git attributes, every common
+dependency manifest, lockfile and install, build or release script at any depth, and the root
+`.github/workflows`, `LICENSE` and `.orchestrator`) plus the paths in the `[protected]` section of
+the repository's committed `.orchestrator/config.toml`. A grant merge is also refused, and
+`orch grant preview` and `orch grant create` refuse, when that section is missing or records a
+survey methodology version other than the binary's.
+
 Exceptional blockers may require clarification. Material changes to scope, architecture, issue
 decomposition, or routing return to the plan gate.
 

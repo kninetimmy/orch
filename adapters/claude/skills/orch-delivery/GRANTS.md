@@ -67,11 +67,28 @@ engine refuses a grant merge for these reasons you can know before dispatch:
   plan with an issue that declares a risk domain, since the grant cannot
   approve that plan.
 - The issue is routed to the downgraded reviewer.
-- The issue's expected change touches a grant-protected path: a file or
-  directory in the compiled list in `internal/grant/protected.go` (the grant
-  code, the merge and gate engine, `GRANTS.md`, hooks, agents, routing,
-  state, the manifests, CI workflows, `CLAUDE.md`, `.orchestrator`, and the
-  like). The list is the same in every repository.
+- The issue's expected change touches a grant-protected path. That is the
+  built-in floor every repository gets plus the repository's own committed
+  list. The floor protects, by file name at any depth, `CLAUDE.md`,
+  `AGENTS.md`, `.gitignore`, `.gitattributes` and every common dependency
+  manifest, lockfile and install, build or release script (`go.mod`,
+  `package.json`, `Cargo.lock`, `*.csproj`, `requirements*.txt`, `Makefile`,
+  `install.sh`, `.goreleaser.yml` and the like), and, at the repository root,
+  `.github/workflows`, `LICENSE` and `.orchestrator`. The repository's list is
+  the `[protected]` section of its committed `.orchestrator/config.toml`: each
+  path with a one-line reason, a directory covering everything under it.
+  Before #397 it was one compiled list in `internal/grant/protected.go`,
+  written for Orch's own source (the grant code, the merge and gate engine,
+  `GRANTS.md`, hooks, agents, routing, state, the manifests, CI workflows,
+  `CLAUDE.md`, `.orchestrator`, and the like) and the same in every
+  repository; now Orch's own source is protected only through Orch's own
+  committed list, and until Orch commits one a grant cannot run there.
+
+A repository whose committed config has no `[protected]` section, or one
+approved under a survey methodology version other than the binary's, cannot
+use a grant at all: `orch grant preview` and `orch grant create` refuse, and a
+grant merge stops for the user. The refusal names `/orch:configure`, the
+command through which the repository's list is surveyed and approved.
 
 Other refusals only show up later (an escalation or block in the issue's
 history, a spent merge budget, required CI not passing); handle those when they
