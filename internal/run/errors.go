@@ -24,6 +24,10 @@ var (
 	// repository-defined (PRD §13), so activation never creates them —
 	// it fails closed before any mutation instead.
 	ErrAreaLabelMissing = errors.New("plan-declared area labels do not exist in the repository")
+	// ErrFixesPRNotMerged reports a plan-declared fixes PR that does not
+	// exist in the repository or is not merged, found at activation
+	// preflight before anything is created.
+	ErrFixesPRNotMerged = errors.New("plan-declared fixes pull request does not exist or is not merged")
 	// ErrAgentsStale reports that activation found the selected host's
 	// project-local agent definitions absent, unreadable, or different
 	// from the current build and effective role configuration.

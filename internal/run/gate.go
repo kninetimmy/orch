@@ -56,6 +56,9 @@ type GateDoc struct {
 // absent for a plan that declared nothing, which leaves the gate
 // document byte-identical to what the same plan produced before the
 // declaration existed.
+//
+// Fixes is likewise the plan's own list of merged PRs the issue fixes,
+// passed through unchanged and absent when the plan lists none.
 type GateIssue struct {
 	ID                 string             `json:"id"`
 	Title              string             `json:"title"`
@@ -70,6 +73,7 @@ type GateIssue struct {
 	Wave               int                `json:"wave"`
 	RequiredTests      []string           `json:"required_tests"`
 	TestsCIDoesNotRun  []string           `json:"tests_ci_does_not_run,omitempty"`
+	Fixes              []int              `json:"fixes,omitempty"`
 	Risk               string             `json:"risk"`
 	UsageClass         string             `json:"usage_class"`
 	Labels             []string           `json:"labels"`
@@ -147,6 +151,7 @@ func gateIssues(plan *PlanDoc, cfg *config.Config, profile routing.Profile) ([]G
 			Wave:               i.Wave,
 			RequiredTests:      i.RequiredTests,
 			TestsCIDoesNotRun:  i.TestsCIDoesNotRun,
+			Fixes:              i.Fixes,
 			Risk:               string(deriveRisk(i)),
 			UsageClass:         i.UsageClass,
 			Labels:             flattenLabels(labels),

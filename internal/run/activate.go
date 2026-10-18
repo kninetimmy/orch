@@ -270,6 +270,9 @@ func Activate(ctx context.Context, env Env, reqJSON []byte) (*ActivationResult, 
 			return nil, fmt.Errorf("%w: %s; create them in the repository (gh label create <name>) or remove them from the plan, then resubmit for approval", ErrAreaLabelMissing, strings.Join(missing, ", "))
 		}
 	}
+	if err := checkFixesMerged(ctx, gh, plan); err != nil {
+		return nil, err
+	}
 	if _, err := memhubGate(ctx, cfg.Memhub.Mode, memhub.New(env.Runner, env.RepoRoot)); err != nil {
 		return nil, err
 	}
@@ -417,6 +420,7 @@ func Activate(ctx context.Context, env Env, reqJSON []byte) (*ActivationResult, 
 				ReviewerDowngraded: d.ReviewerDowngraded,
 				Rationale:          d.Rationale,
 				ApprovalSource:     approvalSource(planRef.ApprovedBy, byGrant),
+				Fixes:              ordered[j].Fixes,
 				RoutingFacts: &metrics.RoutingFacts{
 					RiskDomains:        f.RiskDomains,
 					UnusuallyDifficult: f.UnusuallyDifficult,
@@ -454,6 +458,30 @@ func planAreaLabels(p *PlanDoc) []string {
 	return areas
 }
 
+// checkFixesMerged requires every PR a plan issue says it fixes to exist
+// and be merged, each PR read once however many issues name it. A read
+// failure (gh reports a PR that does not exist as an error) is wrapped so
+// the error names the PR.
+func checkFixesMerged(ctx context.Context, gh *ghops.GH, p *PlanDoc) error {
+	checked := map[int]bool{}
+	for _, pi := range p.Issues {
+		for _, n := range pi.Fixes {
+			if checked[n] {
+				continue
+			}
+			checked[n] = true
+			pr, err := gh.PR(ctx, n)
+			if err != nil {
+				return fmt.Errorf("%w: issue %s fixes PR #%d: %v; correct the plan's fixes and resubmit for approval", ErrFixesPRNotMerged, pi.ID, n, err)
+			}
+			if pr.State != "MERGED" {
+				return fmt.Errorf("%w: issue %s fixes PR #%d, which is %s; correct the plan's fixes and resubmit for approval", ErrFixesPRNotMerged, pi.ID, n, strings.ToLower(pr.State))
+			}
+		}
+	}
+	return nil
+}
+
 // issueBody renders the human-prose portion of a created issue's body
 // (PRD §13): objective, acceptance criteria, required tests,
 // dependencies named by plan id and wave, usage class, and the plan
@@ -489,6 +517,13 @@ func issueBody(pi PlanIssue, waveByID map[string]int, digest string) string {
 	} else {
 		for _, dep := range pi.DependsOn {
 			fmt.Fprintf(&b, "- %s (wave %d)\n", dep, waveByID[dep])
+		}
+	}
+
+	if len(pi.Fixes) > 0 {
+		b.WriteString("\n**Fixes**\n\n")
+		for _, n := range pi.Fixes {
+			fmt.Fprintf(&b, "- #%d\n", n)
 		}
 	}
 

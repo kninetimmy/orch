@@ -43,6 +43,14 @@ type PlanDoc struct {
 // statement digest-identical to the same document submitted before this
 // field existed: Digest marshals this struct, and a nil slice is omitted
 // from that marshal entirely.
+//
+// Fixes lists the earlier merged pull requests of this repository whose
+// defect the issue fixes, so the metrics report can attribute each
+// escaped defect to the issue that shipped it. It is optional with
+// omitempty for the same digest reason, and it is declaration-only: the
+// engine checks at activation that each PR exists and is merged, and
+// carries the list to the gate, the issue body and the activate metrics
+// event — never into run state or the audit record.
 type PlanIssue struct {
 	ID                 string    `json:"id"`
 	Title              string    `json:"title"`
@@ -55,6 +63,7 @@ type PlanIssue struct {
 	Wave               int       `json:"wave"`
 	RequiredTests      []string  `json:"required_tests"`
 	TestsCIDoesNotRun  []string  `json:"tests_ci_does_not_run,omitempty"`
+	Fixes              []int     `json:"fixes,omitempty"`
 	UsageClass         string    `json:"usage_class"` // light|medium|heavy
 }
 
@@ -224,6 +233,17 @@ func (p *PlanDoc) Validate(cfg *config.Config) error {
 			if !slices.Contains(iss.RequiredTests, t) {
 				fail("%s: tests_ci_does_not_run[%d] %q does not name one of this issue's required_tests", prefix, j, t)
 			}
+		}
+		seenFixes := map[int]bool{}
+		for j, n := range iss.Fixes {
+			if n < 1 {
+				fail("%s: fixes[%d] must be a positive pull request number, got %d", prefix, j, n)
+				continue
+			}
+			if seenFixes[n] {
+				fail("%s: fixes[%d] lists pull request #%d twice", prefix, j, n)
+			}
+			seenFixes[n] = true
 		}
 		if !usageClasses[iss.UsageClass] {
 			fail("%s: usage_class %q is not one of light, medium, heavy", prefix, iss.UsageClass)

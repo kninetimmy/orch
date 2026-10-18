@@ -116,7 +116,14 @@ lifecycle verbs as its own group; no total across groups is printed, and a group
 measured counter shows `unknown`, not zero. The Architect's share is shown only for a group
 holding architect-role counters, otherwise the report says Architect usage is unavailable and
 for how many runs. Run elapsed time is wall-clock time from each run's first to last recorded
-event, not active time. Escaped-defect links are not recorded yet and are absent here.
+event, not active time. A plan issue may list in `fixes` the earlier merged PRs whose defect it
+fixes; the report attributes each such escaped defect to the original issue, found by the merge
+event that recorded that PR number, and lists the original issue's run, issue number, role,
+executor and reviewer profiles, reviewer downgrade, first review verdict, review cycles, and
+the approval sources recorded at its activation and at its merge. Each distinct fixed PR is
+counted once under the original issue's outcome group (and in each breakdown below). A fixed PR
+that no recorded merge event names, such as one merged before merge events recorded PR
+numbers, is reported as unattributed with a count and is never guessed.
 
 Fields recorded for this report, all optional with the metrics schema still at 2, so a
 document written before them loads unchanged (an older orch binary reading a newer document
@@ -128,6 +135,8 @@ fails closed on the unknown field):
   written explicitly, so an event without `routing_facts` predates them (unknown), which is not
   the same as every fact being false.
 - Pr-open and merge event `pr_number`: the issue's PR number.
+- Activate event `fixes`: the merged PR numbers the plan says the issue fixes; absent when it
+  lists none.
 - Review event `review_block_cause`: `wrong_criterion` or `fix_cycle_limit` when that review
   blocked its issue (the block the review actually added); absent for a review that blocked
   nothing, and never set on the executor-usage review event.

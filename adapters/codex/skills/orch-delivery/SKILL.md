@@ -64,6 +64,7 @@ a routed selection.
     },
     "depends_on": [], "wave": 1, "required_tests": ["..."],
     "tests_ci_does_not_run": ["..."],
+    "fixes": [123],
     "usage_class": "medium"
   }]
 }
@@ -99,6 +100,21 @@ executor knows which check nothing but a local run will ever execute.
 Omit the field unless you checked the repository's workflows yourself: it
 is a claim about that repository, and saying nothing is honest where a
 guess is not. Omitting it never asserts that CI runs everything.
+
+When an issue fixes a defect that an earlier merged pull request of this
+repository shipped, list that PR's number in `fixes`, so `orch metrics
+report` can attribute the escaped defect to the issue that merged it. The
+field is optional; leave it out when the issue fixes no merged PR's defect,
+and a plan that lists none is digest-identical to one written before the
+field existed. `orch run plan` refuses a plan whose `fixes` holds a number
+that is not positive or holds the same number twice. `orch run activate`
+checks each listed PR before creating any issue, branch or worktree and
+refuses, naming the PR, if it does not exist in the repository or is not
+merged. The gate and the created issue body list the PRs an issue fixes,
+and the issue's activate metrics event records them; nothing else carries
+them. A fixed PR that no recorded merge event names (one merged before
+merge events recorded PR numbers) is reported as unattributed rather than
+guessed.
 
 An acceptance criterion describes an observable outcome, and never
 names a function, a control-flow step, or a validity notion the change
@@ -185,7 +201,8 @@ Call `orch run plan` with the `PlanDoc` on stdin. The result is a
 `acceptance_criteria`, `role`, `executor` (`{model, effort}`),
 `reviewer` (`{model, effort}`), `reviewer_downgraded`,
 `routing_rationale`, `depends_on`, `wave`, `required_tests`,
-`tests_ci_does_not_run`, `risk`, `usage_class`, `labels`.
+`tests_ci_does_not_run`, `fixes` (present only when the plan lists some), `risk`,
+`usage_class`, `labels`.
 
 Render the gate in full prose before asking anything: every field of
 every issue (name the routed model and effort plainly, and explain a
@@ -197,7 +214,8 @@ Render each entry of `tests_ci_does_not_run` against the required test it
 names, not as a list of its own: the human is approving that command as a
 check nothing but a local run will ever execute. An absent field is the
 plan saying nothing about CI coverage — never report it as a finding that
-CI runs every required test.
+CI runs every required test. Render `fixes`, when present, as the merged PRs
+the issue fixes; an issue without it fixes none that the plan named.
 
 Then ask, via Codex's `request_user_input` primitive, **one** question
 — header `Plan gate` — offering exactly these four options in order
