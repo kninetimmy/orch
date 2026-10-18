@@ -244,6 +244,50 @@ UTC RFC3339. `statement` is the exact literal
 The result (`ActivationResult`) carries `run_id` and, per issue,
 `id`/`number`/`url`/`branch`/`worktree`. The run is now in Delivery.
 
+## Subagent usage and scouts
+
+On Claude Code a subagent's cost reaches you only in its **task
+notification**, which arrives after the subagent's hand-back message
+(observed on 2.1.301) and carries:
+
+```
+<usage><subagent_tokens>N</subagent_tokens><tool_uses>N</tool_uses><duration_ms>N</duration_ms></usage>
+```
+
+Take every subagent's usage from that notification, never from the
+hand-back. In `usage` and `executor_usage`, `subagent_tokens` is
+`total_tokens` and `duration_ms` is `duration_ms`; the notification has
+no input/output/cache split, so supply none. If no notification has
+arrived for the work being recorded, omit the field — never estimate.
+`executor_usage` is also omitted for a fix cycle done by a subagent
+resumed with `SendMessage`, whose notification `duration_ms` is not
+reliable per cycle. Wait for the executor's or reviewer's notification
+before calling `orch run pr-open` or `orch run review` for its work.
+
+Scouts have no lifecycle verb. Record each scout's notification usage
+with `orch metrics record` (main checkout as cwd, one observation as JSON
+on stdin), run-level with role `scout` and no issue. It needs the current
+run's `run_id`, so a scout that ran before activation (during planning)
+is recorded after `orch run activate` returns: keep its notification
+values until then, and set `at` to when the notification arrived.
+Record before `orch run complete` or `abort` clears the run. `session`
+is the scout's task or agent id, so each scout is its own stream;
+`id` must be unique in the run and a retry of the same observation is an
+exact replay. Tokens are the only counter: an observation has no
+duration field, so a scout's `duration_ms` is not recorded.
+
+```json observation
+{"schema_version": 2, "run_id": "run-20261018T001911Z-8ae3053f",
+ "id": "claude:scout:a1b2c3d4e5f6:tokens", "at": "2026-10-18T00:12:30Z",
+ "source": "claude-task-notification", "role": "scout", "host": "claude",
+ "session": "a1b2c3d4e5f6",
+ "sample": {"stream": "subagent-tokens", "mode": "cumulative", "sequence": 1,
+            "counters": {"total_tokens": 48213}}}
+```
+
+A scout with no notification is not recorded at all, rather than
+guessed. See `docs/metric-observations.md`.
+
 ## Per-issue loop
 
 Work issues in wave order, never more than `concurrency.max_subagents`
@@ -321,11 +365,12 @@ in flight at once. For each issue:
    audit record permanently. This prefix does not collide with the
    engine-owned names `required-ci`, `merge`, `abandoned`, and
    `review-cycle-<n>`. `usage` is optional (PRD §21) and is the
-   executor's own cost: supply only the fields the executor's Task
-   result actually reports — token totals, duration, and
-   `total_tokens` when that is what it reports instead of the
-   input/output/cache split — never an estimate. Result carries
-   `pr_number`, `pr_url`.
+   executor's own cost, taken from its task notification per
+   [Subagent usage](#subagent-usage-and-scouts): wait for that
+   notification before calling `orch run pr-open`, then supply
+   `subagent_tokens` as `total_tokens` and `duration_ms`, and nothing
+   from the hand-back. Omit `usage` when no notification has arrived —
+   never an estimate. Result carries `pr_number`, `pr_url`.
 
 4. **Spawn the reviewer** — once the PR stops changing, spawn the
    reviewer **fresh** (a new instance, not the executor continuing):
@@ -396,9 +441,12 @@ in flight at once. For each issue:
    summary.
 
    `usage` is optional (PRD §21), same rule as PR-open: it is the
-   reviewer's own cost — only report what the reviewer subagent's
-   Task result actually carries, including `total_tokens` when that
-   is what it reports instead of the input/output/cache split.
+   reviewer's own cost, taken from the reviewer's task notification
+   (see [Subagent usage](#subagent-usage-and-scouts)). The reviewer's
+   hand-back arrives before that notification, so wait for the
+   notification before calling `orch run review`; a review recorded
+   on the hand-back alone has no usage. Omit `usage` when no
+   notification has arrived.
    A criterion judged `wrong` is the needs-human outcome, and this one
    `orch run review` call makes it: the engine blocks the issue and
    flags it needs-human itself, and the result says so in `phase`,
@@ -412,9 +460,12 @@ in flight at once. For each issue:
    spawned (step 4) and `orch run review` is called again. Because this is
    the only verb call on that cycle, `executor_usage` (same optional shape
    as `usage`) carries the executor's fix-and-push cost for the cycle just
-   finished — report only what its Task result actually gives you, never an
-   estimate, and omit it when there was no fix cycle (the first review
-   after pr-open).
+   finished. Fill it from a task notification as `usage` is, but omit it
+   when there was no fix cycle (the first review after pr-open) and for a
+   fix cycle done by a subagent resumed with `SendMessage`: that
+   notification's `duration_ms` has been seen both cumulative across
+   resumes and per resume, so it cannot be trusted for the cycle. Never
+   estimate it.
    `orch run pr-open` is not reachable a second time, so `verifications`
    is optional and takes pr-open's input shape — use it to carry
    evidence re-run on the fix commit (e.g. tests re-run before
