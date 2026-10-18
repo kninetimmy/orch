@@ -202,7 +202,7 @@ func TestGuardInternalFailureParityExitsTwo(t *testing.T) {
 // which the Assist-mode fixture never reaches.
 func TestSessionStartParity(t *testing.T) {
 	env, stdoutClaude, stderr := testEnv(t)
-	writeConfig(t, env.RepoRoot, validTOML)
+	writeConfig(t, env.RepoRoot, validTOML+currentProtected)
 	planned := []state.Issue{{PlanID: "a", Title: "A", Phase: state.PhasePlanned}}
 	plan := state.PlanRef{Title: "t", Digest: "sha256:x", ConfigRevision: "r1"}
 	st, err := state.EnterDelivery(env.RepoRoot, "claude", plan, planned)
