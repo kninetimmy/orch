@@ -1,6 +1,8 @@
 package grant
 
 import (
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -87,5 +89,21 @@ func TestProtectedRepoList(t *testing.T) {
 	// An entry that cannot be verified protects every path.
 	if !Protected("README.md", []string{"docs/PROGRA~1"}) {
 		t.Error("an unverifiable entry did not fail closed")
+	}
+}
+
+// TestSurveyDocNamesEveryFloorEntry keeps the survey methodology's description
+// of the floor from drifting: the Claude orch-setup reference must name every
+// floor entry, or a survey following it would skip paths the floor lacks.
+func TestSurveyDocNamesEveryFloorEntry(t *testing.T) {
+	data, err := os.ReadFile(filepath.Join("..", "..", "adapters", "claude", "skills", "orch-setup", "PROTECTED_PATHS_SURVEY.md"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	doc := strings.ToLower(string(data))
+	for _, entry := range append(append([]string{}, floorNames...), floorRoots...) {
+		if !strings.Contains(doc, "`"+entry+"`") {
+			t.Errorf("survey methodology does not name floor entry %q", entry)
+		}
 	}
 }
