@@ -111,6 +111,18 @@ func TestPlanDocValidate(t *testing.T) {
 			},
 			wantIn: `tests_ci_does_not_run[0] "go test -tags golden ./..." does not name one of this issue's required_tests`,
 		},
+		"fixes zero": {
+			mutate: func(p *PlanDoc) { p.Issues[0].Fixes = []int{12, 0} },
+			wantIn: "fixes[1] must be a positive pull request number, got 0",
+		},
+		"fixes negative": {
+			mutate: func(p *PlanDoc) { p.Issues[0].Fixes = []int{-3} },
+			wantIn: "fixes[0] must be a positive pull request number, got -3",
+		},
+		"fixes duplicate": {
+			mutate: func(p *PlanDoc) { p.Issues[0].Fixes = []int{12, 7, 12} },
+			wantIn: "fixes[2] lists pull request #12 twice",
+		},
 		"bad wave": {
 			mutate: func(p *PlanDoc) { p.Issues[0].Wave = 0 },
 			wantIn: "wave must be >= 1",

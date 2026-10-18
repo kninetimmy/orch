@@ -70,6 +70,7 @@ func TestApprovalContractBindsEveryInput(t *testing.T) {
 		{name: "criteria", plan: func(p *PlanDoc) { p.Issues[0].AcceptanceCriteria[0] += " changed" }},
 		{name: "checks", plan: func(p *PlanDoc) { p.Issues[0].RequiredTests = append(p.Issues[0].RequiredTests, "go vet ./...") }},
 		{name: "ci declaration", plan: func(p *PlanDoc) { p.Issues[0].TestsCIDoesNotRun = p.Issues[0].RequiredTests[:1] }},
+		{name: "fixes", plan: func(p *PlanDoc) { p.Issues[0].Fixes = []int{12} }},
 		{name: "routing facts", plan: func(p *PlanDoc) { p.Issues[0].Facts.UnusuallyDifficult = true }},
 		{name: "engine criterion trigger", plan: func(p *PlanDoc) { p.Issues[0].Facts.RiskDomains = []string{"authorization"} }},
 		{name: "concurrency", config: "[concurrency]\nmax_subagents = 2\n"},

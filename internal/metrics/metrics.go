@@ -137,6 +137,10 @@ type Event struct {
 	// issue: BlockCauseWrongCriterion or BlockCauseFixCycleLimit. A review
 	// that blocked nothing records none.
 	ReviewBlockCause string `json:"review_block_cause,omitempty"`
+	// Fixes is the merged PR numbers an activate event's issue declares it
+	// fixes, so the report can attribute each escaped defect to the issue
+	// whose merge event carries that PR number.
+	Fixes []int `json:"fixes,omitempty"`
 }
 
 // The causes a review event can record in Event.ReviewBlockCause.

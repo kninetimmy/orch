@@ -184,3 +184,46 @@ func TestMetricsReportBreaksOutcomesDownByHostAndRoutingFacts(t *testing.T) {
 		}
 	}
 }
+
+func TestMetricsReportAttributesEscapedDefects(t *testing.T) {
+	env, stdout, _ := testEnv(t)
+	writeConfig(t, env.RepoRoot, validTOML)
+	exec := &manifest.Selection{Model: "m1", Effort: "high"}
+	rev := &manifest.Selection{Model: "m2", Effort: "medium"}
+	origin := metrics.Document{SchemaVersion: 2, RunID: "run-20260715T000000Z-aaaaaaaa", Host: "claude",
+		Events: []metrics.Event{
+			{At: "2026-07-15T00:00:00Z", Verb: "activate", IssueNumber: 7, Role: "implementer", Executor: exec, Reviewer: rev, ReviewerDowngraded: true, ApprovalSource: "human"},
+			{At: "2026-07-15T00:01:00Z", Verb: "review", IssueNumber: 7, Verdict: "request-changes", ReviewCycles: 1},
+			{At: "2026-07-15T00:02:00Z", Verb: "review", IssueNumber: 7, Verdict: "approve", ReviewCycles: 2},
+			{At: "2026-07-15T00:03:00Z", Verb: "merge", IssueNumber: 7, PRNumber: 30, ApprovalSource: "grant:g1"},
+		}}
+	// Both issues name PR 30, which counts once; PR 99 has no merge event.
+	fixer := metrics.Document{SchemaVersion: 2, RunID: "run-20260716T000000Z-bbbbbbbb", Host: "claude",
+		Events: []metrics.Event{
+			{At: "2026-07-16T00:00:00Z", Verb: "activate", IssueNumber: 8, Fixes: []int{30, 99}},
+			{At: "2026-07-16T00:00:00Z", Verb: "activate", IssueNumber: 9, Fixes: []int{30}},
+		}}
+	writeMetricsFixture(t, env.RepoRoot, origin.RunID, origin)
+	writeMetricsFixture(t, env.RepoRoot, fixer.RunID, fixer)
+
+	if code := Run([]string{"metrics", "report"}, env); code != ExitOK {
+		t.Fatalf("exit = %d, want %d\n%s", code, ExitOK, stdout.String())
+	}
+	out := stdout.String()
+	for _, want := range []string{
+		"  PR #30, fixed by run run-20260716T000000Z-bbbbbbbb issue #8; original run run-20260715T000000Z-aaaaaaaa issue #7; role implementer; executor [model m1, effort high]; reviewer [model m2, effort medium]; reviewer downgraded yes; first review verdict request-changes; review cycles 2; approval at activation human; approval at merge grant:g1\n",
+		"  unattributed (no recorded merge event names the PR): 1 [99]\n",
+		"approval at activation human\n    issues 1; merged 1",
+		"    escaped defects attributed to these issues 1\n",
+	} {
+		if !strings.Contains(out, want) {
+			t.Errorf("output missing %q:\n%s", want, out)
+		}
+	}
+	if n := strings.Count(out, "PR #30,"); n != 1 {
+		t.Errorf("PR 30 listed %d times, want once:\n%s", n, out)
+	}
+	if strings.Contains(out, "none declared") {
+		t.Errorf("declared fixes reported as none:\n%s", out)
+	}
+}

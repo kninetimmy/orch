@@ -71,6 +71,9 @@ type outcomes struct {
 	fixCycles       int
 	reviewBlocks    map[string]int
 	causeUnrecorded int
+	// escapedDefects counts distinct merged PRs of these issues that a
+	// later plan issue declared it fixes.
+	escapedDefects int
 }
 
 type routeGroup struct {
@@ -151,6 +154,7 @@ func (o outcomes) print(w io.Writer) {
 	wrong, limit := o.reviewBlocks[metrics.BlockCauseWrongCriterion], o.reviewBlocks[metrics.BlockCauseFixCycleLimit]
 	fmt.Fprintf(w, "    request-changes fix cycles %d; reviews that blocked their issue %d (wrong criterion %d, fix-cycle limit %d); request-changes reviews with block cause not recorded %d\n",
 		o.fixCycles, wrong+limit, wrong, limit, o.causeUnrecorded)
+	fmt.Fprintf(w, "    escaped defects attributed to these issues %d\n", o.escapedDefects)
 }
 
 // reportUsageKey separates usage recorded on lifecycle events (no host,
@@ -184,6 +188,20 @@ type metricsReport struct {
 	usage              []reportUsageGroup
 	runsWithoutArchUse int
 	elapsed            []runElapsed
+	escapes            []escapedDefect
+	// unattributed holds the fixed PRs no recorded merge event names.
+	unattributed []int
+}
+
+// escapedDefect is one fixed PR attributed to the issue whose merge event
+// carries its number.
+type escapedDefect struct {
+	pr           int
+	fixedByRun   string
+	fixedByIssue int
+	originRun    string
+	originIssue  int
+	origin       *issueFacts
 }
 
 // issueFacts is everything one run recorded about one issue.
@@ -202,6 +220,11 @@ type issueFacts struct {
 	merged, abandoned, blocked bool
 	escalations, cycles        int
 	firstVerdict               string
+
+	// prNumber is the PR number the merge event recorded (0 when none), and
+	// fixes the merged PR numbers the activate event declared this issue fixes.
+	prNumber int
+	fixes    []int
 }
 
 func selectionLabel(s *manifest.Selection) string {
@@ -237,6 +260,14 @@ func buildMetricsReport(docs []metrics.Document) (metricsReport, error) {
 		byDimension[i] = map[string]*outcomes{}
 	}
 
+	type issueRef struct {
+		run    string
+		number int
+		facts  *issueFacts
+	}
+	mergedByPR := map[int]issueRef{}
+	var fixRefs []escapedDefect // pr, fixedByRun and fixedByIssue only
+
 	for _, doc := range docs {
 		issues := map[int]*issueFacts{}
 		for _, ev := range doc.Events {
@@ -269,6 +300,7 @@ func buildMetricsReport(docs []metrics.Document) (metricsReport, error) {
 				}
 				if ev.Verb == "activate" {
 					f.approval = orUnknown(ev.ApprovalSource)
+					f.fixes = ev.Fixes
 					if rf := ev.RoutingFacts; rf != nil {
 						f.riskDomain = yesNo(len(rf.RiskDomains) > 0)
 						f.difficult = yesNo(rf.UnusuallyDifficult)
@@ -288,6 +320,9 @@ func buildMetricsReport(docs []metrics.Document) (metricsReport, error) {
 			case "merge":
 				f.merged = true
 				f.mergeSource = orUnknown(ev.ApprovalSource)
+				if ev.PRNumber > 0 {
+					f.prNumber = ev.PRNumber
+				}
 			case "abandon":
 				f.abandoned = true
 			case "block":
@@ -312,9 +347,17 @@ func buildMetricsReport(docs []metrics.Document) (metricsReport, error) {
 		}
 
 		merged := 0
-		for _, f := range issues {
+		for number, f := range issues {
 			if f.merged {
 				merged++
+			}
+			if f.prNumber > 0 {
+				if _, dup := mergedByPR[f.prNumber]; !dup {
+					mergedByPR[f.prNumber] = issueRef{doc.RunID, number, f}
+				}
+			}
+			for _, pr := range f.fixes {
+				fixRefs = append(fixRefs, escapedDefect{pr: pr, fixedByRun: doc.RunID, fixedByIssue: number})
 			}
 			key := routeKey{f.role, f.executor, f.reviewer, f.downgraded, f.approval}
 			g := routes[key]
@@ -400,6 +443,37 @@ func buildMetricsReport(docs []metrics.Document) (metricsReport, error) {
 		r.elapsed = append(r.elapsed, e)
 	}
 
+	// A PR counts once however many issues declare they fix it; the
+	// first declaration in run and issue order names the fixer.
+	sort.SliceStable(fixRefs, func(i, j int) bool {
+		a, b := fixRefs[i], fixRefs[j]
+		if a.fixedByRun != b.fixedByRun {
+			return a.fixedByRun < b.fixedByRun
+		}
+		return a.fixedByIssue < b.fixedByIssue
+	})
+	seenPR := map[int]bool{}
+	for _, fx := range fixRefs {
+		if seenPR[fx.pr] {
+			continue
+		}
+		seenPR[fx.pr] = true
+		origin, ok := mergedByPR[fx.pr]
+		if !ok {
+			r.unattributed = append(r.unattributed, fx.pr)
+			continue
+		}
+		f := origin.facts
+		fx.originRun, fx.originIssue, fx.origin = origin.run, origin.number, f
+		r.escapes = append(r.escapes, fx)
+		routes[routeKey{f.role, f.executor, f.reviewer, f.downgraded, f.approval}].escapedDefects++
+		for i, d := range reportDimensions {
+			byDimension[i][d.value(f)].escapedDefects++
+		}
+	}
+	sort.Ints(r.unattributed)
+	sort.Slice(r.escapes, func(i, j int) bool { return r.escapes[i].pr < r.escapes[j].pr })
+
 	for _, g := range routes {
 		r.routes = append(r.routes, *g)
 	}
@@ -443,6 +517,22 @@ func printMetricsReport(w io.Writer, r metricsReport) {
 			fmt.Fprintf(w, "  %s %s\n", d.title, g.value)
 			g.print(w)
 		}
+	}
+
+	fmt.Fprintln(w, "\nescaped defects (merged PRs a later plan issue declares it fixes):")
+	for _, e := range r.escapes {
+		f := e.origin
+		verdict, cycles := orUnknown(f.firstVerdict), unknownValue
+		if f.firstVerdict != "" {
+			cycles = fmt.Sprint(f.cycles)
+		}
+		fmt.Fprintf(w, "  PR #%d, fixed by run %s issue #%d; original run %s issue #%d; role %s; executor [%s]; reviewer [%s]; reviewer downgraded %s; first review verdict %s; review cycles %s; approval at activation %s; approval at merge %s\n",
+			e.pr, e.fixedByRun, e.fixedByIssue, e.originRun, e.originIssue, f.role, f.executor, f.reviewer, f.downgraded, verdict, cycles, f.approval, f.mergeSource)
+	}
+	if len(r.escapes)+len(r.unattributed) == 0 {
+		fmt.Fprintln(w, "  none declared")
+	} else {
+		fmt.Fprintf(w, "  unattributed (no recorded merge event names the PR): %d %v\n", len(r.unattributed), r.unattributed)
 	}
 
 	fmt.Fprintln(w, "\ntoken counters by host, source and stream (no total across groups):")
