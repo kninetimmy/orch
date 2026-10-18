@@ -37,13 +37,62 @@ Root-only paths, each covering itself and everything under it, ignoring case:
 Only an exact match is covered. Other manifests (`Gemfile`, `pom.xml`,
 `build.gradle`, `go.work`), other scripts (`scripts/release.sh`,
 `release.ps1`), other CI systems and other license file names are not on the
-floor. When in doubt, propose the path: a redundant entry is harmless and a
-missing one is not.
+floor.
 
-## What to survey for
+Before v0.15.1 this survey ran on a different rule: when in doubt, propose the
+path, because a redundant entry is harmless and a missing one is not. It also
+told the surveyor to propose every release script and CI configuration the
+floor misses, and to keep every scout entry that was not an exact floor match.
+In its first run, on Orch's own repository, that rule proposed 62 entries
+covering most of the engine, enough to send nearly every grant merge back to
+the user. Now a path is proposed only when it meets the test in "What the list
+is for", and the other candidates are reported as near misses.
 
-Survey the repository against each of these eight categories. A repository
-may have nothing in a category; say so rather than inventing an entry.
+## What the list is for
+
+A grant exists so work merges without the human. A protected path does not
+stop a grant's run: a grant merge that touches one waits for the user, and the
+run carries on with other issues. So every entry has a cost, because each PR
+that touches it goes back to the human, and a list that covers everything
+important leaves a grant nothing to merge. Aim for the smallest list that
+guards the boundary, not a map of everything that matters.
+
+Every grant merge has already passed the repository's required CI and an
+independent review, and a merge can be reverted. Those catch and undo ordinary
+bugs; the list is for what they cannot. Propose a path only when a bad change
+there, after passing CI and review, would:
+
+- **(a) widen what an unattended agent may do**: change what a grant or gate
+  permits, or weaken a check a merge relies on, such as approval binding,
+  required-CI status, review verdicts or protected-path matching;
+- **(b) silently disable enforcement**: loosen a containment, permission or
+  sandbox check, or the hook or configuration that switches one on, in a way
+  the repository's tests would not show; or
+- **(c) do damage a revert cannot undo**: delete, overwrite or corrupt data,
+  leak a secret, or reach users before another human checkpoint.
+
+A change that would only break something (a wrong result, a failing feature, a
+broken format that a revert restores) does not qualify, however central the
+code.
+
+For (c), find the human checkpoint between a merge and the code's users. When
+merged code reaches users only through a human step (a release tag, a version
+bump, a manual deploy), protect that step's inputs (version stamps, manifests,
+release and deploy configuration) rather than every path behind it. When a
+merge deploys or ships on its own, what it ships is in scope.
+
+Prefer a file to its directory when only part of the directory meets the test.
+When the smallest path that covers a concern is a large file that most changes
+touch, say so and give how many of the last 100 commits touched it, so the user
+can weigh what protecting it costs. A path that meets the test belongs on the
+list even when it looks redundant.
+
+## Where to look
+
+Survey the repository against each of these eight categories. They are where
+qualifying paths usually sit, not a list of things to protect: apply the test
+above to every candidate. A repository may have nothing in a category; say so
+rather than inventing an entry.
 
 1. **Trust and security boundaries.** Authentication, authorization,
    permission checks, input validation at the edge, sandboxing, path
@@ -63,11 +112,13 @@ may have nothing in a category; say so rather than inventing an entry.
 6. **Release and install tooling.** Packaging, release automation, installers,
    update and upgrade paths, version stamping, anything shipped to users
    outside the normal build. The floor covers only the install, build and
-   release file names listed above, so propose every other script and
-   CI configuration in this category.
+   release file names listed above; the rest of this category is usually where
+   the human checkpoint in (c) lives.
 7. **Public API and wire contracts.** Exported interfaces, CLI surfaces,
    protocol and file formats other programs depend on, schema versions, and the
-   tests that pin them.
+   tests that pin them. These usually fail the test, because a broken contract
+   is a bug a revert fixes; propose one only when a change reaches its
+   consumers before a human checkpoint.
 8. **Destructive data paths.** Code that deletes, overwrites, truncates,
    migrates in place or force-pushes, and anything that cannot be undone.
 
@@ -75,28 +126,34 @@ may have nothing in a category; say so rather than inventing an entry.
 
 Run the survey with `orch-scout` subagents, which are read-only, so the
 Architect's own context stays small. Give each scout one or two categories, the
-floor entries above, and these instructions: find the files or directories that belong
-in the category, and for each report
+floor entries above, the test in "What the list is for", and these
+instructions: find the files or directories in the category that meet the
+test, and for each report
 
 - `path`: repository-relative, forward slashes, the smallest path that covers
   the concern (a file, or a directory when the whole subtree is the concern);
   never `.`, never a glob, never a path outside the repository;
 - `reason`: one line saying why a change there should never merge without a
   human;
+- `test`: which of (a), (b) and (c) it meets, and how;
 - `evidence`: the file or files you read that show it, with a line number or a
   short quote.
+
+Also report the near misses: candidates that matter but would only break
+something, each with a few words on why they fail the test.
 
 Scouts may run concurrently up to the configured concurrency. Treat their
 reports as claims: spot-check the evidence for any entry that looks surprising,
 merge duplicates and overlaps (keep the directory when a file sits inside a
-directory entry), and drop an entry only when it is an exact floor match as
-listed above; otherwise keep it.
+directory entry), and drop an entry that is an exact floor match or that meets
+none of (a), (b) and (c); move the latter to the near misses.
 
 ## What to present
 
-Show the user every proposed entry with its one-line reason and its file
-evidence, grouped by category, and name the categories where the survey found
-nothing. Let the user add entries, drop entries, or defer the whole list before
+Show the user every proposed entry with its one-line reason, the test it meets
+and its file evidence, grouped by category, and name the categories where the
+survey found nothing. Then show the near misses, so the user can promote any
+of them. Let the user add entries, drop entries, or defer the whole list before
 anything is submitted. Submit the answer only after they have settled it:
 
 - the approved entries, as a JSON array of `{"path", "reason"}` objects;
