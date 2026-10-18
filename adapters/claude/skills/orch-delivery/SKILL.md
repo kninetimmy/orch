@@ -280,7 +280,17 @@ arrived for the work being recorded, omit the field — never estimate.
 `executor_usage` is also omitted for a fix cycle done by a subagent
 resumed with `SendMessage`, whose notification `duration_ms` is not
 reliable per cycle. Wait for the executor's or reviewer's notification
-before calling `orch run pr-open` or `orch run review` for its work.
+before calling `orch run pr-open` or `orch run review` for its work, but
+never open-endedly. The notification arrives seconds after the hand-back
+and does not start a turn, so ending your turn to wait can leave you idle
+indefinitely; a background command's completion does start one. Before
+ending your turn to wait, start `sleep 60` with the Bash tool's
+`run_in_background`. When it completes, check for the notification: if it
+has arrived, take its usage; if it still has not, make the verb call with
+`usage` (or `executor_usage`) omitted rather than waiting again, so a
+missing notification delays the call by at most one timer. A subagent with
+a background child process still running can send its notification long
+after the hand-back.
 
 Scouts have no lifecycle verb. Record each scout's notification usage
 with `orch metrics record` (main checkout as cwd, one observation as JSON
@@ -385,10 +395,12 @@ in flight at once. For each issue:
    `review-cycle-<n>`. `usage` is optional (PRD §21) and is the
    executor's own cost, taken from its task notification per
    [Subagent usage](#subagent-usage-and-scouts): wait for that
-   notification before calling `orch run pr-open`, then supply
-   `subagent_tokens` as `total_tokens` and `duration_ms`, and nothing
-   from the hand-back. Omit `usage` when no notification has arrived —
-   never an estimate. Result carries `pr_number`, `pr_url`.
+   notification before calling `orch run pr-open`, starting a 60-second
+   background timer before ending your turn to wait (a timer's
+   completion starts a new turn, a late notification does not), then
+   supply `subagent_tokens` as `total_tokens` and `duration_ms`, and
+   nothing from the hand-back. Omit `usage` when no notification has
+   arrived by the time the timer completes — never an estimate. Result carries `pr_number`, `pr_url`.
 
 4. **Spawn the reviewer** — once the PR stops changing, spawn the
    reviewer **fresh** (a new instance, not the executor continuing):
@@ -462,9 +474,11 @@ in flight at once. For each issue:
    reviewer's own cost, taken from the reviewer's task notification
    (see [Subagent usage](#subagent-usage-and-scouts)). The reviewer's
    hand-back arrives before that notification, so wait for the
-   notification before calling `orch run review`; a review recorded
-   on the hand-back alone has no usage. Omit `usage` when no
-   notification has arrived.
+   notification before calling `orch run review`, starting a 60-second
+   background timer before ending your turn to wait (a timer's
+   completion starts a new turn, a late notification does not); a review
+   recorded on the hand-back alone has no usage. Omit `usage` when no
+   notification has arrived by the time the timer completes.
    A criterion judged `wrong` is the needs-human outcome, and this one
    `orch run review` call makes it: the engine blocks the issue and
    flags it needs-human itself, and the result says so in `phase`,
@@ -478,7 +492,9 @@ in flight at once. For each issue:
    spawned (step 4) and `orch run review` is called again. Because this is
    the only verb call on that cycle, `executor_usage` (same optional shape
    as `usage`) carries the executor's fix-and-push cost for the cycle just
-   finished. Fill it from a task notification as `usage` is, but omit it
+   finished. Fill it from a task notification as `usage` is, with the same
+   60-second timer and omission if the notification has not arrived (one
+   timer covers both), but omit it
    when there was no fix cycle (the first review after pr-open) and for a
    fix cycle done by a subagent resumed with `SendMessage`: that
    notification's `duration_ms` has been seen both cumulative across
