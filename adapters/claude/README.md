@@ -37,6 +37,9 @@ never re-derives a decision the engine already made.
     While an autonomy grant is active it also names the grant, its expiry
     and remaining budgets, and whether this session is the current holder
     (a holder is told to read the latest handoff session note).
+    With metrics enabled it also records the session's id and transcript
+    path, so `orch run complete` can count the Architect's usage
+    (docs/metric-observations.md, "Claude Architect usage").
   - `PostToolUse` and `UserPromptSubmit` run `orch hook claude
     context-check`. In the grant's holder session (not inside a
     subagent), once the main session's context passes the grant's

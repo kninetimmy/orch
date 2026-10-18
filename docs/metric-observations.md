@@ -177,7 +177,11 @@ Coverage lists roles with recorded counter samples, roles with execution or
 observation evidence but no counters, known native sessions with and without
 counter samples, incomplete host/session attribution, and explicit unavailable
 records. Architect is always named in role coverage because root usage
-participates in the run but has no automatic capture path. Recorded sessions
+participates in the run. Before #384 it had no automatic capture path on any
+host. After #384 a Claude-host run with metrics enabled captures it (see
+[Claude Architect usage](#claude-architect-usage-384)); Codex and OpenCode runs
+still have no automatic capture path, so on those hosts Architect stays a role
+without counters unless recorded by hand. Recorded sessions
 are evidence, not a complete session census; the report always says the complete
 native session count is unknown. Lifecycle-event count is not used as a usage
 denominator.
@@ -204,7 +208,8 @@ This closes P1-A's durable evidence and local reporting boundary. Native Windows
 Claude isolation/bridge work remains in follow-up #208 (P1-B), and live
 automation/evaluation remains P1-C. This delivery adds no Claude/OpenCode
 capture path, host installation, live model/API call, dashboard, exporter or
-telemetry.
+telemetry. (#384 later added a Claude Architect capture path; OpenCode still
+has none.)
 
 ## Compatibility and blast radius
 
@@ -316,7 +321,10 @@ gets a new ID/time. Missingness never advances a token baseline.
 An exact Scout child can use this path. Independently attributable planning or
 scouting evidence can use the generic recorder, including run-level architect
 or scout roles. Root/Architect usage has no supported automatic capture path
-here; absent coverage must be explicitly recorded as unavailable with its reason,
+here. Before #384 that held for every host; after #384 it still holds for
+Codex, while Claude-host runs capture the Architect automatically (see
+[Claude Architect usage](#claude-architect-usage-384)). On Codex,
+absent coverage must be explicitly recorded as unavailable with its reason,
 not estimated or copied from child/parent totals. No API fallback, live model
 call, requested-profile proof, or permission bypass is involved. Submit before
 run completion/abort; the existing current-run association limit still applies.
@@ -341,6 +349,118 @@ through the generic recorder as a run-level observation with role `scout`, host
 `orch-delivery` skill for a complete example). A scout that ran before
 activation is recorded once the run exists; `at` is not constrained to the run.
 An observation carries no duration, so a scout's `duration_ms` is not recorded.
+
+## Claude Architect usage (#384)
+
+When a Claude-host Delivery run completes with metrics enabled, `orch run
+complete` records the Architect's own token usage, read from the transcripts
+of the Claude Code sessions that ran the run's verbs. Nothing is estimated, and
+nothing from a transcript but timestamps and token counters is kept.
+
+**Which sessions count.** Every `orch run` verb that goes through the shared
+lifecycle preconditions (`dispatch` through `complete`, including
+`review-worktree`), and `activate`, records the invoking session's
+`CLAUDE_CODE_SESSION_ID` in the run's metrics document as `architect_sessions`.
+A lifecycle verb records it once the run's state, configuration and stop checks
+pass, even if the verb then fails, because the session took part in the run;
+`activate` records it with its other metrics, after the run exists. `status`
+and `plan` record nothing, nor do `orch resume`, `orch abort` and `orch metrics
+record`. A verb run outside Claude Code (no session id) adds no session.
+Separately, the Claude SessionStart hook records each starting session's
+`session_id` and `transcript_path` from its hook input in
+`.orchestrator/metrics/claude-sessions/<session-id>.json`, one file per session,
+replaced atomically when the same session starts again (resume, clear,
+compact). The record holds only the session id, the transcript path and the
+time it was recorded.
+
+**The run window.** Only transcript entries timestamped from the run's
+activation (`started_at` in the run state) to the moment `orch run complete`
+records the usage are read.
+
+**The four counters.** For each session, the `input_tokens`, `output_tokens`,
+`cache_read_input_tokens` and `cache_creation_input_tokens` of its own
+main-conversation assistant messages in the window are summed and recorded as
+`input_tokens`, `output_tokens`, `cache_read_tokens` and
+`cache_creation_tokens`. The transcript has no total, so `total_tokens` stays
+unknown. Each session is one architect-role observation with host `claude`,
+source `claude-transcript`, stream `claude-main-assistant-usage`, one delta
+sample, the session id as `session` and the id `claude-architect:<session-id>`.
+A session with no assistant message in the window records a measured zero.
+`orch metrics report` shows these as architect usage like any other
+architect-role samples.
+
+**Once per message.** A message is identified by its `message.id`. Streamed
+lines repeating an id count once. A message present in more than one of the
+run's transcripts (as after a fork or resume) counts once, for the first
+session in sorted id order. Compaction stays in the same transcript and repeats
+no id, so messages on either side of it each count once. Entries with
+`isSidechain` set (subagents), entries whose `sessionId` is another session's,
+entries outside the window and every non-assistant entry, including
+`cost-state` (which includes subagent usage), contribute no counters. A session
+whose usage is unavailable claims no message ids.
+
+**Verified Claude Code versions.** 2.1.289, 2.1.295 and 2.1.301. On these,
+summing usage over distinct message ids of non-sidechain entries matched Claude
+Code's own per-session totals for subagent-free sessions. Every in-window entry
+of the session that carries a version, and every counted assistant entry, must
+carry one of these. To add a version, repeat that check on a real,
+subagent-free transcript of it, then add it to `verifiedVersions` in
+`internal/claudeusage` and to `TestArchitectReadsEveryVerifiedVersion`. The list
+belongs to this capture alone: the grant context check in
+`internal/claudetranscript` keeps its own, separate list.
+
+**Unavailable reasons.** A session that ran a verb but whose usage cannot be
+established is recorded as an architect-role unavailable observation with no
+counters and one of these reasons:
+
+| Reason | Cause |
+| --- | --- |
+| `session-id-not-uuid` | Its `CLAUDE_CODE_SESSION_ID` is not a UUID. Such an id never names, finds or reads a file. Every non-UUID session of a run shares one record under the session `invalid-session-id`. |
+| `transcript-path-unrecorded` | No SessionStart record exists for that session id, or the record is unreadable, names another session, or holds a path that is not absolute. |
+| `transcript-missing` | The recorded transcript does not exist. |
+| `transcript-unreadable` | The transcript cannot be opened or read to the end. |
+| `transcript-unparseable` | A non-blank line is not JSON, or an in-window assistant entry of the session lacks a valid timestamp, a message id or one of the four counters, or has a negative counter. |
+| `unverified-claude-code-version` | An in-window entry of the session is from a version other than the verified ones, or a counted assistant entry has no version. |
+
+A Claude-host run in which no session was recorded as taking part gets one
+architect-role unavailable observation, id `claude-architect`, with reason
+`no-session-recorded`.
+
+**Limits.** The SessionStart matcher is `startup|resume|clear|compact`, so a
+session started by `fork` is not recorded; if it runs a verb it reports
+`transcript-path-unrecorded`. Session records are never pruned. Runs whose host
+is not `claude` get no new observations. The metrics schema stays at 2, because
+`architect_sessions` is optional: documents written before it load and report
+unchanged, and an older binary fails closed on a document that has it.
+
+**Disabled metrics and concurrency.** With `[metrics] enabled = false` the hook,
+the run verbs and `orch run complete` write nothing new. The hook prints the
+same text and exits with the same status in every case, including absent or
+malformed stdin and a failed record. It reads stdin at most once, shared with
+the grant check, and takes no lock, so it never waits on a run verb. Each
+session writes only its own file, by temp file and rename, so sessions starting
+together never touch each other's record, and a reader sees an old or new
+record whole. Windows refuses, for an instant, to replace a file another
+process has open and to open one being replaced, so the hook's replacement and
+`orch run complete`'s read of the same session's record each retry for up to
+about 200ms; if the replacement still fails, the older record is kept. The run
+verbs add the
+session under the existing Delivery mutation lock. `AddArchitectSession` needs
+that external serialization like every other metrics storage writer (`Append`,
+`Record`, `SetHost`), not as a rule of its own.
+
+### Claude Architect usage blast radius
+
+| Element | Before and after |
+| --- | --- |
+| `orch hook claude session-start` (`hookSessionStart`, `grantSessionContext`) | Before: read stdin only while a grant was active. After: also reads it, once and shared, when metrics are enabled, and records the session. Printed text and exit status are unchanged in every case. Codex and OpenCode session-start are unchanged. |
+| `readClaudeHookInput` | Unchanged. Its terminal and decode rules hold for every caller; context-check and pre-compact still read stdin on their own. |
+| `run.Env`, `emitRunResult` | Before: no session. After: carry `CLAUDE_CODE_SESSION_ID`, unvalidated, to every verb; only `loadVerb` and `Activate` use it. |
+| `loadVerb`, `Activate` | Before: `loadVerb` wrote nothing. After: with metrics enabled on a Claude-host run, both add the session to `architect_sessions`; a write failure fails the verb as other metrics writes do. Every other precondition is unchanged. |
+| `Complete` | Before: recorded the `complete` event last. After: then records the architect observations. Its preflights and state change are unchanged. |
+| `metrics.Document`, `validate`, `AddArchitectSession`, `ArchitectSessions` | New optional `architect_sessions`, each an identifier; schema stays 2. `LoadAll` still reads only `run-*.json`, so the `claude-sessions` subdirectory is never taken for a run document. |
+| `internal/claudeusage` | New. Reads a transcript only for a UUID session id whose record names that same id. |
+| `.gitignore`, `internal/state`, `internal/claudetranscript`, adapter hooks | Unchanged. Everything new is written under `.orchestrator/metrics/`, already ignored. |
 
 ## Codex compatibility and blast radius
 
