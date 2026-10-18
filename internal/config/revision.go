@@ -52,6 +52,9 @@ func Revision(c *Config) (string, error) {
 				Claude *Host
 			}
 			Overrides []string
+			// Omitted when nil, so a config without [protected] keeps
+			// its pre-#397 revision.
+			Protected *Protected `json:",omitempty"`
 		}{
 			SchemaVersion: shadow.SchemaVersion,
 			Concurrency:   shadow.Concurrency,
@@ -62,6 +65,7 @@ func Revision(c *Config) (string, error) {
 				Codex  *Host
 				Claude *Host
 			}{shadow.Hosts.Codex, shadow.Hosts.Claude},
+			Protected: shadow.Protected,
 		}
 	}
 	data, err := json.Marshal(value)

@@ -1,71 +1,91 @@
 package grant
 
 import (
-	"slices"
 	"strings"
 	"testing"
 )
 
-func TestProtected(t *testing.T) {
-	// Every list entry, as given in the issue, is protected itself; entries
-	// naming a directory also protect what lies under them.
-	entries := []string{
-		"internal/grant/",
-		"internal/run/gate.go", "internal/run/activate.go", "internal/run/merge.go",
-		"internal/run/mergereport.go", "internal/run/review.go", "internal/run/resolveblock.go",
-		"internal/run/abandon.go", "internal/run/resume.go", "internal/run/grantgate.go", "internal/run/propen.go",
-		"internal/cli/grant.go", "internal/cli/hookgrant.go", "internal/claudetranscript/",
-		"internal/routing/", "internal/state/",
-		"internal/manifest/", "internal/guard/", "internal/paths/", "internal/lockfile/",
-		"adapters/opencode/src/", "CLAUDE.md", "AGENTS.md", "ORCH-PRD.md", ".github/workflows/",
-		".golangci.yml", "go.mod", "go.sum", ".claude-plugin/", "adapters/claude/.claude-plugin/",
-		"adapters/codex/.codex-plugin/", "install.ps1", "install.sh", "LICENSE", ".gitignore",
-		".gitattributes", ".orchestrator/", "evaluation/",
-		"adapters/claude/hooks/", "adapters/claude/agents/", "adapters/codex/hooks/",
-		"adapters/codex/agents/", "adapters/opencode/hooks/", "adapters/opencode/agents/",
-		"adapters/new-host/hooks/",
-		// Before #389 these skills paths, except GRANTS.md, were unprotected.
-		"adapters/claude/skills/", "adapters/codex/skills/", "adapters/opencode/skills/",
-		"adapters/new-host/skills/", "adapters/claude/skills/orch-delivery/SKILL.md",
-		"adapters/claude/skills/orch-delivery/GRANTS.md", "adapters/codex/skills/orch-architect/SKILL.md",
-		"adapters/opencode/skills/orch-setup/SKILL.md", "adapters/new-host/skills/x/SKILL.md",
+func TestProtectedFloor(t *testing.T) {
+	// Every floor file name, as the issue gives it, is protected at the root
+	// and at any depth, under any case.
+	names := []string{
+		"CLAUDE.md", "AGENTS.md", ".gitignore", ".gitattributes", "go.mod", "go.sum",
+		"Cargo.toml", "Cargo.lock", "build.rs", "package.json", "package-lock.json",
+		"npm-shrinkwrap.json", "pnpm-lock.yaml", "yarn.lock", "App.csproj", "App.fsproj",
+		"App.vbproj", "Directory.Packages.props", "Directory.Build.props", "packages.lock.json",
+		"NuGet.config", "pyproject.toml", "setup.py", "setup.cfg", "Pipfile", "Pipfile.lock",
+		"poetry.lock", "uv.lock", "requirements.txt", "requirements-dev.txt", "install.sh",
+		"install.ps1", "Makefile", "justfile", ".goreleaser.yml", ".goreleaser.yaml",
 	}
-	for _, e := range protectedPaths {
-		if !slices.Contains(entries, e) && !slices.Contains(entries, e+"/") {
-			t.Errorf("list entry %q has no test", e)
+	if len(names) != len(floorNames)+1 { // requirements*.txt has a second example
+		t.Errorf("%d floor names tested for %d patterns", len(names), len(floorNames))
+	}
+	for _, n := range names {
+		for _, p := range []string{n, "sub/dir/" + n, strings.ToUpper(n), `deep\` + n} {
+			if !Protected(p, nil) {
+				t.Errorf("%q not protected", p)
+			}
 		}
 	}
-	for _, e := range entries {
-		if !Protected(e) {
-			t.Errorf("%q not protected", e)
-		}
-		if dir, ok := strings.CutSuffix(e, "/"); ok && (!Protected(dir) || !Protected(dir+"/sub/file.go")) {
-			t.Errorf("directory %q or its contents not protected", e)
-		}
-	}
+	// Root-anchored floor entries cover everything under them.
 	for _, p := range []string{
-		`internal\grant\grant.go`, "./CLAUDE.md", "claude.md", "internal/../go.mod",
-		"/etc/passwd", "../outside",
-		"internal/claudetranscript/usage_test.go", "internal/claudetranscript/testdata/usage_2.1.295.jsonl",
-		// Windows aliases of protected names, and names that cannot be verified.
-		"CLAUDE.md.", "CLAUDE.md ", "CLAUDE.md. .", "CLAUDE.md::$DATA", "claude.md:stream:$DATA",
-		"internal/grant./x.go", `internal\grant \x.go`, "internal/run/merge.go...",
-		"CLAUDE~1.MD", "docs/PROGRA~1/x.md", "docs/.../x.md", "docs/:x/y.md",
+		".github/workflows", ".github/workflows/ci.yml", "LICENSE", "license", ".orchestrator",
+		".orchestrator/config.toml", ".ORCHESTRATOR/x",
 	} {
-		if !Protected(p) {
+		if !Protected(p, nil) {
 			t.Errorf("%q not protected", p)
 		}
 	}
 	for _, p := range []string{
-		"README.md", "internal/run/plan.go", "internal/run/gate_test.go", "internal/grantx/a.go",
-		"internal/run", "adapters/hooks", "adapters/skills", "docs/metric-observations.md",
-		"adapters/claude/README.md", "docs/CLAUDE.md", "go.modx", "evaluations/x", "cmd/orch/main.go",
-		"adapters/opencode/smoke.mjs", "docs/a.b.md", "docs/x~y.md", "./docs/./a.md",
-		"internal/cli/doctor.go", "internal/cli/grant_test.go", "internal/cli/hookgrant_test.go",
-		"internal/run/propen_test.go", "internal/cli", "internal/claudetranscriptx/a.go",
+		`.\CLAUDE.md`, "./CLAUDE.md", "internal/../go.mod", "/etc/passwd", "../outside",
+		// Windows aliases of protected names, and names that cannot be verified.
+		"CLAUDE.md.", "CLAUDE.md ", "CLAUDE.md. .", "CLAUDE.md::$DATA", "claude.md:stream:$DATA",
+		"go.mod...", "CLAUDE~1.MD", "docs/PROGRA~1/x.md", "docs/.../x.md", "docs/:x/y.md",
 	} {
-		if Protected(p) {
+		if !Protected(p, nil) {
+			t.Errorf("%q not protected", p)
+		}
+	}
+	// Orch's own source entries (#397) and near misses are not on the floor.
+	for _, p := range []string{
+		"README.md", "go.modx", "xgo.mod", "requirements.md", "App.csproj.bak", "docs/LICENSE",
+		"sub/.github/workflows/ci.yml", "sub/.orchestrator/x", ".github/dependabot.yml",
+		"internal/grant/protected.go", "internal/run/merge.go", "internal/cli/grant.go",
+		"internal/claudetranscript/x.go", "internal/routing/r.go", "internal/state/s.go",
+		"internal/manifest/m.go", "internal/guard/g.go", "internal/paths/p.go", "internal/lockfile/l.go",
+		"adapters/opencode/src/x.ts", "ORCH-PRD.md", ".golangci.yml", "evaluation/x",
+		".claude-plugin/marketplace.json", "adapters/claude/.claude-plugin/plugin.json",
+		"adapters/codex/.codex-plugin/plugin.json", "adapters/claude/skills/orch-delivery/GRANTS.md",
+		"adapters/claude/hooks/x.json", "adapters/codex/agents/x.toml",
+		"docs/a.b.md", "docs/x~y.md", "./docs/./a.md",
+	} {
+		if Protected(p, nil) {
 			t.Errorf("%q protected", p)
 		}
+	}
+}
+
+func TestProtectedRepoList(t *testing.T) {
+	repo := []string{"internal/grant", "internal/run/merge.go", `adapters\claude\skills\`, "Docs/Locked/"}
+	for _, p := range []string{
+		"internal/grant", "internal/grant/protected.go", `INTERNAL\Grant\x.go`, "internal/run/merge.go",
+		"adapters/claude/skills/orch-delivery/GRANTS.md", "docs/locked/a.md", "internal/grant./x.go",
+		"internal/run/merge.go...", "go.mod",
+	} {
+		if !Protected(p, repo) {
+			t.Errorf("%q not protected", p)
+		}
+	}
+	for _, p := range []string{
+		"internal/grantx/a.go", "internal/run/merge_test.go", "internal/run", "adapters/claude/hooks/x",
+		"docs/lockedx", "README.md",
+	} {
+		if Protected(p, repo) {
+			t.Errorf("%q protected", p)
+		}
+	}
+	// An entry that cannot be verified protects every path.
+	if !Protected("README.md", []string{"docs/PROGRA~1"}) {
+		t.Error("an unverifiable entry did not fail closed")
 	}
 }

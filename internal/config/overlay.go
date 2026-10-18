@@ -43,6 +43,13 @@ func newLeafClasses() map[string]leafClass {
 		"memhub.mode":               classPolicy,
 		"concurrency.max_subagents": classPreference,
 		"metrics.enabled":           classPreference,
+		// The protected table itself is classified too, so even an empty
+		// [protected] in config.local.toml is rejected.
+		"protected":                     classPolicy,
+		"protected.methodology_version": classPolicy,
+		"protected.paths":               classPolicy,
+		"protected.paths.path":          classPolicy,
+		"protected.paths.reason":        classPolicy,
 	}
 	for _, host := range []string{"codex", "claude", "opencode"} {
 		for _, role := range roleNames {

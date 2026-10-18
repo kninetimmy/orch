@@ -3,6 +3,9 @@ package config
 import (
 	"errors"
 	"fmt"
+	"path"
+	"path/filepath"
+	"regexp"
 	"strings"
 
 	"github.com/BurntSushi/toml"
@@ -96,10 +99,43 @@ func (c *Config) validate() error {
 		validateHost("opencode", c.Hosts.OpenCode, fail)
 	}
 
+	if c.Protected != nil {
+		for i, e := range c.Protected.Paths {
+			if why := badProtectedPath(e.Path); why != "" {
+				fail("protected.paths[%d].path: %q %s", i, e.Path, why)
+			}
+			if strings.TrimSpace(e.Reason) == "" {
+				fail("protected.paths[%d].reason: must give a one-line reason for %q", i, e.Path)
+			}
+		}
+	}
+
 	if len(problems) > 0 {
 		return errors.New("invalid configuration:\n  - " + strings.Join(problems, "\n  - "))
 	}
 	return nil
+}
+
+// driveLetter matches a Windows drive prefix such as C: on any OS.
+var driveLetter = regexp.MustCompile(`^[A-Za-z]:`)
+
+// badProtectedPath says why p cannot be a protected-list entry, or "" when
+// it is a repository-relative path inside the repository.
+func badProtectedPath(p string) string {
+	slashed := strings.ReplaceAll(p, `\`, "/")
+	switch {
+	case filepath.VolumeName(p) != "" || driveLetter.MatchString(slashed):
+		return "names a drive or volume"
+	case filepath.IsAbs(p) || strings.HasPrefix(slashed, "/"):
+		return "is absolute"
+	}
+	switch cleaned := path.Clean(slashed); {
+	case strings.TrimSpace(p) == "" || cleaned == ".":
+		return "names no path"
+	case cleaned == ".." || strings.HasPrefix(cleaned, "../"):
+		return "escapes the repository"
+	}
+	return ""
 }
 
 func validateHost(name string, h *Host, fail func(string, ...any)) {
