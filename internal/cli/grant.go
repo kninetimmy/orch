@@ -70,11 +70,11 @@ func runGrant(env Env, args []string) error {
 		if err != nil {
 			return err
 		}
-		g, err := store.Relay(context.Background(), env.Runner, env.RepoRoot, os.Getenv(grant.SessionEnv), now)
+		g, kind, err := store.Relay(context.Background(), env.Runner, env.RepoRoot, os.Getenv(grant.SessionEnv), now)
 		if err != nil {
 			return err
 		}
-		_, err = fmt.Fprintf(env.Stdout, "Relayed autonomy grant %s to session %s.\n", g.Terms.ID, g.SessionID)
+		_, err = fmt.Fprintf(env.Stdout, "Relayed autonomy grant %s to session %s.\n%s\n", g.Terms.ID, g.SessionID, relayedHolderNote(kind))
 		return err
 	case "", "revoke":
 		store, err := grant.Open(context.Background(), env.Runner, env.RepoRoot)
@@ -102,6 +102,19 @@ func runGrant(env Env, args []string) error {
 	default:
 		return usageError(fmt.Sprintf("orch grant: unsupported verb %q; %s", verb, grantUsage))
 	}
+}
+
+// relayedHolderNote tells the relaying session who ends it: the successor
+// stops a background holder when it starts, and only the user can end an
+// interactive one.
+func relayedHolderNote(kind grant.HolderKind) string {
+	switch kind {
+	case grant.KindBackground:
+		return "This session is a background session: its successor stops it with `claude stop` when it starts, so the relay may be your last action."
+	case grant.KindInteractive:
+		return "This session is an interactive session: Orch cannot stop it. Your last message must tell the user to /exit it."
+	}
+	return "This session's kind could not be determined, so Orch may not stop it. Your last message must tell the user to check `claude agents` and stop or /exit this session."
 }
 
 // checkGrantProtected refuses a grant in a repository whose committed

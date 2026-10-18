@@ -87,10 +87,40 @@ func grantSessionContext(env Env, now time.Time, input func() (claudeHookInput, 
 		if _, problem := claudeVersionProblem(env); problem != "" {
 			text += fmt.Sprintf("Warning: %s, so the context-relay instruction will not fire in this session; watch your own context size and relay without waiting for it.\n", problem)
 		}
-		return text
+		return text + stopPreviousHolder(env, g, in)
 	default:
 		return text + "This session is not the current holder of the grant.\n"
 	}
+}
+
+// stopPreviousHolder runs in the session start of the grant's current holder.
+// When the grant's most recent relay handed it over to this session, it stops
+// the relay's source session if that is a background one (the source cannot
+// stop itself) and returns the line to add to the session context, or "" when
+// there is nothing to say. Fail-open: a failure is reported in the text, never
+// as an error, so the session still starts.
+func stopPreviousHolder(env Env, g *grant.Grant, in claudeHookInput) string {
+	if len(g.Relays) == 0 {
+		return ""
+	}
+	last := g.Relays[len(g.Relays)-1]
+	if last.To != in.SessionID {
+		return ""
+	}
+	kind, short, err := grant.StopPredecessor(context.Background(), env.Runner, env.RepoRoot, last.From)
+	switch {
+	case err != nil:
+		stop := "`claude agents` lists it and `claude stop <id>` stops it"
+		if short != "" {
+			stop = fmt.Sprintf("`claude stop %s` stops it", short)
+		}
+		return fmt.Sprintf("Orch could not stop the previous holder of the grant, session %s (%v). Stop it by hand: %s. Never use `claude rm`, which deletes the conversation.\n", last.From, err, stop)
+	case kind == grant.KindBackground:
+		return fmt.Sprintf("Orch stopped the previous holder of the grant, background session %s (`claude stop %s`); its conversation is kept for audits.\n", last.From, short)
+	case kind == grant.KindInteractive:
+		return fmt.Sprintf("The previous holder of the grant, session %s, is an interactive session that Orch cannot stop. Ask the user to /exit it.\n", last.From)
+	}
+	return ""
 }
 
 // hookContextCheck answers a PostToolUse or UserPromptSubmit event. In the

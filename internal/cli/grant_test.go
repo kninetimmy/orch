@@ -138,7 +138,8 @@ func (r *relayRunner) Run(ctx context.Context, c execx.Cmd) (execx.Result, error
 		return (execx.Local{}).Run(ctx, c)
 	}
 	if c.Args[0] == "agents" {
-		return execx.Result{Stdout: `[{"id":"20b2927b","kind":"background","sessionId":"` + relaySession + `"}]`}, nil
+		return execx.Result{Stdout: `[{"id":"11111111","kind":"background","sessionId":"session-cli"},` +
+			`{"id":"20b2927b","kind":"background","sessionId":"` + relaySession + `"}]`}, nil
 	}
 	r.launches = append(r.launches, c.Args)
 	return execx.Result{Stdout: "backgrounded · 20b2927b\n  claude stop 20b2927b      stop this session"}, nil
@@ -191,7 +192,7 @@ func TestGrantRelayCommand(t *testing.T) {
 	}
 	t.Setenv(grant.SessionEnv, "session-cli")
 	code, out, stderr := run("", "grant", "relay")
-	if code != ExitOK || len(runner.launches) != 1 || out != "Relayed autonomy grant "+pv.Terms.ID+" to session "+relaySession+".\n" {
+	if code != ExitOK || len(runner.launches) != 1 || out != "Relayed autonomy grant "+pv.Terms.ID+" to session "+relaySession+".\n"+relayedHolderNote(grant.KindBackground)+"\n" {
 		t.Fatalf("relay: %d %q %s", code, out, stderr)
 	}
 	next := relaySession
@@ -199,6 +200,18 @@ func TestGrantRelayCommand(t *testing.T) {
 	for _, want := range []string{"session holder:     " + next, "- session-cli (creator,", "- " + next + " (took over "} {
 		if !strings.Contains(out, want) {
 			t.Errorf("show missing %q: %s", want, out)
+		}
+	}
+}
+
+func TestRelayedHolderNote(t *testing.T) {
+	for kind, want := range map[grant.HolderKind]string{
+		grant.KindBackground:  "its successor stops it",
+		grant.KindInteractive: "tell the user to /exit it",
+		grant.KindUnknown:     "could not be determined",
+	} {
+		if got := relayedHolderNote(kind); !strings.Contains(got, want) {
+			t.Errorf("note for %q = %q, want %q", kind, got, want)
 		}
 	}
 }
