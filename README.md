@@ -5,7 +5,7 @@
 <p align="center">
   <img src="https://img.shields.io/badge/License-MIT-2E7D32?style=flat&logo=opensourceinitiative&logoColor=white" alt="License: MIT"/>
   <img src="https://img.shields.io/badge/Go-1.26%2B-00ADD8?style=flat&logo=go&logoColor=white" alt="Go 1.26+"/>
-  <img src="https://img.shields.io/badge/Release%20target-v0.14.0-24292F?style=flat&logo=github&logoColor=white" alt="Release target: v0.14.0"/>
+  <img src="https://img.shields.io/badge/Release%20target-v0.14.1-24292F?style=flat&logo=github&logoColor=white" alt="Release target: v0.14.1"/>
   <br/>
   <img src="https://img.shields.io/badge/Platform-Linux%20%C2%B7%20macOS%20%C2%B7%20Windows-607D8B?style=flat" alt="Platform: Linux, macOS, Windows"/>
   <img src="https://img.shields.io/badge/Hosts-Claude%20Code%20%C2%B7%20Codex%20CLI%20%C2%B7%20OpenCode%20V2-6E56CF?style=flat" alt="Hosts: Claude Code, Codex CLI, and OpenCode V2"/>
@@ -252,12 +252,13 @@ service after upgrading its adapter so the new hooks and skills are loaded.
 source revision `611c645` uses state schema 6, approval contract 1, and these
 manual wire versions: Gate 3, Status 4, Activation 2, Dispatch 4, Review 3,
 Escalate 2, Block 2, Resume 2, and Resolve Block 1. The Claude and Codex
-adapter version 0.11.0 is paired with engine v0.14.0; version 0.10.0
-was paired with engine v0.13.0 and v0.13.1. Engine v0.14.0 keeps the manual wire
+adapter version 0.11.1 is paired with engine v0.14.1; version 0.11.0 was
+paired with engine v0.14.0, and version 0.10.0 with engine v0.13.0 and v0.13.1.
+Engine v0.14.1 keeps the manual wire
 versions above, state schema 6 and metrics document schema 2 unchanged from
-v0.13.1. `orch doctor` reports an installed 0.10.0 adapter as a version
-mismatch. The OpenCode package is 0.12.0 because its `orch-delivery` skill
-changed in v0.14.0 (#383); its exported source is unchanged, and its agent
+v0.14.0. `orch doctor` reports an installed 0.11.0 adapter as a version
+mismatch. The OpenCode package stays 0.12.0 because none of its files changed
+since v0.14.0; its exported source is unchanged, and its agent
 definitions are embedded in the engine and written by `orch render-agents`.
 Because #358 changed the agent definitions on all three hosts in v0.13.0, when
 upgrading from a release before v0.13.0 re-run `orch render-agents` in every
@@ -540,6 +541,51 @@ too. Anything a subagent wants remembered comes back in its report.
 Every memhub command runs with the primary checkout as its working
 directory, never inside a per-issue worktree, because worktrees never
 receive a copy of the memhub database.
+
+## v0.14.1 release target
+
+- Bounded wait for a subagent's task notification. The Claude `orch-delivery`
+  skill now tells the Architect to start a background timer of about 60 seconds
+  before ending its turn to wait for a subagent's task notification. If the
+  notification has not arrived when the timer completes, the Architect makes
+  the `orch run pr-open` or `orch run review` call with `usage` omitted instead
+  of stalling until something else wakes it. This changes the Claude skill
+  only —
+  [#392](https://github.com/kninetimmy/orch/pull/392).
+- Grant protection for every adapter's skills. Every path under
+  `adapters/<any adapter>/skills/` is now grant-protected, so an autonomy grant
+  can no longer approve the merge of a PR that changes any host's Orch skills;
+  such a merge comes to you —
+  [#391](https://github.com/kninetimmy/orch/pull/391).
+- Merge approval stated at run start. When a run starts while a grant is
+  active, the Claude Architect now tells you in a push notification, for each
+  issue, whether the grant can approve its merge or it will come to you, and
+  why —
+  [#393](https://github.com/kninetimmy/orch/pull/393).
+- What has run live since v0.14.0, all on native Windows with Claude Code
+  2.1.301, engine v0.14.0 and adapter 0.11.0. Architect usage capture (#385)
+  ran on the released v0.14.0 and, in run `run-20261018T171010Z-4b23ae0c`
+  (which delivered #391 through #393), recorded the Claude Architect's own
+  token counters and the run's host at completion for the first time. In that
+  run the Architect followed the bounded wait #392 describes by hand: of six
+  subagent hand-backs, three arrived with their task notification already
+  present and three got a 60-second background timer, and no wait stalled.
+- What has not happened yet. #392's text itself has not run from an installed
+  adapter. #393's run-start statement has not run under a grant. Whether
+  `CLAUDE_CODE_SESSION_ID` changes after `/clear` has not been checked, and
+  resume and fork have not been checked live.
+
+Engine release v0.14.1 pairs with Claude/Codex manual-adapter version 0.11.1 and
+OpenCode package 0.12.0; these are separate identities. The Claude/Codex
+version moved because the Claude `orch-delivery` skill changed. A Codex install
+must also move to 0.11.1 because the two share one version that `orch doctor`
+checks exactly, although no Codex adapter file changed. The OpenCode package is
+unchanged. The manual wire versions, state schema 6 and metrics document schema
+2 are unchanged from v0.14.0. Agent definitions and hook configuration are
+unchanged since v0.13.0, so `orch render-agents` does not need to be re-run when
+upgrading from v0.13.0 or later. To upgrade, update the engine and the
+configured Claude or Codex adapter together between runs (see the upgrade
+commands above), restart the host and run `orch doctor --host claude|codex`.
 
 ## v0.14.0 release target
 
