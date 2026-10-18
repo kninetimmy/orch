@@ -12,7 +12,6 @@ import (
 // protected when it equals, or lies under, an entry.
 var protectedPaths = []string{
 	"internal/grant",
-	"adapters/claude/skills/orch-delivery/GRANTS.md",
 	"internal/run/gate.go",
 	"internal/run/activate.go",
 	"internal/run/merge.go",
@@ -53,7 +52,9 @@ var protectedPaths = []string{
 }
 
 // adapterProtectedDirs are protected under every adapter: adapters/<any>/<dir>.
-var adapterProtectedDirs = []string{"hooks", "agents"}
+// Before #389 skills was not among them and only the Claude orch-delivery
+// GRANTS.md was listed, so a grant could merge any other skill text.
+var adapterProtectedDirs = []string{"hooks", "agents", "skills"}
 
 // shortName matches an 8.3 short-name segment such as CLAUDE~1.MD.
 var shortName = regexp.MustCompile(`~[0-9]`)
