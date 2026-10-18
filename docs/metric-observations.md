@@ -275,6 +275,27 @@ not estimated or copied from child/parent totals. No API fallback, live model
 call, requested-profile proof, or permission bypass is involved. Submit before
 run completion/abort; the existing current-run association limit still applies.
 
+## Claude subagent usage
+
+On Claude Code the source of a subagent's usage is its task notification,
+`<usage><subagent_tokens>N</subagent_tokens><tool_uses>N</tool_uses><duration_ms>N</duration_ms></usage>`.
+The hand-back message arrives first and carries no usage (observed on Claude
+Code 2.1.301), so the Claude adapter waits for the notification before
+`pr-open` or `review` and maps `subagent_tokens` to `total_tokens` and
+`duration_ms` to `duration_ms` in the lifecycle `usage` and `executor_usage`
+fields. It omits a field with no notification, and omits `executor_usage` for a
+fix cycle done by a subagent resumed with `SendMessage`, because the
+notification's `duration_ms` has been seen both cumulative across resumes and
+per resume. Nothing is estimated.
+
+Scouts have no lifecycle verb. The adapter records each scout's notification
+through the generic recorder as a run-level observation with role `scout`, host
+`claude`, source `claude-task-notification`, the scout's task or agent id as
+`session`, and one cumulative `total_tokens` sample (see the Claude
+`orch-delivery` skill for a complete example). A scout that ran before
+activation is recorded once the run exists; `at` is not constrained to the run.
+An observation carries no duration, so a scout's `duration_ms` is not recorded.
+
 ## Codex compatibility and blast radius
 
 Before: the Codex adapter retained previous totals conversationally and submitted

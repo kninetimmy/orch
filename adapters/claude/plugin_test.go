@@ -23,6 +23,7 @@ import (
 	"github.com/kninetimmy/orch/internal/cli"
 	"github.com/kninetimmy/orch/internal/grant"
 	"github.com/kninetimmy/orch/internal/guard"
+	"github.com/kninetimmy/orch/internal/metrics"
 	"github.com/kninetimmy/orch/internal/run"
 )
 
@@ -549,6 +550,25 @@ func TestAgentsHaveRefGuidance(t *testing.T) {
 
 func TestDeliverySkillHasBranchScopeVerificationGuidance(t *testing.T) {
 	adaptertest.CheckBranchScopeVerificationGuidance(t, deliverySkillPath)
+}
+
+// TestDeliverySkillObservationExamplesParse holds every ```json observation
+// block in the delivery skill to the engine's observation parser, so an
+// example the recorder would reject cannot ship.
+func TestDeliverySkillObservationExamplesParse(t *testing.T) {
+	data, err := os.ReadFile(deliverySkillPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	blocks := regexp.MustCompile("(?s)```json observation\n(.*?)\n```").FindAllSubmatch(data, -1)
+	if len(blocks) == 0 {
+		t.Fatalf("%s shows no ```json observation example", deliverySkillPath)
+	}
+	for i, b := range blocks {
+		if _, err := metrics.ParseObservation(b[1]); err != nil {
+			t.Errorf("observation example %d rejected by the engine parser: %v", i+1, err)
+		}
+	}
 }
 
 // TestBlastRadiusCriterionGuidance holds this host's delivery skill and
