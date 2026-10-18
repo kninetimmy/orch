@@ -10,7 +10,7 @@ func TestProtected(t *testing.T) {
 	// Every list entry, as given in the issue, is protected itself; entries
 	// naming a directory also protect what lies under them.
 	entries := []string{
-		"internal/grant/", "adapters/claude/skills/orch-delivery/GRANTS.md",
+		"internal/grant/",
 		"internal/run/gate.go", "internal/run/activate.go", "internal/run/merge.go",
 		"internal/run/mergereport.go", "internal/run/review.go", "internal/run/resolveblock.go",
 		"internal/run/abandon.go", "internal/run/resume.go", "internal/run/grantgate.go", "internal/run/propen.go",
@@ -24,6 +24,11 @@ func TestProtected(t *testing.T) {
 		"adapters/claude/hooks/", "adapters/claude/agents/", "adapters/codex/hooks/",
 		"adapters/codex/agents/", "adapters/opencode/hooks/", "adapters/opencode/agents/",
 		"adapters/new-host/hooks/",
+		// Before #389 these skills paths, except GRANTS.md, were unprotected.
+		"adapters/claude/skills/", "adapters/codex/skills/", "adapters/opencode/skills/",
+		"adapters/new-host/skills/", "adapters/claude/skills/orch-delivery/SKILL.md",
+		"adapters/claude/skills/orch-delivery/GRANTS.md", "adapters/codex/skills/orch-architect/SKILL.md",
+		"adapters/opencode/skills/orch-setup/SKILL.md", "adapters/new-host/skills/x/SKILL.md",
 	}
 	for _, e := range protectedPaths {
 		if !slices.Contains(entries, e) && !slices.Contains(entries, e+"/") {
@@ -53,7 +58,7 @@ func TestProtected(t *testing.T) {
 	}
 	for _, p := range []string{
 		"README.md", "internal/run/plan.go", "internal/run/gate_test.go", "internal/grantx/a.go",
-		"internal/run", "adapters/claude/skills/orch-delivery/SKILL.md", "adapters/hooks",
+		"internal/run", "adapters/hooks", "adapters/skills", "docs/metric-observations.md",
 		"adapters/claude/README.md", "docs/CLAUDE.md", "go.modx", "evaluations/x", "cmd/orch/main.go",
 		"adapters/opencode/smoke.mjs", "docs/a.b.md", "docs/x~y.md", "./docs/./a.md",
 		"internal/cli/doctor.go", "internal/cli/grant_test.go", "internal/cli/hookgrant_test.go",
