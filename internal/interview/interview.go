@@ -192,6 +192,11 @@ func validateAnswers(applicable map[string]question.Question, answers map[string
 		if err := question.ValidateAnswer(q, val); err != nil {
 			return err
 		}
+		if id == idProtectedPaths {
+			if _, _, err := parseProtectedAnswer(val); err != nil {
+				return err
+			}
+		}
 	}
 	return nil
 }

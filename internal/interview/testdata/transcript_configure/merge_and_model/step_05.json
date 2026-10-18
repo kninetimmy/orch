@@ -3,14 +3,14 @@
   "kind": "questions",
   "progress": {
     "index": 5,
-    "total": 8
+    "total": 10
   },
   "questions": [
     {
-      "id": "host.claude.role.specialist.model",
-      "header": "Specialist",
-      "prompt": "Specialist model (Claude Code)",
-      "preamble": "Specialist: executes approved changes where implementation itself is unusually difficult — concurrency, auth, migrations, performance, cross-cutting refactors.",
+      "id": "host.claude.role.implementer.model",
+      "header": "Implementer",
+      "prompt": "Implementer model (Claude Code)",
+      "preamble": "Implementer: executes narrow, approved, normally difficult changes, following the approved architecture, only inside its assigned worktree.",
       "kind": "select",
       "options": [
         {
@@ -23,12 +23,12 @@
         }
       ],
       "free_text": true,
-      "default": "claude-opus-4-8"
+      "default": "claude-sonnet-5"
     },
     {
-      "id": "host.claude.role.specialist.effort",
-      "header": "Specialist",
-      "prompt": "Specialist reasoning effort (Claude Code)",
+      "id": "host.claude.role.implementer.effort",
+      "header": "Implementer",
+      "prompt": "Implementer reasoning effort (Claude Code)",
       "kind": "select",
       "options": [
         {
@@ -41,16 +41,16 @@
         },
         {
           "value": "high",
-          "label": "high",
-          "recommended": true
+          "label": "high"
         },
         {
           "value": "xhigh",
-          "label": "xhigh"
+          "label": "xhigh",
+          "recommended": true
         }
       ],
       "free_text": true,
-      "default": "high"
+      "default": "xhigh"
     }
   ]
 }

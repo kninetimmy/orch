@@ -3,23 +3,23 @@
   "kind": "questions",
   "progress": {
     "index": 8,
-    "total": 8
+    "total": 10
   },
   "questions": [
     {
-      "id": "host.codex.role.review_downgrade.model",
-      "header": "Downgrade",
-      "prompt": "Safe review downgrade model (Codex CLI)",
+      "id": "host.codex.role.reviewer.model",
+      "header": "Reviewer",
+      "prompt": "Reviewer model (Codex CLI)",
       "kind": "select",
       "options": [
         {
           "value": "gpt-6-astra",
-          "label": "gpt-6-astra"
+          "label": "gpt-6-astra",
+          "recommended": true
         },
         {
           "value": "gpt-6.1-sol",
-          "label": "gpt-6.1-sol",
-          "recommended": true
+          "label": "gpt-6.1-sol"
         },
         {
           "value": "gpt-5.6-luna",
@@ -31,13 +31,13 @@
         }
       ],
       "free_text": true,
-      "default": "gpt-6.1-sol",
+      "default": "gpt-6-astra",
       "hint": "Use Other for any exact model ID, including gpt-5.6-sol, gpt-5.6-terra and x-preview-f-free."
     },
     {
-      "id": "host.codex.role.review_downgrade.effort",
-      "header": "Downgrade",
-      "prompt": "Safe review downgrade reasoning effort (Codex CLI)",
+      "id": "host.codex.role.reviewer.effort",
+      "header": "Reviewer",
+      "prompt": "Reviewer reasoning effort (Codex CLI)",
       "kind": "select",
       "options": [
         {
@@ -46,12 +46,12 @@
         },
         {
           "value": "medium",
-          "label": "medium"
+          "label": "medium",
+          "recommended": true
         },
         {
           "value": "high",
-          "label": "high",
-          "recommended": true
+          "label": "high"
         },
         {
           "value": "xhigh",
@@ -59,7 +59,7 @@
         }
       ],
       "free_text": true,
-      "default": "high"
+      "default": "medium"
     }
   ]
 }

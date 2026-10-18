@@ -293,13 +293,13 @@ func TestHookUnknownHostUsage(t *testing.T) {
 // (sessionStartClosing) may differ.
 func TestHookSessionStartSharedLinesAcrossHosts(t *testing.T) {
 	envClaude, stdoutClaude, stderr := testEnv(t)
-	writeConfig(t, envClaude.RepoRoot, validTOML)
+	writeConfig(t, envClaude.RepoRoot, validTOML+currentProtected)
 	if code := Run([]string{"hook", "claude", "session-start"}, envClaude); code != ExitOK {
 		t.Fatalf("claude exit = %d, want %d (stderr %q)", code, ExitOK, stderr.String())
 	}
 
 	envCodex, stdoutCodex, stderr2 := testEnv(t)
-	writeConfig(t, envCodex.RepoRoot, validTOML)
+	writeConfig(t, envCodex.RepoRoot, validTOML+currentProtected)
 	if code := Run([]string{"hook", "codex", "session-start"}, envCodex); code != ExitOK {
 		t.Fatalf("codex exit = %d, want %d (stderr %q)", code, ExitOK, stderr2.String())
 	}
@@ -311,7 +311,7 @@ func TestHookSessionStartSharedLinesAcrossHosts(t *testing.T) {
 	}
 
 	envOpenCode, stdoutOpenCode, stderr3 := testEnv(t)
-	writeConfig(t, envOpenCode.RepoRoot, validOpenCodeTOML)
+	writeConfig(t, envOpenCode.RepoRoot, validOpenCodeTOML+currentProtected)
 	if code := Run([]string{"hook", "opencode", "session-start"}, envOpenCode); code != ExitOK {
 		t.Fatalf("opencode exit = %d, want %d (stderr %q)", code, ExitOK, stderr3.String())
 	}
@@ -350,5 +350,39 @@ func TestHookOpenCodeMatchingArchitectHasNoWarning(t *testing.T) {
 	}
 	if strings.Contains(stdout.String(), "Warning:") {
 		t.Errorf("matching model received warning:\n%s", stdout.String())
+	}
+}
+
+// currentProtected is a [protected] section approved under the binary's
+// methodology version, so a fixture carrying it gets no protected-list line.
+const currentProtected = "\n[protected]\nmethodology_version = 1\n"
+
+func TestHookSessionStartProtectedListLine(t *testing.T) {
+	const marker = "autonomy grants refuse until"
+	for name, tc := range map[string]struct {
+		toml, host string
+		want       bool
+	}{
+		"missing section":   {validTOML, "claude", true},
+		"other version":     {validTOML + "\n[protected]\nmethodology_version = 2\n", "claude", true},
+		"current section":   {validTOML + currentProtected, "claude", false},
+		"codex has no line": {validTOML, "codex", false},
+	} {
+		env, stdout, stderr := testEnv(t)
+		writeConfig(t, env.RepoRoot, tc.toml)
+		if code := Run([]string{"hook", tc.host, "session-start"}, env); code != ExitOK {
+			t.Fatalf("%s: exit = %d (stderr %q)", name, code, stderr.String())
+		}
+		out := stdout.String()
+		if got := strings.Contains(out, marker); got != tc.want {
+			t.Errorf("%s: line present = %t, want %t:\n%s", name, got, tc.want, out)
+		}
+		if tc.want {
+			for _, want := range []string{"/orch:configure", "before proposing a grant or a Delivery plan", "may defer"} {
+				if !strings.Contains(strings.ToLower(out), strings.ToLower(want)) {
+					t.Errorf("%s: line missing %q:\n%s", name, want, out)
+				}
+			}
+		}
 	}
 }

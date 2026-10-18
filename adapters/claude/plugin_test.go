@@ -16,11 +16,13 @@ import (
 	"path/filepath"
 	"regexp"
 	"sort"
+	"strconv"
 	"strings"
 	"testing"
 
 	"github.com/kninetimmy/orch/internal/adaptertest"
 	"github.com/kninetimmy/orch/internal/cli"
+	"github.com/kninetimmy/orch/internal/config"
 	"github.com/kninetimmy/orch/internal/grant"
 	"github.com/kninetimmy/orch/internal/guard"
 	"github.com/kninetimmy/orch/internal/metrics"
@@ -519,6 +521,57 @@ func TestDeliverySkillHasMergeGateOptions(t *testing.T) {
 
 func TestSetupSkillHasTerminalForms(t *testing.T) {
 	adaptertest.CheckSetupTerminalForms(t, setupSkillPath)
+}
+
+// surveyPath is the protected-paths survey methodology the setup skill ships.
+const surveyPath = "skills/orch-setup/PROTECTED_PATHS_SURVEY.md"
+
+// TestSurveyMethodologyVersionMatchesBinary fails when the shipped survey
+// states another version than the binary approves protected lists under, so
+// a methodology change cannot ship without the version bump (or the reverse).
+func TestSurveyMethodologyVersionMatchesBinary(t *testing.T) {
+	data, err := os.ReadFile(surveyPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	m := regexp.MustCompile(`(?m)^Survey methodology version: (\d+)\r?$`).FindStringSubmatch(string(data))
+	if m == nil {
+		t.Fatalf("%s does not state a line %q", surveyPath, "Survey methodology version: N")
+	}
+	if got, want := m[1], strconv.Itoa(config.SurveyMethodologyVersion); got != want {
+		t.Errorf("%s states methodology version %s, the binary's is %s", surveyPath, got, want)
+	}
+	content := strings.ToLower(adaptertest.NormalizeWhitespace(string(data)))
+	for _, category := range []string{
+		"trust and security boundaries", "persistence and schema", "cryptography and secrets handling",
+		"locking and concurrency primitives", "the repository's own policy or enforcement code",
+		"release and install tooling", "public api and wire contracts", "destructive data paths",
+	} {
+		if !strings.Contains(content, category) {
+			t.Errorf("%s does not cover %q", surveyPath, category)
+		}
+	}
+}
+
+// TestSetupSkillProtectedPathsInstructions pins the protected-paths question's
+// instructions: survey with orch-scout subagents, present each entry with its
+// reason and evidence, and let the user add, drop or defer before submitting.
+func TestSetupSkillProtectedPathsInstructions(t *testing.T) {
+	data, err := os.ReadFile(setupSkillPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	content := adaptertest.NormalizeWhitespace(string(data))
+	for _, want := range []string{
+		"PROTECTED_PATHS_SURVEY.md",
+		"Run the survey with `orch-scout` subagents",
+		"Present each proposed entry with its one-line reason and its file evidence",
+		"Let the user add entries, drop entries, or defer before you submit anything",
+	} {
+		if !strings.Contains(content, want) {
+			t.Errorf("%s does not say %q", setupSkillPath, want)
+		}
+	}
 }
 
 func TestSetupSkillPagesLargeOptionSets(t *testing.T) {

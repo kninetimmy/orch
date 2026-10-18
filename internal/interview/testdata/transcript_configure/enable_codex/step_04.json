@@ -3,18 +3,19 @@
   "kind": "questions",
   "progress": {
     "index": 4,
-    "total": 8
+    "total": 10
   },
   "questions": [
     {
-      "id": "host.codex.role.scout.model",
-      "header": "Scout",
-      "prompt": "Scout model (Codex CLI)",
+      "id": "host.codex.role.architect.model",
+      "header": "Architect",
+      "prompt": "Architect model (Codex CLI)",
       "kind": "select",
       "options": [
         {
           "value": "gpt-6-astra",
-          "label": "gpt-6-astra"
+          "label": "gpt-6-astra",
+          "recommended": true
         },
         {
           "value": "gpt-6.1-sol",
@@ -22,8 +23,7 @@
         },
         {
           "value": "gpt-5.6-luna",
-          "label": "gpt-5.6-luna",
-          "recommended": true
+          "label": "gpt-5.6-luna"
         },
         {
           "value": "gpt-5.6-sol",
@@ -31,15 +31,19 @@
         }
       ],
       "free_text": true,
-      "default": "gpt-5.6-luna",
+      "default": "gpt-6-astra",
       "hint": "Use Other for any exact model ID, including gpt-5.6-sol, gpt-5.6-terra and x-preview-f-free."
     },
     {
-      "id": "host.codex.role.scout.effort",
-      "header": "Scout",
-      "prompt": "Scout reasoning effort (Codex CLI)",
+      "id": "host.codex.role.architect.effort",
+      "header": "Architect",
+      "prompt": "Architect reasoning effort (Codex CLI)",
       "kind": "select",
       "options": [
+        {
+          "value": "low",
+          "label": "low"
+        },
         {
           "value": "medium",
           "label": "medium"
@@ -50,16 +54,12 @@
         },
         {
           "value": "xhigh",
-          "label": "xhigh"
-        },
-        {
-          "value": "max",
-          "label": "max",
+          "label": "xhigh",
           "recommended": true
         }
       ],
       "free_text": true,
-      "default": "max"
+      "default": "xhigh"
     }
   ]
 }

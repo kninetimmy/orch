@@ -130,8 +130,26 @@ func sessionStartContext(cfg *config.Config, st *state.State, host, selectedMode
 			fmt.Fprintf(&b, "Warning: this main session selected %q, but hosts.opencode.roles.architect configures %q. Orch will not switch the session model automatically; select the configured Architect manually if you want them to match.\n", selectedModel, architect)
 		}
 	}
+	if host == "claude" {
+		b.WriteString(protectedSessionLine(cfg))
+	}
 	fmt.Fprintln(&b, sessionStartClosing[host])
 	return b.String()
+}
+
+// protectedSessionLine is the one line a Claude session starts with when the
+// repository has no current grant-protected list, or "" when it has one. It
+// says once, at session start, that grants refuse until the list is approved
+// and what the Architect should offer; the survey itself is the user's to
+// defer.
+func protectedSessionLine(cfg *config.Config) string {
+	switch {
+	case cfg.Protected == nil:
+		return "This repository has no approved grant-protected path list (.orchestrator/config.toml has no [protected] section), so autonomy grants refuse until one is approved. Before proposing a grant or a Delivery plan, offer the survey through /orch:configure; the user may defer it.\n"
+	case cfg.CheckGrantProtected() != nil:
+		return fmt.Sprintf("This repository's grant-protected path list was approved under survey methodology version %d, not this binary's version %d, so autonomy grants refuse until it is re-approved. Before proposing a grant or a Delivery plan, offer the survey through /orch:configure; the user may defer it.\n", cfg.Protected.MethodologyVersion, config.SurveyMethodologyVersion)
+	}
+	return ""
 }
 
 // deliveryRunSummary renders the one-line Delivery run summary: run id,

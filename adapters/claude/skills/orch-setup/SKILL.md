@@ -78,6 +78,26 @@ yourself.
 Once every question in this step's batch is answered, return to step 1
 with the updated `AnswerSet`.
 
+#### The protected-paths question
+
+`protected.paths` (asked by `orch init` always, and by `orch configure` when
+`pick.protected` is answered `yes`) is the one question you do not leave to
+the human to type. Do not present it as an ordinary free-text question. Read
+`PROTECTED_PATHS_SURVEY.md` in this skill's directory and:
+
+1. Run the survey with `orch-scout` subagents, per that methodology.
+2. Present each proposed entry with its one-line reason and its file evidence.
+3. Let the user add entries, drop entries, or defer before you submit anything.
+4. Record `answers["protected.paths"]` as the approved entries, a JSON array of
+   `{"path", "reason"}` objects, or `[]` for an approved empty list, or `defer`
+   when the user defers. The core rejects a malformed answer; fix it and
+   resubmit, do not guess.
+
+`pick.protected` defaults to `yes` when the committed config has no protected
+list or one approved under an older survey methodology version, and to `no`
+otherwise; mention that default when you present it. A `defer` in
+`orch configure` leaves the committed list unchanged.
+
 ### `kind: "summary"`
 
 Show, in full:
@@ -87,6 +107,8 @@ Show, in full:
   unified diff between the committed `config.toml` and this proposal.
 - Every entry in `summary.files[]`: `path`, whether it `existed`, and
   its `diff` (or, if no diff was supplied, its `new_content`).
+- When the configuration has a `[protected]` section, a list of every entry
+  in it, each with its path and reason, so the human approves them here.
 - `summary.gitignore_lines`, if any.
 - `summary.conflicts`, if any.
 

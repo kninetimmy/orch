@@ -3,14 +3,14 @@
   "kind": "questions",
   "progress": {
     "index": 4,
-    "total": 8
+    "total": 10
   },
   "questions": [
     {
-      "id": "host.claude.role.implementer.model",
-      "header": "Implementer",
-      "prompt": "Implementer model (Claude Code)",
-      "preamble": "Implementer: executes narrow, approved, normally difficult changes, following the approved architecture, only inside its assigned worktree.",
+      "id": "host.claude.role.scout.model",
+      "header": "Scout",
+      "prompt": "Scout model (Claude Code)",
+      "preamble": "Scout: read-only file/symbol discovery, code-path tracing, documentation lookup, and concise summaries for the Architect. Scouts may run concurrently.",
       "kind": "select",
       "options": [
         {
@@ -26,14 +26,15 @@
       "default": "claude-sonnet-5"
     },
     {
-      "id": "host.claude.role.implementer.effort",
-      "header": "Implementer",
-      "prompt": "Implementer reasoning effort (Claude Code)",
+      "id": "host.claude.role.scout.effort",
+      "header": "Scout",
+      "prompt": "Scout reasoning effort (Claude Code)",
       "kind": "select",
       "options": [
         {
           "value": "low",
-          "label": "low"
+          "label": "low",
+          "recommended": true
         },
         {
           "value": "medium",
@@ -45,12 +46,11 @@
         },
         {
           "value": "xhigh",
-          "label": "xhigh",
-          "recommended": true
+          "label": "xhigh"
         }
       ],
       "free_text": true,
-      "default": "xhigh"
+      "default": "low"
     }
   ]
 }

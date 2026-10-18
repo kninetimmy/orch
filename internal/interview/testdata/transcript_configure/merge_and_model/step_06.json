@@ -3,14 +3,14 @@
   "kind": "questions",
   "progress": {
     "index": 6,
-    "total": 8
+    "total": 10
   },
   "questions": [
     {
-      "id": "host.claude.role.reviewer.model",
-      "header": "Reviewer",
-      "prompt": "Reviewer model (Claude Code)",
-      "preamble": "Reviewer: independently verifies acceptance criteria, scope discipline, correctness, test evidence, CI state, and security/data-safety concerns.",
+      "id": "host.claude.role.specialist.model",
+      "header": "Specialist",
+      "prompt": "Specialist model (Claude Code)",
+      "preamble": "Specialist: executes approved changes where implementation itself is unusually difficult — concurrency, auth, migrations, performance, cross-cutting refactors.",
       "kind": "select",
       "options": [
         {
@@ -26,9 +26,9 @@
       "default": "claude-opus-4-8"
     },
     {
-      "id": "host.claude.role.reviewer.effort",
-      "header": "Reviewer",
-      "prompt": "Reviewer reasoning effort (Claude Code)",
+      "id": "host.claude.role.specialist.effort",
+      "header": "Specialist",
+      "prompt": "Specialist reasoning effort (Claude Code)",
       "kind": "select",
       "options": [
         {

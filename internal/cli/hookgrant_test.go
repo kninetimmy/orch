@@ -38,7 +38,7 @@ func grantRepo(t *testing.T, withGrant bool) Env {
 	if res, err := (execx.Local{}).Run(context.Background(), execx.Cmd{Name: "git", Args: []string{"init", "-b", "main"}, Dir: root}); err != nil || res.ExitCode != 0 {
 		t.Fatalf("git init: %v %s", err, res.Stderr)
 	}
-	writeConfig(t, root, validTOML)
+	writeConfig(t, root, validTOML+currentProtected)
 	env := Env{RepoRoot: root, Runner: execx.Local{}}
 	if !withGrant {
 		return env

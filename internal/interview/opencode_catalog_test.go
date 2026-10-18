@@ -113,7 +113,7 @@ func TestOpenCodeOneModelCatalogIsHostValidInEverySetupPath(t *testing.T) {
 	root := t.TempDir()
 	writeCommittedConfigOpenCodeOnly(t, root)
 	configureDoc, err := NextConfigure(facts, map[string]string{
-		idPickHosts: "no", idPickRolesOpenCode: "yes", idPickSettings: "no",
+		idPickHosts: "no", idPickRolesOpenCode: "yes", idPickSettings: "no", idPickProtected: "no",
 	}, root)
 	if err != nil {
 		t.Fatal(err)
@@ -243,7 +243,7 @@ func TestOpenCodeRoleEditsFailClearlyWithoutCatalog(t *testing.T) {
 		t.Fatalf("init catalog error = %v", err)
 	}
 
-	configureAnswers := map[string]string{idPickHosts: "no", idPickRolesOpenCode: "yes", idPickSettings: "no"}
+	configureAnswers := map[string]string{idPickHosts: "no", idPickRolesOpenCode: "yes", idPickSettings: "no", idPickProtected: "no"}
 	_, err = NextConfigure(facts, configureAnswers, root)
 	if !errors.Is(err, ErrOpenCodeCatalogUnavailable) || !strings.Contains(err.Error(), "safe discovery failure") || !strings.Contains(err.Error(), "cannot be edited") {
 		t.Fatalf("configure catalog error = %v", err)
@@ -264,7 +264,7 @@ func TestExistingOpenCodeModelIsTheOnlyNonCatalogOption(t *testing.T) {
 
 	facts := withOpenCodeTestCatalog(Facts{})
 	answers := map[string]string{
-		idPickHosts: "no", idPickRolesOpenCode: "yes", idPickSettings: "no",
+		idPickHosts: "no", idPickRolesOpenCode: "yes", idPickSettings: "no", idPickProtected: "no",
 	}
 	doc, err := NextConfigure(facts, answers, root)
 	if err != nil {
@@ -310,7 +310,7 @@ func TestUnavailableLegacyOpenCodeSelectionRemainsLoadable(t *testing.T) {
 	committed.Hosts.OpenCode.Roles.Architect = config.RoleProfile{Model: "retired-model", Effort: "xhigh"}
 	writeCommittedConfig(t, root, committed)
 	facts := withOpenCodeTestCatalog(Facts{})
-	answers := map[string]string{idPickHosts: "no", idPickRolesOpenCode: "yes", idPickSettings: "no"}
+	answers := map[string]string{idPickHosts: "no", idPickRolesOpenCode: "yes", idPickSettings: "no", idPickProtected: "no"}
 	for i := 0; i < 100; i++ {
 		doc, err := NextConfigure(facts, answers, root)
 		if err != nil {
