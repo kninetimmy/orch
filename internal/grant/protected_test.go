@@ -3,6 +3,7 @@ package grant
 import (
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 )
@@ -18,6 +19,12 @@ func TestProtectedFloor(t *testing.T) {
 		"NuGet.config", "pyproject.toml", "setup.py", "setup.cfg", "Pipfile", "Pipfile.lock",
 		"poetry.lock", "uv.lock", "requirements.txt", "requirements-dev.txt", "install.sh",
 		"install.ps1", "Makefile", "justfile", ".goreleaser.yml", ".goreleaser.yaml",
+		".mcp.json", "opencode.json", "opencode.jsonc",
+		"go.work", "go.work.sum", "Gemfile", "Gemfile.lock", "pom.xml", "build.gradle",
+		"build.gradle.kts", "settings.gradle", "settings.gradle.kts", "gradlew", "gradlew.bat",
+		"gradle-wrapper.properties", "gradle-wrapper.jar", "composer.json", "composer.lock",
+		"bun.lock", "bun.lockb", "Directory.Build.targets", "global.json", "Package.swift",
+		"Package.resolved", "mix.exs", "mix.lock", "vcpkg.json", ".npmrc", ".yarnrc.yml",
 	}
 	if len(names) != len(floorNames)+1 { // requirements*.txt has a second example
 		t.Errorf("%d floor names tested for %d patterns", len(names), len(floorNames))
@@ -29,10 +36,29 @@ func TestProtectedFloor(t *testing.T) {
 			}
 		}
 	}
+	// A harness directory is protected as any segment, at any depth, under any case.
+	if len(floorDirs) != 3 {
+		t.Errorf("%d floor directories tested for %d entries", 3, len(floorDirs))
+	}
+	for _, d := range []string{".claude", ".codex", ".opencode"} {
+		for _, p := range []string{
+			d, d + "/x", "pkg/web/" + d + "/skills/x/SKILL.md", strings.ToUpper(d) + "/x", `deep\` + d + `\x`,
+		} {
+			if !Protected(p, nil) {
+				t.Errorf("%q not protected", p)
+			}
+		}
+	}
+	for _, p := range []string{".claude/settings.json", ".codex/config.toml", ".opencode/agents/a.md", ".claude./x"} {
+		if !Protected(p, nil) {
+			t.Errorf("%q not protected", p)
+		}
+	}
 	// Root-anchored floor entries cover everything under them.
 	for _, p := range []string{
 		".github/workflows", ".github/workflows/ci.yml", "LICENSE", "license", ".orchestrator",
-		".orchestrator/config.toml", ".ORCHESTRATOR/x",
+		".orchestrator/config.toml", ".ORCHESTRATOR/x", ".github/actions", ".github/actions/setup/action.yml",
+		".GitHub/Actions/x",
 	} {
 		if !Protected(p, nil) {
 			t.Errorf("%q not protected", p)
@@ -60,6 +86,13 @@ func TestProtectedFloor(t *testing.T) {
 		"adapters/codex/.codex-plugin/plugin.json", "adapters/claude/skills/orch-delivery/GRANTS.md",
 		"adapters/claude/hooks/x.json", "adapters/codex/agents/x.toml",
 		"docs/a.b.md", "docs/x~y.md", "./docs/./a.md",
+		// Near misses of the #412 entries.
+		"adapters/claude/skills/x/SKILL.md", "internal/gemfile.go", "docs/.github/actions/x.yml",
+		".claudex/x", "x.claude/y", "docs/claude/x", ".mcp.json.bak", "opencode.json5", "go.workx",
+		".github/actionsx/a.yml", "pkg/.codex-plugin/plugin.json",
+		// The survey methodology's examples of what the floor does not cover.
+		"build.sbt", "Podfile", "CMakeLists.txt", "pip.conf", "scripts/release.sh", "release.ps1",
+		".gitlab-ci.yml", "LICENSE.md", "LICENSE.txt",
 	} {
 		if Protected(p, nil) {
 			t.Errorf("%q protected", p)
@@ -100,8 +133,13 @@ func TestSurveyDocNamesEveryFloorEntry(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	doc := strings.ToLower(string(data))
-	for _, entry := range append(append([]string{}, floorNames...), floorRoots...) {
+	// Only the floor's own section counts, so a mention elsewhere cannot mask an omission.
+	_, doc, ok := strings.Cut(strings.ToLower(string(data)), "\n## what the list is\n")
+	if !ok {
+		t.Fatal(`survey methodology has no "What the list is" section`)
+	}
+	doc, _, _ = strings.Cut(doc, "\n## ")
+	for _, entry := range slices.Concat(floorNames, floorDirs, floorRoots) {
 		if !strings.Contains(doc, "`"+entry+"`") {
 			t.Errorf("survey methodology does not name floor entry %q", entry)
 		}
