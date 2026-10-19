@@ -70,11 +70,20 @@ engine refuses a grant merge for these reasons you can know before dispatch:
 - The issue's expected change touches a grant-protected path. That is the
   built-in floor every repository gets plus the repository's own committed
   list. The floor protects, by file name at any depth, `CLAUDE.md`,
-  `AGENTS.md`, `.gitignore`, `.gitattributes` and every common dependency
-  manifest, lockfile and install, build or release script (`go.mod`,
-  `package.json`, `Cargo.lock`, `*.csproj`, `requirements*.txt`, `Makefile`,
-  `install.sh`, `.goreleaser.yml` and the like), and, at the repository root,
-  `.github/workflows`, `LICENSE` and `.orchestrator`. The repository's list is
+  `AGENTS.md`, `.gitignore`, `.gitattributes`, the host harness files
+  `.mcp.json`, `opencode.json` and `opencode.jsonc`, and a fixed set of
+  dependency manifests, lockfiles, build wrappers, registry settings and
+  install, build or release scripts (`go.mod`, `package.json`, `Cargo.lock`,
+  `*.csproj`, `requirements*.txt`, `Gemfile`, `gradlew`, `.npmrc`, `Makefile`,
+  `install.sh`, `.goreleaser.yml` and the like; the survey methodology in
+  `orch-setup` lists them all); everything in a host harness directory
+  `.claude`, `.codex` or `.opencode` at any depth; and, at the repository
+  root, `.github/workflows`, `.github/actions`, `LICENSE` and `.orchestrator`.
+  Before #412 the floor did not cover the host harness files and
+  directories, `.github/actions` or manifests such as `Gemfile`, `pom.xml`
+  and `go.work`, and this paragraph said it covered every common dependency
+  manifest; it never did, and a manifest it does not list is still not
+  covered. The repository's list is
   the `[protected]` section of its committed `.orchestrator/config.toml`: each
   path with a one-line reason, a directory covering everything under it.
   Before #397 it was one compiled list in `internal/grant/protected.go`,

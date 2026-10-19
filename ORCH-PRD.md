@@ -196,10 +196,14 @@ when the PR changes a protected path. It is still one approval for one PR at one
 
 Before #397 the protected paths were one list compiled into the binary for Orch's own source, the
 same in every repository, and a grant needed nothing from the repository's configuration. Now
-they are a built-in floor every repository gets (instruction files, git attributes, every common
-dependency manifest, lockfile and install, build or release script at any depth, and the root
-`.github/workflows`, `LICENSE` and `.orchestrator`) plus the paths in the `[protected]` section of
-the repository's committed `.orchestrator/config.toml`. A grant merge is also refused, and
+they are a built-in floor every repository gets (instruction files, git attributes, host agent
+harness configuration in `.claude`, `.codex`, `.opencode`, `.mcp.json`, `opencode.json` and
+`opencode.jsonc`, and a fixed set of dependency manifests, lockfiles, registry settings and
+install, build or release scripts, all at any depth, and the root `.github/workflows`,
+`.github/actions`, `LICENSE` and `.orchestrator`) plus the paths in the `[protected]` section of
+the repository's committed `.orchestrator/config.toml`. Before #412 the floor did not cover the
+host harness configuration, `.github/actions` or manifests such as `Gemfile`, `pom.xml` and
+`go.work`, and this paragraph said it covered every common dependency manifest. A grant merge is also refused, and
 `orch grant preview` and `orch grant create` refuse, when that section is missing or records a
 survey methodology version other than the binary's.
 

@@ -29,15 +29,36 @@ ignoring case (a `*` matches any run of characters):
   `poetry.lock`, `uv.lock`, `requirements*.txt`
 - `install.sh`, `install.ps1`, `Makefile`, `justfile`, `.goreleaser.yml`,
   `.goreleaser.yaml`
+- `.mcp.json`, `opencode.json`, `opencode.jsonc`
+- `go.work`, `go.work.sum`, `Gemfile`, `Gemfile.lock`, `pom.xml`,
+  `build.gradle`, `build.gradle.kts`, `settings.gradle`, `settings.gradle.kts`,
+  `gradlew`, `gradlew.bat`, `gradle-wrapper.properties`, `gradle-wrapper.jar`
+- `composer.json`, `composer.lock`, `bun.lock`, `bun.lockb`,
+  `Directory.Build.targets`, `global.json`, `Package.swift`,
+  `Package.resolved`, `mix.exs`, `mix.lock`, `vcpkg.json`
+- `.npmrc`, `.yarnrc.yml`
+
+Host agent harness directories, matched against every segment of a path at any
+depth, ignoring case, each covering itself and everything under it:
+`.claude`, `.codex` and `.opencode`. They set agent permissions, tools, hooks,
+MCP servers, agent definitions and live-loaded skills in every later worktree.
+Only that exact directory name is covered: `.claude-plugin` is not, and
+neither is a `skills` or `agents` directory outside one of them.
 
 Root-only paths, each covering itself and everything under it, ignoring case:
-`.github/workflows`, `LICENSE` (that exact name only; `LICENSE.md` and
-`LICENSE.txt` are not covered), and `.orchestrator`.
+`.github/workflows`, `.github/actions`, `LICENSE` (that exact name only;
+`LICENSE.md` and `LICENSE.txt` are not covered), and `.orchestrator`.
 
-Only an exact match is covered. Other manifests (`Gemfile`, `pom.xml`,
-`build.gradle`, `go.work`), other scripts (`scripts/release.sh`,
-`release.ps1`), other CI systems and other license file names are not on the
-floor.
+Only an exact match is covered. Other manifests (`build.sbt`, `Podfile`,
+`CMakeLists.txt`), other registry settings (`pip.conf`), other scripts
+(`scripts/release.sh`, `release.ps1`), other CI systems (`.gitlab-ci.yml`) and
+other license file names are not on the floor.
+
+Before #412 the floor did not cover the harness directories, `.mcp.json`,
+`opencode.json`, `opencode.jsonc`, `.github/actions`, or the manifests,
+wrappers and registry settings from `go.work` to `.yarnrc.yml` above, and this
+section named `Gemfile`, `pom.xml`, `build.gradle` and `go.work` as not on the
+floor. Now the floor covers all of them.
 
 Before v0.15.1 this survey ran on a different rule: when in doubt, propose the
 path, because a redundant entry is harmless and a missing one is not. It also
