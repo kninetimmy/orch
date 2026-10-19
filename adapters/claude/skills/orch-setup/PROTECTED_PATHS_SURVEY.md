@@ -75,17 +75,50 @@ A change that would only break something (a wrong result, a failing feature, a
 broken format that a revert restores) does not qualify, however central the
 code.
 
-For (c), find the human checkpoint between a merge and the code's users. When
-merged code reaches users only through a human step (a release tag, a version
-bump, a manual deploy), protect that step's inputs (version stamps, manifests,
-release and deploy configuration) rather than every path behind it. When a
-merge deploys or ships on its own, what it ships is in scope.
+Judge a path by what a bad change to it could do, not by what the file holds
+today. A configuration file that today only launches a server can, after one
+change, carry permission rules or load skills or plugins, and that change
+meets (a) or (b) even though the file's current content meets nothing.
+
+A boundary counts only when an unattended agent cannot route around it. A
+restricted tool surface, such as an MCP server that only proposes changes, is
+not a boundary for an agent that also has a shell and can run the same
+program's command-line interface to do what the tool surface withholds. Judge
+the paths behind such a surface as if the surface were not there.
+
+For (c), find the human checkpoint between a merge and the code's users. A
+human step counts as a checkpoint only when the human sees what ships at that
+step, for example a release PR, a version bump or release notes. A step that
+installs or ships whatever is on the main branch without showing it, such as
+an upgrade command run against main, is not a checkpoint. When merged code
+reaches users only through a checkpoint, protect that checkpoint's inputs
+(version stamps, manifests, release and deploy configuration) rather than
+every path behind it. When a merge deploys or ships on its own, or reaches
+users only through steps that are not checkpoints, what it ships is in scope.
+
+The checkpoint rule applies to (c) only. A path that meets (a) or (b)
+qualifies whatever human step follows the merge, because the damage is done by
+the unattended agent before any user is reached.
+
+Through v0.15.1 this section named a human step (a release tag, a version
+bump, a manual deploy) as the checkpoint without saying what the human had to
+see, and did not say which tests the checkpoint rule applied to. Survey runs
+on the same repository then split on whether a step that installs whatever is
+on main counted, and some used that rule to drop (a) and (b) entries. Neither
+reading holds now.
 
 Prefer a file to its directory when only part of the directory meets the test.
 When the smallest path that covers a concern is a large file that most changes
 touch, say so and give how many of the last 100 commits touched it, so the user
-can weigh what protecting it costs. A path that meets the test belongs on the
-list even when it looks redundant.
+can weigh what protecting it costs. Count with
+`git rev-list --count HEAD~100..HEAD -- <path>`, which needs a history of at
+least 100 commits; with fewer, say so and give the count over the whole
+history. On a history with merge commits the range can hold more than 100
+commits, so give the count out of `git rev-list --count HEAD~100..HEAD`. Do
+not use `git log -100 -- <path>`: it counts the path's own last 100 commits,
+however far back they reach, not how many of the repository's last 100 touched
+it. A path that meets the test belongs on the list even when it looks
+redundant.
 
 ## Where to look
 
@@ -137,24 +170,41 @@ test, and for each report
   human;
 - `test`: which of (a), (b) and (c) it meets, and how;
 - `evidence`: the file or files you read that show it, with a line number or a
-  short quote.
+  short quote;
+- `tracked`: whether the path is tracked (`git ls-files -- <path>` lists it)
+  or ignored (`git check-ignore -v <path>` names the rule that ignores it),
+  from running the command, not from reading the tree.
 
 Also report the near misses: candidates that matter but would only break
-something, each with a few words on why they fail the test.
+something, each with a few words on why they fail the test, and anything you
+did not check.
+
+However the categories are split, one scout also lists every command or entry
+point in the repository that deletes, overwrites, truncates or migrates user
+data, whichever category it sits in, and rules each one an entry or a near
+miss. A command that wipes user data with no backup must not fall between two
+scouts' categories.
 
 Scouts may run concurrently up to the configured concurrency. Treat their
 reports as claims: spot-check the evidence for any entry that looks surprising,
 merge duplicates and overlaps (keep the directory when a file sits inside a
 directory entry), and drop an entry that is an exact floor match or that meets
-none of (a), (b) and (c); move the latter to the near misses.
+none of (a), (b) and (c); move the latter to the near misses. Resolve every
+item a scout reports as not checked, by checking it yourself or sending a scout
+back to it; an item you cannot resolve is named to the user as unresolved.
 
 ## What to present
 
 Show the user every proposed entry with its one-line reason, the test it meets
 and its file evidence, grouped by category, and name the categories where the
 survey found nothing. Then show the near misses, so the user can promote any
-of them. Let the user add entries, drop entries, or defer the whole list before
-anything is submitted. Submit the answer only after they have settled it:
+of them. Show the list of commands and entry points that delete, overwrite,
+truncate or migrate user data, each with its ruling, and name every item left
+unresolved. Give the whole proposed list's combined cost:
+`git rev-list --count HEAD~100..HEAD -- <path> <path> ...` over all its paths,
+the number of the last 100 commits that would have gone back to the user. Let
+the user add entries, drop entries, or defer the whole list before anything is
+submitted. Submit the answer only after they have settled it:
 
 - the approved entries, as a JSON array of `{"path", "reason"}` objects;
 - `[]` when they approve having no entries beyond the floor;
