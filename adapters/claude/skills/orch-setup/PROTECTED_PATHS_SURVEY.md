@@ -97,8 +97,9 @@ every path behind it. When a merge deploys or ships on its own, or reaches
 users only through steps that are not checkpoints, what it ships is in scope.
 
 The checkpoint rule applies to (c) only. A path that meets (a) or (b)
-qualifies whatever human step follows the merge, because the damage is done by
-the unattended agent before any user is reached.
+qualifies whatever human step follows the merge, because such a change is
+silent: a checkpoint that shows what ships does not reveal a widened permission
+or a disabled check any more than review did.
 
 Through v0.15.1 this section named a human step (a release tag, a version
 bump, a manual deploy) as the checkpoint without saying what the human had to
