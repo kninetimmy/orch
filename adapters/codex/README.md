@@ -14,7 +14,8 @@ never re-derives a decision the engine already made.
 
 The Claude Code adapter lives at `adapters/claude/` and passes the same
 shared parity suite (`internal/adaptertest`) this adapter's plugin tests
-do.
+do. Question and approval checks are document-contract checks, not proof
+of live agent behavior.
 
 Before #292, the manual plugin was Orch's Codex execution path. After #292,
 it remains that path; an internal metadata preflight adds no execution CLI or
@@ -63,14 +64,15 @@ change any manual role's guard or instruction-based read-only restrictions.
   `concurrency.max_subagents` cap, and memhub write discipline.
 - `skills/orch-delivery/SKILL.md` — the Delivery wire contract: the
   scratch-file JSON request/response pattern for every `orch run <verb>`
-  call, `PlanDoc` construction, the plan gate and its four-option
-  `request_user_input` question, activation, the full per-issue dispatch → execute → pr-open
+  call, `PlanDoc` construction, the plan gate and its four logical
+  outcomes presented according to current host capabilities, activation,
+  the full per-issue dispatch → execute → pr-open
   → review → ci → merge-report → merge gate → merge → cleanup loop,
   completion and the memhub wrap-up cue, escalation, and block/abandon.
 - `skills/orch-setup/SKILL.md` — the shared step-loop driver for the
   three `orch <cmd> --step` interviews: the resubmitted-in-full
   `AnswerSet`, one-question-at-a-time presentation of `questions`
-  documents via Codex's `request_user_input` primitive, the
+  documents via supported native questions or plain text, the
   `summary`/blockers/`complete`/`aborted` document kinds, and each
   interview's terminal form.
 - `agents/orch-scout.toml`, `agents/orch-implementer.toml`,
@@ -122,8 +124,10 @@ decision, not an oversight).
    changing role configuration or upgrading Orch. Before this change a
    manual five-file copy was an accepted alternative; after it,
    `orch render-agents` is the single per-repository workflow.
-5. Enable the `request_user_input` question primitive — verified on
-   codex-cli 0.144.1, both of these in `~/.codex/config.toml`:
+5. Check the current session's question-tool capabilities. Before this
+   update, this step prescribed both tables below in `~/.codex/config.toml`
+   (verified on codex-cli 0.144.1) and treated them as enabling native setup
+   and approval questions, including a four-option native plan gate:
 
    ```toml
    [tools.experimental_request_user_input]
@@ -132,11 +136,21 @@ decision, not an oversight).
    default_mode_request_user_input = true
    ```
 
-   (The `[tools]` entry is a struct, not a boolean — the bare table
-   enables it with defaults.) The setup interviews and the plan/merge
-   gates present their questions through `request_user_input`, which
-   is otherwise gated to plan mode; without these the skills degrade
-   to plain-text questions the human answers by typing.
+   On that version, the `[tools]` entry was a struct, not a boolean;
+   the bare table enabled its defaults. After this update, use
+   `request_user_input` only when available, permitted for the question's
+   purpose, and able to represent all options within its current contract;
+   otherwise present the same complete question as plain text. All four
+   logical plan outcomes and each PR's fresh merge choice remain.
+   Historical flags do not override current tool restrictions, including
+   prohibitions on approval requests and limits on option counts. Those
+   restrictions describe `request_user_input`, not every question tool;
+   any other tool must satisfy its own current contract and the same
+   requirements for complete questions and human approval.
+
+   Setup, plan activation, and each PR merge require an actual affirmative
+   human answer. Defaults, preselection, silence, timeout, unavailable tools,
+   or an unanswered question never count as approval.
 6. Run `orch doctor` to confirm the environment (Git, GitHub, memhub,
    configuration) is healthy.
 
@@ -244,8 +258,12 @@ Two behaviors verified live in the task-30 parity smoke (codex-cli
 (subagent) `apply_patch` calls — load-bearing here, since it puts every
 dispatched agent's writes under the guard's worktree, branch, and phase
 containment, the only mechanical write boundary this adapter ships —
-and `request_user_input` is root-thread only, so a dispatched agent can
-never raise a native question.
+and `request_user_input` was root-thread only. Before this update, that
+observation was generalized to say a dispatched agent could never raise
+a native question. After this update, it remains an observation about
+`request_user_input` on that tested version, not every question tool or
+version. Check the current tool contract; dispatched agents surface
+questions and approval needs through the Architect.
 
 As defense in depth — complementary to the guard hook, not a
 substitute for it, and no configuration is shipped by this adapter to
