@@ -4,8 +4,8 @@ description: >-
   Shared step-loop driver for the three Orch setup interviews (`orch
   init --step`, `orch configure --step`, `orch configure-local --step`).
   Invoke this skill directly to run any of the three interviews.
-  Presents each ordinary question and emitted 2-3-option pagination page via
-  Codex's `request_user_input` primitive and drives the loop to terminal form.
+  Presents each ordinary question and emitted 2-3-option pagination page using
+  supported native questions or plain text and drives the loop to terminal form.
 ---
 
 # Orch Setup
@@ -41,21 +41,33 @@ its own. Never send a partial or incremental update.
 
 ### `kind: "questions"`
 
-`Document.questions` carries 1–4 independent `Question`s. Present them
-via Codex's `request_user_input` primitive: iterate
-`Document.questions` **in order**, asking each with its own
-`request_user_input` call before moving to the next. (If the primitive
-is unavailable in this session — it is gated off outside plan mode
-unless the `default_mode_request_user_input` feature is enabled — say
-so once, then fall back to asking the same questions as plain text.)
+`Document.questions` carries 1–4 independent `Question`s. Iterate
+`Document.questions` **in order**, asking each question and waiting for
+its answer before moving to the next.
 
-For a question without `pagination`, use its `header` and `prompt` as the
-`request_user_input` call's header/prompt, and list its `options[]` with each option's `label` for
-display and `description` for detail. There is no separate
-"recommended" UI affordance on this host either: if an option has
-`recommended: true`, say so in words in the description text. If the
-question has a `default`, likewise mention it in words in the
-description of the matching option.
+Use `request_user_input` only when it is available, permitted for the
+question's purpose, and able to represent every offered option within
+its current contract. Otherwise present the same complete question as
+plain text, including every option in its original order, and wait for
+the human's answer. If the current contract prohibits approval requests,
+use plain text for approvals even when ordinary questions are permitted.
+These are checks on `request_user_input`; any other question tool must
+satisfy its own current contract and the same requirements for complete
+questions and human approval.
+
+Before this update, setup treated tool unavailability as the only reason
+to fall back and attributed availability to Plan mode or
+`default_mode_request_user_input`. After this update, the current tool
+contract controls availability, permitted purposes, and complete
+representation; configuration flags do not override those restrictions.
+
+For a question without `pagination`, present its `header` and `prompt`,
+and list its `options[]` with each option's `label` for display and
+`description` for detail. Include any `preamble`.
+Before this update, recommendation hints were confined to descriptions
+because no native recommendation affordance was assumed. After this update,
+carry `recommended: true` and any `default` as words using the supported
+presentation; these hints never supply an answer.
 
 When the human answers that ordinary question, record `answers[question.id] = option.value`
 — **the option's `value`, never its `label`**. The label is display
@@ -63,24 +75,27 @@ text only; the value is what the core expects back.
 
 When `pagination` is present, require `pagination.hosts` to contain `codex`,
 start at `pagination.pages[0]`, and present that page's 2–3 options exactly as
-emitted in one `request_user_input` call. Use the parent question's header/prompt
-and mention the page's `index`/`total` in the prompt. Never synthesize, split,
+emitted, through a permitted native call or as plain text under the rule above.
+Use the parent question's header/prompt and mention the page's `index`/`total`
+in the prompt. Never synthesize, split,
 merge, reorder, or replace pages with a request to type an identifier. A page
 option with `value` is a real answer: record it and finish the question. An
 option with `action` is navigation only: `next` and `previous` move one page,
 while `cancel` stops the interview without recording an answer. Never submit an
 action as `answers[question.id]`.
 
-If a non-paginated `select` question has `free_text: true`, it still carries real
-options — present them through `request_user_input` exactly as above,
-and append one extra option, label `Other — enter a custom value`, as
-the free-text path (`request_user_input` options are selection-only;
-this extra option stands in for the built-in "Other" entry Claude
-Code's question tool has). A listed option records its `value` as
-usual. Only if the human picks Other, ask a plain-text follow-up and
-record what they type verbatim as `answers[question.id]` — do not
-transform or re-validate it yourself; if the core rejects it, its
-re-ask message says why.
+If a non-paginated `select` question has `free_text: true`, it still carries
+real options. Use the host's built-in free-text entry when available instead
+of adding a synthetic Other option. When that entry is unavailable, present
+the complete question as plain text, accepting a listed choice or a custom
+value. A listed option records its `value` as usual; record custom answers
+verbatim as `answers[question.id]` — do not transform or re-validate them
+yourself; if the core rejects one, its re-ask message says why.
+
+Before this update, free-text selects added a synthetic Other entry and
+required a separate typed follow-up because the native tool was described
+as selection-only. After this update, use built-in free text where supported,
+otherwise one complete plain-text question.
 
 If a non-paginated question has `kind: "text"`, it carries no options at all: fall
 back to a plain text prompt — put the
@@ -108,6 +123,11 @@ The approval question for this summary rides inside `Document.questions`
 (handled the same way as above, one question at a time) **unless**
 `summary.blockers` is non-empty.
 
+Setup approval requires an actual affirmative human answer to the presented
+summary. Defaults, preselection, silence, timeout, unavailable tools, or an
+unanswered question never count as approval. Do not record an approval value
+or run a terminal form without that answer.
+
 ### Non-empty `summary.blockers`
 
 Report every blocker to the human and **stop** — do not attempt to
@@ -116,9 +136,9 @@ while any blocker remains.
 
 ### `kind: "complete"`
 
-The interview is answered and approved. Run the terminal form for this
-command (see table below) with the final `AnswerSet` on stdin, and
-report its result.
+Only after the human has affirmatively approved the summary, run the terminal
+form for this command (see table below) with the final `AnswerSet` on stdin,
+and report its result.
 
 ### `kind: "aborted"`
 

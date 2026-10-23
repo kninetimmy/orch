@@ -280,6 +280,90 @@ func TestSetupSkillPagesLargeOptionSets(t *testing.T) {
 	adaptertest.CheckSetupOptionPagination(t, setupSkillPath)
 }
 
+// TestQuestionPresentationDocumentContract pins the documented interaction
+// contract; it does not observe or prove live agent behavior.
+func TestQuestionPresentationDocumentContract(t *testing.T) {
+	for _, tc := range []struct {
+		path      string
+		required  []string
+		forbidden []string
+	}{
+		{
+			path: setupSkillPath,
+			required: []string{
+				"Use `request_user_input` only when it is available, permitted for the question's purpose, and able to represent every offered option within its current contract",
+				"Otherwise present the same complete question as plain text",
+				"Use the host's built-in free-text entry when available instead of adding a synthetic Other option",
+				"When that entry is unavailable, present the complete question as plain text",
+				"`answers[question.id] = option.value`",
+				"record custom answers verbatim as `answers[question.id]`",
+				"Only after the human has affirmatively approved the summary",
+				"Defaults, preselection, silence, timeout, unavailable tools, or an unanswered question never count as approval",
+				"any other question tool must satisfy its own current contract",
+			},
+			forbidden: []string{
+				"and append one extra option",
+				"`request_user_input` options are selection-only",
+				"Only if the human picks Other, ask a plain-text follow-up",
+				"it is gated off outside plan mode unless the `default_mode_request_user_input` feature is enabled",
+			},
+		},
+		{
+			path: deliverySkillPath,
+			required: []string{
+				"Use `request_user_input` only when it is available, permitted for the question's purpose, and able to represent every offered option within its current contract",
+				"Otherwise present the same complete question as plain text",
+				"- `Approve and enter Delivery` - `Adjust agent routing` - `Revise scope` - `Cancel and remain read-only`",
+				"`Approve merge` / `Not yet`",
+				"approval is **fresh for every PR**",
+				"Only after an actual affirmative human answer to the plan gate, call `orch run activate`",
+				"Only after an actual affirmative human answer to this PR's merge gate",
+				"Defaults, preselection, silence, timeout, unavailable tools, or an unanswered question never count as approval",
+				"any other question tool must satisfy its own current contract",
+			},
+			forbidden: []string{
+				"Then ask, via Codex's `request_user_input` primitive",
+				"then ask, via Codex's `request_user_input` primitive",
+			},
+		},
+		{
+			path: "README.md",
+			required: []string{
+				"Before this update",
+				"After this update",
+				"Historical flags do not override current tool restrictions",
+				"otherwise present the same complete question as plain text",
+				"Setup, plan activation, and each PR merge require an actual affirmative human answer",
+				"Defaults, preselection, silence, timeout, unavailable tools, or an unanswered question never count as approval",
+				"not every question tool",
+			},
+			forbidden: []string{
+				"Enable the `request_user_input` question primitive",
+				"which is otherwise gated to plan mode",
+				"the plan gate and its four-option `request_user_input` question",
+			},
+		},
+	} {
+		t.Run(tc.path, func(t *testing.T) {
+			data, err := os.ReadFile(tc.path)
+			if err != nil {
+				t.Fatalf("read %s: %v", tc.path, err)
+			}
+			content := adaptertest.NormalizeWhitespace(string(data))
+			for _, phrase := range tc.required {
+				if !strings.Contains(content, adaptertest.NormalizeWhitespace(phrase)) {
+					t.Errorf("missing documented interaction contract %q", phrase)
+				}
+			}
+			for _, phrase := range tc.forbidden {
+				if strings.Contains(content, adaptertest.NormalizeWhitespace(phrase)) {
+					t.Errorf("obsolete interaction instruction remains: %q", phrase)
+				}
+			}
+		})
+	}
+}
+
 func TestDeliverySkillHasRoutedSelectionCue(t *testing.T) {
 	adaptertest.CheckRoutedSelectionCue(t, deliverySkillPath)
 }

@@ -41,6 +41,24 @@ faithfully.
 Selection-bearing wire versions are closed: StatusDoc `4`, GateDoc `3`, Dispatch `4`, Escalate `2`, Review `3`.
 Reject any other `schema_version` before reading or submitting a `Selection`.
 
+## Questions and approvals
+
+Use `request_user_input` only when it is available, permitted for the
+question's purpose, and able to represent every offered option within
+its current contract. Otherwise present the same complete question as
+plain text, including every option in its original order, and wait for
+the human's answer. Never trim options or split a gate to fit a tool.
+If the current contract prohibits approval requests, use plain text for
+approvals even when ordinary questions are permitted. These are checks on
+`request_user_input`; any other question tool must satisfy its own current
+contract and the same requirements for complete questions and human approval.
+
+Plan activation and each PR merge require an actual affirmative human
+answer to the presented gate. Defaults, preselection, silence, timeout,
+unavailable tools, or an unanswered question never count as approval.
+Until answered, do not construct an approval record or call `orch run
+activate` or `orch run merge`.
+
 ## PlanDoc construction
 
 Build a `PlanDoc` (`schema_version: 1`) honestly. Routing is derived
@@ -217,9 +235,9 @@ plan saying nothing about CI coverage — never report it as a finding that
 CI runs every required test. Render `fixes`, when present, as the merged PRs
 the issue fixes; an issue without it fixes none that the plan named.
 
-Then ask, via Codex's `request_user_input` primitive, **one** question
-— header `Plan gate` — offering exactly these four options in order
-(one question, nothing to batch):
+Then ask **one** question — header `Plan gate` — using the presentation
+rule above, offering exactly these four options in order (one question,
+nothing to batch):
 
 - `Approve and enter Delivery`
 - `Adjust agent routing`
@@ -233,9 +251,15 @@ the plan covers (issues, objectives, acceptance criteria) and resubmit
 the same way. "Cancel and remain read-only" = no activation; return to
 Assist conduct.
 
+Before this update, the plan gate required all four options in one native
+`request_user_input` call. After this update, all four remain one logical
+question; use plain text whenever that native call cannot satisfy the
+current contract.
+
 ## Activation
 
-On approval, call `orch run activate` with an `ActivationRequest`
+Only after an actual affirmative human answer to the plan gate, call
+`orch run activate` with an `ActivationRequest`
 (`schema_version: 2`) carrying the **identical** `PlanDoc` just gated
 (same decoded content — the digest is recomputed server-side) plus:
 
@@ -530,12 +554,16 @@ OpenCode manual usage contracts are unchanged.
    only when no required CI checks exist — show it plainly so "no CI
    gates this merge" is never silently implied).
 
-8. **Merge gate** — present the full merge report, then ask, via
-   Codex's `request_user_input` primitive, **one** question — header
-   `Merge gate` — offering exactly `Approve merge` / `Not yet`. This
-   approval is **fresh for every PR**, never inherited.
+8. **Merge gate** — present the full merge report, then ask **one**
+   question — header `Merge gate` — using the presentation rule above,
+   offering exactly `Approve merge` / `Not yet`. This approval is
+   **fresh for every PR**, never inherited from plan activation or
+   another PR. Before this update, this gate required a native
+   two-option question. After this update, use a permitted native
+   question or the same complete question as plain text.
 
-9. **Merge** — on approval, call `orch run merge`:
+9. **Merge** — Only after an actual affirmative human answer to this PR's
+   merge gate, call `orch run merge`:
 
    ```json
    {"schema_version": 1, "issue_number": N,
