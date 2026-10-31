@@ -14,12 +14,15 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"regexp"
+	"strconv"
 	"strings"
 	"testing"
 
 	"github.com/BurntSushi/toml"
 
 	"github.com/kninetimmy/orch/internal/adaptertest"
+	"github.com/kninetimmy/orch/internal/config"
 	"github.com/kninetimmy/orch/internal/guard"
 )
 
@@ -278,6 +281,76 @@ func TestSetupSkillHasTerminalForms(t *testing.T) {
 
 func TestSetupSkillPagesLargeOptionSets(t *testing.T) {
 	adaptertest.CheckSetupOptionPagination(t, setupSkillPath)
+}
+
+const surveyPath = "skills/orch-setup/PROTECTED_PATHS_SURVEY.md"
+
+// TestSurveyMethodologyMatchesClaudeAndBinary pins the packaged reference,
+// not live host behavior. Only line endings may differ between host copies;
+// whitespace normalization here would conceal policy-document drift.
+func TestSurveyMethodologyMatchesClaudeAndBinary(t *testing.T) {
+	data, err := os.ReadFile(surveyPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	canonical, err := os.ReadFile(filepath.Join("..", "claude", surveyPath))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.ReplaceAll(string(data), "\r\n", "\n") != strings.ReplaceAll(string(canonical), "\r\n", "\n") {
+		t.Errorf("%s differs from Claude's canonical reference after line-ending normalization", surveyPath)
+	}
+	m := regexp.MustCompile(`(?m)^Survey methodology version: (\d+)\r?$`).FindStringSubmatch(string(data))
+	if m == nil {
+		t.Fatalf("%s does not state a line %q", surveyPath, "Survey methodology version: N")
+	}
+	if got, want := m[1], strconv.Itoa(config.SurveyMethodologyVersion); got != want {
+		t.Errorf("%s states methodology version %s, the binary's is %s", surveyPath, got, want)
+	}
+}
+
+// TestSetupSkillProtectedPathsInstructions pins the written survey,
+// presentation and answer-encoding contract, not a live survey or approval.
+func TestSetupSkillProtectedPathsInstructions(t *testing.T) {
+	data, err := os.ReadFile(setupSkillPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	content := adaptertest.NormalizeWhitespace(string(data))
+	for _, want := range []string{
+		"Handle `protected.paths` with the guided survey below before applying the ordinary-question rules",
+		"`protected.paths` (asked by `orch init` always, and by `orch configure` when `pick.protected` is answered `yes`)",
+		"Read `PROTECTED_PATHS_SURVEY.md` in this skill's directory",
+		"If the user's delegation policy already authorizes named `orch-scout` dispatch",
+		"Otherwise perform the same survey as the Architect",
+		"Neither this skill nor a setup question authorizes delegation",
+		"The Architect runs tracking checks and Git commit counts",
+		"Present each proposed entry with its one-line reason, the test it meets, its file evidence and tracking status, grouped by category",
+		"empty categories, near misses the user may promote, every destructive entry point with its ruling, and unresolved items",
+		"large-file per-path costs and the combined cost with the actual denominator",
+		"whole-history fallback and merge-commit caveat",
+		"Preserve the complete emitted question: its header, prompt, preamble and every offered option in original order",
+		"Apply the current tool-contract rules above to this approval and any edits",
+		"use plain text for approval when the tool contract prohibits approval requests",
+		"add entries, drop entries, explicitly approve an empty list beyond the floor, or defer before you submit anything",
+		"A list, including an empty list, requires an actual affirmative human answer",
+		"as a string containing JSON array text",
+		"of the approved `{\"path\", \"reason\"}` objects",
+		"`\"[]\"` for an approved empty list",
+		"`\"defer\"` when the user defers",
+		"Never put a JSON array directly in `AnswerSet.answers`",
+		"only `protected.paths` uses the guided survey and serialization above",
+		"Every question tool still follows its own current contract",
+		"`pick.protected` defaults to `yes`",
+		"in `orch configure` it leaves the committed list unchanged",
+		"Older lists remain readable but grant-ineligible until freshly surveyed and approved",
+		"list every final protected path and reason for summary approval",
+		"explicitly show an empty list beyond the built-in floor when the section has no entries",
+	} {
+		if !strings.Contains(content, want) {
+			t.Errorf("%s does not say %q", setupSkillPath, want)
+		}
+	}
 }
 
 // TestQuestionPresentationDocumentContract pins the documented interaction
