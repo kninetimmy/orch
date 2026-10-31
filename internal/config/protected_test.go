@@ -6,6 +6,7 @@ import (
 	"testing"
 )
 
+// Keep the methodology-1 fixture readable without treating it as re-approved.
 const protectedTOML = `
 [protected]
 methodology_version = 1
@@ -34,7 +35,13 @@ func TestParseProtectedSection(t *testing.T) {
 	if !reflect.DeepEqual(cfg.Protected, withProtected()) {
 		t.Errorf("Protected = %+v", cfg.Protected)
 	}
-	cfg, err = Parse([]byte(singleHostTOML("claude", "high") + "\n[protected]\nmethodology_version = 1\n"))
+	if err := cfg.CheckGrantProtected(); err == nil || !strings.Contains(err.Error(), "/orch:configure") {
+		t.Errorf("a methodology-1 list must be re-surveyed: %v", err)
+	}
+	if !reflect.DeepEqual(cfg.Protected, withProtected()) {
+		t.Errorf("readiness check rewrote the legacy list: %+v", cfg.Protected)
+	}
+	cfg, err = Parse([]byte(singleHostTOML("claude", "high") + "\n[protected]\nmethodology_version = 2\n"))
 	if err != nil {
 		t.Fatal(err)
 	}

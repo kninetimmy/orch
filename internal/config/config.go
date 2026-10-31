@@ -35,7 +35,7 @@ type Config struct {
 // SurveyMethodologyVersion is the version of the survey methodology this
 // binary uses to propose a repository's protected list. A grant refuses to
 // start or merge under a list approved under any other version.
-const SurveyMethodologyVersion = 1
+const SurveyMethodologyVersion = 2
 
 // Protected is the committed [protected] section: the survey methodology
 // version it was approved under and its paths, each with a one-line reason.

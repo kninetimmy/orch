@@ -85,16 +85,30 @@ with the updated `AnswerSet`.
 the human to type. Do not present it as an ordinary free-text question. Read
 `PROTECTED_PATHS_SURVEY.md` in this skill's directory and:
 
-1. Run the survey with `orch-scout` subagents, per that methodology.
-2. Present each proposed entry with its one-line reason and its file evidence.
+1. If the user's delegation policy already authorizes `orch-scout` subagents,
+   use them per that methodology. Otherwise perform the same survey as the
+   Architect. The Architect runs tracking checks and Git commit counts in
+   either case.
+2. Present each proposed entry with its one-line reason, the test it meets,
+   its file evidence and tracking status, grouped by category. Name empty
+   categories, near misses the user may promote, every destructive entry point
+   with its ruling, and unresolved items. Give large-file per-path costs and
+   the combined cost with the actual denominator, including the whole-history
+   fallback and merge-commit caveat from the methodology.
 3. Let the user add entries, drop entries, or defer before you submit anything.
-4. Record `answers["protected.paths"]` as the approved entries, a JSON array of
-   `{"path", "reason"}` objects, or `[]` for an approved empty list, or `defer`
-   when the user defers. The core rejects a malformed answer; fix it and
+4. Record `answers["protected.paths"]` as a string containing JSON array text
+   of the approved `{"path", "reason"}` objects, `"[]"` for an approved empty
+   list, or `"defer"` when the user defers. Never put a JSON array directly in
+   `AnswerSet.answers`. The core rejects a malformed answer; fix it and
    resubmit, do not guess.
 
+Before methodology 2 these steps required scouts, summarized only reasons
+and evidence, and called the answer an array. Now delegation follows the
+user's authorization, the full survey evidence is presented, and the array is
+encoded inside the required answer string.
+
 `pick.protected` defaults to `yes` when the committed config has no protected
-list or one approved under an older survey methodology version, and to `no`
+list or one approved under a different survey methodology version, and to `no`
 otherwise; mention that default when you present it. A `defer` in
 `orch configure` leaves the committed list unchanged.
 

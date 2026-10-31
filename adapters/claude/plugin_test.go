@@ -26,6 +26,7 @@ import (
 	"github.com/kninetimmy/orch/internal/grant"
 	"github.com/kninetimmy/orch/internal/guard"
 	"github.com/kninetimmy/orch/internal/metrics"
+	"github.com/kninetimmy/orch/internal/question"
 	"github.com/kninetimmy/orch/internal/run"
 )
 
@@ -527,8 +528,9 @@ func TestSetupSkillHasTerminalForms(t *testing.T) {
 const surveyPath = "skills/orch-setup/PROTECTED_PATHS_SURVEY.md"
 
 // TestSurveyMethodologyVersionMatchesBinary fails when the shipped survey
-// states another version than the binary approves protected lists under, so
-// a methodology change cannot ship without the version bump (or the reverse).
+// states another version than the binary approves protected lists under.
+// Admission changes that could leave older lists under-protecting need a
+// version bump; prose changes do not necessarily change the methodology.
 func TestSurveyMethodologyVersionMatchesBinary(t *testing.T) {
 	data, err := os.ReadFile(surveyPath)
 	if err != nil {
@@ -553,9 +555,67 @@ func TestSurveyMethodologyVersionMatchesBinary(t *testing.T) {
 	}
 }
 
+// These are document-contract pins, not evidence that a model follows them.
+func TestSurveyMethodologyStatesInstructionAndArchitectContract(t *testing.T) {
+	data, err := os.ReadFile(surveyPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	content := adaptertest.NormalizeWhitespace(string(data))
+	for _, want := range []string{
+		"Loaded agent operating instructions meet (a)",
+		"skills, command instructions, source templates",
+		"Descriptive documentation alone does not qualify",
+		"alternative executable mutation routes",
+		"the user's delegation policy already authorizes them",
+		"Otherwise the Architect performs the same survey",
+		"drop every entry already covered by the floor, including a file inside a floored directory",
+		"The Architect runs the Git checks after combining the reports",
+		"untracked and not ignored",
+		"`git rev-list --first-parent --count HEAD`",
+		"at least 101 first-parent commits",
+		"`git rev-list --count HEAD -- <path>`",
+		"`git rev-list --count HEAD -- <path> <path> ...`",
+		"the actual denominator for every per-path and combined cost",
+		"A bare release tag, version bump or manual deploy does not show what ships",
+	} {
+		if !strings.Contains(content, want) {
+			t.Errorf("%s does not say %q", surveyPath, want)
+		}
+	}
+}
+
+func TestSurveyAnswerExampleMatchesQuestionWire(t *testing.T) {
+	data, err := os.ReadFile(surveyPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, rest, ok := strings.Cut(strings.ReplaceAll(string(data), "\r\n", "\n"), "For example:\n\n```json\n")
+	if !ok {
+		t.Fatal("survey has no answer-set example")
+	}
+	example, _, ok := strings.Cut(rest, "\n```")
+	if !ok {
+		t.Fatal("survey answer-set example is not closed")
+	}
+	answers, err := question.DecodeAnswers([]byte(example))
+	if err != nil {
+		t.Fatalf("survey example is not a valid AnswerSet: %v", err)
+	}
+	var entries []config.ProtectedPath
+	if err := json.Unmarshal([]byte(answers.Answers["protected.paths"]), &entries); err != nil {
+		t.Fatalf("protected.paths is not JSON array text: %v", err)
+	}
+	if len(entries) != 1 {
+		t.Fatalf("survey example has %d entries, want 1", len(entries))
+	}
+	if err := config.CheckProtectedPath(entries[0]); err != nil {
+		t.Fatalf("survey example has an invalid protected entry: %v", err)
+	}
+}
+
 // TestSetupSkillProtectedPathsInstructions pins the protected-paths question's
-// instructions: survey with orch-scout subagents, present each entry with its
-// reason and evidence, and let the user add, drop or defer before submitting.
+// written survey, presentation and answer-encoding contract, not live behavior.
 func TestSetupSkillProtectedPathsInstructions(t *testing.T) {
 	data, err := os.ReadFile(setupSkillPath)
 	if err != nil {
@@ -564,9 +624,15 @@ func TestSetupSkillProtectedPathsInstructions(t *testing.T) {
 	content := adaptertest.NormalizeWhitespace(string(data))
 	for _, want := range []string{
 		"PROTECTED_PATHS_SURVEY.md",
-		"Run the survey with `orch-scout` subagents",
-		"Present each proposed entry with its one-line reason and its file evidence",
+		"If the user's delegation policy already authorizes `orch-scout` subagents",
+		"Otherwise perform the same survey as the Architect",
+		"The Architect runs tracking checks and Git commit counts",
+		"Present each proposed entry with its one-line reason, the test it meets, its file evidence and tracking status",
+		"empty categories, near misses the user may promote, every destructive entry point with its ruling, and unresolved items",
+		"combined cost with the actual denominator",
 		"Let the user add entries, drop entries, or defer before you submit anything",
+		"as a string containing JSON array text",
+		"Never put a JSON array directly in `AnswerSet.answers`",
 	} {
 		if !strings.Contains(content, want) {
 			t.Errorf("%s does not say %q", setupSkillPath, want)

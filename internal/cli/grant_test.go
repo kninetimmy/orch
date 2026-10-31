@@ -55,7 +55,7 @@ func TestGrantCommands(t *testing.T) {
 	// Preview and create refuse until the committed config holds a protected
 	// list approved under this binary's survey methodology version.
 	writeConfigOnly(t, root, validTOML)
-	for _, protected := range []string{"", "\n[protected]\nmethodology_version = 2\n"} {
+	for _, protected := range []string{"", "\n[protected]\nmethodology_version = 1\n"} {
 		if err := os.WriteFile(filepath.Join(root, ".orchestrator", "config.toml"), []byte(validTOML+protected), 0o644); err != nil {
 			t.Fatal(err)
 		}
@@ -66,7 +66,7 @@ func TestGrantCommands(t *testing.T) {
 		}
 	}
 	// An approved list with no entries is enough.
-	if err := os.WriteFile(filepath.Join(root, ".orchestrator", "config.toml"), []byte(validTOML+"\n[protected]\nmethodology_version = 1\n"), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(root, ".orchestrator", "config.toml"), []byte(validTOML+"\n[protected]\nmethodology_version = 2\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	code, out, stderr := run(proposal, "grant", "preview")
@@ -156,7 +156,7 @@ func TestGrantRelayCommand(t *testing.T) {
 	if res, err := (execx.Local{}).Run(context.Background(), execx.Cmd{Name: "git", Args: []string{"init", "-b", "main"}, Dir: root}); err != nil || res.ExitCode != 0 {
 		t.Fatalf("git init: %v %s", err, res.Stderr)
 	}
-	writeConfigOnly(t, root, validTOML+"\n[protected]\nmethodology_version = 1\n")
+	writeConfigOnly(t, root, validTOML+"\n[protected]\nmethodology_version = 2\n")
 	runner := &relayRunner{}
 	run := func(stdin string, args ...string) (int, string, string) {
 		var out, errOut bytes.Buffer

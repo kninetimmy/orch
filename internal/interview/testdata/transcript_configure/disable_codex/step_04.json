@@ -10,7 +10,7 @@
       "id": "protected.paths",
       "header": "Protected",
       "prompt": "Approved grant-protected paths for this repository",
-      "preamble": "Grant-protected paths are repository paths no autonomy grant may merge a change to, added to Orch's built-in floor. They come from an Architect survey (survey methodology version 1) that you approve here and again when the PR merges.",
+      "preamble": "Grant-protected paths are repository paths no autonomy grant may merge a change to, added to Orch's built-in floor. They come from an Architect survey (survey methodology version 2) that you approve here and again when the PR merges.",
       "kind": "select",
       "options": [
         {
