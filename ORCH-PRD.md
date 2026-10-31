@@ -196,16 +196,22 @@ when the PR changes a protected path. It is still one approval for one PR at one
 
 Before #397 the protected paths were one list compiled into the binary for Orch's own source, the
 same in every repository, and a grant needed nothing from the repository's configuration. Now
-they are a built-in floor every repository gets (instruction files, git attributes, host agent
-harness configuration in `.claude`, `.codex`, `.opencode`, `.mcp.json`, `opencode.json` and
-`opencode.jsonc`, and a fixed set of dependency manifests, lockfiles, registry settings and
-install, build or release scripts, all at any depth, and the root `.github/workflows`,
+they are a built-in floor every repository gets (instruction files including `AGENTS.override.md`,
+git attributes, host agent harness configuration in `.claude`, `.codex`, `.opencode`,
+`.agents/skills`, `.mcp.json`, `opencode.json` and `opencode.jsonc`, and a fixed set of dependency
+manifests, lockfiles, registry settings and install, build or release scripts, all at any depth,
+and the root `.github/workflows`,
 `.github/actions`, `LICENSE` and `.orchestrator`) plus the paths in the `[protected]` section of
 the repository's committed `.orchestrator/config.toml`. Before #412 the floor did not cover the
 host harness configuration, `.github/actions` or manifests such as `Gemfile`, `pom.xml` and
 `go.work`, and this paragraph said it covered every common dependency manifest. A grant merge is also refused, and
 `orch grant preview` and `orch grant create` refuse, when that section is missing or records a
 survey methodology version other than the binary's.
+
+Before #418 the floor omitted `.agents/skills` and `AGENTS.override.md`; now it covers both at
+any depth. `.agents/skills` covers itself and its descendants, not `.agents` itself or its other
+subdirectories. File-name matching, directory-path matching and the existing Windows alias
+normalization apply to these additions just as they do to the other floor entries.
 
 Exceptional blockers may require clarification. Material changes to scope, architecture, issue
 decomposition, or routing return to the plan gate.

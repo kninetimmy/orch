@@ -12,7 +12,7 @@ func TestProtectedFloor(t *testing.T) {
 	// Every floor file name, as the issue gives it, is protected at the root
 	// and at any depth, under any case.
 	names := []string{
-		"CLAUDE.md", "AGENTS.md", ".gitignore", ".gitattributes", "go.mod", "go.sum",
+		"CLAUDE.md", "AGENTS.md", "AGENTS.override.md", ".gitignore", ".gitattributes", "go.mod", "go.sum",
 		"Cargo.toml", "Cargo.lock", "build.rs", "package.json", "package-lock.json",
 		"npm-shrinkwrap.json", "pnpm-lock.yaml", "yarn.lock", "App.csproj", "App.fsproj",
 		"App.vbproj", "Directory.Packages.props", "Directory.Build.props", "packages.lock.json",
@@ -36,11 +36,12 @@ func TestProtectedFloor(t *testing.T) {
 			}
 		}
 	}
-	// A harness directory is protected as any segment, at any depth, under any case.
-	if len(floorDirs) != 3 {
-		t.Errorf("%d floor directories tested for %d entries", 3, len(floorDirs))
+	// Each listed directory path is protected at any depth, under any case.
+	dirs := []string{".claude", ".codex", ".opencode", ".agents/skills"}
+	if len(dirs) != len(floorDirs) {
+		t.Errorf("%d floor directories tested for %d entries", len(dirs), len(floorDirs))
 	}
-	for _, d := range []string{".claude", ".codex", ".opencode"} {
+	for _, d := range dirs {
 		for _, p := range []string{
 			d, d + "/x", "pkg/web/" + d + "/skills/x/SKILL.md", strings.ToUpper(d) + "/x", `deep\` + d + `\x`,
 		} {
@@ -93,6 +94,28 @@ func TestProtectedFloor(t *testing.T) {
 		// The survey methodology's examples of what the floor does not cover.
 		"build.sbt", "Podfile", "CMakeLists.txt", "pip.conf", "scripts/release.sh", "release.ps1",
 		".gitlab-ci.yml", "LICENSE.md", "LICENSE.txt",
+	} {
+		if Protected(p, nil) {
+			t.Errorf("%q protected", p)
+		}
+	}
+}
+
+func TestProtectedCodexInstructionPaths(t *testing.T) {
+	for _, p := range []string{
+		"nested/.agents/skills", "nested/.agents/skills/check/SKILL.md", "pkg/.AGENTS/Skills/check.md",
+		`pkg\.agents\skills\check\SKILL.md`, ".agents./skills /check.md", ".agents:meta/skills::$DATA/check.md",
+		"nested/AGENTS.override.md", "nested/AGENTS.override.md. ", "AGENTS.override.md::$DATA",
+	} {
+		if !Protected(p, nil) {
+			t.Errorf("%q not protected", p)
+		}
+	}
+	for _, p := range []string{
+		".agents", ".agents/hooks/check.json", ".agents/other/skills/check.md", ".agents/skills.md",
+		"nested/.agents/skills-extra/check.md", ".agents/skillsx/check.md", ".agentsx/skills/check.md",
+		"x.agents/skills/check.md", ".agents-skills/check.md", "AGENTS.override.md.bak",
+		"xAGENTS.override.md", "AGENTS_override.md",
 	} {
 		if Protected(p, nil) {
 			t.Errorf("%q protected", p)

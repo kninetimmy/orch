@@ -4,7 +4,6 @@ import (
 	"path"
 	"path/filepath"
 	"regexp"
-	"slices"
 	"strings"
 )
 
@@ -14,25 +13,16 @@ import (
 // can never merge a new dependency without the human. Entries are lowercase
 // path.Match patterns.
 //
-// Before #397 the floor was one compiled list written for Orch's own source
-// (protectedPaths, root-anchored) plus adapterProtectedDirs (hooks, agents
-// and skills under every adapter): internal/grant, the merge and gate engine
-// files under internal/run, internal/cli/grant.go and hookgrant.go,
-// internal/claudetranscript, routing, state, manifest, guard, paths,
-// lockfile, adapters/opencode/src, ORCH-PRD.md, .golangci.yml, evaluation,
-// .claude-plugin, adapters/claude/.claude-plugin and
-// adapters/codex/.codex-plugin. Those entries left the binary; a repository
-// protects its own source through the protected section of its committed
-// .orchestrator/config.toml. CLAUDE.md, AGENTS.md, go.mod, go.sum,
-// install.sh, install.ps1, .gitignore and .gitattributes were root-only then
-// and match at any depth now.
+// Before #397 the floor also named Orch's own source. Source-specific paths
+// now come from the repository's committed [protected] list; see the floor
+// description in adapters/claude/skills/orch-setup/PROTECTED_PATHS_SURVEY.md.
 //
 // Before #412 the floor did not cover a host's agent harness configuration
 // (.mcp.json, opencode.json, opencode.jsonc here, and floorDirs) or the
 // manifests, wrappers and registry redirects from go.work to .yarnrc.yml
 // below, so a grant could merge a change to them; now it cannot.
 var floorNames = []string{
-	"claude.md", "agents.md", ".gitignore", ".gitattributes",
+	"claude.md", "agents.md", "agents.override.md", ".gitignore", ".gitattributes",
 	"go.mod", "go.sum",
 	"cargo.toml", "cargo.lock", "build.rs",
 	"package.json", "package-lock.json", "npm-shrinkwrap.json", "pnpm-lock.yaml", "yarn.lock",
@@ -49,11 +39,11 @@ var floorNames = []string{
 	"package.swift", "package.resolved", "mix.exs", "mix.lock", "vcpkg.json", ".npmrc", ".yarnrc.yml",
 }
 
-// floorDirs is the floor matched against every segment of a path at any
-// depth: a host's agent harness directory, which sets agent permissions,
-// tools, hooks, MCP servers, agent definitions and live-loaded skills in
-// every later worktree. A path is protected when any segment equals an entry.
-var floorDirs = []string{".claude", ".codex", ".opencode"}
+// floorDirs is the floor of directory paths matched at any depth, each
+// covering itself and everything under it. Before #418 it named only whole
+// harness directories; it now also covers .agents/skills without covering
+// the rest of .agents.
+var floorDirs = []string{".claude", ".codex", ".opencode", ".agents/skills"}
 
 // floorRoots is the floor anchored at the repository root. A path is
 // protected when it equals, or lies under, an entry. Before #412 it did not
@@ -93,8 +83,9 @@ func Protected(p string, repo []string) bool {
 			return true
 		}
 	}
-	for _, seg := range strings.Split(p, "/") {
-		if slices.Contains(floorDirs, seg) {
+	dirPath := "/" + p + "/"
+	for _, e := range floorDirs {
+		if strings.Contains(dirPath, "/"+e+"/") {
 			return true
 		}
 	}
