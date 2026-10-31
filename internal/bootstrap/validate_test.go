@@ -141,6 +141,34 @@ func TestValidateInstallationInstructionsDrifted(t *testing.T) {
 	}
 }
 
+func TestValidateInstallationChecksUnchangedInstructionFiles(t *testing.T) {
+	dir := t.TempDir()
+	complete := validComplete(t)
+	installValid(t, dir, complete)
+	block := complete.Summary.Files[0].NewContent
+	complete.Summary.Files = nil
+	for _, content := range []string{
+		block,
+		strings.Replace(block, "This file", "THIS FILE", 1),
+		strings.Replace(block, "version=1", "version=2", 1),
+		strings.Replace(block, "<!-- orchestrator:managed:end -->", "", 1),
+	} {
+		if err := os.WriteFile(filepath.Join(dir, "CLAUDE.md"), []byte(content), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		entries, err := validateInstallation(dir, complete, fixedNow())
+		if content == block {
+			if err != nil {
+				t.Fatalf("current unchanged file refused: %v", err)
+			}
+			continue
+		}
+		if !errors.Is(err, ErrValidationFailed) || entries[len(entries)-1].Name != "instructions:CLAUDE.md" {
+			t.Fatalf("invalid unchanged file escaped validation: entries=%+v err=%v", entries, err)
+		}
+	}
+}
+
 func TestValidateInstallationGitignoreMissingLine(t *testing.T) {
 	dir := t.TempDir()
 	complete := validComplete(t)

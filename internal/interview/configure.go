@@ -1,13 +1,13 @@
 package interview
 
 import (
-	"bytes"
 	"errors"
 	"fmt"
 	"io/fs"
 	"os"
 	"path/filepath"
 	"strconv"
+	"strings"
 
 	"github.com/kninetimmy/orch/internal/config"
 	"github.com/kninetimmy/orch/internal/instructions"
@@ -509,21 +509,6 @@ func disabledInstructionFiles(committed, cfg *config.Config) []string {
 	return names
 }
 
-// allFileChangesUnchanged reports whether every FileChange in files
-// carries an empty Diff — Diff == "" only when the underlying
-// instructions.Change was ActionNone (instructions.Change's own doc
-// comment), so this is buildConfigureSummary's "all FileChanges
-// ActionNone" check without needing to thread the Action value itself
-// through planInstructionFiles' question.FileChange conversion.
-func allFileChangesUnchanged(files []question.FileChange) bool {
-	for _, f := range files {
-		if f.Diff != "" {
-			return false
-		}
-	}
-	return true
-}
-
 // buildConfigureSummary materializes cfg's rendered TOML and proposed
 // instruction-file changes into a question.Summary for `orch
 // configure` (PRD §18 steps 7-8 applied to an edit rather than a fresh
@@ -538,9 +523,10 @@ func allFileChangesUnchanged(files []question.FileChange) bool {
 // deletion / deinit is out of scope, contract call 3). ConfigDiff
 // carries the committed-vs-new TOML diff for display; it is kept out
 // of Files so bootstrap's writeFiles is reused unchanged and
-// config.toml is never double-written. The no-change blocker compares
-// bytes, not revision, so a hand-denormalized committed file can still
-// be re-canonicalized through an otherwise-empty configure change.
+// config.toml is never double-written. Before #419 the diff and no-change
+// blocker compared raw bytes, so a CRLF checkout appeared wholly changed.
+// They now ignore CRLF versus LF, but still compare content rather than
+// revision so other noncanonical formatting can be corrected through configure.
 func buildConfigureSummary(cfg, committed *config.Config, committedRaw []byte, repoRoot string, seeds map[string]string) (question.Summary, error) {
 	rendered, err := config.Render(cfg)
 	if err != nil {
@@ -576,7 +562,8 @@ func buildConfigureSummary(cfg, committed *config.Config, committedRaw []byte, r
 		return question.Summary{}, err
 	}
 
-	if len(blockers) == 0 && bytes.Equal(rendered, committedRaw) && allFileChangesUnchanged(files) && len(gitignore) == 0 {
+	committedText := strings.ReplaceAll(string(committedRaw), "\r\n", "\n")
+	if len(blockers) == 0 && string(rendered) == committedText && len(files) == 0 && len(gitignore) == 0 {
 		blockers = append(blockers, "no configuration changes; nothing to deliver")
 	}
 
@@ -587,6 +574,6 @@ func buildConfigureSummary(cfg, committed *config.Config, committedRaw []byte, r
 		GitignoreLines: gitignore,
 		Conflicts:      conflictLines,
 		Blockers:       blockers,
-		ConfigDiff:     instructions.UnifiedDiff(string(committedRaw), string(rendered)),
+		ConfigDiff:     instructions.UnifiedDiff(committedText, string(rendered)),
 	}, nil
 }

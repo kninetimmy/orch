@@ -205,17 +205,50 @@ func TestGoldenTranscriptConfigureMergeAndModel(t *testing.T) {
 		// (writeCommittedConfigLocal); scout's model now joins them.
 		t.Errorf("ConfigTOML does not carry the changed scout model:\n%s", toml)
 	}
-	for _, name := range []string{"CLAUDE.md", "AGENTS.md"} {
-		change := findFileChange(doc.Complete.Summary.Files, name)
-		if change == nil {
-			t.Fatalf("Files = %v, want entries for both CLAUDE.md and AGENTS.md", doc.Complete.Summary.Files)
-		}
-		if change.Diff != "" {
-			t.Errorf("%s Diff = %q, want empty (instruction files were already current; only settings/model changed)", name, change.Diff)
-		}
+	if len(doc.Complete.Summary.Files) != 0 {
+		t.Fatalf("Files = %v, want no writes to already-current instruction files", doc.Complete.Summary.Files)
 	}
 	if doc.Complete.Summary.ConfigDiff == "" {
 		t.Error("ConfigDiff is empty, want a diff showing the merge/model changes")
+	}
+}
+
+func TestConfigureSummaryIgnoresCRLFInConfigDiff(t *testing.T) {
+	var want string
+	for _, ending := range []string{"\n", "\r\n"} {
+		t.Run(fmt.Sprintf("ending_%q", ending), func(t *testing.T) {
+			root := t.TempDir()
+			committed := writeCommittedConfigLocal(t, root)
+			writeInstalledBlock(t, root, "CLAUDE.md")
+			writeInstalledBlock(t, root, "AGENTS.md")
+			writeNoMissingGitignore(t, root)
+			raw, err := config.Render(committed)
+			if err != nil {
+				t.Fatal(err)
+			}
+			raw = []byte(strings.ReplaceAll(string(raw), "\n", ending))
+			changed := *committed
+			changed.Concurrency.MaxSubagents = 2
+			changed.ConfigRevision, err = config.Revision(&changed)
+			if err != nil {
+				t.Fatal(err)
+			}
+			summary, err := buildConfigureSummary(&changed, committed, raw, root, nil)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !strings.Contains(summary.ConfigDiff, "-max_subagents = 3\n+max_subagents = 2") {
+				t.Fatalf("ConfigDiff does not show the actual setting change:\n%s", summary.ConfigDiff)
+			}
+			if want == "" {
+				want = summary.ConfigDiff
+			} else if summary.ConfigDiff != want {
+				t.Errorf("CRLF diff differs from LF diff:\n%s\nwant:\n%s", summary.ConfigDiff, want)
+			}
+			if len(summary.Files) != 0 || len(summary.Blockers) != 0 {
+				t.Fatalf("Files = %v, Blockers = %v", summary.Files, summary.Blockers)
+			}
+		})
 	}
 }
 
@@ -442,32 +475,44 @@ func TestNextConfigurePreservesExplicitCodexProfiles(t *testing.T) {
 // nothing (every picker default "no") ends in the no-change blocker,
 // and that submitting approval anyway is ErrApprovalBlocked.
 func TestNextConfigureNoChangeBlocked(t *testing.T) {
-	root := t.TempDir()
-	writeCommittedConfigLocal(t, root)
-	writeInstalledBlock(t, root, "CLAUDE.md")
-	writeInstalledBlock(t, root, "AGENTS.md")
-	writeNoMissingGitignore(t, root)
-	facts := configureFacts()
+	for _, ending := range []string{"\n", "\r\n"} {
+		t.Run(fmt.Sprintf("ending_%q", ending), func(t *testing.T) {
+			root := t.TempDir()
+			writeCommittedConfigLocal(t, root)
+			path := filepath.Join(root, filepath.FromSlash(config.Path))
+			raw, err := os.ReadFile(path)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := os.WriteFile(path, []byte(strings.ReplaceAll(string(raw), "\n", ending)), 0o644); err != nil {
+				t.Fatal(err)
+			}
+			writeInstalledBlock(t, root, "CLAUDE.md")
+			writeInstalledBlock(t, root, "AGENTS.md")
+			writeNoMissingGitignore(t, root)
+			facts := configureFacts()
 
-	answers := answerAllConfigureWithDefaults(t, facts, root)
-	doc, err := NextConfigure(facts, answers, root)
-	if err != nil {
-		t.Fatalf("NextConfigure: %v", err)
-	}
-	if doc.Kind != question.DocSummary || len(doc.Summary.Blockers) == 0 {
-		t.Fatalf("expected a blocked summary document, got %+v", doc)
-	}
-	if !strings.Contains(doc.Summary.Blockers[0], "nothing to deliver") {
-		t.Errorf("blocker = %q, want the no-change message", doc.Summary.Blockers[0])
-	}
-	if len(doc.Questions) != 0 {
-		t.Errorf("Questions = %v, want none while blocked (approval withheld)", doc.Questions)
-	}
+			answers := answerAllConfigureWithDefaults(t, facts, root)
+			doc, err := NextConfigure(facts, answers, root)
+			if err != nil {
+				t.Fatalf("NextConfigure: %v", err)
+			}
+			if doc.Kind != question.DocSummary || len(doc.Summary.Blockers) == 0 {
+				t.Fatalf("expected a blocked summary document, got %+v", doc)
+			}
+			if !strings.Contains(doc.Summary.Blockers[0], "nothing to deliver") {
+				t.Errorf("blocker = %q, want the no-change message", doc.Summary.Blockers[0])
+			}
+			if len(doc.Questions) != 0 {
+				t.Errorf("Questions = %v, want none while blocked (approval withheld)", doc.Questions)
+			}
 
-	answers[idApproval] = "approve"
-	_, err = NextConfigure(facts, answers, root)
-	if !errors.Is(err, ErrApprovalBlocked) {
-		t.Fatalf("NextConfigure err = %v, want ErrApprovalBlocked", err)
+			answers[idApproval] = "approve"
+			_, err = NextConfigure(facts, answers, root)
+			if !errors.Is(err, ErrApprovalBlocked) {
+				t.Fatalf("NextConfigure err = %v, want ErrApprovalBlocked", err)
+			}
+		})
 	}
 }
 

@@ -248,11 +248,8 @@ func TestSeedAcceptedCarriesSiblingConventions(t *testing.T) {
 
 	// The sibling it was seeded from is itself unchanged.
 	sibling := findFileChange(summary.Files, "CLAUDE.md")
-	if sibling == nil {
-		t.Fatalf("Files = %v, want a CLAUDE.md entry", summary.Files)
-	}
-	if sibling.Diff != "" {
-		t.Errorf("CLAUDE.md Diff = %q, want empty (it already carries a current block)", sibling.Diff)
+	if sibling != nil {
+		t.Errorf("CLAUDE.md proposed for writing despite its current block: %+v", sibling)
 	}
 }
 
@@ -510,11 +507,8 @@ func TestConfigureRepairsBlockOnlyFileFromSibling(t *testing.T) {
 	// The sibling it was seeded from is itself unchanged, and neither
 	// file has been written: the summary is a proposal.
 	sibling := findFileChange(summary.Files, "CLAUDE.md")
-	if sibling == nil {
-		t.Fatalf("Files = %v, want a CLAUDE.md entry", summary.Files)
-	}
-	if sibling.Diff != "" {
-		t.Errorf("CLAUDE.md Diff = %q, want empty (it already carries a current block)", sibling.Diff)
+	if sibling != nil {
+		t.Errorf("CLAUDE.md proposed for writing despite its current block: %+v", sibling)
 	}
 	for name, want := range map[string]string{"AGENTS.md": block, "CLAUDE.md": seedConventions + "\n" + block} {
 		got, err := os.ReadFile(filepath.Join(root, name))
@@ -541,12 +535,8 @@ func TestConfigureRepairDeclinedChangesNothing(t *testing.T) {
 	if !asked {
 		t.Fatal("the repair question was never asked")
 	}
-	ch := findFileChange(summary.Files, "AGENTS.md")
-	if ch == nil {
-		t.Fatalf("Files = %v, want an AGENTS.md entry", summary.Files)
-	}
-	if ch.NewContent != block || ch.Diff != "" {
-		t.Errorf("NewContent/Diff = %q/%q, want the block alone and no diff", ch.NewContent, ch.Diff)
+	if len(summary.Files) != 0 {
+		t.Errorf("Files = %v, want no writes after declining repair of current files", summary.Files)
 	}
 }
 
@@ -612,12 +602,8 @@ func TestRepairNotOfferedByInit(t *testing.T) {
 	if asked {
 		t.Error("init asked a seed question for an existing block-only file")
 	}
-	ch := findFileChange(summary.Files, "AGENTS.md")
-	if ch == nil {
-		t.Fatalf("Files = %v, want an AGENTS.md entry", summary.Files)
-	}
-	if ch.Diff != "" || ch.NewContent != block {
-		t.Errorf("NewContent/Diff = %q/%q, want the existing block untouched", ch.NewContent, ch.Diff)
+	if len(summary.Files) != 0 {
+		t.Errorf("Files = %v, want existing current files omitted", summary.Files)
 	}
 }
 
@@ -656,8 +642,8 @@ func TestConfigureRepairStaleYesRejectedOnceTheFileHasConventions(t *testing.T) 
 // same race the other way round: the facts still say block-only (they
 // were snapshotted before), the answer still says yes, and the file has
 // since been given conventions of its own. planSeeded re-derives the
-// classification from disk, so the summary proposes the file's own
-// content untouched rather than a copy of the sibling's.
+// classification from disk, so the current file is omitted from proposed
+// writes instead of replaced with a copy of the sibling's.
 func TestConfigureRepairNeverOverwritesContentWrittenAfterTheAnswer(t *testing.T) {
 	block := managedBlock(t)
 	root := t.TempDir()
@@ -684,17 +670,14 @@ func TestConfigureRepairNeverOverwritesContentWrittenAfterTheAnswer(t *testing.T
 	if doc.Summary == nil {
 		t.Fatalf("document %q carries no summary", doc.Kind)
 	}
-	ch := findFileChange(doc.Summary.Files, "AGENTS.md")
-	if ch == nil {
-		t.Fatalf("Files = %v, want an AGENTS.md entry", doc.Summary.Files)
+	if ch := findFileChange(doc.Summary.Files, "AGENTS.md"); ch != nil {
+		t.Errorf("current AGENTS.md proposed for writing: %+v", ch)
 	}
-	if !strings.HasPrefix(ch.NewContent, own) {
-		t.Errorf("NewContent does not open with AGENTS.md's own content:\n%s", ch.NewContent)
+	got, err := os.ReadFile(filepath.Join(root, "AGENTS.md"))
+	if err != nil {
+		t.Fatal(err)
 	}
-	if strings.Contains(ch.NewContent, seedConventions) {
-		t.Errorf("NewContent carries the sibling's conventions, overwriting content written since the answer:\n%s", ch.NewContent)
-	}
-	if ch.Diff != "" {
-		t.Errorf("Diff = %q, want empty (the file already carries a current block)", ch.Diff)
+	if string(got) != own+"\n"+block {
+		t.Errorf("AGENTS.md content written after the answer was changed: %q", got)
 	}
 }
