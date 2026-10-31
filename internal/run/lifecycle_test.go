@@ -354,13 +354,18 @@ func TestLifecycleWalk(t *testing.T) {
 	// with the head it just pushed — read from git here, since the record
 	// is written before the PR exists to read a head from — and the same
 	// stamped record is mirrored onto the PR body it creates.
-	_, prOpen := runVerbScript(t, root, PROpen, `{"schema_version":1,"issue_number":1,"verifications":[{"name":"go test","result":"pass"}]}`,
+	detail := strings.Repeat("界😀", verificationDetailCap/2)
+	prOpenRequest := fmt.Sprintf(`{"schema_version":1,"issue_number":1,"verifications":[{"name":"go test","result":"pass","detail":%q}]}`, detail)
+	_, prOpen := runVerbScript(t, root, PROpen, prOpenRequest,
 		ghAuth(), ghRepoViewCall("main"), ghPRListEmptyCall(branch),
 		ghIssueViewCall(t, 1, "OPEN", body), ghSetIssueBodyCall(1),
 		ghCreatePRCall(branch, title, 10), ghSetStatusCall(1, ghops.StatusAwaitingReview))
 	wantPhase(t, root, 1, state.PhasePROpen)
 	pushedHead := strings.TrimSpace(rawGit(t, wtDir, "rev-parse", "HEAD"))
 	for view, posted := range map[string]string{"issue body": prOpen.StdinAt(4), "PR body": prOpen.StdinAt(5)} {
+		if got := findVerification(t, posted, "go test").Detail; got != detail {
+			t.Errorf("%s: pr-open verification detail changed: got %d bytes, want %d", view, len(got), len(detail))
+		}
 		if got := findVerification(t, posted, "go test").CommitOID; got != pushedHead {
 			t.Errorf("%s: pr-open verification commit = %q, want the pushed head %q", view, got, pushedHead)
 		}

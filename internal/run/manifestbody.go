@@ -11,11 +11,12 @@ import (
 )
 
 // Body-cap policy (task 24), kept engine-side so internal/manifest stays
-// policy-free: every Verification.Detail is truncated at ingestion, and
-// before any body write the rendered body is kept under GitHub's limit
-// by dropping detail text from the oldest verifications first.
+// policy-free: before #420 caller-supplied Verification.Detail was truncated
+// at ingestion; now overlong input is rejected and engine-owned details keep
+// their existing caps. Before any body write the rendered body is kept under
+// GitHub's limit by dropping detail text from the oldest verifications first.
 const (
-	// verificationDetailCap bounds one Verification.Detail (characters).
+	// verificationDetailCap bounds one Verification.Detail (Unicode code points).
 	verificationDetailCap = 2000
 	// reviewDetailCap bounds a review-cycle Verification.Detail
 	// (characters). A consolidated review summary spanning several

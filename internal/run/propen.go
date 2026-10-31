@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"unicode/utf8"
 
 	"github.com/kninetimmy/orch/internal/ghops"
 	"github.com/kninetimmy/orch/internal/gitops"
@@ -207,10 +208,10 @@ func buildVerifications(inputs []VerificationInput, stamp string) ([]manifest.Ve
 }
 
 // convertVerifications converts the supplied inputs into manifest
-// verifications, stamping missing At with stamp and truncating each
-// Detail to the body-cap ceiling. An empty inputs converts to a nil
-// slice with no error, so callers for whom verifications are optional
-// (review) can treat "none supplied" as valid.
+// verifications, stamping missing At with stamp and rejecting a Detail
+// over verificationDetailCap Unicode code points. An empty inputs converts
+// to a nil slice with no error, so callers for whom verifications are
+// optional (review) can treat "none supplied" as valid.
 //
 // It leaves CommitOID unset: both callers run this while validating the
 // request, before any GitHub or git read, so the head is not known yet.
@@ -227,6 +228,9 @@ func convertVerifications(inputs []VerificationInput, stamp string) ([]manifest.
 		if in.Result == "" {
 			return nil, fmt.Errorf("%w: verifications[%d] result is empty", ErrBadRequest, i)
 		}
+		if length := utf8.RuneCountInString(in.Detail); length > verificationDetailCap {
+			return nil, fmt.Errorf("%w: verification %q detail has %d Unicode code points; maximum is %d; split the evidence across separately named verifications", ErrBadRequest, in.Name, length, verificationDetailCap)
+		}
 		at := in.At
 		if at == "" {
 			at = stamp
@@ -235,7 +239,7 @@ func convertVerifications(inputs []VerificationInput, stamp string) ([]manifest.
 			Name:    in.Name,
 			Command: in.Command,
 			Result:  in.Result,
-			Detail:  truncateDetail(in.Detail),
+			Detail:  in.Detail,
 			At:      at,
 		}
 	}
