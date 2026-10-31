@@ -18,7 +18,7 @@ to them.
 File names, matched against a path's file name at any depth in the repository,
 ignoring case (a `*` matches any run of characters):
 
-- `CLAUDE.md`, `AGENTS.md`, `.gitignore`, `.gitattributes`
+- `CLAUDE.md`, `AGENTS.md`, `AGENTS.override.md`, `.gitignore`, `.gitattributes`
 - `go.mod`, `go.sum`
 - `Cargo.toml`, `Cargo.lock`, `build.rs`
 - `package.json`, `package-lock.json`, `npm-shrinkwrap.json`, `pnpm-lock.yaml`,
@@ -38,12 +38,17 @@ ignoring case (a `*` matches any run of characters):
   `Package.resolved`, `mix.exs`, `mix.lock`, `vcpkg.json`
 - `.npmrc`, `.yarnrc.yml`
 
-Host agent harness directories, matched against every segment of a path at any
-depth, ignoring case, each covering itself and everything under it:
-`.claude`, `.codex` and `.opencode`. They set agent permissions, tools, hooks,
-MCP servers, agent definitions and live-loaded skills in every later worktree.
-Only that exact directory name is covered: `.claude-plugin` is not, and
-neither is a `skills` or `agents` directory outside one of them.
+Host agent harness directory paths, matched at any depth, ignoring case, each
+covering itself and everything under it: `.claude`, `.codex`, `.opencode` and
+`.agents/skills`. They set agent permissions, tools, hooks, MCP servers, agent
+definitions and live-loaded skills in every later worktree. Only those exact
+directory paths are covered: `.claude-plugin` is not, nor is a `skills` or
+`agents` directory outside one of them. `.agents` itself and its other
+subdirectories, such as `.agents/hooks`, are not covered.
+
+Before #418 the floor omitted `.agents/skills` and `AGENTS.override.md`, so a
+grant could merge changes to these Codex instructions. Now the floor covers
+both at any depth, without protecting the rest of `.agents`.
 
 Root-only paths, each covering itself and everything under it, ignoring case:
 `.github/workflows`, `.github/actions`, `LICENSE` (that exact name only;
