@@ -5,7 +5,7 @@
 <p align="center">
   <img src="https://img.shields.io/badge/License-MIT-2E7D32?style=flat&logo=opensourceinitiative&logoColor=white" alt="License: MIT"/>
   <img src="https://img.shields.io/badge/Go-1.26%2B-00ADD8?style=flat&logo=go&logoColor=white" alt="Go 1.26+"/>
-  <img src="https://img.shields.io/badge/Release%20target-v0.15.1-24292F?style=flat&logo=github&logoColor=white" alt="Release target: v0.15.1"/>
+  <img src="https://img.shields.io/badge/Release%20target-v0.15.2-24292F?style=flat&logo=github&logoColor=white" alt="Release target: v0.15.2"/>
   <br/>
   <img src="https://img.shields.io/badge/Platform-Linux%20%C2%B7%20macOS%20%C2%B7%20Windows-607D8B?style=flat" alt="Platform: Linux, macOS, Windows"/>
   <img src="https://img.shields.io/badge/Hosts-Claude%20Code%20%C2%B7%20Codex%20CLI%20%C2%B7%20OpenCode%20V2-6E56CF?style=flat" alt="Hosts: Claude Code, Codex CLI, and OpenCode V2"/>
@@ -248,19 +248,23 @@ adapters/opencode` again; see its README for the exact commands and
 plugin-ID check. Restart Claude Code, Codex CLI, or the OpenCode V2
 service after upgrading its adapter so the new hooks and skills are loaded.
 
-**Engine and manual-adapter compatibility.** The compatibility baseline at
-source revision `611c645` uses state schema 6, approval contract 1, and these
+**Engine and manual-adapter compatibility.** Engine v0.15.2 retains state
+schema 6, approval contract 1, and these
 manual wire versions: Gate 3, Status 4, Activation 2, Dispatch 4, Review 3,
 Escalate 2, Block 2, Resume 2, and Resolve Block 1. The Claude and Codex
-adapter version 0.12.1 is paired with engine v0.15.1; version 0.12.0 was
-paired with engine v0.15.0, version 0.11.1 with engine v0.14.1, version 0.11.0
-with engine v0.14.0, and version 0.10.0 with engine v0.13.0 and v0.13.1. Engine
-v0.15.1 keeps the manual wire
+adapter version 0.13.0 is paired with engine v0.15.2; version 0.12.1 was
+paired with engine v0.15.1, version 0.12.0 with engine v0.15.0, version 0.11.1
+with engine v0.14.1, version 0.11.0 with engine v0.14.0, and version 0.10.0
+with engine v0.13.0 and v0.13.1. Engine v0.15.2 keeps the manual wire
 versions above, state schema 6 and metrics document schema 2 unchanged from
-v0.15.0. `orch doctor` reports an installed 0.12.0 adapter as a version
+v0.15.1. `orch doctor` reports an installed 0.12.1 adapter as a version
 mismatch. The OpenCode package stays 0.12.0 because none of its files changed
 since v0.15.0; its exported source is unchanged, and its agent
 definitions are embedded in the engine and written by `orch render-agents`.
+Survey methodology is now 2. Older `[protected]` lists remain readable but
+cannot authorize grants until an actual re-survey and fresh approval through
+`/orch:configure` or `/orch:init`; editing the stored methodology number is
+not approval.
 Engine v0.14.1 and earlier refuse a config that contains a `[protected]`
 section, so upgrade the engine on every machine that uses a repository before
 that repository's list is merged.
@@ -282,6 +286,13 @@ run with its original engine and adapter, or explicitly run `orch abort` and
 seek fresh plan approval; active runs are not migrated. See
 [decision-block recovery](docs/decision-block-recovery.md) for the persisted
 state and approval boundary.
+
+Verify actual installed content and provenance between runs as well as version
+labels: a cached 0.12.1 Codex adapter differed from source despite matching
+labels. Record the plugin/cache path and source commit, and compare the loaded
+skills and packaged survey with the intended release commit. Reload the host
+after updating, then verify the installed workflow under a fresh bounded plan;
+source tests and `orch doctor` alone do not prove that exercise passed.
 
 These manual doctor and activation checks cover the contracts above. Driver
 protocol, subscription authentication, and isolation checks remain future
@@ -545,6 +556,101 @@ too. Anything a subagent wants remembered comes back in its report.
 Every memhub command runs with the primary checkout as its working
 directory, never inside a per-issue worktree, because worktrees never
 receive a copy of the memhub database.
+
+## v0.15.2 release target
+
+- A wider generic protected-path floor. The host harness configuration,
+  dependency/registry manifests and root `.github/actions` additions from
+  [#415](https://github.com/kninetimmy/orch/pull/415) now also cover
+  `.agents/skills` and every descendant at any repository depth, plus
+  `AGENTS.override.md` by basename at any depth, ignoring case. Near misses and
+  Windows path normalization retain their intended behavior —
+  [#425](https://github.com/kninetimmy/orch/pull/425).
+- Protected-path survey methodology 2. The checkpoint, destructive-entry and
+  capability rules from [#414](https://github.com/kninetimmy/orch/pull/414) are
+  joined by an explicit ruling: loaded operating instructions, their source
+  templates and command instructions qualify under test (a) when changing them
+  can widen an unattended agent's permitted actions; descriptive prose alone
+  does not. The Architect checks Git tracking and commit costs, using the
+  actual range denominator and whole-history fallback when fewer than 101
+  first-parent commits exist. Presentation includes entry evidence/reasons,
+  near misses, every destructive-entry ruling, empty categories and unresolved
+  items; checkpoint examples must show what ships —
+  [#428](https://github.com/kninetimmy/orch/pull/428).
+- Codex setup now packages the same methodology-2 reference as Claude and guides
+  `protected.paths` through survey, human edits/approval and final summary.
+  Scouts require existing delegation authorization; otherwise the Architect
+  performs the survey. Approved arrays are JSON text inside `AnswerSet` string
+  values. [#417](https://github.com/kninetimmy/orch/pull/417)'s complete-question,
+  current-tool availability/purpose/capacity, built-in free-text/plain-text
+  fallback and actual affirmative-approval rules remain in force —
+  [#430](https://github.com/kninetimmy/orch/pull/430).
+- Reviewable init/configure changes. LF and CRLF checkouts show the same real
+  configuration edits, and unchanged instruction files are omitted while
+  enabled-host validation remains —
+  [#427](https://github.com/kninetimmy/orch/pull/427). Generated issue/PR records
+  start with What and Why, retain protected reasons, methodology, conflicts,
+  real edits and validation, and omit the duplicated complete JSON dump —
+  [#429](https://github.com/kninetimmy/orch/pull/429).
+- Caller verification details above 2000 Unicode code points are rejected before
+  any mutation, with guidance to split the evidence. Accepted evidence and old
+  records remain intact; separate engine-owned and review-summary caps retain
+  their behavior — [#426](https://github.com/kninetimmy/orch/pull/426).
+
+Engine v0.15.2 pairs with shared Claude/Codex adapter 0.13.0; OpenCode remains
+0.12.0. The manual wire versions listed above, approval contract 1, state
+schema 6 and metrics document schema 2 are unchanged from v0.15.1. Release
+housekeeping changes no agent definition or hook. Methodology-1 lists stay
+inspectable but require a real methodology-2 re-survey and fresh approval before
+grants; changing only their stored version never re-approves them.
+
+**Source/CI evidence and remaining live work.** The six content PRs #425–#430
+passed full hosted Windows, macOS and Ubuntu suites. This release PR must also
+pass the build, vet, adapter/manifest/version/document checks and hosted
+`go test ./...` before publication. Those checks pin source contracts; they do
+not prove installed-plugin or live survey behavior. During preparation the
+installed baseline remains engine v0.15.1 / adapter 0.12.1, with Codex CLI
+0.163.0. No new engine/adapter installation or live methodology-2 survey has
+run. Completed Codex children supplied usage in this Delivery run, but automatic
+Codex Architect metrics capture is still absent. Grants and relay remain
+Claude-specific. Native Codex evaluation admits only the reviewed Windows amd64
+0.160.0 host with its required controls; it does not admit 0.163.0 by version
+proximity. The installed-plugin/manual Delivery exercise remains outstanding,
+and these source/CI results establish no full host parity. The existing OpenCode
+doctor runtime-parser failure is also unresolved; no global doctor-clean result
+is claimed.
+
+**Publication, installation and rollback (not performed by this preparation).**
+
+1. Merge this final release PR with passing CI, complete the run back to Assist,
+   and obtain separate human publication approval. Tag only that PR's eventual
+   merge commit as `v0.15.2`. The tag-driven release workflow stamps the engine
+   version, runs build/vet/tests and publishes binaries plus `SHA256SUMS`; verify
+   that workflow and its assets before installation.
+2. Preserve the previous verified engine/adapter pair and its source/cache
+   provenance. Between runs, use the inspected installer pinned to v0.15.2:
+   `ORCH_VERSION=v0.15.2 sh install.sh` or
+   `.\install.ps1 -Version v0.15.2`. These verify the downloaded binary against
+   the trusted release's published `SHA256SUMS` before execution. Upgrade the
+   configured adapter to 0.13.0 with the host commands above, and compare actual
+   installed skills/survey content and source commit with the release commit;
+   matching version labels alone are insufficient.
+3. Restart/reload the host, refresh project agents with `orch render-agents` as
+   required by the upgrade guidance, and run `orch doctor --host codex` (or
+   `--host claude`). Separately approve a fresh bounded plan to exercise the
+   installed Codex setup/survey and manual Delivery workflow, including actual
+   affirmative gates. Record its results before claiming live verification.
+4. Roll back only between runs in Assist, restoring a previous matching pair,
+   for example engine v0.15.1 with adapter 0.12.1. Pin the installer to that
+   engine tag and verify its published checksums. After inspecting the current
+   install, use the host's adapter remove/uninstall and marketplace remove
+   commands, then re-add the marketplace at the recorded previous source commit:
+   Codex supports `codex plugin marketplace add kninetimmy/orch --ref <previous-commit>`;
+   Claude supports `claude plugin marketplace add <local-checkout-at-previous-commit>`.
+   Reinstall that host's adapter, reload, verify content/provenance and the
+   engine/adapter versions, then repeat the selected-host doctor and bounded
+   workflow checks. Do not migrate an active run, alter a methodology number or
+   bypass grant checks to make the rollback pass.
 
 ## v0.15.1 release target
 
