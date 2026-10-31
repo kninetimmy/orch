@@ -45,6 +45,9 @@ its own. Never send a partial or incremental update.
 `Document.questions` **in order**, asking each question and waiting for
 its answer before moving to the next.
 
+Handle `protected.paths` with the guided survey below before applying the
+ordinary-question rules.
+
 Use `request_user_input` only when it is available, permitted for the
 question's purpose, and able to represent every offered option within
 its current contract. Otherwise present the same complete question as
@@ -107,6 +110,53 @@ re-validate it yourself.
 Once every question in this step's batch is answered, return to step 1
 with the updated `AnswerSet`.
 
+#### The protected-paths question
+
+`protected.paths` (asked by `orch init` always, and by `orch configure` when
+`pick.protected` is answered `yes`) is a guided survey, not an ordinary
+free-text question. Read `PROTECTED_PATHS_SURVEY.md` in this skill's directory
+and:
+
+1. If the user's delegation policy already authorizes named `orch-scout`
+   dispatch, use that agent per the methodology. Otherwise perform the same
+   survey as the Architect. Neither this skill nor a setup question authorizes
+   delegation. The Architect runs tracking checks and Git commit counts in
+   either case.
+2. Present each proposed entry with its one-line reason, the test it meets,
+   its file evidence and tracking status, grouped by category. Name empty
+   categories, near misses the user may promote, every destructive entry point
+   with its ruling, and unresolved items. Give large-file per-path costs and
+   the combined cost with the actual denominator, including the whole-history
+   fallback and merge-commit caveat from the methodology.
+3. Preserve the complete emitted question: its header, prompt, preamble and
+   every offered option in original order. Apply the current tool-contract
+   rules above to this approval and any edits, including built-in free text
+   where available and complete plain text otherwise; use plain text for
+   approval when the tool contract prohibits approval requests. Let the user
+   add entries, drop entries, explicitly approve an empty list beyond the
+   floor, or defer before you submit anything. A list, including an empty
+   list, requires an actual affirmative human answer; defaults, preselection,
+   silence and timeout never approve it.
+4. Record `answers["protected.paths"]` as a string containing JSON array text
+   of the approved `{"path", "reason"}` objects, `"[]"` for an approved empty
+   list, or `"defer"` when the user defers. Never put a JSON array directly in
+   `AnswerSet.answers`. The core rejects a malformed answer; fix it and
+   resubmit, do not guess.
+
+Before this update, `protected.paths` followed the ordinary option/free-text
+path. After this update, only `protected.paths` uses the guided survey and
+serialization above; custom answers to other ordinary questions remain
+verbatim. Every question tool still follows its own current contract and the
+complete-question and affirmative-approval rules above.
+
+`pick.protected` defaults to `yes` when the committed config has no protected
+list or one approved under a different survey methodology version, and to `no`
+otherwise; mention that default without answering for the user. A `defer` in
+`orch init` writes no protected section; in `orch configure` it leaves the
+committed list unchanged. Older lists remain readable but grant-ineligible
+until freshly surveyed and approved; never migrate or re-approve a list merely
+to match the binary's methodology version.
+
 ### `kind: "summary"`
 
 Show, in full:
@@ -116,6 +166,9 @@ Show, in full:
   unified diff between the committed `config.toml` and this proposal.
 - Every entry in `summary.files[]`: `path`, whether it `existed`, and
   its `diff` (or, if no diff was supplied, its `new_content`).
+- When the configuration has a `[protected]` section, list every final protected
+  path and reason for summary approval; explicitly show an empty list beyond
+  the built-in floor when the section has no entries.
 - `summary.gitignore_lines`, if any.
 - `summary.conflicts`, if any.
 
