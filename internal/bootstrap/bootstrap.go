@@ -87,8 +87,8 @@ type job struct {
 	validate func(dir string, complete *question.Complete, now time.Time) ([]ValidationEntry, error)
 }
 
-// initJob is Execute's own job: the package's original, byte-stable
-// bootstrap flow.
+// initJob is Execute's own job; configure reuses its stage choreography
+// with its own branch, title and validation.
 var initJob = job{
 	branch:   BootstrapBranch,
 	title:    bootstrapTitle,

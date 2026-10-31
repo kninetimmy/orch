@@ -22,7 +22,9 @@ func TestExecuteHappyPath(t *testing.T) {
 	answers := fullAnswers(t, bothHostsFacts(root), root)
 
 	calls := taxonomyScript()
+	issueCall := len(calls)
 	calls = append(calls, ghIssueCreateCall(1))
+	prCall := len(calls)
 	calls = append(calls, ghCreatePRCall(1))
 	calls = append(calls, ghSetStatusCall(1, ghops.StatusAwaitingReview))
 	script := &execxtest.Script{T: t, Calls: calls}
@@ -33,6 +35,15 @@ func TestExecuteHappyPath(t *testing.T) {
 		t.Fatalf("Execute: %v", err)
 	}
 	script.AssertExhausted()
+	for _, call := range []int{issueCall, prCall} {
+		body := script.StdinAt(call)
+		if !strings.HasPrefix(body, "## What\n\n"+bootstrapTitle) || !strings.Contains(body, "## Why\n") || strings.Contains(body, "```json") {
+			t.Fatalf("bootstrap record is not the human review format:\n%s", body)
+		}
+	}
+	if !strings.Contains(script.StdinAt(prCall), "## Validations\n") || !strings.Contains(script.StdinAt(prCall), "Closes #1") {
+		t.Fatal("bootstrap PR omitted validation or closure evidence")
+	}
 
 	if report.SchemaVersion != ReportSchemaVersion {
 		t.Errorf("SchemaVersion = %d, want %d", report.SchemaVersion, ReportSchemaVersion)
