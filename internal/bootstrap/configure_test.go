@@ -353,6 +353,46 @@ func taxonomyScriptConfigure() []execxtest.Call {
 	return append(calls, ghLabelCreateCalls()...)
 }
 
+func TestConfigureWritesLeaveCurrentInstructionFilesUntouched(t *testing.T) {
+	root := newConfiguredRepo(t)
+	answers := fullConfigureAnswers(t, bothHostsFacts(root), root, changeMergeStrategyOverrides)
+	doc, err := interview.NextConfigure(bothHostsFacts(root), answers, root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if doc.Complete == nil || len(doc.Complete.Summary.Files) != 0 {
+		t.Fatalf("unexpected terminal proposal: %+v", doc)
+	}
+	stamp := time.Date(2000, 1, 2, 3, 4, 5, 0, time.UTC)
+	before := map[string]time.Time{}
+	for _, name := range []string{"CLAUDE.md", "AGENTS.md"} {
+		path := filepath.Join(root, name)
+		if err := os.Chtimes(path, stamp, stamp); err != nil {
+			t.Fatal(err)
+		}
+		info, err := os.Stat(path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		before[name] = info.ModTime()
+	}
+	if err := writeFiles(root, doc.Complete); err != nil {
+		t.Fatal(err)
+	}
+	for name, want := range before {
+		info, err := os.Stat(filepath.Join(root, name))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !info.ModTime().Equal(want) {
+			t.Errorf("%s was rewritten: modtime %s, want %s", name, info.ModTime(), want)
+		}
+	}
+	if _, err := validateConfigure(root, doc.Complete, fixedNow()); err != nil {
+		t.Fatalf("written configuration failed validation: %v", err)
+	}
+}
+
 func TestExecuteConfigureHappyPath(t *testing.T) {
 	root := newConfiguredRepo(t)
 	answers := fullConfigureAnswers(t, bothHostsFacts(root), root, changeMergeStrategyOverrides)

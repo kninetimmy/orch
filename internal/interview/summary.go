@@ -149,7 +149,8 @@ func buildSummary(cfg *config.Config, repoRoot string, seeds map[string]string) 
 // ever calls it with seededPlanFile (instructions.PlanFile itself
 // unless this session seeds a file, seed.go), while configure calls it
 // once with seededPlanFile (for the hosts it enables) and once more
-// with PlanRemoveFile (for the hosts it disables).
+// with PlanRemoveFile (for the hosts it disables). Before #419 it also
+// returned ActionNone entries; now only actual writes reach the summary.
 func planInstructionFiles(repoRoot string, names []string, planFunc func(string) (instructions.Change, error)) ([]question.FileChange, []string, error) {
 	var files []question.FileChange
 	var blockers []string
@@ -162,6 +163,9 @@ func planInstructionFiles(repoRoot string, names []string, planFunc func(string)
 		}
 		if err != nil {
 			return nil, nil, err
+		}
+		if ch.Action == instructions.ActionNone {
+			continue
 		}
 		files = append(files, question.FileChange{
 			Path:       filepath.ToSlash(name),

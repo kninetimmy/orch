@@ -1,6 +1,7 @@
 package interview
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -170,6 +171,35 @@ func TestBuildSummaryPreservesExistingUserContent(t *testing.T) {
 	}
 	if !found {
 		t.Fatal("no CLAUDE.md entry in Files")
+	}
+}
+
+func TestBuildSummaryOmitsCurrentInstructionFiles(t *testing.T) {
+	cfg, err := materialize(fullAnswers())
+	if err != nil {
+		t.Fatal(err)
+	}
+	block, err := instructions.Render(instructions.CurrentVersion)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, ending := range []string{"\n", "\r\n"} {
+		t.Run(fmt.Sprintf("ending_%q", ending), func(t *testing.T) {
+			root := t.TempDir()
+			content := strings.ReplaceAll("# User conventions\n\n"+block, "\n", ending)
+			for _, name := range []string{"CLAUDE.md", "AGENTS.md"} {
+				if err := os.WriteFile(filepath.Join(root, name), []byte(content), 0o644); err != nil {
+					t.Fatal(err)
+				}
+			}
+			summary, err := buildSummary(cfg, root, nil)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if len(summary.Files) != 0 || len(summary.Blockers) != 0 {
+				t.Fatalf("Files = %v, Blockers = %v; current files must not be proposed writes", summary.Files, summary.Blockers)
+			}
+		})
 	}
 }
 

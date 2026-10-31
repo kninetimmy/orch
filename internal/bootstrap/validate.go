@@ -60,7 +60,7 @@ func checkConfigRevision(complete *question.Complete, stamp string) (ValidationE
 // the freshly written worktree at dir, recording one ValidationEntry
 // per check, stamped with now: config.Load succeeds (the local
 // overlay is naturally absent in a fresh worktree), the recomputed
-// config.Revision matches Summary.ConfigRevision, every written
+// config.Revision matches Summary.ConfigRevision, every enabled host's
 // instruction file classifies as instructions.StatusCurrent, and
 // every proposed .gitignore line is present in the worktree's
 // .gitignore. It returns on the first failing check — every entry up
@@ -70,7 +70,7 @@ func validateInstallation(dir string, complete *question.Complete, now time.Time
 	stamp := now.UTC().Format(time.RFC3339)
 	var entries []ValidationEntry
 
-	_, loadEntry, err := checkConfigLoad(dir, stamp)
+	cfg, loadEntry, err := checkConfigLoad(dir, stamp)
 	entries = append(entries, loadEntry)
 	if err != nil {
 		return entries, err
@@ -82,9 +82,17 @@ func validateInstallation(dir string, complete *question.Complete, now time.Time
 		return entries, err
 	}
 
-	for _, f := range complete.Summary.Files {
-		name := "instructions:" + f.Path
-		path := filepath.Join(dir, filepath.FromSlash(f.Path))
+	// Before #419 Summary.Files included unchanged files too. Validate each
+	// enabled host even now that the summary proposes actual writes only.
+	seen := map[string]bool{}
+	for _, host := range cfg.EnabledHosts() {
+		file := interview.InstructionFile(host)
+		if seen[file] {
+			continue
+		}
+		seen[file] = true
+		name := "instructions:" + file
+		path := filepath.Join(dir, file)
 		report, err := instructions.InspectFile(path)
 		if err != nil {
 			entries = append(entries, ValidationEntry{Name: name, Result: "fail", Detail: err.Error(), At: stamp})
