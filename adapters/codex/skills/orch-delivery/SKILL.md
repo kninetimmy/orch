@@ -432,6 +432,14 @@ OpenCode manual usage contracts are unchanged.
     "verifications": [{"name": "...", "command": "...", "result": "...", "detail": "..."}]}
    ```
 
+   Before this update, caller-supplied verification `detail` values longer
+   than 2000 Unicode code points were silently truncated. Now `pr-open` and
+   `review` reject them with `ErrBadRequest` before mutation. Split longer
+   evidence across separately named verifications, each with at most 2000
+   Unicode code points; shorter details are kept intact. Existing records
+   remain readable; review-summary and engine-owned body-size policies are
+   unchanged.
+
    At least one verification is required. The verification names
    `required-ci`, `merge`, `abandoned`, and `review-cycle-<n>` are
    engine-owned and are rejected with `ErrBadRequest` before any

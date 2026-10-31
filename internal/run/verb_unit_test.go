@@ -693,43 +693,88 @@ func TestReviewSummaryRoundTripsUnderReviewDetailCap(t *testing.T) {
 	}
 }
 
-// TestReviewSuppliedVerificationStillCappedAtVerificationDetailCap proves
-// a caller-supplied verification's detail — as opposed to the
-// review-cycle-N entry — remains bounded by the existing, smaller
-// verificationDetailCap, unchanged (AC4).
-func TestReviewSuppliedVerificationStillCappedAtVerificationDetailCap(t *testing.T) {
-	root := setupDeliveryRepo(t, "r1", []state.Issue{fixtureIssue("a", 1, state.PhasePROpen)})
-	body := baseManifestBody(t)
-	script := &execxtest.Script{T: t, Calls: []execxtest.Call{
-		ghAuth(), ghPRViewCall(10, "OPEN", "head-oid-1"),
-		ghIssueViewCall(t, 1, "OPEN", body), ghSetIssueBodyCall(1), ghSetPRBodyCall(10),
-	}}
-	long := strings.Repeat("x", verificationDetailCap+500)
-	req := fmt.Sprintf(`{"schema_version":3,"issue_number":1,"reviewed_head_oid":"head-oid-1","verdict":"approve","summary":"looks good","reviewer":{"model":"claude-opus-4-8","effort":"high"},`+fixtureJudgments+`,"verifications":[{"name":"go test","result":"pass","detail":%q}]}`, long)
-	if _, err := Review(context.Background(), ghEnv(root, script), []byte(req)); err != nil {
-		t.Fatalf("Review: %v", err)
+func TestReviewSuppliedVerificationPreservesAcceptedDetail(t *testing.T) {
+	for _, length := range []int{verificationDetailCap - 1, verificationDetailCap} {
+		t.Run(fmt.Sprint(length), func(t *testing.T) {
+			root := setupDeliveryRepo(t, "r1", []state.Issue{fixtureIssue("a", 1, state.PhasePROpen)})
+			legacy := strings.Repeat("x", verificationDetailCap) + verificationTruncationMarker
+			seeded := baseManifest()
+			seeded.Verifications = []manifest.Verification{{Name: "legacy", Result: "pass", Detail: legacy}}
+			body, err := manifest.Upsert("prose", seeded)
+			if err != nil {
+				t.Fatal(err)
+			}
+			script := &execxtest.Script{T: t, Calls: []execxtest.Call{
+				ghAuth(), ghPRViewCall(10, "OPEN", "head-oid-1"),
+				ghIssueViewCall(t, 1, "OPEN", body), ghSetIssueBodyCall(1), ghSetPRBodyCall(10),
+			}}
+			detail := strings.Repeat("界", length-1) + "😀"
+			req := fmt.Sprintf(`{"schema_version":3,"issue_number":1,"reviewed_head_oid":"head-oid-1","verdict":"approve","summary":"looks good","reviewer":{"model":"claude-opus-4-8","effort":"high"},`+fixtureJudgments+`,"verifications":[{"name":"go test","result":"pass","detail":%q}]}`, detail)
+			if _, err := Review(context.Background(), ghEnv(root, script), []byte(req)); err != nil {
+				t.Fatalf("Review: %v", err)
+			}
+			script.AssertExhausted()
+			for _, posted := range []string{script.StdinAt(3), script.StdinAt(4)} {
+				if got := findVerification(t, posted, "go test").Detail; got != detail {
+					t.Errorf("verification detail changed: got %d bytes, want %d", len(got), len(detail))
+				}
+				if got := findVerification(t, posted, "legacy").Detail; got != legacy {
+					t.Error("previously stored verification detail changed")
+				}
+			}
+		})
 	}
-	script.AssertExhausted()
+}
 
-	m, err := manifest.Parse(script.StdinAt(3))
-	if err != nil {
-		t.Fatalf("Parse the posted issue body: %v", err)
+func TestOverlongVerificationDetailRefusedBeforeMutation(t *testing.T) {
+	verbs := []struct {
+		name    string
+		phase   state.Phase
+		request string
+		run     func(Env, []byte) error
+	}{
+		{
+			name: "pr-open", phase: state.PhaseDispatched,
+			request: `{"schema_version":1,"issue_number":1,"verifications":[{"name":"first","result":"pass"},{"name":"long evidence","result":"pass","detail":%q}]}`,
+			run: func(env Env, request []byte) error {
+				_, err := PROpen(context.Background(), env, request)
+				return err
+			},
+		},
+		{
+			name: "review", phase: state.PhasePROpen,
+			request: `{"schema_version":3,"issue_number":1,"reviewed_head_oid":"head-oid-1","verdict":"approve","summary":"looks good","reviewer":{"model":"claude-opus-4-8","effort":"high"},` + fixtureJudgments + `,"verifications":[{"name":"first","result":"pass"},{"name":"long evidence","result":"pass","detail":%q}]}`,
+			run: func(env Env, request []byte) error {
+				_, err := Review(context.Background(), env, request)
+				return err
+			},
+		},
 	}
-	found := false
-	for _, v := range m.Verifications {
-		if v.Name != "go test" {
-			continue
+	for _, verb := range verbs {
+		for _, character := range []string{"x", "😀"} {
+			t.Run(verb.name+"/"+character, func(t *testing.T) {
+				root := setupDeliveryRepoWithConfig(t, metricsEnabledConfigTOML, "r1", []state.Issue{fixtureIssue("a", 1, verb.phase)})
+				before := stateBytes(t, root)
+				script := &execxtest.Script{T: t}
+				env := ghEnv(root, script)
+				env.ClaudeSession = architectSession
+				detail := strings.Repeat(character, verificationDetailCap+1)
+				err := verb.run(env, []byte(fmt.Sprintf(verb.request, detail)))
+				if !errors.Is(err, ErrBadRequest) {
+					t.Fatalf("err = %v, want ErrBadRequest", err)
+				}
+				for _, want := range []string{"long evidence", "2000", "Unicode code points", "split"} {
+					if !strings.Contains(err.Error(), want) {
+						t.Errorf("err %q does not contain %q", err, want)
+					}
+				}
+				script.AssertExhausted()
+				if got := stateBytes(t, root); string(got) != string(before) {
+					t.Error("state changed on overlong verification detail")
+				}
+				assertNoMetricsDir(t, root)
+			})
 		}
-		found = true
-		if !strings.HasSuffix(v.Detail, verificationTruncationMarker) {
-			t.Errorf("supplied verification detail not truncated at verificationDetailCap: suffix %q", v.Detail[len(v.Detail)-40:])
-		}
-		if len([]rune(v.Detail)) != verificationDetailCap+len([]rune(verificationTruncationMarker)) {
-			t.Errorf("supplied verification detail length = %d, want verificationDetailCap+marker", len([]rune(v.Detail)))
-		}
-	}
-	if !found {
-		t.Fatal("supplied \"go test\" verification not found in the posted audit record")
 	}
 }
 
