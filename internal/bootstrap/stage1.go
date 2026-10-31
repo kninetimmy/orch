@@ -25,7 +25,7 @@ func stage1(ctx context.Context, deps Deps, git *gitops.Git, gh *ghops.GH, repo 
 		return Report{}, err
 	}
 
-	issueBody, err := renderRecord(complete, nil, 0)
+	issueBody, err := renderRecord(complete, deps.Answers, j.title, nil, 0)
 	if err != nil {
 		return Report{}, err
 	}
@@ -77,7 +77,7 @@ func stage1AfterIssue(ctx context.Context, deps Deps, git *gitops.Git, gh *ghops
 		return Report{}, failClosed(ctx, git, gh, issueNumber, issueURL, wt.Path, false, err, j)
 	}
 
-	prBody, err := renderRecord(complete, validations, issueNumber)
+	prBody, err := renderRecord(complete, deps.Answers, j.title, validations, issueNumber)
 	if err != nil {
 		return Report{}, failClosed(ctx, git, gh, issueNumber, issueURL, wt.Path, false, err, j)
 	}

@@ -398,7 +398,9 @@ func TestExecuteConfigureHappyPath(t *testing.T) {
 	answers := fullConfigureAnswers(t, bothHostsFacts(root), root, changeMergeStrategyOverrides)
 
 	calls := taxonomyScriptConfigure()
+	issueCall := len(calls)
 	calls = append(calls, ghConfigureIssueCreateCall(1))
+	prCall := len(calls)
 	calls = append(calls, ghConfigurePRCreateCall(1))
 	calls = append(calls, ghSetStatusCall(1, ghops.StatusAwaitingReview))
 	script := &execxtest.Script{T: t, Calls: calls}
@@ -409,6 +411,18 @@ func TestExecuteConfigureHappyPath(t *testing.T) {
 		t.Fatalf("ExecuteConfigure: %v", err)
 	}
 	script.AssertExhausted()
+	for _, call := range []int{issueCall, prCall} {
+		body := script.StdinAt(call)
+		if !strings.HasPrefix(body, "## What\n\n"+configureTitle) || !strings.Contains(body, "## Why\n") || strings.Contains(body, "```json") {
+			t.Fatalf("configure record is not the human review format:\n%s", body)
+		}
+		if !strings.Contains(body, "Selected interview sections: settings.") || !strings.Contains(body, "## Configuration diff\n") || !strings.Contains(body, `+strategy = "rebase"`) {
+			t.Fatalf("configure record omitted the selected change:\n%s", body)
+		}
+	}
+	if !strings.Contains(script.StdinAt(prCall), "## Validations\n") || !strings.Contains(script.StdinAt(prCall), "Closes #1") {
+		t.Fatal("configure PR omitted validation or closure evidence")
+	}
 
 	if report.Branch != ConfigureBranch {
 		t.Errorf("Branch = %q, want %q", report.Branch, ConfigureBranch)
