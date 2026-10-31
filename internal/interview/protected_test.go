@@ -52,7 +52,7 @@ func TestInitProtectedMaterialization(t *testing.T) {
 	t.Run("approved entries with the binary's version", func(t *testing.T) {
 		s := initSummary(t, protectedTwo)
 		for _, want := range []string{
-			"[protected]", "methodology_version = 1",
+			"[protected]", "methodology_version = 2",
 			`path   = "internal/auth"`, `reason = "session and token handling"`,
 			`path   = "scripts/release.sh"`, `reason = "publishes releases"`,
 		} {
@@ -120,7 +120,8 @@ func TestConfigurePickerDefaultsFollowCommittedSection(t *testing.T) {
 		want    string
 	}{
 		"missing":       {nil, "yes"},
-		"older version": {&config.Protected{MethodologyVersion: config.SurveyMethodologyVersion + 1}, "yes"},
+		"older version": {&config.Protected{MethodologyVersion: config.SurveyMethodologyVersion - 1}, "yes"},
+		"newer version": {&config.Protected{MethodologyVersion: config.SurveyMethodologyVersion + 1}, "yes"},
 		"current":       {&config.Protected{MethodologyVersion: config.SurveyMethodologyVersion}, "no"},
 	}
 	for name, tc := range cases {
@@ -163,7 +164,7 @@ func TestConfigureReviewWritesProtectedSection(t *testing.T) {
 	if doc.Kind != question.DocSummary {
 		t.Fatalf("Kind = %q, want summary", doc.Kind)
 	}
-	for _, want := range []string{"internal/auth", "session and token handling", "scripts/release.sh", "publishes releases", "methodology_version = 1"} {
+	for _, want := range []string{"internal/auth", "session and token handling", "scripts/release.sh", "publishes releases", "methodology_version = 2"} {
 		if !strings.Contains(doc.Summary.ConfigTOML, want) || !strings.Contains(doc.Summary.ConfigDiff, want) {
 			t.Errorf("summary TOML/diff missing %q", want)
 		}
@@ -174,7 +175,7 @@ func TestConfigureWithoutReviewKeepsProtectedSection(t *testing.T) {
 	root := t.TempDir()
 	committed := writeCommittedConfigLocal(t, root)
 	committed.Protected = &config.Protected{
-		MethodologyVersion: config.SurveyMethodologyVersion + 1,
+		MethodologyVersion: 1,
 		Paths:              []config.ProtectedPath{{Path: "internal/keep", Reason: "kept as is"}},
 	}
 	committed.Merge.Strategy = "rebase"
@@ -190,8 +191,15 @@ func TestConfigureWithoutReviewKeepsProtectedSection(t *testing.T) {
 			t.Fatalf("%s: %v", name, err)
 		}
 		toml := doc.Summary.ConfigTOML
-		if !strings.Contains(toml, "methodology_version = 2") || !strings.Contains(toml, `path   = "internal/keep"`) {
+		if !strings.Contains(toml, "methodology_version = 1") || !strings.Contains(toml, `path   = "internal/keep"`) {
 			t.Errorf("%s: protected section changed:\n%s", name, toml)
+		}
+		cfg, err := config.Parse([]byte(toml))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := cfg.CheckGrantProtected(); err == nil {
+			t.Errorf("%s: the legacy list was treated as re-approved", name)
 		}
 	}
 }

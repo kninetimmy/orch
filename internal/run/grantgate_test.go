@@ -25,7 +25,7 @@ const grantSession = "session-grant"
 
 // approvedEmptyProtectedTOML is a [protected] section with no paths,
 // approved under this binary's survey methodology version.
-const approvedEmptyProtectedTOML = "\n[protected]\nmethodology_version = 1\n"
+const approvedEmptyProtectedTOML = "\n[protected]\nmethodology_version = 2\n"
 
 // grantConfigTOML is testConfigTOML with an approved protected list.
 const grantConfigTOML = testConfigTOML + approvedEmptyProtectedTOML + `
@@ -448,7 +448,7 @@ func TestGrantMergeStops(t *testing.T) {
 		},
 		"no protected section": {toml: testConfigTOML, want: "no [protected] section"},
 		"protected list from another methodology version": {
-			toml: testConfigTOML + "\n[protected]\nmethodology_version = 2\n", want: "survey methodology version 2, not this binary's version 1",
+			toml: testConfigTOML + "\n[protected]\nmethodology_version = 1\n", want: "survey methodology version 1, not this binary's version 2",
 		},
 		"PR renames a protected path away": {
 			calls: joinCalls(start, ciCalls("pass"), prFilesCalls(1, `["docs/guard.go","internal/guard/guard.go"]`)),

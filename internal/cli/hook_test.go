@@ -355,7 +355,7 @@ func TestHookOpenCodeMatchingArchitectHasNoWarning(t *testing.T) {
 
 // currentProtected is a [protected] section approved under the binary's
 // methodology version, so a fixture carrying it gets no protected-list line.
-const currentProtected = "\n[protected]\nmethodology_version = 1\n"
+const currentProtected = "\n[protected]\nmethodology_version = 2\n"
 
 func TestHookSessionStartProtectedListLine(t *testing.T) {
 	const marker = "autonomy grants refuse until"
@@ -364,7 +364,7 @@ func TestHookSessionStartProtectedListLine(t *testing.T) {
 		want       bool
 	}{
 		"missing section":   {validTOML, "claude", true},
-		"other version":     {validTOML + "\n[protected]\nmethodology_version = 2\n", "claude", true},
+		"other version":     {validTOML + "\n[protected]\nmethodology_version = 1\n", "claude", true},
 		"current section":   {validTOML + currentProtected, "claude", false},
 		"codex has no line": {validTOML, "codex", false},
 	} {
