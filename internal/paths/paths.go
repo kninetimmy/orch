@@ -35,6 +35,8 @@ var foldCase = runtime.GOOS == "windows" || runtime.GOOS == "darwin"
 // write destination can be checked before anything creates it. Any
 // failure other than non-existence (for example permission denied)
 // is an error so callers fail closed.
+// Unresolved Windows redirecting reparse ancestors are rejected, not trusted
+// as ordinary prefixes when EvalSymlinks falls back from a missing target.
 func Canonical(path string) (string, error) {
 	abs, err := filepath.Abs(path)
 	if err != nil {
@@ -49,6 +51,9 @@ func Canonical(path string) (string, error) {
 		if err == nil {
 			for i := len(rest) - 1; i >= 0; i-- {
 				resolved = filepath.Join(resolved, rest[i])
+			}
+			if err := verifyCanonicalPath(resolved); err != nil {
+				return "", fmt.Errorf("canonicalize %s: %w", path, err)
 			}
 			return filepath.Clean(resolved), nil
 		}
