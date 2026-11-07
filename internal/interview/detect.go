@@ -46,6 +46,7 @@ type Facts struct {
 	// Detect return an error or dropping the failure.
 	OpenCodeCatalog      opencode.Catalog
 	OpenCodeCatalogError string
+	OpenCodeWarning      string
 
 	Git     bool
 	GitRoot string
@@ -99,7 +100,7 @@ func Detect(ctx context.Context, deps Deps) Facts {
 	var f Facts
 	f.ClaudeCLI = lookPathOK(deps.LookPath, "claude")
 	f.CodexCLI = lookPathOK(deps.LookPath, "codex")
-	f.OpenCodeCLI = lookPathOK(deps.LookPath, "opencode2")
+	openCodePresent := lookPathOK(deps.LookPath, "opencode2") || lookPathOK(deps.LookPath, "opencode")
 	f.Gh = lookPathOK(deps.LookPath, "gh")
 
 	if lookPathOK(deps.LookPath, "git") {
@@ -117,12 +118,19 @@ func Detect(ctx context.Context, deps Deps) Facts {
 	if root == "" {
 		root = deps.RepoRoot
 	}
-	if f.OpenCodeCLI {
-		catalog, err := opencode.ReadCatalog(ctx, deps.Runner, root)
+	if openCodePresent {
+		runtime, err := opencode.Resolve(ctx, deps.Runner, root)
 		if err != nil {
 			f.OpenCodeCatalogError = err.Error()
 		} else {
-			f.OpenCodeCatalog = catalog
+			f.OpenCodeCLI = true
+			f.OpenCodeWarning = runtime.Warning
+			catalog, err := runtime.ReadCatalog(ctx, deps.Runner, root)
+			if err != nil {
+				f.OpenCodeCatalogError = err.Error()
+			} else {
+				f.OpenCodeCatalog = catalog
+			}
 		}
 	}
 	f.Instructions = map[string]InstructionFileState{

@@ -27,6 +27,14 @@ type SkillCatalog struct {
 // It verifies that OpenCode answered for directory and never includes command
 // output or loaded skill content in an error.
 func ReadSkillCatalog(ctx context.Context, runner execx.Runner, directory string) (SkillCatalog, error) {
+	runtime, err := Resolve(ctx, runner, directory)
+	if err != nil {
+		return SkillCatalog{}, fmt.Errorf("read OpenCode skill catalog: %w", err)
+	}
+	return runtime.ReadSkillCatalog(ctx, runner, directory)
+}
+
+func (runtime Runtime) ReadSkillCatalog(ctx context.Context, runner execx.Runner, directory string) (SkillCatalog, error) {
 	if runner == nil {
 		return SkillCatalog{}, fmt.Errorf("read OpenCode skill catalog: command runner is unavailable; retry through an initialized Orch command")
 	}
@@ -36,46 +44,46 @@ func ReadSkillCatalog(ctx context.Context, runner execx.Runner, directory string
 	}
 	query := url.Values{"location[directory]": {root}}
 	res, err := runner.Run(ctx, execx.Cmd{
-		Name: Executable,
+		Name: runtime.Executable,
 		Args: []string{"api", "get", "/api/skill?" + query.Encode()},
 		Dir:  directory,
 	})
 	if err != nil {
-		return SkillCatalog{}, fmt.Errorf("read OpenCode skill catalog: `%s api get /api/skill` could not start; check `%s service status` and retry", Executable, Executable)
+		return SkillCatalog{}, fmt.Errorf("read OpenCode skill catalog: `%s api get /api/skill` could not start; check `%s service status` and retry", runtime.Executable, runtime.Executable)
 	}
 	if res.ExitCode != 0 {
-		return SkillCatalog{}, fmt.Errorf("read OpenCode skill catalog: `%s api get /api/skill` exited %d; check `%s service status`, restart the service if needed, and retry", Executable, res.ExitCode, Executable)
+		return SkillCatalog{}, fmt.Errorf("read OpenCode skill catalog: `%s api get /api/skill` exited %d; check `%s service status`, restart the service if needed, and retry", runtime.Executable, res.ExitCode, runtime.Executable)
 	}
 
 	var response skillCatalogResponse
 	if err := json.Unmarshal([]byte(res.Stdout), &response); err != nil {
-		return SkillCatalog{}, malformedSkills("response is not valid JSON")
+		return SkillCatalog{}, runtime.malformedSkills("response is not valid JSON")
 	}
 	if response.Location.Directory == "" {
-		return SkillCatalog{}, malformedSkills("location.directory is missing")
+		return SkillCatalog{}, runtime.malformedSkills("location.directory is missing")
 	}
 	same, err := sameDirectory(root, response.Location.Directory)
 	if err != nil {
-		return SkillCatalog{}, malformedSkills("location.directory cannot be verified")
+		return SkillCatalog{}, runtime.malformedSkills("location.directory cannot be verified")
 	}
 	if !same {
 		return SkillCatalog{}, fmt.Errorf("read OpenCode skill catalog: response is scoped to a different directory; restart the OpenCode V2 service and retry")
 	}
 	if response.Data == nil {
-		return SkillCatalog{}, malformedSkills("data is not an array")
+		return SkillCatalog{}, runtime.malformedSkills("data is not an array")
 	}
 
 	catalog := SkillCatalog{Skills: make([]LoadedSkill, len(response.Data))}
 	seen := make(map[string]struct{}, len(response.Data))
 	for i, skill := range response.Data {
 		if skill.ID == "" {
-			return SkillCatalog{}, malformedSkills(fmt.Sprintf("data[%d].id is missing", i))
+			return SkillCatalog{}, runtime.malformedSkills(fmt.Sprintf("data[%d].id is missing", i))
 		}
 		if skill.Content == nil {
-			return SkillCatalog{}, malformedSkills(fmt.Sprintf("data[%d].content is missing", i))
+			return SkillCatalog{}, runtime.malformedSkills(fmt.Sprintf("data[%d].content is missing", i))
 		}
 		if _, ok := seen[skill.ID]; ok {
-			return SkillCatalog{}, malformedSkills(fmt.Sprintf("data[%d].id is duplicated", i))
+			return SkillCatalog{}, runtime.malformedSkills(fmt.Sprintf("data[%d].id is duplicated", i))
 		}
 		seen[skill.ID] = struct{}{}
 		catalog.Skills[i] = LoadedSkill{ID: skill.ID, Content: *skill.Content}
@@ -93,6 +101,6 @@ type skillCatalogResponse struct {
 	} `json:"data"`
 }
 
-func malformedSkills(detail string) error {
-	return fmt.Errorf("read OpenCode skill catalog: malformed `%s api get /api/skill` response (%s); %s or newer must preserve this catalog contract, so update Orch or OpenCode and retry", Executable, detail, MinimumVersion)
+func (runtime Runtime) malformedSkills(detail string) error {
+	return fmt.Errorf("read OpenCode skill catalog: malformed `%s api get /api/skill` response (%s); admitted runtimes must preserve this catalog contract, so update Orch or OpenCode and retry", runtime.Executable, detail)
 }

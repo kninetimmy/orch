@@ -101,6 +101,7 @@ type fakeRunner struct {
 	codexPluginStderr   string
 	codexPluginErr      error
 	opencodeVersion     string
+	opencodeVersionErr  error
 	opencodePlugins     string
 	opencodePluginExit  int
 	opencodePluginErr   error
@@ -210,21 +211,24 @@ func (f fakeRunner) Run(_ context.Context, c execx.Cmd) (execx.Result, error) {
 			}
 		}
 		return execx.Result{Stdout: stdout, Stderr: stderr, ExitCode: exit}, nil
-	case "opencode2":
+	case "opencode2", "opencode":
 		if len(c.Args) == 1 && c.Args[0] == "--version" {
+			if c.Name == "opencode2" && f.opencodeVersionErr != nil {
+				return execx.Result{}, f.opencodeVersionErr
+			}
 			version := f.opencodeVersion
 			if version == "" {
 				version = minimumOpenCodeVersion
 			}
 			return execx.Result{Stdout: version + "\n"}, nil
 		}
-		if len(c.Args) == 3 && c.Args[0] == "api" && c.Args[1] == "get" && c.Args[2] == "/api/plugin" {
+		if len(c.Args) == 3 && c.Args[0] == "api" && c.Args[1] == "get" && strings.HasPrefix(c.Args[2], "/api/plugin?") {
 			if f.opencodePluginErr != nil {
 				return execx.Result{}, f.opencodePluginErr
 			}
 			plugins := f.opencodePlugins
 			if plugins == "" {
-				plugins = `{"data":[{"id":"orch.delivery"}]}`
+				plugins = fmt.Sprintf(`{"location":{"directory":%q},"data":[{"id":"orch.delivery","features":{"server":true},"state":{"status":"active"}}]}`, c.Dir)
 			}
 			return execx.Result{Stdout: plugins, ExitCode: f.opencodePluginExit}, nil
 		}

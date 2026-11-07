@@ -80,6 +80,7 @@ type ActivationResult struct {
 	SchemaVersion int                     `json:"schema_version"`
 	RunID         string                  `json:"run_id"`
 	Issues        []ActivationResultIssue `json:"issues"`
+	Warnings      []string                `json:"warnings,omitempty"`
 }
 
 // ActivationResultIssue is one activated issue's created artifacts.
@@ -212,10 +213,14 @@ func Activate(ctx context.Context, env Env, reqJSON []byte) (*ActivationResult, 
 	if err := requireAssistNoLock(env.RepoRoot); err != nil {
 		return nil, err
 	}
+	var warnings []string
 	if plan.Host == "opencode" {
 		catalog, err := opencodecatalog.ReadCatalog(ctx, env.Runner, env.RepoRoot)
 		if err != nil {
 			return nil, err
+		}
+		if catalog.Warning != "" {
+			warnings = append(warnings, catalog.Warning)
 		}
 		var unavailable []string
 		for _, check := range opencodecatalog.CheckSelections(cfg.Hosts.OpenCode.Roles, catalog) {
@@ -337,7 +342,7 @@ func Activate(ctx context.Context, env Env, reqJSON []byte) (*ActivationResult, 
 
 	// Phase 5: per issue, wave order, state persisted after every
 	// sub-step.
-	result := &ActivationResult{SchemaVersion: ActivationSchemaVersion, RunID: st.Run.ID}
+	result := &ActivationResult{SchemaVersion: ActivationSchemaVersion, RunID: st.Run.ID, Warnings: warnings}
 	for j, pi := range ordered {
 		d := decisionByID[pi.ID]
 		l := labelsByID[pi.ID]
