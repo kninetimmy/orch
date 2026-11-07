@@ -979,7 +979,10 @@ func availableMixedOpenCodeModels() string {
 func TestActivateOpenCodeUnavailableSelectionsLeaveNothing(t *testing.T) {
 	root := newActivateRepoWithConfigAndIgnore(t, mixedOpenCodeConfigTOML, fullGitignore)
 	models := `{"id":"unrelated","providerID":"catalog","enabled":true,"capabilities":{"tools":true,"input":["text"],"output":["text"]},"variants":[{"id":"secret-variant","settings":{"token":"catalog-secret"}}]}`
-	script := &execxtest.Script{T: t, Calls: []execxtest.Call{openCodeCatalogCall(root, models)}}
+	script := &execxtest.Script{T: t, Calls: []execxtest.Call{
+		{Name: "opencode2", Args: []string{"--version"}, Stdout: opencodecatalog.MinimumVersion},
+		openCodeCatalogCall(root, models),
+	}}
 	env := Env{RepoRoot: root, Runner: muxRunner{git: execx.Local{}, gh: script}, Now: fixedNow}
 
 	_, err := Activate(context.Background(), env, activationJSON(t, root, openCodePlanJSON()))
@@ -1008,7 +1011,13 @@ func TestActivateOpenCodeAvailableMixedProfileProceedsWithFreshAgents(t *testing
 	if len(stale) > 0 || staleErr != nil {
 		t.Fatalf("OpenCode agents stale = %v, err = %v", stale, staleErr)
 	}
-	calls := []execxtest.Call{openCodeCatalogCall(root, availableMixedOpenCodeModels())}
+	catalogCall := openCodeCatalogCall(root, availableMixedOpenCodeModels())
+	catalogCall.Name = "opencode"
+	calls := []execxtest.Call{
+		{Name: "opencode2", Args: []string{"--version"}, Err: errors.New("not found")},
+		{Name: "opencode", Args: []string{"--version"}, Stdout: "opencode v3.0.0"},
+		catalogCall,
+	}
 	calls = append(calls, fullTaxonomyScript()...)
 	calls = append(calls, ghIssueCreateCall("Issue A", []string{"ready", "feature", "implementer", "standard"}, 1))
 	script := &execxtest.Script{T: t, Calls: calls}
@@ -1021,5 +1030,8 @@ func TestActivateOpenCodeAvailableMixedProfileProceedsWithFreshAgents(t *testing
 	script.AssertExhausted()
 	if len(result.Issues) != 1 || result.Issues[0].Number != 1 {
 		t.Errorf("Issues = %+v, want one issue #1", result.Issues)
+	}
+	if len(result.Warnings) != 1 || !strings.Contains(result.Warnings[0], "continuing required contract checks") {
+		t.Errorf("runtime warning missing from successful activation: %v", result.Warnings)
 	}
 }

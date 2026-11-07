@@ -13,13 +13,6 @@ import (
 	"github.com/kninetimmy/orch/internal/paths"
 )
 
-const (
-	Executable           = "opencode2"
-	RuntimeVersionPrefix = Executable + " v0.0.0-beta-"
-	MinimumBetaBuild     = 18314
-	MinimumVersion       = RuntimeVersionPrefix + "18314"
-)
-
 // Model is the safe subset of an available OpenCode model. Provider settings,
 // headers, credentials, account identifiers, and request bodies are never
 // retained.
@@ -31,13 +24,22 @@ type Model struct {
 // Catalog is the currently enabled, agent-capable model catalog for one
 // repository.
 type Catalog struct {
-	Models []Model
+	Models  []Model
+	Warning string
 }
 
 // ReadCatalog returns enabled models that accept text, emit text, and support
 // tools. It verifies that OpenCode answered for directory and never includes
 // raw command output in an error.
 func ReadCatalog(ctx context.Context, runner execx.Runner, directory string) (Catalog, error) {
+	runtime, err := Resolve(ctx, runner, directory)
+	if err != nil {
+		return Catalog{}, fmt.Errorf("read OpenCode model catalog: %w", err)
+	}
+	return runtime.ReadCatalog(ctx, runner, directory)
+}
+
+func (runtime Runtime) ReadCatalog(ctx context.Context, runner execx.Runner, directory string) (Catalog, error) {
 	if runner == nil {
 		return Catalog{}, fmt.Errorf("read OpenCode model catalog: command runner is unavailable; retry through an initialized Orch command")
 	}
@@ -47,53 +49,53 @@ func ReadCatalog(ctx context.Context, runner execx.Runner, directory string) (Ca
 	}
 	query := url.Values{"location[directory]": {root}}
 	res, err := runner.Run(ctx, execx.Cmd{
-		Name: Executable,
+		Name: runtime.Executable,
 		Args: []string{"api", "get", "/api/model?" + query.Encode()},
 		Dir:  directory,
 	})
 	if err != nil {
-		return Catalog{}, fmt.Errorf("read OpenCode model catalog: `%s api get /api/model` could not start; check `%s service status` and retry", Executable, Executable)
+		return Catalog{}, fmt.Errorf("read OpenCode model catalog: `%s api get /api/model` could not start; check `%s service status` and retry", runtime.Executable, runtime.Executable)
 	}
 	if res.ExitCode != 0 {
-		return Catalog{}, fmt.Errorf("read OpenCode model catalog: `%s api get /api/model` exited %d; check `%s service status`, restart the service if needed, and retry", Executable, res.ExitCode, Executable)
+		return Catalog{}, fmt.Errorf("read OpenCode model catalog: `%s api get /api/model` exited %d; check `%s service status`, restart the service if needed, and retry", runtime.Executable, res.ExitCode, runtime.Executable)
 	}
 
 	var response catalogResponse
 	if err := json.Unmarshal([]byte(res.Stdout), &response); err != nil {
-		return Catalog{}, malformed("response is not valid JSON")
+		return Catalog{}, runtime.malformed("response is not valid JSON")
 	}
 	if response.Location.Directory == "" {
-		return Catalog{}, malformed("location.directory is missing")
+		return Catalog{}, runtime.malformed("location.directory is missing")
 	}
 	same, err := sameDirectory(root, response.Location.Directory)
 	if err != nil {
-		return Catalog{}, malformed("location.directory cannot be verified")
+		return Catalog{}, runtime.malformed("location.directory cannot be verified")
 	}
 	if !same {
 		return Catalog{}, fmt.Errorf("read OpenCode model catalog: response is scoped to a different directory; restart the OpenCode V2 service and retry")
 	}
 	if response.Data == nil {
-		return Catalog{}, malformed("data is not an array")
+		return Catalog{}, runtime.malformed("data is not an array")
 	}
 
-	catalog := Catalog{Models: make([]Model, 0, len(response.Data))}
+	catalog := Catalog{Models: make([]Model, 0, len(response.Data)), Warning: runtime.Warning}
 	for i, model := range response.Data {
 		if model.ID == "" || model.ProviderID == "" {
-			return Catalog{}, malformed(fmt.Sprintf("data[%d] has no provider/model identifier", i))
+			return Catalog{}, runtime.malformed(fmt.Sprintf("data[%d] has no provider/model identifier", i))
 		}
 		if model.Enabled == nil {
-			return Catalog{}, malformed(fmt.Sprintf("data[%d].enabled is missing", i))
+			return Catalog{}, runtime.malformed(fmt.Sprintf("data[%d].enabled is missing", i))
 		}
 		if model.Capabilities.Tools == nil || model.Capabilities.Input == nil || model.Capabilities.Output == nil {
-			return Catalog{}, malformed(fmt.Sprintf("data[%d].capabilities is incomplete", i))
+			return Catalog{}, runtime.malformed(fmt.Sprintf("data[%d].capabilities is incomplete", i))
 		}
 		if model.Variants == nil {
-			return Catalog{}, malformed(fmt.Sprintf("data[%d].variants is not an array", i))
+			return Catalog{}, runtime.malformed(fmt.Sprintf("data[%d].variants is not an array", i))
 		}
 		variants := make([]string, len(model.Variants))
 		for j, variant := range model.Variants {
 			if variant.ID == "" {
-				return Catalog{}, malformed(fmt.Sprintf("data[%d].variants[%d].id is missing", i, j))
+				return Catalog{}, runtime.malformed(fmt.Sprintf("data[%d].variants[%d].id is missing", i, j))
 			}
 			variants[j] = variant.ID
 		}
@@ -138,6 +140,6 @@ func sameDirectory(want, got string) (bool, error) {
 	return os.SameFile(wantInfo, gotInfo), nil
 }
 
-func malformed(detail string) error {
-	return fmt.Errorf("read OpenCode model catalog: malformed `%s api get /api/model` response (%s); %s or newer must preserve this catalog contract, so update Orch or OpenCode and retry", Executable, detail, MinimumVersion)
+func (runtime Runtime) malformed(detail string) error {
+	return fmt.Errorf("read OpenCode model catalog: malformed `%s api get /api/model` response (%s); admitted runtimes must preserve this catalog contract, so update Orch or OpenCode and retry", runtime.Executable, detail)
 }

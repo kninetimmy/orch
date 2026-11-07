@@ -401,7 +401,7 @@ func TestDoctorAcceptsAvailableMixedProviderOpenCodeProfile(t *testing.T) {
 }
 
 func TestDoctorAcceptsOpenCodeRuntimeFloorAndNewerBuilds(t *testing.T) {
-	for _, version := range []string{"opencode2 v0.0.0-beta-18314", "opencode2 v0.0.0-beta-18414"} {
+	for _, version := range []string{"opencode2 v0.0.0-beta-18314", "opencode2 v0.0.0-beta-18414", "opencode v2.0.0", "opencode v2.2.6", "opencode v2.10.0", "opencode v3.0.0"} {
 		t.Run(version, func(t *testing.T) {
 			env, stdout, _ := testEnv(t)
 			writeConfig(t, env.RepoRoot, validOpenCodeTOML)
@@ -415,6 +415,10 @@ func TestDoctorAcceptsOpenCodeRuntimeFloorAndNewerBuilds(t *testing.T) {
 			}
 			if !strings.Contains(stdout.String(), "ok    opencode adapter") {
 				t.Errorf("stdout missing passing adapter check:\n%s", stdout.String())
+			}
+			wantWarning := version != minimumOpenCodeVersion && version != "opencode v2.2.6"
+			if strings.Contains(stdout.String(), "continuing required contract checks") != wantWarning {
+				t.Errorf("unexpected runtime advisory for %q:\n%s", version, stdout.String())
 			}
 		})
 	}
@@ -435,6 +439,44 @@ func TestDoctorAcceptsCompatibleCustomizedOpenCodeSkills(t *testing.T) {
 	}
 	if !strings.Contains(stdout.String(), "ok    opencode adapter") {
 		t.Errorf("stdout missing passing adapter check:\n%s", stdout.String())
+	}
+}
+
+func TestDoctorUsesV2CommandForEveryOpenCodeCheck(t *testing.T) {
+	for _, fallback := range []bool{false, true} {
+		t.Run(fmt.Sprintf("opencode-only=%v", fallback), func(t *testing.T) {
+			env, stdout, _ := testEnv(t)
+			writeConfig(t, env.RepoRoot, validOpenCodeTOML)
+			if code := Run([]string{"render-agents"}, env); code != ExitOK {
+				t.Fatalf("render-agents exit=%d", code)
+			}
+			stdout.Reset()
+			want := "opencode2"
+			runner := fakeRunner{toplevel: env.RepoRoot, opencodeVersion: "opencode v2.10.0"}
+			if fallback {
+				want = "opencode"
+				runner.opencodeVersionErr = errNotFound
+			}
+			apiCalls := 0
+			runner.beforeRun = func(cmd execx.Cmd) {
+				if (cmd.Name == "opencode" || cmd.Name == "opencode2") && len(cmd.Args) > 1 && cmd.Args[0] == "api" {
+					apiCalls++
+					if cmd.Name != want {
+						t.Fatalf("API command=%q, want %q", cmd.Name, want)
+					}
+				}
+				if !fallback && cmd.Name == "opencode" {
+					t.Fatal("probed legacy opencode despite available V2 opencode2")
+				}
+			}
+			env.Runner = runner
+			if code := Run([]string{"doctor", "--host", "opencode"}, env); code != ExitOK {
+				t.Fatalf("doctor exit=%d\n%s", code, stdout.String())
+			}
+			if apiCalls != 3 || !strings.Contains(stdout.String(), "continuing required contract checks") {
+				t.Fatalf("API calls=%d or warning missing:\n%s", apiCalls, stdout.String())
+			}
+		})
 	}
 }
 
@@ -664,7 +706,7 @@ func TestDoctorAdapterFailures(t *testing.T) {
 			spec:   opencodeAdapter,
 			configure: func(r *fakeRunner) {
 				r.opencodeVersion = "opencode2 v0.0.0-beta-18414"
-				r.opencodePlugins = `{"data":[{"id":"orch.delivery"},{"id":"orch.delivery"}]}`
+				r.opencodePlugins = fmt.Sprintf(`{"location":{"directory":%q},"data":[{"id":"orch.delivery"},{"id":"orch.delivery"}]}`, r.toplevel)
 			},
 			wantDetails: []string{"orch.delivery appears 2 times", "exactly one active plugin is required"},
 		},

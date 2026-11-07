@@ -253,6 +253,9 @@ func buildComplete(summary question.Summary, facts Facts) *question.Complete {
 	if facts.OpenCodeCLI {
 		detection["opencode_cli"] = "yes"
 	}
+	if facts.OpenCodeWarning != "" {
+		detection["opencode_warning"] = facts.OpenCodeWarning
+	}
 
 	var reasons []string
 	if !facts.Git {

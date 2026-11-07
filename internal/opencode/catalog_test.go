@@ -16,6 +16,9 @@ import (
 type catalogRunner func(execx.Cmd) (execx.Result, error)
 
 func (f catalogRunner) Run(_ context.Context, cmd execx.Cmd) (execx.Result, error) {
+	if len(cmd.Args) == 1 && cmd.Args[0] == "--version" {
+		return execx.Result{Stdout: MinimumVersion}, nil
+	}
 	return f(cmd)
 }
 

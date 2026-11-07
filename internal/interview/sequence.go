@@ -395,10 +395,10 @@ func requireOpenCodeCatalog(facts Facts) error {
 	}
 	detail := "catalog discovery returned no data"
 	switch {
-	case !facts.OpenCodeCLI:
-		detail = "`opencode2` was not detected on PATH"
 	case facts.OpenCodeCatalogError != "":
 		detail = facts.OpenCodeCatalogError
+	case !facts.OpenCodeCLI:
+		detail = "a supported OpenCode V2 runtime (`opencode2` or `opencode`) was not detected on PATH"
 	case facts.OpenCodeCatalog.Models != nil:
 		detail = "the live catalog contains no agent-capable models"
 	}

@@ -12,21 +12,33 @@ contract landed, the live smoke check exercised exactly `opencode2
 v0.0.0-beta-17498` with `@opencode-ai/plugin`
 `0.0.0-beta-17498` and did not check the model or returned-location
 APIs. That old compatibility behavior no longer holds. After the
-catalog change, `opencode2 v0.0.0-beta-18314` is the minimum supported
-runtime. Doctor accepts newer numeric V2 beta builds only when exactly
-one `orch.delivery` plugin is active and the repository-scoped model
-catalog preserves the returned-location contract. Upstream drift in a
-newer build can therefore still require an Orch update. The npm SDK and
+catalog change, the runtime floor became beta build 18314. Doctor then
+accepted only numeric beta output, which rejected stable V2 releases.
+Now version admission retains that beta floor and also accepts stable
+`2.0.0` onward, including later major releases. It compares numeric
+components, rejects V1/older/malformed versions, and never rejects a newer
+version solely because it is outside a tested-version list. The verified
+version baselines are beta 18314 and stable `2.2.6`; other admitted versions
+produce an advisory warning that behavior may differ. Version admission
+is separate from real compatibility: doctor still requires one active
+`orch.delivery` server plugin and compatible project-scoped skill/model
+catalogs. Missing contracts or failed enforcement can still require an
+Orch update. Command selection prefers V2 `opencode2`, supports V2 installed
+only as `opencode`, and never selects legacy V1 instead of available V2.
+The npm SDK and
 live smoke remain exactly pinned to `@opencode-ai/plugin`
 `0.0.0-beta-18314` and `opencode2 v0.0.0-beta-18314`, respectively, to
 prove the oldest supported contract; those test pins do not cap runtime
-support.
+support. These version checks do not prove that the old SDK loads on a
+stable runtime: current package-loading and live-smoke qualification remain
+separate work until demonstrated.
 
 ## Catalog safety and blast radius
 
 Orch queries `/api/model` with the repository in the URL-encoded
 `location[directory]` parameter. The response must resolve to that same
-filesystem directory identity. `ReadCatalog` exposes only `Models[].ID` as the
+filesystem directory identity. `ReadCatalog` exposes a safe runtime advisory,
+`Models[].ID` as the
 exact `providerID/id` and every `Models[].Variants[]` ID. Its safe-field
 restriction applies to every returned provider and model, not only to a
 named provider: settings, headers, bodies, credentials, account
@@ -35,16 +47,18 @@ them and are never copied into diagnostics.
 
 | Touched element | Does its previous behavior still hold? |
 |---|---|
-| OpenCode runtime floor and npm SDK/smoke pins | No. The before-and-after is recorded above: beta 17498 is replaced by a beta 18314 runtime floor, while the SDK and smoke stay exactly pinned to beta 18314. |
+| OpenCode runtime admission and npm SDK/smoke pins | No. The beta-only parser is replaced by beta 18314 and stable 2.0.0 floors, with advisory acceptance of newer versions. SDK/smoke pins remain beta 18314 in this diagnostic change; passing version admission does not qualify package loading. |
 | `orch.delivery` plugin ID, setup, guard hooks, and session context | Yes. The same plugin contract remains; unit and live smoke checks still exercise it on the new beta. |
-| Catalog process invocation | New. It is one argument-vector call in the repository directory, with the location URL-encoded rather than shell-interpolated. |
+| Catalog process invocation | Before, every read assumed `opencode2`. Now shared version probing selects V2 `opencode2` or V2 `opencode`, and all reads in a doctor invocation use that selection. Arguments and URL-encoded location remain separate from shell interpretation. |
 | Response `location.directory` | New validation. The initial implementation inherited platform-wide case folding and could accept distinct case-different directories on a case-sensitive macOS or Windows volume; that behavior no longer holds. Directory identity is now compared by the filesystem, so every different directory is rejected while aliases of the same directory remain valid. |
 | Response `data[].providerID` and `data[].id` | New projection. They form the exact `provider/id`; neither value is normalized or aliased. |
 | Response `data[].enabled` and `data[].capabilities.{tools,input,output}` | New filtering. Only enabled, tool-capable, text-input/text-output models remain. |
 | Response `data[].variants[].id` | New projection. Every advertised variant ID is preserved in server order, including an empty list. |
 | Provider/model/variant settings, headers, bodies, credentials, account IDs, and raw payload | Previously Orch did not read the catalog; after this change these fields may arrive in command output but are never retained, returned, or included in an error. |
-| Setup detection's existing CLI, git, GitHub, memhub, and instruction facts | Yes. Catalog and catalog-error fields are additive, and a failed read remains explicit data rather than changing Detect's no-error contract. |
-| Doctor's runtime and active-plugin checks | Yes. The runtime check now accepts beta 18314 or a newer numeric beta, then still requires exactly one active plugin before the catalog/location check follows. |
+| Setup detection's existing CLI, git, GitHub, memhub, and instruction facts | CLI detection now verifies either V2 command name, rather than treating `opencode2` presence as proof. A failed read remains explicit data; git/GitHub/memhub/instruction detection and Detect's no-error contract remain. Runtime warnings are additive detection data. |
+| Doctor's runtime check | Before, only beta 18314 or newer numeric beta output was accepted. Now stable 2.0.0 and later releases are admitted with warnings outside the verified version baselines. Unsupported versions still fail. |
+| Doctor's plugin check | Before, it counted IDs without verifying active/server state or returned location. Now exactly one active server component is required in the verified requested project; failed, absent, duplicate, malformed, unready and wrong-directory catalogs fail safely. |
+| OpenCode-host activation | Existing selection checks still run before activation artifacts. Shared V2 resolution now supports either command name, and successful activation adds an optional `warnings` array for unverified runtime versions. Other hosts' activation output is unchanged. |
 | Live smoke's agent discovery, context injection, denied tracked write, and allowed ignored write | Yes. The catalog/location assertions are additive, and the smoke now renders a mixed-provider fixture and checks every discovered dispatched agent's exact model reference. |
 | Interview `profile`, `roleVariantID`, and `openCodeVariantQuestion` | Before, committed interviews represented every execution value as host-wide effort and suggested host-wide variant names. After, the shared profile carries a host-native execution value and each OpenCode variant question contains only no-variant plus the selected catalog model's advertised variants. This applies to every OpenCode role; Claude/Codex keep effort IDs and options. |
 | Committed question writer `openCodeRoleDocSpecs` | Before, OpenCode shared the static `roleDocSpecs` model/effort path. After, all six roles ask a catalog-backed model question followed, only when applicable, by that model's dependent variant question. Claude/Codex retain their model+effort documents. |
@@ -137,14 +151,15 @@ then load its plugin module and canonical skills directory from absolute paths.
    ```sh
    opencode2 --version
    opencode2 api get /api/plugin
-   opencode2 api get /api/plugin | node -e 'let s=""; process.stdin.on("data", d => s += d).on("end", () => { if (JSON.parse(s).data.filter(p => p.id === "orch.delivery").length !== 1) throw new Error("orch.delivery is not active exactly once") })'
+   orch doctor --host opencode
    ```
 
-   The first command must print `opencode2 v0.0.0-beta-18314` or a newer
-   numeric beta build. The JSON from the second must contain exactly one
-   `data` entry whose `id` is `orch.delivery`; the third command fails
-   otherwise. `orch doctor` enforces that runtime floor and the same
-   plugin-ID requirement for a repository with `hosts.opencode` enabled. It
+   Version admission accepts beta 18314 or newer numeric beta builds, and
+   stable `2.0.0` or newer releases. Unverified versions warn without a
+   version-only block. If only the V2 `opencode` command is installed, use
+   it for the first two commands; do not substitute a legacy V1 binary.
+   The old third command counted IDs only; `orch doctor --host opencode`
+   now requires one active server plugin and verifies project location. It
    also queries that repository's live skill and model catalogs, verifies their
    returned locations, and requires compatible `orch-architect`,
    `orch-delivery`, and `orch-setup` wire contracts. It cannot check an
@@ -170,13 +185,13 @@ then load its plugin module and canonical skills directory from absolute paths.
 
 Do not reinstall as though this were a first install. In the existing
 checkout, update the same local adapter package CI exercises, then
-restart OpenCode V2 and repeat the plugin-ID verification:
+restart OpenCode V2 and repeat the project-scoped health verification:
 
 ```sh
 git -C ~/src/orch pull --ff-only
 npm ci --prefix ~/src/orch/adapters/opencode
 opencode2 api get /api/plugin
-opencode2 api get /api/plugin | node -e 'let s=""; process.stdin.on("data", d => s += d).on("end", () => { if (JSON.parse(s).data.filter(p => p.id === "orch.delivery").length !== 1) throw new Error("orch.delivery is not active exactly once") })'
+orch doctor --host opencode
 ```
 
 The configured absolute module and skill-source paths stay the same. If the
@@ -186,7 +201,9 @@ restarting.
 
 ## Limitations
 
-- The beta API only proves the active plugin ID, not its adapter version.
+- The API exposes plugin ID, state and server presence, but not its adapter
+  version. Doctor verifies those fields; package provenance and real guard
+  behavior need separate installed acceptance.
 - The plugin guards OpenCode's `edit`, `write`, and `patch` tools. Shell
   writes bypass Orch's guard and remain subject to OpenCode's own
   permissions.
