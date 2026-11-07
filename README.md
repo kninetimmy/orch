@@ -140,8 +140,11 @@ on this machine. Work in a scratch directory, not in one of my projects.
    in an uninitialized repository. The agent drives `orch init`'s
    interview, shows the proposed changes, and opens a pull request only
    after I approve them; I still review and merge that PR. Bare `orch init`
-   only prints a report. After the PR is merged, run `orch render-agents`
-   and `orch doctor --host <my configured host>` in that repository.
+   only prints a report. After the PR is merged, update the primary checkout
+   with the merged configuration (for example, `git pull --ff-only` on the
+   repository's default branch). Confirm .orchestrator/config.toml is present
+   locally, then run `orch render-agents` and
+   `orch doctor --host <my configured host>` there.
    The rendering command generates definitions for every enabled host.
    Re-render after role-configuration changes or when an upgrade leaves
    definitions stale. Keep all existing project instructions outside the
@@ -178,7 +181,10 @@ option; otherwise the agent presents the complete question as plain text.
 Approval questions also use complete plain text when the tool prohibits them.
 The protected-path list and final changes need your affirmative approval.
 The resulting `.orchestrator/config.toml` arrives in a PR you still review and
-merge. After merging, run `orch render-agents`, then `orch doctor --host codex`
+merge. Bootstrap leaves the primary checkout unchanged. After merging, update
+that checkout with the merged configuration, for example with `git pull --ff-only`
+on the repository's default branch. Confirm `.orchestrator/config.toml` is
+present locally, then run `orch render-agents` and `orch doctor --host codex`
 (use `claude` or `opencode` for another configured host).
 
 Earlier guidance described bare `orch init` as the interview. Bare `orch init`,

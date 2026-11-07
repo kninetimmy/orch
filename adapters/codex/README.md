@@ -172,7 +172,10 @@ decision, not an oversight).
    the setup skill drives the interactive steps. For an existing project,
    ask the agent to configure Orch using that skill. Codex does not ship
    Claude's `/orch:init` or `/orch:configure` commands.
-6. After the initialization PR is merged, run `orch render-agents` there.
+6. Bootstrap leaves the primary checkout unchanged. After the initialization
+   PR is merged, update that checkout with the merged configuration, for example
+   with `git pull --ff-only` on the repository's default branch. Confirm
+   `.orchestrator/config.toml` is present locally, then run `orch render-agents`.
    Codex plugins cannot bundle agent definitions, so the command writes the
    five canonical TOMLs to the project's `.codex/agents/`, substituting `model`
    and `model_reasoning_effort` from the effective `hosts.codex.roles`.
