@@ -5,6 +5,6 @@ orch configure: committed configuration report
   merge strategy:     squash
   memhub mode:        off
   metrics enabled:    false
-  protected survey:   absent; approved methodology: none; required methodology: 2; fresh survey required; run /orch:configure for a fresh survey and approval
+  protected survey:   absent; approved methodology: none; required methodology: 2; fresh survey required; ask your agent to configure Orch using its setup workflow
 
 this is a report only; an adapter drives the interactive interview through `orch configure --step`.

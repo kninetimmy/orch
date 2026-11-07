@@ -52,7 +52,7 @@ func TestProtectedListStatusReports(t *testing.T) {
 				}
 				want := tc.want + "; survey current"
 				if tc.fresh {
-					want = tc.want + "; fresh survey required; run /orch:configure for a fresh survey and approval"
+					want = tc.want + "; fresh survey required; ask your agent to configure Orch using its setup workflow"
 				}
 				if !strings.Contains(stdout.String(), want) {
 					t.Errorf("output missing %q:\n%s", want, stdout.String())

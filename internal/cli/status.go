@@ -57,7 +57,7 @@ func protectedListStatus(cfg *config.Config) string {
 	}
 	status += fmt.Sprintf("; required methodology: %d", config.SurveyMethodologyVersion)
 	if cfg.CheckGrantProtected() != nil {
-		return status + "; fresh survey required; run /orch:configure for a fresh survey and approval"
+		return status + "; fresh survey required; ask your agent to configure Orch using its setup workflow"
 	}
 	return status + "; survey current"
 }
