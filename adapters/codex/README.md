@@ -25,10 +25,24 @@ diagnostics. The manual adapter's workflows and restrictions below still hold.
 
 #293 adds a separate native workspace preflight and an opt-in no-model Windows
 isolation smoke in the same [protocol document](../../docs/codex-native-protocol.md#native-workspace-permission-contract-293).
-Its worker/reviewer command profiles are tested with synthetic fixtures;
-native model execution remains unavailable because 0.159.2 cannot establish
-the required inherited-tool boundary. It adds no execution CLI and does not
-change any manual role's guard or instruction-based read-only restrictions.
+Its worker/reviewer command profiles were tested with synthetic fixtures;
+at that stage native model execution was unavailable because 0.159.2 could not
+establish the required inherited-tool boundary. Since #322, the existing native
+bridge conditionally admits reviewed Windows amd64 Codex 0.160.0 with verified
+controls; other versions remain refused. The preflights added no execution CLI
+and did not change any manual role's guard or instruction-based read-only
+restrictions. Live evaluation trials and current-version qualification remain
+outstanding; see the protocol document for the exact boundary.
+
+Released engine v0.15.2 pairs with manual adapter 0.13.0. Guided setup and manual
+Delivery are implemented, and completed child usage has been captured in a
+fresh manual Delivery exercise. Automatic Codex Architect usage, Codex grants
+and context relay remain missing. Installation and source/CI success do not
+prove a fresh installed initial-setup/survey exercise or full host parity. See
+the [current parity matrix](../../README.md#codex-parity), including the separate
+Claude/OpenCode baseline caveats. The protected-list status reports added by
+#434 are [unreleased source behavior](../../README.md#unreleased), not part of
+the installed v0.15.2 binary.
 
 ## Artifact map
 
@@ -94,7 +108,9 @@ decision, not an oversight).
 
 1. Install the `orch` binary on `PATH` **first**. Every hook in this
    plugin shells out to it with a bare command; if it is not resolvable,
-   both hooks fail (see Known limitations).
+   both hooks fail (see Known limitations). Use the root
+   [agent-led installation prompt](../../README.md#quickstart); its installer
+   verifies the release binary against published checksums before execution.
 2. Install this plugin (`.codex-plugin/plugin.json`, its bundled
    `hooks/` and `skills/`) from the repository's marketplace manifest:
 
@@ -113,18 +129,11 @@ decision, not an oversight).
    CLI requires the user to review and trust plugin-bundled hooks before
    they run at all. Until that approval happens, `orch guard codex` and
    `orch hook codex session-start` silently do not run — the same
-   fail-open class as a missing binary, not a denial or an error.
-4. After `orch init` is merged in a repository, run `orch
-   render-agents` there. Codex plugins cannot bundle agent definitions,
-   so the command writes the five canonical TOMLs to the project's
-   `.codex/agents/`, substituting `model` and
-   `model_reasoning_effort` from the effective `hosts.codex.roles`.
-   It also renders every other enabled host, and refuses before writing
-   unless every enabled destination is git-ignored. Run it again after
-   changing role configuration or upgrading Orch. Before this change a
-   manual five-file copy was an accepted alternative; after it,
-   `orch render-agents` is the single per-repository workflow.
-5. Check the current session's question-tool capabilities. Before this
+   fail-open class as a missing binary, not a denial or an error. Restart
+   Codex after installation before relying on the plugin. Inside an initialized
+   repository, check for the Orch session-start block; installation during an
+   existing session does not prove the hooks and skills were loaded there.
+4. Check the current session's question-tool capabilities. Before this
    update, this step prescribed both tables below in `~/.codex/config.toml`
    (verified on codex-cli 0.144.1) and treated them as enabling native setup
    and approval questions, including a four-option native plan gate:
@@ -151,8 +160,33 @@ decision, not an oversight).
    Setup, plan activation, and each PR merge require an actual affirmative
    human answer. Defaults, preselection, silence, timeout, unavailable tools,
    or an unanswered question never count as approval.
-6. Run `orch doctor` to confirm the environment (Git, GitHub, memhub,
-   configuration) is healthy.
+5. Open the repository root and ask your agent: `Initialize Orch in this
+   repository using the orch-setup skill.` It guides the host/model choices,
+   protected-path survey and final change summary, then opens the initialization
+   PR only after your approval. Review and merge that PR yourself. Preserve
+   existing host configuration and project instructions outside Orch's managed
+   block. See the full [per-repository setup prompt](../../README.md#then-initialize-each-repository-you-want-orchestrated).
+
+   Earlier root guidance made bare `orch init` sound interactive. Bare
+   `orch init`, `orch configure` and `orch configure-local` print reports;
+   the setup skill drives the interactive steps. For an existing project,
+   ask the agent to configure Orch using that skill. Codex does not ship
+   Claude's `/orch:init` or `/orch:configure` commands.
+6. After the initialization PR is merged, run `orch render-agents` there.
+   Codex plugins cannot bundle agent definitions, so the command writes the
+   five canonical TOMLs to the project's `.codex/agents/`, substituting `model`
+   and `model_reasoning_effort` from the effective `hosts.codex.roles`.
+   It also renders every other enabled host, and refuses before writing unless
+   every enabled destination is git-ignored. Re-render after effective role
+   changes, or after an upgrade changes definitions or doctor reports them
+   stale. Earlier guidance said to re-render after every upgrade; unchanged
+   definitions need no refresh. Before the rendering workflow a manual
+   five-file copy was an accepted alternative; afterward,
+   `orch render-agents` is the single per-repository workflow.
+7. Run `orch doctor --host codex` in the initialized repository. Check every
+   failure and advisory; other configured hosts' failures are reported as
+   advisories rather than hidden. This checks the manual adapter environment,
+   not native-evaluation qualification or full parity.
 
 ## Upgrade
 
@@ -163,7 +197,14 @@ installation. Upgrade an existing adapter with:
 codex plugin marketplace upgrade orch
 ```
 
-Restart Codex CLI after the upgrade so it loads the updated adapter.
+Update the compatible engine/adapter pair together between runs in Assist;
+never replace either during an active run. Restart Codex CLI after the upgrade
+so it loads the updated adapter, run `orch render-agents` if definitions changed
+or are stale, and run `orch doctor --host codex`. Preserve existing configuration.
+Compare actual installed skills and source provenance with the intended release,
+then exercise the installed workflow under a fresh approved plan; matching
+version labels alone are insufficient. See the root
+[upgrade and compatibility guidance](../../README.md#quickstart).
 
 ## Known limitations
 

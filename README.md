@@ -5,7 +5,7 @@
 <p align="center">
   <img src="https://img.shields.io/badge/License-MIT-2E7D32?style=flat&logo=opensourceinitiative&logoColor=white" alt="License: MIT"/>
   <img src="https://img.shields.io/badge/Go-1.26%2B-00ADD8?style=flat&logo=go&logoColor=white" alt="Go 1.26+"/>
-  <img src="https://img.shields.io/badge/Release%20target-v0.15.2-24292F?style=flat&logo=github&logoColor=white" alt="Release target: v0.15.2"/>
+  <img src="https://img.shields.io/badge/Release-v0.15.2-24292F?style=flat&logo=github&logoColor=white" alt="Release: v0.15.2"/>
   <br/>
   <img src="https://img.shields.io/badge/Platform-Linux%20%C2%B7%20macOS%20%C2%B7%20Windows-607D8B?style=flat" alt="Platform: Linux, macOS, Windows"/>
   <img src="https://img.shields.io/badge/Hosts-Claude%20Code%20%C2%B7%20Codex%20CLI%20%C2%B7%20OpenCode%20V2-6E56CF?style=flat" alt="Hosts: Claude Code, Codex CLI, and OpenCode V2"/>
@@ -100,8 +100,9 @@ on this machine. Work in a scratch directory, not in one of my projects.
    found, ask me to open a new terminal rather than guessing or editing
    PATH yourself.
 
-3. Install the plugin for the host you are running in. Use exactly these
-   commands:
+3. Install the plugin for the host you are running in. Preserve existing
+   host configuration; merge required entries instead of replacing files.
+   Use exactly these commands for a first installation:
      - Claude Code:
          claude plugin marketplace add kninetimmy/orch
          claude plugin install orch-claude@orch
@@ -118,17 +119,12 @@ on this machine. Work in a scratch directory, not in one of my projects.
         numeric beta runtime and exactly one `orch.delivery` plugin entry
         before relying on enforcement.
 
-4. Codex CLI only. Skip this entire step on Claude Code and OpenCode V2:
-   a. Add both of these stanzas to ~/.codex/config.toml, leaving any
-      existing content in place:
-        [tools.experimental_request_user_input]
-
-        [features]
-        default_mode_request_user_input = true
-   b. Tell me that Codex CLI shows a one-time trust prompt for the
-      plugin's bundled hooks, that approving it is an action only I can
-      take, and that the hooks do not run at all until I approve it. Do
-      not report the install as finished as though the hooks were live.
+4. Codex CLI only: tell me about the one-time trust prompt for the
+   plugin's bundled hooks. Approving it is an action only I can take;
+   hooks do not run until I approve it. Do not report enforcement as live
+   while approval or a host restart is outstanding. Do not add historical
+   experimental question settings to my configuration: check the current
+   session's permitted question tools instead.
 
 5. Run `orch doctor` and report its full output to me, including every
    note and every failing check. When run outside an initialized
@@ -140,18 +136,24 @@ on this machine. Work in a scratch directory, not in one of my projects.
    installed mid-session is live in this session. The tell that it took
    is an Orch block at session start inside an initialized repository.
 
-7. Finish by telling me all three of these: `orch init` has to be run once
-   inside every repository I want orchestrated; Orch does nothing at all
-   in a repository that has not been initialized; and `orch init` does not
-   write the configuration into my working tree — it opens a pull request
-   carrying .orchestrator/config.toml for me to review and merge. After
-   that PR is merged, `orch render-agents` must be run in the repository;
-   it generates project definitions for every enabled host and must be
-   rerun after role configuration or Orch changes. This command is the
-   one per-repository workflow for all enabled hosts.
+7. Point me to the per-repository setup prompt below. Orch does nothing
+   in an uninitialized repository. The agent drives `orch init`'s
+   interview, shows the proposed changes, and opens a pull request only
+   after I approve them; I still review and merge that PR. Bare `orch init`
+   only prints a report. After the PR is merged, run `orch render-agents`
+   and `orch doctor --host <my configured host>` in that repository.
+   The rendering command generates definitions for every enabled host.
+   Re-render after role-configuration changes or when an upgrade leaves
+   definitions stale. Keep all existing project instructions outside the
+   Orch managed block.
 ```
 
 </details>
+
+Previously this install prompt prescribed experimental Codex question settings.
+The current session's tool contract now decides which questions it can present;
+the [Codex install guide](adapters/codex/README.md#install-order) retains the
+historical settings and their limits.
 
 ### Then initialize each repository you want orchestrated
 
@@ -159,12 +161,32 @@ Installing the binary and the plugin sets up the machine. It does not
 touch any repository. In a repository that has not been initialized,
 Orch does nothing.
 
-Run `orch init` from the root of each repository you want orchestrated.
-It detects your environment (hosts, git, `gh`, memhub), interviews you
-about which hosts to enable and which models each role should use —
-every question has a default — and then bootstraps itself through its
-own pipeline: `.orchestrator/config.toml` arrives as a pull request you
-review and merge, not as a silent write to your working tree.
+Open your agent at the repository root and ask:
+
+```text
+Initialize Orch in this repository using the orch-setup skill. Detect my
+environment, guide me through the setup choices and protected-path survey,
+and show selectable questions wherever the current tool contract permits.
+Show the final configuration and file changes for my approval before
+opening the initialization PR. Preserve my existing project instructions.
+```
+
+The interview detects hosts, git, `gh` and memhub, then asks which hosts and
+role models to use. Recommendations and defaults are suggestions, not answers.
+Ordinary choices use a permitted native question tool when it can show every
+option; otherwise the agent presents the complete question as plain text.
+Approval questions also use complete plain text when the tool prohibits them.
+The protected-path list and final changes need your affirmative approval.
+The resulting `.orchestrator/config.toml` arrives in a PR you still review and
+merge. After merging, run `orch render-agents`, then `orch doctor --host codex`
+(use `claude` or `opencode` for another configured host).
+
+Earlier guidance described bare `orch init` as the interview. Bare `orch init`,
+`orch configure` and `orch configure-local` actually print reports; the agent's
+setup skill drives their interactive steps. To change an initialized project,
+ask your agent to configure Orch using that skill. Claude Code also offers
+`/orch:init`, `/orch:configure` and `/orch:configure-local`; Codex invokes the
+skill directly rather than using those Claude commands.
 
 Delivery additionally needs `git` and the
 [GitHub CLI](https://cli.github.com/) (`gh`) authenticated against the
@@ -224,12 +246,13 @@ local `adapters/opencode/` package and configure its plugin module as
 documented in its README. Then follow the host-specific steps in the adapter
 READMEs — [Claude Code](adapters/claude/README.md#install-order),
 [Codex CLI](adapters/codex/README.md#install-order),
-[OpenCode V2](adapters/opencode/README.md#install-order). Codex CLI needs
-two more things the plugin install cannot do for you: the one-time hook
-trust approval and the two `request_user_input` stanzas in
-`~/.codex/config.toml`. Every initialized repository, on every enabled host,
-also needs `orch render-agents` after initialization, role-configuration
-changes, and upgrades.
+[OpenCode V2](adapters/opencode/README.md#install-order). Codex CLI needs the
+one-time hook trust approval and a host restart before relying on enforcement.
+Check its current question-tool contract; the historical configuration stanzas
+formerly prescribed here do not override that contract. Every initialized
+repository also needs `orch render-agents` after initialization and effective
+role-configuration changes; after upgrades, re-render if definitions changed
+or doctor reports them stale.
 
 **Adapter upgrade (existing installs).** Do not repeat the first-install
 commands above. Upgrade the configured host's marketplace and adapter:
@@ -263,21 +286,19 @@ since v0.15.0; its exported source is unchanged, and its agent
 definitions are embedded in the engine and written by `orch render-agents`.
 Survey methodology is now 2. Older `[protected]` lists remain readable but
 cannot authorize grants until an actual re-survey and fresh approval through
-`/orch:configure` or `/orch:init`; editing the stored methodology number is
-not approval.
+the agent's setup workflow (`/orch:configure` or `/orch:init` on Claude Code);
+editing the stored methodology number is not approval.
 Engine v0.14.1 and earlier refuse a config that contains a `[protected]`
 section, so upgrade the engine on every machine that uses a repository before
 that repository's list is merged.
-Because #358 changed the agent definitions on all three hosts in v0.13.0, when
-upgrading from a release before v0.13.0 re-run `orch render-agents` in every
-project that uses Orch. Release and adapter version labels describe compatibility, while
-the source revision and build identity identify the code that was built.
-
-After upgrading, re-run `orch render-agents` in every project that uses the
-Claude host. Claude project agent definitions now carry the routed `effort` in
-their frontmatter, so an existing definition rendered before the upgrade is
-reported stale by `orch doctor` and Claude Delivery activation until it is
-re-rendered.
+Earlier upgrade guidance required re-rendering every Claude project after any
+upgrade. More precisely, #358 changed all hosts' agent definitions in v0.13.0,
+so upgrades from an earlier release require `orch render-agents` in every Orch
+project. Claude definitions rendered before effort was added to their
+frontmatter are also stale. When definitions and effective profiles are
+unchanged, later upgrades need no re-render; doctor and activation still refuse
+stale definitions. Release and adapter labels describe compatibility; source
+revision and build identity identify the code that was built.
 
 Update the engine and the configured manual adapter together while the
 repository is in Assist, then restart the host and run `orch doctor --host
@@ -294,10 +315,12 @@ skills and packaged survey with the intended release commit. Reload the host
 after updating, then verify the installed workflow under a fresh bounded plan;
 source tests and `orch doctor` alone do not prove that exercise passed.
 
-These manual doctor and activation checks cover the contracts above. Driver
-protocol, subscription authentication, and isolation checks remain future
-preflights; they do not establish native Windows Claude isolation, unattended
-execution, or compatibility on untested platforms.
+These manual doctor and activation checks cover the contracts above. Earlier
+guidance called driver protocol, subscription authentication and isolation
+checks future preflights. Separate [native preflights](docs/codex-native-protocol.md)
+now exist, but passing manual doctor does not run them or establish native
+Windows Claude isolation, unattended execution or compatibility on untested
+platforms.
 
 **Manual download.** Take the static binary for your OS and
 architecture from
@@ -335,6 +358,34 @@ go install github.com/kninetimmy/orch/cmd/orch@latest
 </details>
 
 ---
+
+## Codex parity
+
+Released engine **v0.15.2** pairs with Claude/Codex manual adapter **0.13.0**;
+OpenCode's package remains **0.12.0**. Codex shares the manual Delivery engine
+with Claude, but automation parity is unfinished.
+
+| Capability | Codex status |
+|---|---|
+| Plans, named roles, isolated worktrees, review, CI and human merge gates | Implemented; the installed manual workflow was exercised for [PR #434](https://github.com/kninetimmy/orch/pull/434) with independent review, passing CI and fresh human merge approval |
+| Guided setup, selectable ordinary questions and protected-path survey | Packaged in adapter 0.13.0; native choices depend on the current tool contract, and a fresh installed initial-setup/survey exercise remains outstanding |
+| Completed child-agent usage | Implemented; executor and reviewer observations were captured in the #434 exercise |
+| Automatic Architect usage | Missing on Codex; automatic run-window capture is Claude-only |
+| Autonomy grants and fresh-context relay | Claude-only; Codex holder/permission binding, context handling, ownership transfer and predecessor stopping remain work to do |
+| Native evaluation | Conditional admission only for reviewed Windows amd64 Codex 0.160.0 with the required controls; current-version live qualification and evaluation trials remain outstanding |
+
+The 2026-11-07 Windows assessment found installed engine v0.15.2, adapter
+0.13.0 and Codex CLI 0.167.0; critical installed adapter files matched release
+source. That installation record, Desktop child capture and green source/CI
+checks do not qualify every workflow on CLI 0.167.0. The native boundary does
+not admit that version merely because the manual adapter works.
+
+The comparison baseline also has gaps: installed Claude Code 2.1.314 is not
+recognized by the context reader, so its grant context-relay instruction does
+not fire. OpenCode's `opencode v2.0.22` output is rejected by the beta-version
+parser. Selected Codex/Claude doctor checks pass with those advisories; the
+selected OpenCode check fails. Full host parity and an all-host healthy result
+are not claimed.
 
 ## What you actually get
 
@@ -557,7 +608,18 @@ Every memhub command runs with the primary checkout as its working
 directory, never inside a per-issue worktree, because worktrees never
 receive a copy of the memhub database.
 
-## v0.15.2 release target
+## Unreleased
+
+- `orch status`, the bare configure report and doctor now show protected-list
+  presence, repository-specific entry count, approved/required methodology and
+  survey currency. Before [#434](https://github.com/kninetimmy/orch/pull/434)
+  those reports omitted this status. Missing or stale lists produce agent setup
+  guidance; doctor keeps it advisory for manual Delivery. A current empty list
+  has zero repository-specific entries. Survey currency proves neither Codex
+  grant support nor committed-config integrity. This source change is not in
+  the released v0.15.2 binary.
+
+## v0.15.2 release
 
 - A wider generic protected-path floor. The host harness configuration,
   dependency/registry manifests and root `.github/actions` additions from
@@ -605,42 +667,40 @@ inspectable but require a real methodology-2 re-survey and fresh approval before
 grants; changing only their stored version never re-approves them.
 
 **Source/CI evidence and remaining live work.** The six content PRs #425–#430
-passed full hosted Windows, macOS and Ubuntu suites. This release PR must also
-pass the build, vet, adapter/manifest/version/document checks and hosted
-`go test ./...` before publication. Those checks pin source contracts; they do
-not prove installed-plugin or live survey behavior. During preparation the
-installed baseline remains engine v0.15.1 / adapter 0.12.1, with Codex CLI
-0.163.0. No new engine/adapter installation or live methodology-2 survey has
-run. Completed Codex children supplied usage in this Delivery run, but automatic
-Codex Architect metrics capture is still absent. Grants and relay remain
-Claude-specific. Native Codex evaluation admits only the reviewed Windows amd64
-0.160.0 host with its required controls; it does not admit 0.163.0 by version
-proximity. The installed-plugin/manual Delivery exercise remains outstanding,
-and these source/CI results establish no full host parity. The existing OpenCode
-doctor runtime-parser failure is also unresolved; no global doctor-clean result
-is claimed.
+and release PR #431 passed hosted checks, including full Windows, macOS and
+Ubuntu suites. The tag-driven release workflow also passed build, vet, tests
+and cross-compilation. These establish source contracts, not installed survey
+behavior or full parity. During preparation this section recorded installed
+engine v0.15.1 / adapter 0.12.1 with Codex CLI 0.163.0 and an outstanding manual
+exercise. The release pair has since been installed and the manual path
+exercised for #434; fresh initial-setup/survey verification and the automation
+gaps remain as listed in [Codex parity](#codex-parity).
 
-**Publication, installation and rollback (not performed by this preparation).**
+**Publication, installation and rollback.** Preparation originally left
+publication and installation for separate human approvals. Both occurred on
+2026-10-31: [v0.15.2](https://github.com/kninetimmy/orch/releases/tag/v0.15.2)
+was published at #431's merge commit
+`c26d9e7481f5d478531edc70847856923a862fab`, and the recorded Windows installation
+verified downloaded binaries against the published `SHA256SUMS` and GitHub asset
+digests. Installed adapter content was compared with that release source.
+Future publication or installation still requires its own approval; this
+documentation update performs neither.
 
-1. Merge this final release PR with passing CI, complete the run back to Assist,
-   and obtain separate human publication approval. Tag only that PR's eventual
-   merge commit as `v0.15.2`. The tag-driven release workflow stamps the engine
-   version, runs build/vet/tests and publishes binaries plus `SHA256SUMS`; verify
-   that workflow and its assets before installation.
-2. Preserve the previous verified engine/adapter pair and its source/cache
-   provenance. Between runs, use the inspected installer pinned to v0.15.2:
+1. For installation on another machine, preserve the previous verified
+   engine/adapter pair and its source/cache provenance. Between runs, use the
+   inspected installer pinned to v0.15.2:
    `ORCH_VERSION=v0.15.2 sh install.sh` or
    `.\install.ps1 -Version v0.15.2`. These verify the downloaded binary against
    the trusted release's published `SHA256SUMS` before execution. Upgrade the
    configured adapter to 0.13.0 with the host commands above, and compare actual
    installed skills/survey content and source commit with the release commit;
    matching version labels alone are insufficient.
-3. Restart/reload the host, refresh project agents with `orch render-agents` as
+2. Restart/reload the host, refresh project agents with `orch render-agents` as
    required by the upgrade guidance, and run `orch doctor --host codex` (or
    `--host claude`). Separately approve a fresh bounded plan to exercise the
    installed Codex setup/survey and manual Delivery workflow, including actual
    affirmative gates. Record its results before claiming live verification.
-4. Roll back only between runs in Assist, restoring a previous matching pair,
+3. Roll back only between runs in Assist, restoring a previous matching pair,
    for example engine v0.15.1 with adapter 0.12.1. Pin the installer to that
    engine tag and verify its published checksums. After inspecting the current
    install, use the host's adapter remove/uninstall and marketplace remove
