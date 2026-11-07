@@ -41,10 +41,23 @@ func runStatus(env Env) error {
 		fmt.Fprintf(env.Stdout, "local:  %d override(s) from %s\n", len(cfg.Overrides), config.LocalOverridePath)
 	}
 	fmt.Fprintf(env.Stdout, "hosts:  %s\n", strings.Join(cfg.EnabledHosts(), ", "))
+	fmt.Fprintf(env.Stdout, "protected survey: %s\n", protectedListStatus(cfg))
 
 	// Status inspects and reports; doctor is the check that fails.
 	if err := state.CheckConsistent(st, owner); err != nil {
 		fmt.Fprintf(env.Stdout, "warning: %v\n", err)
 	}
 	return nil
+}
+
+func protectedListStatus(cfg *config.Config) string {
+	status := "absent; approved methodology: none"
+	if p := cfg.Protected; p != nil {
+		status = fmt.Sprintf("present; repository-specific entries: %d; approved methodology: %d", len(p.Paths), p.MethodologyVersion)
+	}
+	status += fmt.Sprintf("; required methodology: %d", config.SurveyMethodologyVersion)
+	if cfg.CheckGrantProtected() != nil {
+		return status + "; fresh survey required; run /orch:configure for a fresh survey and approval"
+	}
+	return status + "; survey current"
 }
