@@ -112,7 +112,7 @@ on this machine. Work in a scratch directory, not in one of my projects.
       - OpenCode V2: it is not a Codex marketplace plugin. Run
         `git clone https://github.com/kninetimmy/orch.git "$HOME/orch"`
         and `npm ci --prefix "$HOME/orch/adapters/opencode"`, then add
-        the absolute path to `$HOME/orch/adapters/opencode/src/index.js`
+        the absolute package directory `$HOME/orch/adapters/opencode`
         to the `plugins` array in `opencode.json`. Restart OpenCode V2,
         then run `opencode2 --version` and
         `opencode2 api get /api/plugin`; version admission permits beta
@@ -392,8 +392,10 @@ The comparison baseline also has gaps: installed Claude Code 2.1.314 is not
 recognized by the context reader, so its grant context-relay instruction does
 not fire. The installed v0.15.2 beta-only parser rejects stable OpenCode
 output (now observed as `opencode v2.2.6`). Source diagnostics now admit
-stable V2 versions and verify active/server/project plugin state, but that
-does not repair the separately failing old adapter package. Selected
+stable V2 versions and verify active/server/project plugin state. The updated
+source adapter and private Windows smoke cover current SDK loading and
+file-tool enforcement; these checks do not update an installed adapter or
+its configuration. Selected
 Codex/Claude doctor checks pass with advisories; installed OpenCode
 qualification remains incomplete. Full host parity and an all-host healthy
 result are not claimed.
@@ -1409,12 +1411,19 @@ catalog. The shared resolver prefers V2 `opencode2`, falling back to V2
 only enabled text-input/text-output tool-capable
 `provider/model` IDs and their variant IDs; provider settings, headers,
 credentials, account IDs, and raw API payloads never enter the returned
-catalog or its diagnostics. The npm SDK dependency and live smoke remain
-exactly pinned to `@opencode-ai/plugin` `0.0.0-beta-18314` and `opencode2
-v0.0.0-beta-18314`, respectively, to prove the oldest supported contract;
-they do not cap runtime admission or prove loading on current stable V2.
-The old SDK's stable-host loading and live-smoke repair require separate
-verification. The V2 API still does not expose an adapter version.
+catalog or its diagnostics. The SDK and smoke previously stayed tied to
+`@opencode-ai/plugin` `0.0.0-beta-18314`. The adapter now uses
+`@opencode/plugin` `2.2.6` and its matching simulation protocol, configured
+as the package directory rather than the single-file path current V2 skips.
+Native parser/path utilities supply every guarded patch/move target and
+normalize Windows drive aliases; home-expanding forms are refused explicitly.
+Those build dependencies do not cap runtime admission. The deterministic
+private-server smoke is a required local Windows check against current V2
+`2.2.6`; newer versions warn and proceed through actual contract checks.
+It covers loading and guarded tool behavior without paid generation.
+Hosted CI runs Go/Node checks on three platforms but does not run this live
+smoke; other-platform and installed acceptance remain separate qualification.
+The V2 API still does not expose an adapter version.
 After an OpenCode upgrade, restart the service and rerun doctor
 before relying on enforcement; upstream contract drift may require an Orch
 update.
@@ -1857,7 +1866,7 @@ its own.
 | `internal/bootstrap/` | Mechanical PR-flow executors behind `init --bootstrap` and `configure --deliver` |
 | `internal/adaptertest/` | Shared cross-host parity-test layer consumed by the host adapters' tests |
 | `adapters/claude/`, `adapters/codex/` | Marketplace host-adapter artifacts: plugin manifests, hooks, skills, agent definitions, plus Claude Code's slash commands |
-| `adapters/opencode/` | npm-native OpenCode V2 adapter package (`@kninetimmy/orch-opencode`): plugin module, native agents, skills, tests, and pinned-beta smoke check; not a Codex marketplace artifact |
+| `adapters/opencode/` | npm-native OpenCode V2 adapter package (`@kninetimmy/orch-opencode`): server plugin, native agents, skills, tests, and deterministic private-server smoke; not a Codex marketplace artifact |
 | `ORCH-PRD.md` | Product requirements — source of truth for v1 |
 
 ### Design principles

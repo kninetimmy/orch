@@ -13,9 +13,10 @@ import (
 
 func TestPackagePinsOpenCodeV2Contract(t *testing.T) {
 	var manifest struct {
-		Name         string            `json:"name"`
-		Version      string            `json:"version"`
-		Dependencies map[string]string `json:"dependencies"`
+		Name            string            `json:"name"`
+		Version         string            `json:"version"`
+		Dependencies    map[string]string `json:"dependencies"`
+		DevDependencies map[string]string `json:"devDependencies"`
 	}
 	if err := json.Unmarshal([]byte(opencode.PackageJSON), &manifest); err != nil {
 		t.Fatal(err)
@@ -23,11 +24,17 @@ func TestPackagePinsOpenCodeV2Contract(t *testing.T) {
 	if manifest.Name != "@kninetimmy/orch-opencode" || manifest.Version == "" {
 		t.Fatalf("manifest = %#v", manifest)
 	}
-	if got := manifest.Dependencies["@opencode-ai/plugin"]; got != "0.0.0-beta-18314" {
-		t.Fatalf("@opencode-ai/plugin = %q, want pinned beta-18314", got)
+	if got := manifest.Dependencies["@opencode/plugin"]; got != "2.2.6" {
+		t.Fatalf("@opencode/plugin = %q, want pinned 2.2.6", got)
 	}
-	if len(manifest.Dependencies) != 1 {
-		t.Fatalf("dependencies = %v, want only the V2 plugin API", manifest.Dependencies)
+	if got := manifest.Dependencies["@opencode/util"]; got != "2.2.6" {
+		t.Fatalf("@opencode/util = %q, want matching native parser/path utilities", got)
+	}
+	if len(manifest.Dependencies) != 2 {
+		t.Fatalf("dependencies = %v, want only the V2 plugin API and its native utilities", manifest.Dependencies)
+	}
+	if got := manifest.DevDependencies["@opencode/protocol"]; got != "2.2.6" {
+		t.Fatalf("@opencode/protocol = %q, want matching simulation protocol", got)
 	}
 }
 
@@ -38,7 +45,7 @@ func TestInstallGuideAddsCheckoutPluginAndSkillSources(t *testing.T) {
 	}
 	content := string(data)
 	for _, want := range []string{
-		`"plugins": ["/absolute/path/to/orch/adapters/opencode/src/index.js"]`,
+		`"plugins": ["/absolute/path/to/orch/adapters/opencode"]`,
 		`"skills": ["/absolute/path/to/orch/adapters/opencode/skills"]`,
 		"entries to add, not replacement arrays",
 	} {

@@ -49,13 +49,14 @@ func CanonicalPath(path string, directory bool) (string, error) {
 			}
 		}
 	}
-	canonical, err := paths.Canonical(path)
-	if err != nil {
-		return "", errors.New("cannot canonicalize isolation path")
-	}
-	canonical, err = finalIsolationPath(canonical)
+	// Keep native alias resolution ahead of the shared unresolved-redirect check.
+	canonical, err := finalIsolationPath(path)
 	if err != nil {
 		return "", errors.New("cannot resolve native isolation path aliases")
+	}
+	canonical, err = paths.Canonical(canonical)
+	if err != nil {
+		return "", errors.New("cannot canonicalize isolation path")
 	}
 	if filepath.Dir(canonical) == canonical {
 		return "", errors.New("volume roots cannot be isolation locations")
