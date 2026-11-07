@@ -27,8 +27,9 @@ Orch update. Command selection prefers V2 `opencode2`, supports V2 installed
 only as `opencode`, and never selects legacy V1 instead of available V2.
 Previously the npm SDK and live smoke stayed pinned to
 `@opencode-ai/plugin` `0.0.0-beta-18314` and that exact beta runtime.
-The adapter now pins `@opencode/plugin` `2.2.6`, with the matching
-`@opencode/protocol` development dependency for deterministic simulation.
+The adapter now pins `@opencode/plugin` and its native parser/path utilities
+`@opencode/util` at `2.2.6`, with the matching `@opencode/protocol`
+development dependency for deterministic simulation.
 These dependency pins do not impose an exact installed-runtime requirement:
 the smoke accepts admitted newer runtimes with an advisory and checks their
 actual contracts. Windows V2 `2.2.6` is the current live test baseline;
@@ -51,6 +52,7 @@ them and are never copied into diagnostics.
 |---|---|
 | OpenCode runtime admission and npm SDK/smoke pins | The beta 18314 and stable 2.0.0 admission floors remain, with advisory acceptance of unverified newer versions. Before, SDK and smoke were tied to beta 18314. Now the SDK/protocol dependencies are pinned to 2.2.6 and the real-host smoke checks contracts without an upper-version block. |
 | `orch.delivery` plugin ID, setup, guard hooks, and session context | The ID and thin V2 hook behavior remain. The import changes from the obsolete SDK to `@opencode/plugin`; missing/non-absolute session directories now fail before invoking Orch. The SDK scopes setup registrations to plugin unload. |
+| File-tool target interpretation | Before, a line scanner could miss indented native patch headers and raw Windows shell aliases could identify a different destination to Go than to the host. Now native `Patch.parse` supplies every source/move target, `FSUtil.windowsPath` normalizes the host's drive aliases, and targets are resolved against the actual session directory before one all-or-nothing guard call. Invalid patches and native home-expanding forms fail before guard/tool actions. This applies to every `edit`, `write`, and parsed patch source/destination. |
 | Configured local plugin path | Before, the guide and smoke configured `src/index.js`, which current V2 skips. Now both configure the package directory, whose existing package export supplies the same server entrypoint. Existing installations replace only their old Orch entry and retain unrelated plugins and skills. |
 | Shared canonical paths and Windows junctions | Before, Go could leave a redirecting reparse ancestor unresolved and the missing-tail fallback trusted it lexically, allowing a junction to escape a Delivery worktree. Now shared `Canonical`, `Inside` and root discovery fail closed on unresolved redirecting ancestors. Nonredirecting tags remain unchanged; this is rejection, not general junction support. Native isolation retains its existing explicit alias resolver after its original syntax checks, before shared validation. No SUBST/8.3/UNC/hardlink admission rule is relaxed. |
 | Catalog process invocation | Before, every read assumed `opencode2`. Now shared version probing selects V2 `opencode2` or V2 `opencode`, and all reads in a doctor invocation use that selection. Arguments and URL-encoded location remain separate from shell interpretation. |
@@ -228,5 +230,10 @@ before restarting. The old file entry is not a fallback loading mechanism.
 - The plugin guards OpenCode's `edit`, `write`, and `patch` tools. Shell
   writes bypass Orch's guard and remain subject to OpenCode's own
   permissions.
+- Native home-expanding paths (`~`, `~/...`, and `~\...` on Windows) are
+  refused before mutation; use an absolute or ordinary relative path.
+  `~notes.txt` remains a literal name, as do backslashes on Unix. The plugin
+  does not guess the server's home or substitute the real user's home for
+  `OPENCODE_TEST_HOME` in isolated tests.
 - The plugin needs `orch` on `PATH`. If it is absent, OpenCode cannot
   receive an Orch guard verdict.

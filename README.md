@@ -1415,6 +1415,8 @@ catalog or its diagnostics. The SDK and smoke previously stayed tied to
 `@opencode-ai/plugin` `0.0.0-beta-18314`. The adapter now uses
 `@opencode/plugin` `2.2.6` and its matching simulation protocol, configured
 as the package directory rather than the single-file path current V2 skips.
+Native parser/path utilities supply every guarded patch/move target and
+normalize Windows drive aliases; home-expanding forms are refused explicitly.
 Those build dependencies do not cap runtime admission. The deterministic
 private-server smoke is a required local Windows check against current V2
 `2.2.6`; newer versions warn and proceed through actual contract checks.

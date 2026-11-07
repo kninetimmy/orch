@@ -27,8 +27,11 @@ func TestPackagePinsOpenCodeV2Contract(t *testing.T) {
 	if got := manifest.Dependencies["@opencode/plugin"]; got != "2.2.6" {
 		t.Fatalf("@opencode/plugin = %q, want pinned 2.2.6", got)
 	}
-	if len(manifest.Dependencies) != 1 {
-		t.Fatalf("dependencies = %v, want only the V2 plugin API", manifest.Dependencies)
+	if got := manifest.Dependencies["@opencode/util"]; got != "2.2.6" {
+		t.Fatalf("@opencode/util = %q, want matching native parser/path utilities", got)
+	}
+	if len(manifest.Dependencies) != 2 {
+		t.Fatalf("dependencies = %v, want only the V2 plugin API and its native utilities", manifest.Dependencies)
 	}
 	if got := manifest.DevDependencies["@opencode/protocol"]; got != "2.2.6" {
 		t.Fatalf("@opencode/protocol = %q, want matching simulation protocol", got)

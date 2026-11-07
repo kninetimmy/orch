@@ -23,6 +23,10 @@ const agentModels = {
 }
 const architect = { providerID: "smoke-alpha", id: "architect", variant: "steady" }
 const patchModel = { providerID: "smoke-alpha", id: "gpt-5.6-smoke" }
+const fixturePermissions = [
+  { action: "*", resource: "*", effect: "allow" },
+  { action: "external_directory", resource: "*", effect: "ask" },
+]
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
 
 function admittedVersion(output) {
@@ -181,7 +185,7 @@ try {
   }))
   const configuration = {
     model: "smoke-alpha/architect#steady",
-    permissions: [{ action: "*", resource: "*", effect: "allow" }],
+    permissions: fixturePermissions,
     plugins: [adapter],
     skills: [path.join(adapter, "skills")],
     snapshots: false,
@@ -293,7 +297,7 @@ try {
   async function start(directory, model = architect, parentID) {
     const { data: session } = await api("/api/session", {
       method: "POST",
-      body: JSON.stringify({ location: { directory }, model, parentID, title: "Orch deterministic smoke", permissions: [{ action: "*", resource: "*", effect: "allow" }] }),
+      body: JSON.stringify({ location: { directory }, model, parentID, title: "Orch deterministic smoke", permissions: fixturePermissions }),
     })
     assert(session.id, "session API must return a real session identity")
     await api("/api/session/" + session.id + "/prompt", { method: "POST", body: JSON.stringify({ text: "Execute the deterministic smoke tool calls." }) })
@@ -324,6 +328,14 @@ try {
   const tracked = path.join(root, "tracked.txt")
   const scratch = path.join(root, ".scratch", "allowed.txt")
   const before = await readFile(tracked, "utf8")
+  const homeRelative = path.relative(temp, tracked).split(path.sep).join("/")
+  const homePaths = ["~/" + homeRelative, ...(process.platform === "win32" ? ["~\\" + homeRelative.replaceAll("/", "\\")] : [])]
+  const windowsAliases = process.platform === "win32" ? (() => {
+    const forward = tracked.replaceAll("\\", "/")
+    const drive = forward[0].toLowerCase()
+    const tail = forward.slice(3)
+    return ["/" + drive + ":/" + tail, "/" + drive + "/" + tail, "/cygdrive/" + drive + "/" + tail, "/mnt/" + drive + "/" + tail]
+  })() : []
   let { session, turn } = await start(root)
   context(turn)
   for (const [name, input] of [
@@ -332,6 +344,16 @@ try {
   ]) {
     turn = await tool(turn, name, input, /orch guard:.*assist is read-only/)
     assert.equal(await readFile(tracked, "utf8"), before)
+  }
+  for (const target of [...windowsAliases, ...homePaths]) {
+    const denial = homePaths.includes(target) ? /orch: home-relative paths are unsupported/ : /orch guard:.*assist is read-only/
+    for (const [name, input] of [
+      ["write", { path: target, content: "denied\n" }],
+      ["edit", { path: target, oldString: "before", newString: "denied" }],
+    ]) {
+      turn = await tool(turn, name, input, denial)
+      assert.equal(await readFile(tracked, "utf8"), before)
+    }
   }
   turn = await tool(turn, "write", { path: scratch, content: "allowed\n" })
   assert.equal(await readFile(scratch, "utf8"), "allowed\n")
@@ -355,8 +377,47 @@ try {
   turn = await tool(turn, "patch", { patchText: "*** Begin Patch\n*** Update File: " + scratch + "\n*** Move to: " + moved + "\n@@\n-edited\n+moved\n*** End Patch" })
   assert.equal(existsSync(scratch), false)
   assert.equal(await readFile(moved, "utf8"), "moved\n")
+  const partial = path.join(root, ".scratch", "indented-partial.txt")
+  for (const targetHeader of [
+    "  *** Add File: tracked.txt\n+overwritten",
+    "\t*** Update File: tracked.txt  \n@@\n-before\n+overwritten",
+    "  *** Delete File: tracked.txt",
+  ]) {
+    turn = await tool(turn, "patch", { patchText: "*** Begin Patch\n*** Add File: .scratch/indented-partial.txt\n+safe\n" + targetHeader + "\n*** End Patch" }, /orch guard:.*assist is read-only/)
+    assert.equal(existsSync(partial), false, "a later hidden target must deny the entire patch")
+    assert.equal(await readFile(tracked, "utf8"), before)
+  }
+  const heredocSource = path.join(root, ".scratch", "header-source.txt")
+  const heredocMoved = path.join(root, ".scratch", "header-moved.txt")
+  const heredoc = (body) => "cat <<'PATCH'\r\n*** Begin Patch\r\n" + body.replaceAll("\n", "\r\n") + "\r\n*** End Patch\r\nPATCH"
+  turn = await tool(turn, "patch", { patchText: heredoc("  *** Add File: " + heredocSource + "  \n+header") })
+  const headerBytes = await readFile(heredocSource)
+  assert.equal(headerBytes.toString().trimEnd(), "header")
+  turn = await tool(turn, "patch", { patchText: heredoc("  *** Update File: " + heredocSource + "  \n*** Move to: tracked.txt  \n@@\n-header\n+overwritten") }, /orch guard:.*assist is read-only/)
+  assert.deepEqual(await readFile(heredocSource), headerBytes)
+  assert.equal(await readFile(tracked, "utf8"), before)
+  turn = await tool(turn, "patch", { patchText: heredoc("  *** Update File: " + heredocSource + "  \n*** Move to: " + heredocMoved + "  \n@@\n-header\n+header moved") })
+  assert.equal(existsSync(heredocSource), false)
+  assert.equal((await readFile(heredocMoved, "utf8")).trimEnd(), "header moved")
+  for (const target of [...windowsAliases, ...homePaths]) {
+    const denial = homePaths.includes(target) ? /orch: home-relative paths are unsupported/ : /orch guard:.*assist is read-only/
+    const attemptedMove = path.join(root, ".scratch", "alias-move.txt")
+    for (const body of [
+      "*** Add File: " + target + "\n+overwritten",
+      "*** Update File: " + target + "\n@@\n-before\n+overwritten",
+      "*** Delete File: " + target,
+      "*** Update File: " + target + "\n*** Move to: " + attemptedMove + "\n@@\n-before\n+overwritten",
+      "*** Update File: " + moved + "\n*** Move to: " + target + "\n@@\n-moved\n+overwritten",
+    ]) {
+      turn = await tool(turn, "patch", { patchText: "*** Begin Patch\n" + body + "\n*** End Patch" }, denial)
+      assert.equal(await readFile(tracked, "utf8"), before)
+      assert.equal(await readFile(moved, "utf8"), "moved\n")
+      assert.equal(existsSync(attemptedMove), false)
+    }
+  }
   await finish(session, turn)
   console.log("PASS Assist edit/write/patch, ignored scratch, multi-file and both move targets")
+  console.log("PASS native indented/heredoc parsing and alias/home path byte preservation")
 
   const mismatch = await start(root, agentModels["orch-implementer"])
   context(mismatch.turn, true)
@@ -388,6 +449,10 @@ try {
   turn = await tool(turn, "write", { path: "tracked.txt", content: "delivery allowed\n" })
   assert.equal(await readFile(path.join(writable, "tracked.txt"), "utf8"), "delivery allowed\n")
   assert.equal(await readFile(tracked, "utf8"), before)
+  for (const literal of ["~notes.txt", ...(process.platform !== "win32" ? ["~\\notes.txt"] : [])]) {
+    turn = await tool(turn, "write", { path: literal, content: "literal tilde name\n" })
+    assert.equal(await readFile(path.join(writable, literal), "utf8"), "literal tilde name\n")
+  }
   for (const [target, denial] of [
     [tracked, /orch guard:.*outside every registered worktree/],
     [path.join(sibling, "tracked.txt"), /orch guard:.*outside every registered worktree/],
