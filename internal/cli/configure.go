@@ -102,6 +102,7 @@ func runConfigureReport(env Env) error {
 	fmt.Fprintf(env.Stdout, "  merge strategy:     %s\n", cfg.Merge.Strategy)
 	fmt.Fprintf(env.Stdout, "  memhub mode:        %s\n", cfg.Memhub.Mode)
 	fmt.Fprintf(env.Stdout, "  metrics enabled:    %t\n", cfg.Metrics.Enabled)
+	fmt.Fprintf(env.Stdout, "  protected survey:   %s\n", protectedListStatus(cfg))
 
 	if err := requireNoActiveDelivery(env.RepoRoot); err != nil {
 		fmt.Fprintf(env.Stdout, "\nwarning: %v\n", err)

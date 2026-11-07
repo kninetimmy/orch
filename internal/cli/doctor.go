@@ -140,6 +140,9 @@ func runDoctor(env Env, args []string) error {
 	if cfgErr == nil && selectedHost != "" && cfg.Host(selectedHost) == nil {
 		return usageError(fmt.Sprintf("orch doctor: host %q is not configured", selectedHost))
 	}
+	if cfgErr == nil {
+		fmt.Fprintf(env.Stdout, "note  protected survey: %s\n", protectedListStatus(cfg))
+	}
 
 	if cfgErr == nil && config.HasLocalOverride(env.RepoRoot) {
 		if len(cfg.Overrides) > 0 {
