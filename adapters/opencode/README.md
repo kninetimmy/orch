@@ -7,7 +7,7 @@ ID is `orch.delivery`. It is not the Codex marketplace adapter: that is
 
 ## Compatibility
 
-The OpenCode V2 plugin API is beta. Before the project-scoped catalog
+The adapter targets the OpenCode V2 server plugin API. Before the project-scoped catalog
 contract landed, the live smoke check exercised exactly `opencode2
 v0.0.0-beta-17498` with `@opencode-ai/plugin`
 `0.0.0-beta-17498` and did not check the model or returned-location
@@ -25,13 +25,15 @@ is separate from real compatibility: doctor still requires one active
 catalogs. Missing contracts or failed enforcement can still require an
 Orch update. Command selection prefers V2 `opencode2`, supports V2 installed
 only as `opencode`, and never selects legacy V1 instead of available V2.
-The npm SDK and
-live smoke remain exactly pinned to `@opencode-ai/plugin`
-`0.0.0-beta-18314` and `opencode2 v0.0.0-beta-18314`, respectively, to
-prove the oldest supported contract; those test pins do not cap runtime
-support. These version checks do not prove that the old SDK loads on a
-stable runtime: current package-loading and live-smoke qualification remain
-separate work until demonstrated.
+Previously the npm SDK and live smoke stayed pinned to
+`@opencode-ai/plugin` `0.0.0-beta-18314` and that exact beta runtime.
+The adapter now pins `@opencode/plugin` `2.2.6`, with the matching
+`@opencode/protocol` development dependency for deterministic simulation.
+These dependency pins do not impose an exact installed-runtime requirement:
+the smoke accepts admitted newer runtimes with an advisory and checks their
+actual contracts. Windows V2 `2.2.6` is the current live test baseline;
+older admitted runtimes and other platforms still need live qualification.
+Source smoke evidence is separate from verification of an installed adapter.
 
 ## Catalog safety and blast radius
 
@@ -47,8 +49,10 @@ them and are never copied into diagnostics.
 
 | Touched element | Does its previous behavior still hold? |
 |---|---|
-| OpenCode runtime admission and npm SDK/smoke pins | No. The beta-only parser is replaced by beta 18314 and stable 2.0.0 floors, with advisory acceptance of newer versions. SDK/smoke pins remain beta 18314 in this diagnostic change; passing version admission does not qualify package loading. |
-| `orch.delivery` plugin ID, setup, guard hooks, and session context | Yes. The same plugin contract remains; unit and live smoke checks still exercise it on the new beta. |
+| OpenCode runtime admission and npm SDK/smoke pins | The beta 18314 and stable 2.0.0 admission floors remain, with advisory acceptance of unverified newer versions. Before, SDK and smoke were tied to beta 18314. Now the SDK/protocol dependencies are pinned to 2.2.6 and the real-host smoke checks contracts without an upper-version block. |
+| `orch.delivery` plugin ID, setup, guard hooks, and session context | The ID and thin V2 hook behavior remain. The import changes from the obsolete SDK to `@opencode/plugin`; missing/non-absolute session directories now fail before invoking Orch. The SDK scopes setup registrations to plugin unload. |
+| Configured local plugin path | Before, the guide and smoke configured `src/index.js`, which current V2 skips. Now both configure the package directory, whose existing package export supplies the same server entrypoint. Existing installations replace only their old Orch entry and retain unrelated plugins and skills. |
+| Shared canonical paths and Windows junctions | Before, Go could leave a redirecting reparse ancestor unresolved and the missing-tail fallback trusted it lexically, allowing a junction to escape a Delivery worktree. Now shared `Canonical`, `Inside` and root discovery fail closed on unresolved redirecting ancestors. Nonredirecting tags remain unchanged; this is rejection, not general junction support. Native isolation retains its existing explicit alias resolver after its original syntax checks, before shared validation. No SUBST/8.3/UNC/hardlink admission rule is relaxed. |
 | Catalog process invocation | Before, every read assumed `opencode2`. Now shared version probing selects V2 `opencode2` or V2 `opencode`, and all reads in a doctor invocation use that selection. Arguments and URL-encoded location remain separate from shell interpretation. |
 | Response `location.directory` | New validation. The initial implementation inherited platform-wide case folding and could accept distinct case-different directories on a case-sensitive macOS or Windows volume; that behavior no longer holds. Directory identity is now compared by the filesystem, so every different directory is rejected while aliases of the same directory remain valid. |
 | Response `data[].providerID` and `data[].id` | New projection. They form the exact `provider/id`; neither value is normalized or aliased. |
@@ -59,7 +63,7 @@ them and are never copied into diagnostics.
 | Doctor's runtime check | Before, only beta 18314 or newer numeric beta output was accepted. Now stable 2.0.0 and later releases are admitted with warnings outside the verified version baselines. Unsupported versions still fail. |
 | Doctor's plugin check | Before, it counted IDs without verifying active/server state or returned location. Now exactly one active server component is required in the verified requested project; failed, absent, duplicate, malformed, unready and wrong-directory catalogs fail safely. |
 | OpenCode-host activation | Existing selection checks still run before activation artifacts. Shared V2 resolution now supports either command name, and successful activation adds an optional `warnings` array for unverified runtime versions. Other hosts' activation output is unchanged. |
-| Live smoke's agent discovery, context injection, denied tracked write, and allowed ignored write | Yes. The catalog/location assertions are additive, and the smoke now renders a mixed-provider fixture and checks every discovered dispatched agent's exact model reference. |
+| Live smoke's discovery, context and guarded tool execution | Before, the exact-beta smoke checked one denied write and one allowed ignored write. Now a private current-V2 server checks active loading, scoped doctor/catalogs, all supported file tools, multi-file/move targets, synthetic Delivery containment, root/child context, reload and disconnected simulation behavior. It preserves exact mixed-provider agent-discovery assertions and requires no paid generation. |
 | Interview `profile`, `roleVariantID`, and `openCodeVariantQuestion` | Before, committed interviews represented every execution value as host-wide effort and suggested host-wide variant names. After, the shared profile carries a host-native execution value and each OpenCode variant question contains only no-variant plus the selected catalog model's advertised variants. This applies to every OpenCode role; Claude/Codex keep effort IDs and options. |
 | Committed question writer `openCodeRoleDocSpecs` | Before, OpenCode shared the static `roleDocSpecs` model/effort path. After, all six roles ask a catalog-backed model question followed, only when applicable, by that model's dependent variant question. Claude/Codex retain their model+effort documents. |
 | Committed config writer `materializeHost` | Before, every host answer was written to `RoleProfile.Effort`. After, a selected available/new OpenCode model writes `Variant` (empty for no variant). The preservation exception is an unchanged committed model absent from the live catalog: it keeps its prior `Effort`/`Variant` fields exactly so legacy configuration remains loadable. Every Claude/Codex role still writes `Effort`. |
@@ -79,9 +83,9 @@ them and are never copied into diagnostics.
 ## Role selection and sessions
 
 `orch init`, `orch configure`, and `orch configure-local` discover models from
-the current repository's live catalog on the minimum
-`opencode2 v0.0.0-beta-18314` runtime or a newer runtime that passes doctor's
-contract checks. All six role selections are independent:
+the current repository's live catalog on an admitted V2 runtime (beta 18314
+or stable 2.0.0 and newer releases) that passes doctor's contract checks.
+All six role selections are independent:
 one profile can mix providers and models, and model IDs after the first slash are
 opaque. After each model choice, setup offers only that model's advertised
 variants; a model with no variants produces a bare `provider/model` selection.
@@ -104,17 +108,32 @@ not match the effective configuration, with `orch render-agents` as remediation.
 The plugin passes the selected model of a root main session to Orch's context
 hook. When it differs from the configured Architect model and optional variant,
 Orch adds a warning but does not switch models; child sessions skip this Architect
-comparison. `npm run smoke` renders the shared mixed-provider fixture, starts the
-pinned runtime, and checks `/api/agent` for every dispatched role's exact
-provider/model/variant reference. Its later tool-path generation uses the runtime's
-simulation backend, so the smoke never requires a paid model request.
+comparison. `npm run smoke --prefix adapters/opencode` renders the shared
+mixed-provider fixture and checks every discovered role's exact
+provider/model/variant reference. Its synthetic sessions use the runtime's
+simulation backend, not a provider connection. Current V2 exposes `patch`
+for supported GPT-shaped models and `edit`/`write` for other models, so the
+fixture exercises both real tool sets with simulated model identities.
+
+The smoke is a required **local Windows** check. It starts its own localhost
+server with isolated configuration/database paths and OS-temp repositories,
+attaches simulation before any session action, and stops/joins that server
+before deleting its own fixtures. Its synthetic Delivery state does not
+represent a real approved Orch run. Hosted CI runs Node and Go checks on
+Windows, Linux and macOS; it **does not run this live-host smoke**. Other
+platforms and the installed manual Delivery workflow remain separately qualified.
+
+Windows junctions that the Go runtime cannot resolve are refused by shared
+path checks, including existing and not-yet-created targets. The smoke checks
+aliases escaping to primary and sibling files. Native evaluation's separate
+verified alias resolver and its stricter namespace/drive/link rules remain.
 
 ## Install order
 
 The adapter is not published to npm and releases do not publish an npm
 artifact. Install the checked-out `adapters/opencode/` package — the
 same directory CI installs with `npm ci --prefix adapters/opencode` —
-then load its plugin module and canonical skills directory from absolute paths.
+then load its package directory and canonical skills directory from absolute paths.
 
 1. Install the `orch` binary first, then clone the repository somewhere
    persistent (not into a project it will orchestrate):
@@ -125,13 +144,13 @@ then load its plugin module and canonical skills directory from absolute paths.
    npm ci --prefix adapters/opencode
    ```
 
-2. Append the absolute plugin module path and canonical skill source to the
+2. Append the absolute plugin package directory and canonical skill source to the
    existing `plugins` and `skills` arrays in OpenCode V2's `opencode.json`.
    Keep all unrelated configuration, plugin entries, and skill-source entries:
 
    ```json
    {
-     "plugins": ["/absolute/path/to/orch/adapters/opencode/src/index.js"],
+     "plugins": ["/absolute/path/to/orch/adapters/opencode"],
      "skills": ["/absolute/path/to/orch/adapters/opencode/skills"]
    }
    ```
@@ -140,7 +159,8 @@ then load its plugin module and canonical skills directory from absolute paths.
    source makes updates available after a service restart without copying skill
    files into OpenCode's global skill directory.
 
-   The module is supplied by the local
+   Configured local paths must be directories; current V2 skips a configured
+   single-file path. The server module is supplied by the local
    `@kninetimmy/orch-opencode` package; `npm install
    @kninetimmy/orch-opencode` is not an installation path because that
    package is not published.
@@ -194,10 +214,11 @@ opencode2 api get /api/plugin
 orch doctor --host opencode
 ```
 
-The configured absolute module and skill-source paths stay the same. If the
-checkout path changes, update `opencode.json` to the new absolute
-`adapters/opencode/src/index.js` and `adapters/opencode/skills` paths before
-restarting.
+If the existing Orch plugin entry ends in `adapters/opencode/src/index.js`,
+replace only that entry with the absolute `adapters/opencode` package directory.
+Keep unrelated plugin entries and the canonical `adapters/opencode/skills`
+source. If the checkout moves, update those two absolute directory paths
+before restarting. The old file entry is not a fallback loading mechanism.
 
 ## Limitations
 

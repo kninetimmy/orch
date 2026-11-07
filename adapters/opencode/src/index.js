@@ -1,5 +1,6 @@
 import { spawnSync } from "node:child_process"
-import { Plugin } from "@opencode-ai/plugin"
+import { isAbsolute } from "node:path"
+import { Plugin } from "@opencode/plugin"
 
 export const pluginID = "orch.delivery"
 export const mutationTools = new Set(["edit", "write", "patch"])
@@ -35,6 +36,14 @@ export function runOrch(args, cwd = process.cwd()) {
   return result.stdout
 }
 
+function sessionDirectory(session) {
+  const directory = session?.location?.directory
+  if (typeof directory !== "string" || !isAbsolute(directory)) {
+    throw new Error("orch: session directory is not an absolute path")
+  }
+  return directory
+}
+
 export function definePlugin(run = runOrch) {
   return Plugin.define({
     id: pluginID,
@@ -43,16 +52,17 @@ export function definePlugin(run = runOrch) {
         const paths = mutationPaths(event.tool, event.input)
         if (paths.length === 0) return
         const session = await ctx.session.get({ sessionID: event.sessionID })
-        run(["guard", "check", "--", ...paths], session.location.directory)
+        run(["guard", "check", "--", ...paths], sessionDirectory(session))
       })
       await ctx.session.hook("context", async (event) => {
         const session = await ctx.session.get({ sessionID: event.sessionID })
+        const directory = sessionDirectory(session)
         const args = ["hook", "opencode", "session-start"]
         if (!session.parentID) {
           const model = `${event.model.providerID}/${event.model.id}${event.model.variant ? `#${event.model.variant}` : ""}`
           args.push("--model", model)
         }
-        const text = run(args, session.location.directory)
+        const text = run(args, directory)
         if (text) event.system.push({ type: "text", text })
       })
     },

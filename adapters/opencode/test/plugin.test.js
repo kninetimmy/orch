@@ -1,7 +1,10 @@
 import assert from "node:assert/strict"
+import { mkdtemp, rm } from "node:fs/promises"
+import { tmpdir } from "node:os"
+import path from "node:path"
 import test from "node:test"
 
-import plugin, { definePlugin, mutationPaths, mutationTools, pluginID } from "../src/index.js"
+import plugin, { definePlugin, mutationPaths, mutationTools, pluginID, runOrch } from "../src/index.js"
 
 test("exports the pinned V2 plugin contract", () => {
   assert.equal(pluginID, "orch.delivery")
@@ -90,4 +93,31 @@ test("a denied guard stops before OpenCode can continue", async () => {
     },
   })
   await assert.rejects(hook({ sessionID: "session", agent: "build", tool: "edit", input: { path: "tracked.txt", oldString: "a", newString: "b" } }), /denied/)
+})
+
+test("both hooks fail closed without an absolute session directory", async () => {
+  for (const session of [undefined, {}, { location: {} }, { location: { directory: "relative" } }]) {
+    const hooks = []
+    let calls = 0
+    await definePlugin(() => calls++).setup({
+      tool: { hook: async (_, callback) => hooks.push(callback) },
+      session: { get: async () => session, hook: async (_, callback) => hooks.push(callback) },
+    })
+    await assert.rejects(hooks[0]({ sessionID: "session", tool: "write", input: { path: "tracked.txt" } }), /session directory/)
+    await assert.rejects(hooks[1]({ sessionID: "session", model: { providerID: "test", id: "model" }, system: [] }), /session directory/)
+    assert.equal(calls, 0)
+  }
+})
+
+test("missing orch is an error, not permission to continue", async () => {
+  const directory = await mkdtemp(path.join(tmpdir(), "orch-plugin-unit-"))
+  const previousPath = process.env.PATH
+  try {
+    process.env.PATH = directory
+    assert.throws(() => runOrch(["guard", "check", "--", "tracked.txt"], directory), /orch:.*ENOENT/)
+  } finally {
+    process.env.PATH = previousPath
+    assert(path.resolve(directory).startsWith(path.resolve(tmpdir()) + path.sep))
+    await rm(directory, { recursive: true })
+  }
 })
