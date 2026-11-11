@@ -61,6 +61,18 @@ func runMCP(env Env, args []string) error {
 		// Keep the engine's document intact instead of maintaining another schema.
 		return nil, doc, nil
 	})
+	mcp.AddTool(server, &mcp.Tool{
+		Name:        "orch_run_next",
+		Description: "Inspect engine-derived next actions, prerequisites, blockers and approval requirements without advancing the bound repository's run (same document as orch run next --json).",
+		InputSchema: json.RawMessage(`{"type":"object","properties":{},"additionalProperties":false}`),
+		Annotations: &mcp.ToolAnnotations{ReadOnlyHint: true, OpenWorldHint: new(bool)},
+	}, func(ctx context.Context, _ *mcp.CallToolRequest, _ struct{}) (*mcp.CallToolResult, any, error) {
+		doc, err := run.Next(ctx, run.Env{RepoRoot: root})
+		if err != nil {
+			return nil, nil, err
+		}
+		return nil, doc, nil
+	})
 	return server.Run(context.Background(), &mcp.IOTransport{
 		Reader: io.NopCloser(env.Stdin),
 		Writer: mcpWriter{env.Stdout},

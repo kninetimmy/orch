@@ -48,10 +48,12 @@ func TestMCPStdio(t *testing.T) {
 		if doc := mcpParity(t, ctx, binary, root, session); doc.Mode != state.ModeAssist || !doc.Consistent {
 			t.Fatalf("initial status = %+v", doc)
 		}
-		for _, args := range []any{map[string]any{"repo": cwd}, map[string]any{"unexpected": true}, []any{}} {
-			result := mcpCall(t, ctx, session, root, args)
-			if !result.IsError || result.StructuredContent != nil {
-				t.Fatalf("unexpected arguments accepted: %+v", result)
+		for _, tool := range []string{"orch_run_status", "orch_run_next"} {
+			for _, args := range []any{map[string]any{"repo": cwd}, map[string]any{"repo_root": cwd}, map[string]any{"unexpected": true}, []any{}, "not an object", 1} {
+				result := mcpCall(t, ctx, session, root, tool, args)
+				if !result.IsError || result.StructuredContent != nil {
+					t.Fatalf("%s accepted unexpected arguments: %+v", tool, result)
+				}
 			}
 		}
 
@@ -102,7 +104,7 @@ func TestMCPStdio(t *testing.T) {
 			t.Fatalf("orphaned-lock status = %+v", doc)
 		}
 		mcpWrite(t, filepath.Join(root, state.Path), []byte("{corrupt state"))
-		result := mcpCall(t, ctx, session, root, map[string]any{})
+		result := mcpCall(t, ctx, session, root, "orch_run_status", map[string]any{})
 		if !result.IsError || result.StructuredContent != nil || len(result.Content) != 1 {
 			t.Fatalf("corrupt state result = %+v", result)
 		}
@@ -116,9 +118,137 @@ func TestMCPStdio(t *testing.T) {
 		closeSession()
 	})
 
+	t.Run("next guidance", func(t *testing.T) {
+		root, cwd := t.TempDir(), t.TempDir()
+		writeConfig(t, root, validTOML+"\n[metrics]\nenabled = true\n")
+		writeConfig(t, cwd, "invalid other repository [")
+		mcpWrite(t, filepath.Join(cwd, state.Path), []byte("{corrupt cwd"))
+		ctx, cancel := context.WithTimeout(t.Context(), 30*time.Second)
+		defer cancel()
+		session, closeSession := mcpConnect(t, ctx, binary, cwd, root, "--repo", root)
+		mcpDiscover(t, ctx, session, root)
+		if doc := mcpNextParity(t, ctx, binary, root, session); doc.Mode != state.ModeAssist || doc.Actions[0].Action != "plan" || doc.Actions[0].ApprovalRequired == "" {
+			t.Fatalf("Assist guidance = %+v", doc)
+		}
+		st, err := state.EnterDelivery(root, "claude", testApprovedPlanRef(t, root), []state.Issue{{PlanID: "a", Phase: state.PhasePlanned}, {PlanID: "b", Phase: state.PhasePlanned}})
+		if err != nil {
+			t.Fatal(err)
+		}
+		selection := manifest.Selection{Model: "claude-sonnet-5", Effort: "xhigh"}
+		for i := range st.Run.Issues {
+			issue := &st.Run.Issues[i]
+			issue.Number = i + 1
+			issue.Branch = fmt.Sprintf("orch/issue-%d", issue.Number)
+			issue.Worktree = fmt.Sprintf(".orchestrator/worktrees/issue-%d", issue.Number)
+			issue.Objective = "Preserve the approved work"
+			issue.AcceptanceCriteria = []string{"inspection never changes the repository"}
+			issue.RequiredTests = []string{"go test ./..."}
+			issue.Decision = &state.Decision{Role: manifest.RoleImplementer, Executor: selection, Reviewer: selection, Rationale: "fixture"}
+		}
+		st.Run.Issues[0].Phase = state.PhaseDispatched
+		st.Run.Issues[1].Phase = state.PhaseWorktreeReady
+		st.Run.Issues[1].DependsOn = []string{"a"}
+		save := func() {
+			t.Helper()
+			if err := state.Save(root, st); err != nil {
+				t.Fatal(err)
+			}
+		}
+		save()
+		doc := mcpNextParity(t, ctx, binary, root, session)
+		if doc.Actions[0].Action != "implement" || doc.Actions[1].Action != "wait" || len(doc.Actions[1].Blockers) == 0 {
+			t.Fatalf("dependency guidance = %+v", doc)
+		}
+		// Exercise each remaining phase in the same real stdio connection.
+		for _, tc := range []struct {
+			phase  state.Phase
+			action string
+		}{
+			{state.PhasePROpen, "review"},
+			{state.PhaseInReview, "merge-report"},
+			{state.PhaseAwaitingMerge, "merge"},
+			{state.PhaseMerged, "cleanup"},
+		} {
+			st.Run.Issues[0].Phase = tc.phase
+			st.Run.Issues[0].PRNumber = 10
+			if tc.phase != state.PhasePROpen {
+				st.Run.Issues[0].LastReviewVerdict = run.VerdictApprove
+			}
+			if tc.phase == state.PhaseAwaitingMerge || tc.phase == state.PhaseMerged {
+				st.Run.Issues[0].ApprovedHeadOID = "fixture-approved-head"
+			}
+			save()
+			doc := mcpNextParity(t, ctx, binary, root, session)
+			if doc.Actions[0].Action != tc.action || len(doc.Actions[0].Prerequisites) == 0 {
+				t.Fatalf("phase %s guidance = %+v", tc.phase, doc)
+			}
+			if tc.phase == state.PhaseAwaitingMerge && !strings.Contains(doc.Actions[0].ApprovalRequired, run.MergeApprovalStatement) {
+				t.Fatal("missing human merge approval")
+			}
+		}
+		st.Run.Issues[0].Phase = state.PhaseAbandoned
+		save()
+		if doc := mcpNextParity(t, ctx, binary, root, session); doc.Actions[1].Action != "replan" || doc.Actions[1].ApprovalRequired == "" {
+			t.Fatalf("abandoned dependency = %+v", doc)
+		}
+		st.Run.Issues[0].Phase = state.PhaseBlocked
+		st.Run.Issues[0].BlockedReason = "criterion needs a decision"
+		st.Run.Issues[0].Blocks = []state.Block{{ID: 1, Cause: state.BlockWrong, Reason: st.Run.Issues[0].BlockedReason}}
+		save()
+		if doc := mcpNextParity(t, ctx, binary, root, session); doc.Actions[0].Action != "resolve-block" {
+			t.Fatalf("decision guidance = %+v", doc)
+		}
+		st.Run.Issues[0].Blocks[0].Resolution = &state.BlockResolution{ResolvedBy: "human", Detail: "scope unchanged", At: "2026-11-11T12:00:00Z", Statement: run.ResolveBlockStatement}
+		save()
+		if doc := mcpNextParity(t, ctx, binary, root, session); doc.Actions[0].Action != "resume" {
+			t.Fatalf("recovery guidance = %+v", doc)
+		}
+		st.Run.StoppedReason = "secret remediation"
+		save()
+		if doc := mcpNextParity(t, ctx, binary, root, session); len(doc.Actions) != 1 || doc.Actions[0].Action != "recover-stopped-run" {
+			t.Fatalf("stopped guidance = %+v", doc)
+		}
+		st.Run.StoppedReason = ""
+		for i := range st.Run.Issues {
+			st.Run.Issues[i].Phase = state.PhaseCleaned
+		}
+		save()
+		if doc := mcpNextParity(t, ctx, binary, root, session); doc.Actions[0].Action != "complete" {
+			t.Fatalf("completion guidance = %+v", doc)
+		}
+		local := filepath.Join(root, ".orchestrator", "config.local.toml")
+		mcpWrite(t, local, []byte("[concurrency]\nmax_subagents = 2\n"))
+		if doc := mcpNextParity(t, ctx, binary, root, session); doc.Actions[0].Action != "restore-or-replan" || len(doc.Actions[0].Blockers) == 0 {
+			t.Fatalf("effective drift = %+v", doc)
+		}
+		if err := os.Remove(local); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.Remove(filepath.Join(root, lockfile.Path)); err != nil {
+			t.Fatal(err)
+		}
+		if doc := mcpNextParity(t, ctx, binary, root, session); doc.Actions[0].Action != "recover" {
+			t.Fatalf("inconsistent guidance = %+v", doc)
+		}
+		mcpWrite(t, filepath.Join(root, state.Path), []byte("{corrupt state"))
+		before := mcpTree(t, root)
+		cmd := mcpProcess(ctx, binary, root, "run", "next", "--json")
+		out, err := cmd.CombinedOutput()
+		result := mcpCall(t, ctx, session, root, "orch_run_next", map[string]any{})
+		if err == nil || !strings.Contains(string(out), "parse .orchestrator/state.json") || !result.IsError || result.StructuredContent != nil || len(result.Content) != 1 {
+			t.Fatalf("corrupt next: CLI=%s err=%v MCP=%+v", out, err, result)
+		}
+		text, ok := result.Content[0].(*mcp.TextContent)
+		if !ok || !strings.Contains(string(out), text.Text) || mcpTree(t, root) != before {
+			t.Fatalf("corrupt-state error parity/no-write failed: %+v", result)
+		}
+		mcpDiscover(t, ctx, session, root)
+		closeSession()
+	})
+
 	t.Run("repository binding", func(t *testing.T) {
 		root := t.TempDir()
-		writeConfig(t, root, "invalid config is not loaded")
+		writeConfig(t, root, validTOML)
 		alias := root + string(filepath.Separator) + "."
 		if runtime.GOOS != "windows" {
 			alias = filepath.Join(t.TempDir(), "repo alias")
@@ -139,6 +269,7 @@ func TestMCPStdio(t *testing.T) {
 				session, closeSession := mcpConnect(t, ctx, binary, tc.cwd, root, tc.args...)
 				mcpDiscover(t, ctx, session, root)
 				mcpParity(t, ctx, binary, root, session)
+				mcpNextParity(t, ctx, binary, root, session)
 				closeSession()
 			})
 		}
@@ -191,7 +322,7 @@ func mcpProcess(ctx context.Context, binary, cwd string, args ...string) *exec.C
 	cmd := exec.CommandContext(ctx, binary, args...)
 	cmd.Dir = cwd
 	// No Git, gh, memhub or host executable is available to the server.
-	cmd.Env = append(os.Environ(), "PATH=")
+	cmd.Env = append(os.Environ(), "PATH=", "CLAUDE_CODE_SESSION_ID=aaaaaaaa-0000-4000-8000-000000000001")
 	cmd.WaitDelay = 2 * time.Second
 	return cmd
 }
@@ -239,26 +370,29 @@ func mcpDiscover(t *testing.T, ctx context.Context, session *mcp.ClientSession, 
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(list.Tools) != 1 || list.NextCursor != "" {
+	if len(list.Tools) != 2 || list.NextCursor != "" {
 		t.Fatalf("tool discovery = %+v", list)
 	}
-	tool := list.Tools[0]
-	if tool.Name != "orch_run_status" || tool.Annotations == nil || !tool.Annotations.ReadOnlyHint {
-		t.Fatalf("tool = %+v", tool)
-	}
 	want := mcpDecoded(t, []byte(`{"type":"object","properties":{},"additionalProperties":false}`))
-	if !reflect.DeepEqual(tool.InputSchema, want) {
-		t.Fatalf("input schema = %#v, want %#v", tool.InputSchema, want)
+	seen := map[string]bool{}
+	for _, tool := range list.Tools {
+		if (tool.Name != "orch_run_status" && tool.Name != "orch_run_next") || seen[tool.Name] || tool.Annotations == nil || !tool.Annotations.ReadOnlyHint || tool.Annotations.OpenWorldHint == nil || *tool.Annotations.OpenWorldHint {
+			t.Fatalf("tool = %+v", tool)
+		}
+		seen[tool.Name] = true
+		if !reflect.DeepEqual(tool.InputSchema, want) {
+			t.Fatalf("%s input schema = %#v, want %#v", tool.Name, tool.InputSchema, want)
+		}
 	}
 	if mcpTree(t, root) != before {
 		t.Fatal("discovery changed repository files")
 	}
 }
 
-func mcpCall(t *testing.T, ctx context.Context, session *mcp.ClientSession, root string, args any) *mcp.CallToolResult {
+func mcpCall(t *testing.T, ctx context.Context, session *mcp.ClientSession, root, tool string, args any) *mcp.CallToolResult {
 	t.Helper()
 	before := mcpTree(t, root)
-	result, err := session.CallTool(ctx, &mcp.CallToolParams{Name: "orch_run_status", Arguments: args})
+	result, err := session.CallTool(ctx, &mcp.CallToolParams{Name: tool, Arguments: args})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -270,33 +404,60 @@ func mcpCall(t *testing.T, ctx context.Context, session *mcp.ClientSession, root
 
 func mcpParity(t *testing.T, ctx context.Context, binary, root string, session *mcp.ClientSession) *run.StatusDoc {
 	t.Helper()
-	before := mcpTree(t, root)
-	cmd := mcpProcess(ctx, binary, root, "run", "status", "--json")
-	out, err := cmd.CombinedOutput()
-	if err != nil {
-		t.Fatalf("CLI status: %v: %s", err, out)
-	}
-	result := mcpCall(t, ctx, session, root, map[string]any{})
-	if result.IsError || len(result.Content) != 1 {
-		t.Fatalf("status result = %+v", result)
-	}
-	text, ok := result.Content[0].(*mcp.TextContent)
-	if !ok {
-		t.Fatalf("status content = %T", result.Content[0])
-	}
-	want := mcpDecoded(t, out)
-	if !reflect.DeepEqual(result.StructuredContent, want) || !reflect.DeepEqual(mcpDecoded(t, []byte(text.Text)), want) {
-		t.Fatalf("status mismatch: CLI=%s structured=%v text=%s", out, result.StructuredContent, text.Text)
-	}
-	if mcpTree(t, root) != before {
-		t.Fatal("discovery/status changed repository files")
-	}
+	out := mcpDocumentParity(t, ctx, binary, root, session, "status")
 	var doc run.StatusDoc
 	if err := json.Unmarshal(out, &doc); err != nil {
 		t.Fatal(err)
 	}
-	t.Logf("CLI = structured = JSON text: schema=%d mode=%s consistent=%t", doc.SchemaVersion, doc.Mode, doc.Consistent)
+	if doc.SchemaVersion != 4 {
+		t.Fatalf("status schema changed: %d", doc.SchemaVersion)
+	}
+	t.Logf("CLI = structured = JSON text: status schema=%d mode=%s consistent=%t", doc.SchemaVersion, doc.Mode, doc.Consistent)
 	return &doc
+}
+
+func mcpNextParity(t *testing.T, ctx context.Context, binary, root string, session *mcp.ClientSession) *run.NextDoc {
+	t.Helper()
+	out := mcpDocumentParity(t, ctx, binary, root, session, "next")
+	var doc run.NextDoc
+	if err := json.Unmarshal(out, &doc); err != nil {
+		t.Fatal(err)
+	}
+	if doc.SchemaVersion != 1 || len(doc.Actions) == 0 || len(doc.Limitations) == 0 {
+		t.Fatalf("incomplete next guidance: %+v", doc)
+	}
+	var actions []string
+	for _, a := range doc.Actions {
+		actions = append(actions, a.Action)
+	}
+	t.Logf("CLI = structured = JSON text: next schema=%d mode=%s actions=%v; repository unchanged", doc.SchemaVersion, doc.Mode, actions)
+	return &doc
+}
+
+func mcpDocumentParity(t *testing.T, ctx context.Context, binary, root string, session *mcp.ClientSession, verb string) []byte {
+	t.Helper()
+	before := mcpTree(t, root)
+	cmd := mcpProcess(ctx, binary, root, "run", verb, "--json")
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("CLI %s: %v: %s", verb, err, out)
+	}
+	result := mcpCall(t, ctx, session, root, "orch_run_"+verb, map[string]any{})
+	if result.IsError || len(result.Content) != 1 {
+		t.Fatalf("%s result = %+v", verb, result)
+	}
+	text, ok := result.Content[0].(*mcp.TextContent)
+	if !ok {
+		t.Fatalf("%s content = %T", verb, result.Content[0])
+	}
+	want := mcpDecoded(t, out)
+	if !reflect.DeepEqual(result.StructuredContent, want) || !reflect.DeepEqual(mcpDecoded(t, []byte(text.Text)), want) {
+		t.Fatalf("%s mismatch: CLI=%s structured=%v text=%s", verb, out, result.StructuredContent, text.Text)
+	}
+	if mcpTree(t, root) != before {
+		t.Fatalf("%s changed repository files", verb)
+	}
+	return out
 }
 
 func mcpDecoded(t *testing.T, data []byte) any {
@@ -380,9 +541,16 @@ func TestMCPNeverRunsExternalCommands(t *testing.T) {
 		t.Fatal(err)
 	}
 	mcpDiscover(t, ctx, session, env.RepoRoot)
-	mcpCall(t, ctx, session, env.RepoRoot, map[string]any{})
+	mcpCall(t, ctx, session, env.RepoRoot, "orch_run_status", map[string]any{})
+	mcpCall(t, ctx, session, env.RepoRoot, "orch_run_next", map[string]any{})
+	mcpWrite(t, filepath.Join(env.RepoRoot, ".orchestrator", "config.toml"), []byte(validTOML))
+	if _, err := state.EnterDelivery(env.RepoRoot, "claude", testApprovedPlanRef(t, env.RepoRoot), testIssues()); err != nil {
+		t.Fatal(err)
+	}
+	mcpCall(t, ctx, session, env.RepoRoot, "orch_run_next", map[string]any{})
 	mcpWrite(t, filepath.Join(env.RepoRoot, state.Path), []byte("{corrupt state"))
-	mcpCall(t, ctx, session, env.RepoRoot, map[string]any{})
+	mcpCall(t, ctx, session, env.RepoRoot, "orch_run_status", map[string]any{})
+	mcpCall(t, ctx, session, env.RepoRoot, "orch_run_next", map[string]any{})
 	if err := session.Close(); err != nil {
 		t.Fatal(err)
 	}

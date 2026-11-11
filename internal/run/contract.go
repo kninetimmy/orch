@@ -63,7 +63,24 @@ func effectiveContract(plan *PlanDoc, cfg *config.Config) (*approvalContract, er
 	return &approvalContract{Plan: plan, Execution: execution, Issues: issues}, nil
 }
 
-// checkExecutionConfig is shared by every lifecycle verb and resume. Legacy
+// loadExecutionConfig is the read-only configuration precondition shared by
+// lifecycle verbs, resume and next-action inspection. It never records a
+// session; loadVerb retains that separate write for its existing callers.
+func loadExecutionConfig(env Env, st *state.State) (*config.Config, error) {
+	cfg, err := config.Load(env.RepoRoot)
+	if err != nil {
+		return nil, err
+	}
+	if cfg.ConfigRevision != st.Run.Plan.ConfigRevision {
+		return nil, fmt.Errorf("%w: config revision %q does not match the run's %q; run `orch abort`, ship the config change on its own Delivery run, then re-plan", ErrConfigDrift, cfg.ConfigRevision, st.Run.Plan.ConfigRevision)
+	}
+	if err := checkExecutionConfig(cfg, st); err != nil {
+		return nil, err
+	}
+	return cfg, nil
+}
+
+// checkExecutionConfig is shared by every lifecycle verb, resume and next. Legacy
 // records remain inspectable, but are never upgraded into a new authorization.
 func checkExecutionConfig(cfg *config.Config, st *state.State) error {
 	run := st.Run

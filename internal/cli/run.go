@@ -15,11 +15,11 @@ import (
 )
 
 // runUsage is the one-line usage for the adapter plumbing surface.
-const runUsage = "orch run: usage: orch run plan|activate|dispatch|pr-open|review-worktree|review|escalate|ci|merge-report|merge|block|resolve-block|abandon|cleanup|complete (JSON document on stdin) | orch run status --json"
+const runUsage = "orch run: usage: orch run plan|activate|dispatch|pr-open|review-worktree|review|escalate|ci|merge-report|merge|block|resolve-block|abandon|cleanup|complete (JSON document on stdin) | orch run status|next --json"
 
 // runVerbs maps each document-taking verb to its run-engine entry point.
 // Every one reads a JSON request on stdin and writes a JSON result on
-// stdout; status is handled separately because it must never read stdin.
+// stdout; status and next are separate because neither may read stdin.
 var runVerbs = map[string]func(context.Context, run.Env, []byte) (any, error){
 	"plan":            adaptRunVerb(run.Plan),
 	"activate":        adaptRunVerb(run.Activate),
@@ -52,14 +52,17 @@ func adaptRunVerb[T any](fn func(context.Context, run.Env, []byte) (T, error)) f
 }
 
 // runRunVerb dispatches the adapter-facing plumbing verbs (PRD §22):
-// `orch run <verb>` (JSON stdin/stdout) plus `orch run status --json`.
+// `orch run <verb>` (JSON stdin/stdout) plus `orch run status|next --json`.
 // Host adapters shell out to it after their own native dialogs; it is
 // never invoked by a human directly.
 func runRunVerb(env Env, args []string) error {
-	// status is the one verb that must not block on a console stdin that
-	// never reaches EOF, so it is matched first and never reads input.
-	if len(args) == 2 && args[0] == "status" && args[1] == "--json" {
-		return emitRunResult(env, "status", func(ctx context.Context, runEnv run.Env) (any, error) {
+	// Before next, status alone bypassed stdin. Both inspection commands
+	// now bypass stdin and mutation serialization, even on a console.
+	if len(args) == 2 && (args[0] == "status" || args[0] == "next") && args[1] == "--json" {
+		return emitRunResult(env, args[0], func(ctx context.Context, runEnv run.Env) (any, error) {
+			if args[0] == "next" {
+				return run.Next(ctx, runEnv)
+			}
 			return run.Status(ctx, runEnv)
 		})
 	}
@@ -85,8 +88,8 @@ func runRunVerb(env Env, args []string) error {
 			return handler(ctx, runEnv, input)
 		})
 	}
-	// Plan is the only document-taking read-only run verb. Status was
-	// handled above; every other runVerbs entry is a mutating Delivery
+	// Plan is the only document-taking read-only run verb. Status and next
+	// were handled above; every other runVerbs entry is a mutating Delivery
 	// command and holds one repository serializer through its final state
 	// and metrics write. This is a command-class rule, not a Dispatch-only
 	// restriction.

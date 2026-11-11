@@ -48,6 +48,9 @@ func TestRunVerbUsageErrors(t *testing.T) {
 		{"run", "status"},          // missing --json
 		{"run", "plan", "extra"},   // too many args
 		{"run", "status", "--xml"}, // wrong flag
+		{"run", "next"},
+		{"run", "next", "--xml"},
+		{"run", "next", "--json", "--repo", "other"},
 	}
 	for _, args := range cases {
 		t.Run(strings.Join(args, " "), func(t *testing.T) {
@@ -108,7 +111,7 @@ func TestRunStatusJSONEndToEnd(t *testing.T) {
 type blockingReader struct{ t *testing.T }
 
 func (r blockingReader) Read([]byte) (int, error) {
-	r.t.Fatal("status read stdin; it must not (a console stdin never reaches EOF)")
+	r.t.Fatal("inspection read stdin; it must not (a console stdin never reaches EOF)")
 	return 0, nil
 }
 
@@ -128,6 +131,19 @@ func TestRunStatusNeverReadsStdin(t *testing.T) {
 	}
 }
 
+func TestRunNextNeverReadsStdin(t *testing.T) {
+	env, stdout, stderr := testEnv(t)
+	writeConfig(t, env.RepoRoot, validTOML)
+	env.Stdin = blockingReader{t: t}
+	before := mcpTree(t, env.RepoRoot)
+	if code := Run([]string{"run", "next", "--json"}, env); code != ExitOK {
+		t.Fatalf("exit = %d; stderr = %s", code, stderr.String())
+	}
+	if !strings.Contains(stdout.String(), `"action": "plan"`) || mcpTree(t, env.RepoRoot) != before {
+		t.Fatalf("guidance missing or repository changed: %s", stdout.String())
+	}
+}
+
 func TestRunPlanAndStatusDoNotWaitForMutationSerialization(t *testing.T) {
 	env, _, _ := testEnv(t)
 	writeConfig(t, env.RepoRoot, validTOML)
@@ -144,6 +160,7 @@ func TestRunPlanAndStatusDoNotWaitForMutationSerialization(t *testing.T) {
 	for name, args := range map[string][]string{
 		"plan":   {"run", "plan"},
 		"status": {"run", "status", "--json"},
+		"next":   {"run", "next", "--json"},
 	} {
 		t.Run(name, func(t *testing.T) {
 			callEnv := env

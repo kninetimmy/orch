@@ -10,6 +10,7 @@
 //	orch run plan            # plan JSON on stdin → gate document JSON on stdout
 //	orch run activate        # activation request JSON on stdin → activation result JSON on stdout
 //	orch run status --json   # run-state JSON on stdout
+//	orch run next --json     # local next-action guidance JSON on stdout
 //
 // The per-issue lifecycle verbs (see lifecycle.go) extend the surface —
 // dispatch, pr-open, review-worktree, review, escalate, ci,
@@ -17,7 +18,7 @@
 // complete. Each reads a schema-versioned request document on stdin and
 // writes a schema-versioned result on stdout.
 //
-// Concurrency invariant: plan and status are read-only and never enter
+// Concurrency invariant: plan, status and next are read-only and never enter
 // mutation serialization. Every mutating verb acquires or re-verifies the
 // run-spanning cross-host Delivery lock: activate enters Delivery via
 // state.EnterDelivery, and each lifecycle verb runs the shared preconditions

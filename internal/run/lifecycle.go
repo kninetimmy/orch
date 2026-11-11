@@ -120,14 +120,8 @@ func loadVerb(env Env, issueNumber int, allowed []state.Phase, exemptStop bool) 
 	}
 	// CheckConsistent + validate guarantee st.Run is non-nil and its ID
 	// matches the lock owner here (the PR A concurrency invariant).
-	cfg, err := config.Load(env.RepoRoot)
+	cfg, err := loadExecutionConfig(env, st)
 	if err != nil {
-		return nil, err
-	}
-	if cfg.ConfigRevision != st.Run.Plan.ConfigRevision {
-		return nil, fmt.Errorf("%w: config revision %q does not match the run's %q; run `orch abort`, ship the config change on its own Delivery run, then re-plan", ErrConfigDrift, cfg.ConfigRevision, st.Run.Plan.ConfigRevision)
-	}
-	if err := checkExecutionConfig(cfg, st); err != nil {
 		return nil, err
 	}
 	if !exemptStop && st.Run.StoppedReason != "" {
