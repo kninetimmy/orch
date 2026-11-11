@@ -87,6 +87,22 @@ func runMCP(env Env, args []string) error {
 		}
 		return nil, doc, nil
 	})
+	mcp.AddTool(server, &mcp.Tool{
+		Name:        "orch_doctor",
+		Description: "Inspect environment and configuration health without repairs (same report as orch doctor --json [--host <claude|codex|opencode>]). Uses read-only tool, authentication, repository and configured-host probes. Failed checks return an unhealthy report, not a tool error.",
+		InputSchema: json.RawMessage(`{"type":"object","properties":{"host":{"type":"string","enum":["claude","codex","opencode"]}},"additionalProperties":false}`),
+		Annotations: &mcp.ToolAnnotations{ReadOnlyHint: true, OpenWorldHint: new(true)},
+	}, func(ctx context.Context, _ *mcp.CallToolRequest, input struct {
+		Host string `json:"host,omitempty"`
+	}) (*mcp.CallToolResult, any, error) {
+		doctorEnv := env
+		doctorEnv.RepoRoot = root
+		doc, err := doctorReport(doctorEnv, input.Host)
+		if err != nil {
+			return nil, nil, err
+		}
+		return nil, doc, nil
+	})
 	return server.Run(context.Background(), &mcp.IOTransport{
 		Reader: io.NopCloser(env.Stdin),
 		Writer: mcpWriter{env.Stdout},

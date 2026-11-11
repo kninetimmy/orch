@@ -1,6 +1,8 @@
 package cli
 
 import (
+	"bytes"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
@@ -171,6 +173,11 @@ func TestDoctorHostArgumentErrors(t *testing.T) {
 		{name: "invalid host", args: []string{"doctor", "--host", "other"}, want: `invalid host "other"`},
 		{name: "unexpected argument", args: []string{"doctor", "extra"}, want: doctorUsage},
 		{name: "extra argument", args: []string{"doctor", "--host", "claude", "extra"}, want: doctorUsage},
+		{name: "repository override", args: []string{"doctor", "--json", "--repo", "elsewhere"}, want: doctorUsage},
+		{name: "unknown flag", args: []string{"doctor", "--json", "--other"}, want: doctorUsage},
+		{name: "duplicate json", args: []string{"doctor", "--json", "--json"}, want: doctorUsage},
+		{name: "duplicate host", args: []string{"doctor", "--host", "claude", "--host", "codex"}, want: doctorUsage},
+		{name: "empty host", args: []string{"doctor", "--json", "--host", ""}, want: doctorUsage},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
@@ -1475,6 +1482,153 @@ func TestDoctorReportsClaudeCodeVersion(t *testing.T) {
 			}
 			if !strings.Contains(stdout.String(), tc.want) {
 				t.Errorf("output missing %q:\n%s", tc.want, stdout.String())
+			}
+		})
+	}
+}
+
+func TestDoctorJSONAndHumanShareResults(t *testing.T) {
+	for _, name := range []string{
+		"healthy", "authentication", "absent tools", "configuration", "no GitHub repository", "release advisory",
+		"other host", "selected host", "all hosts", "OpenCode warning", "OpenCode selection",
+		"memhub off", "memhub best effort", "memhub required", "state", "lock", "consistency", "metrics", "conventions",
+	} {
+		t.Run(name, func(t *testing.T) {
+			env, stdout, stderr := testEnv(t)
+			cfg, host, checkName, status, detail := validTOML, "", "git repository", "success", ""
+			runner := fakeRunner{toplevel: env.RepoRoot}
+			switch name {
+			case "authentication":
+				runner.authExit = 1
+				checkName, status, detail = "gh authentication", "failure", "exited 1"
+			case "absent tools":
+				env.LookPath = func(string) (string, error) { return "", errNotFound }
+				checkName, status = "git on PATH", "failure"
+			case "configuration":
+				cfg = "not valid TOML ["
+				checkName, status = "configuration", "failure"
+			case "no GitHub repository":
+				runner.repoExit = 1
+				checkName, status, detail = "gh repository", "advisory", "Delivery will fail closed"
+			case "release advisory":
+				old := Version
+				Version = "v1.2.3"
+				t.Cleanup(func() { Version = old })
+				runner.releaseExit, runner.releaseStderr = 1, "offline"
+				checkName, status, detail = "release check", "advisory", "offline"
+			case "other host", "selected host", "all hosts":
+				cfg, host = validBothHostsTOML, "claude"
+				runner.codexPluginExit, runner.codexPluginStderr = 1, "unavailable"
+				checkName, status, detail = "codex adapter", "advisory", "selected host is claude"
+				if name != "other host" {
+					status, detail = "failure", "unavailable"
+					if name == "selected host" {
+						host = "codex"
+					} else {
+						host = ""
+					}
+				}
+			case "OpenCode warning", "OpenCode selection":
+				cfg, host = validOpenCodeTOML, "opencode"
+				runner.opencodeVersion = "opencode v2.10.0"
+				checkName, status, detail = "opencode runtime", "advisory", "continuing required contract checks"
+				if name == "OpenCode selection" {
+					runner.opencodeCatalog = openCodeCatalogResponse(env.RepoRoot, "")
+					checkName, status, detail = "opencode architect selection", "failure", "choose an available OpenCode selection"
+				}
+			case "memhub off":
+				checkName, status, detail = "memhub", "advisory", "skipped (mode off)"
+			case "memhub best effort", "memhub required":
+				mode := "best-effort"
+				checkName, status, detail = "memhub", "advisory", "unreachable"
+				if name == "memhub required" {
+					mode, status = "required", "failure"
+				}
+				cfg = strings.Replace(cfg, `mode = "off"`, `mode = "`+mode+`"`, 1)
+				runner.memhubStatusExit, runner.memhubStatusStderr = 1, "unreachable"
+			case "state":
+				checkName, status = "state file", "failure"
+			case "lock":
+				checkName, status = "delivery lock", "failure"
+			case "consistency":
+				checkName, status, detail = "state/lock consistency", "failure", "orch abort"
+			case "metrics":
+				cfg = metricsEnabledTOML
+				checkName, status, detail = "metrics .gitignore", "failure", "orch configure"
+			case "conventions":
+				checkName, status, detail = "project conventions", "advisory", "CLAUDE.md holds the Orch managed block"
+			}
+			writeConfig(t, env.RepoRoot, cfg)
+			switch name {
+			case "state":
+				mcpWrite(t, filepath.Join(env.RepoRoot, state.Path), []byte("{corrupt"))
+			case "lock":
+				mcpWrite(t, filepath.Join(env.RepoRoot, lockfile.Path), []byte("{corrupt"))
+			case "consistency":
+				if err := lockfile.Acquire(env.RepoRoot, lockfile.Owner{RunID: "orphan", Host: "claude", Hostname: "fixture", PID: 123, AcquiredAt: time.Now().UTC()}); err != nil {
+					t.Fatal(err)
+				}
+			case "conventions":
+				writeInstructionFile(t, env.RepoRoot, "CLAUDE.md", managedBlock(t))
+			}
+			rootInfo, err := os.Stat(env.RepoRoot)
+			if err != nil {
+				t.Fatal(err)
+			}
+			runner.beforeRun = func(cmd execx.Cmd) {
+				dirInfo, err := os.Stat(cmd.Dir)
+				if err != nil {
+					t.Fatalf("stat probe directory %q: %v", cmd.Dir, err)
+				}
+				// Git and GitHub canonicalize the root, which can change its
+				// spelling (e.g. /var to /private/var on macOS), not its identity.
+				if !os.SameFile(rootInfo, dirInfo) {
+					t.Errorf("probe escaped root %q: %+v", env.RepoRoot, cmd)
+				}
+				if strings.HasPrefix(name, "memhub ") && cmd.Name == "memhub" && cmd.Args[0] == "recall" {
+					t.Fatal("recall ran despite health failure or mode off")
+				}
+			}
+			env.Runner = runner
+			before := mcpTree(t, env.RepoRoot)
+			args := []string{"doctor"}
+			if host != "" {
+				args = append(args, "--host", host)
+			}
+			wantExit := ExitOK
+			if status == "failure" {
+				wantExit = ExitError
+			}
+			if code := Run(append(append([]string(nil), args...), "--json"), env); code != wantExit {
+				t.Fatalf("JSON exit=%d want=%d stdout=%s stderr=%s", code, wantExit, stdout, stderr)
+			}
+			var doc DoctorReport
+			if err := json.Unmarshal(stdout.Bytes(), &doc); err != nil {
+				t.Fatalf("invalid JSON report: %v: %s", err, stdout)
+			}
+			if doc.SchemaVersion != 1 || doc.Version != Version || doc.SelectedHost != host || doc.Healthy != (wantExit == ExitOK) {
+				t.Fatalf("report metadata: %+v", doc)
+			}
+			found := false
+			for _, check := range doc.Checks {
+				if check.Name == checkName && check.Status == status && strings.Contains(check.Detail, detail) {
+					found = true
+				}
+				if check.Status != "success" && check.Status != "failure" && check.Status != "advisory" {
+					t.Fatalf("invalid outcome: %+v", check)
+				}
+			}
+			if !found {
+				t.Fatalf("missing %s/%s/%s: %+v", checkName, status, detail, doc)
+			}
+			var rendered bytes.Buffer
+			printDoctor(&rendered, &doc)
+			stdout.Reset()
+			if code := Run(args, env); code != wantExit || stdout.String() != rendered.String() {
+				t.Fatalf("human/JSON mismatch: exit=%d\nhuman=%s\nreport=%s", code, stdout, &rendered)
+			}
+			if mcpTree(t, env.RepoRoot) != before {
+				t.Fatal("doctor changed repository files")
 			}
 		})
 	}

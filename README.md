@@ -422,7 +422,7 @@ usage: orch <command>
 commands:
   init             Interview and bootstrap this repository
   status           Show mode and configuration summary
-  doctor           Check environment and configuration health
+  doctor           Check environment and configuration health (doctor [--host <claude|codex|opencode>] [--json])
   configure        Interview and deliver committed configuration changes
   configure-local  Interview and apply machine-local overrides
   resume           Reconcile an interrupted Delivery run against GitHub and continue
@@ -431,7 +431,7 @@ commands:
   eval             Evaluation preview/run/status/stop/report (eval help for arguments)
   grant            Show the active autonomy grant; grant revoke ends it; grant relay hands it to a fresh Claude Code session; grant preview and grant create propose and record one (JSON stdin/stdout)
   render-agents    Render project agent definitions for every enabled host
-  mcp              Serve read-only run status, next actions and review/merge readiness over stdio (mcp [--repo <path>])
+  mcp              Serve read-only run status, next actions, review/merge readiness and doctor diagnostics over stdio (mcp [--repo <path>])
   run              Adapter plumbing: Delivery verbs (JSON stdin/stdout); inspection: status|next --json, readiness --issue <number> --json
   guard            Adapter plumbing: pre-write enforcement for host hooks (not a human command)
   hook             Adapter plumbing: host lifecycle-event verbs (not a human command)
@@ -446,6 +446,8 @@ human inspection entry points; none grants approval or advances the run.
 
 Before the trial, `mcp` help described live run status alone. After item 3,
 discovery also includes next-action guidance and review/merge readiness.
+After item 4, discovery adds `orch_doctor`, equivalent to `orch doctor --json`
+with optional host selection. Failed checks retain their report and CLI exit 1.
 For optional MCP client access to those reports, see the
 [read-only stdio MCP guide](docs/mcp-status.md). This source-only addition does
 not install anything or replace the host plugins and their enforcement hooks.

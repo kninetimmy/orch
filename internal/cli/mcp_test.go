@@ -249,6 +249,9 @@ func TestMCPStdio(t *testing.T) {
 	t.Run("review and merge readiness", func(t *testing.T) {
 		mcpReadinessExercise(t, binary)
 	})
+	t.Run("doctor diagnostics", func(t *testing.T) {
+		mcpDoctorExercise(t, binary)
+	})
 
 	t.Run("repository binding", func(t *testing.T) {
 		root := t.TempDir()
@@ -374,20 +377,24 @@ func mcpDiscover(t *testing.T, ctx context.Context, session *mcp.ClientSession, 
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(list.Tools) != 3 || list.NextCursor != "" {
+	if len(list.Tools) != 4 || list.NextCursor != "" {
 		t.Fatalf("tool discovery = %+v", list)
 	}
 	want := mcpDecoded(t, []byte(`{"type":"object","properties":{},"additionalProperties":false}`))
 	seen := map[string]bool{}
 	for _, tool := range list.Tools {
 		readiness := tool.Name == "orch_run_readiness"
-		if (tool.Name != "orch_run_status" && tool.Name != "orch_run_next" && !readiness) || seen[tool.Name] || tool.Annotations == nil || !tool.Annotations.ReadOnlyHint || tool.Annotations.OpenWorldHint == nil || *tool.Annotations.OpenWorldHint != readiness {
+		doctor := tool.Name == "orch_doctor"
+		if (tool.Name != "orch_run_status" && tool.Name != "orch_run_next" && !readiness && !doctor) || seen[tool.Name] || tool.Annotations == nil || !tool.Annotations.ReadOnlyHint || tool.Annotations.OpenWorldHint == nil || *tool.Annotations.OpenWorldHint != (readiness || doctor) {
 			t.Fatalf("tool = %+v", tool)
 		}
 		seen[tool.Name] = true
 		wantSchema := want
 		if readiness {
 			wantSchema = mcpDecoded(t, []byte(`{"type":"object","properties":{"issue_number":{"type":"integer","minimum":1}},"required":["issue_number"],"additionalProperties":false}`))
+		}
+		if doctor {
+			wantSchema = mcpDecoded(t, []byte(`{"type":"object","properties":{"host":{"type":"string","enum":["claude","codex","opencode"]}},"additionalProperties":false}`))
 		}
 		if !reflect.DeepEqual(tool.InputSchema, wantSchema) {
 			t.Fatalf("%s input schema = %#v, want %#v", tool.Name, tool.InputSchema, wantSchema)
@@ -531,7 +538,7 @@ func mcpDirectoryLink(t *testing.T, target, link string) {
 
 // Before readiness every tool was local-only. This restriction still applies
 // to all status/next calls (including failures), initialization and discovery;
-// readiness's external read allowlist is tested with a real stdio client.
+// readiness's and doctor's external read allowlists use real stdio clients.
 func TestMCPLocalToolsNeverRunExternalCommands(t *testing.T) {
 	env, _, stderr := testEnv(t)
 	writeConfig(t, env.RepoRoot, "invalid config is not loaded")

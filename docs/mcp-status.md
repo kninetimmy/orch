@@ -1,9 +1,12 @@
-# Read-only status, next actions and review/merge readiness over MCP
+# Read-only status, next actions, readiness and doctor diagnostics over MCP
 
 `orch mcp` is an optional local stdio MCP server using the official Go SDK
 v1.8.0. This is an unreleased source feature, not part of the v0.15.2 binary.
 Build `./cmd/orch` locally with Go 1.26+ to try it; no global installation or
 host configuration edits are performed automatically.
+Building source does not upgrade an installed MCP server. Verify the binary
+your client actually launches and its discovered tools; installation and host
+configuration remain separate, explicit work.
 
 ## Launch and repository binding
 
@@ -60,6 +63,17 @@ to **every tool this server exposed**, not only `orch_run_status`.
 accepts only `{"issue_number":447}` with a positive integer. Unknown fields,
 including repository overrides, are rejected for **all three tools**. The
 positive-issue argument is readiness-only, not a change to status or next.
+**After trial item 4:** current source discovers exactly **four** read-only
+tools, adding **`orch_doctor`**, which accepts `{}` or only an optional `host`
+from `claude`, `codex` or `opencode`. Unknown fields and repository overrides
+are rejected for **all four tools**. Existing input schemas are unchanged.
+
+| Tool | Input | CLI counterpart (from the bound checkout) | Report schema |
+| --- | --- | --- | --- |
+| `orch_run_status` | `{}` | `orch run status --json` | 4 |
+| `orch_run_next` | `{}` | `orch run next --json` | 1 |
+| `orch_run_readiness` | `{"issue_number":447}` | `orch run readiness --issue 447 --json` | 1 |
+| `orch_doctor` | `{}` or `{"host":"opencode"}` | `orch doctor --json` or `orch doctor --host opencode --json` | 1 |
 
 Each `orch_run_status` invocation reads fresh local
 state through the same engine as `orch run status --json` and returns that
@@ -74,6 +88,10 @@ not a fabricated Assist result.
 disconnect launched no external commands. **After item 3:** that remains true
 for initialization, discovery, disconnect and every status/next invocation;
 only readiness adds the external read probes documented below. All three tools
+still avoid repository writes and lifecycle mutations, including on failure.
+**After item 4:** doctor also uses external read probes, documented in its own
+section below. Initialization, discovery, disconnect and status/next remain
+local-only; readiness and doctor have `openWorldHint: true`. All four tools
 still avoid repository writes and lifecycle mutations, including on failure.
 This server does not replace the CLI, the thin host plugins or their guards,
 and it does not change Orch's separate memhub CLI integration.
@@ -138,12 +156,13 @@ or abort. That statement clears neither pending decisions nor changed scope.
 **Before item 3:** neither of the two inspection tools recorded a session,
 metrics, an approval, a decision resolution or lifecycle advancement, nor
 mutated git/GitHub. **After item 3:** none of the three inspection tools does
-so. No inspection records a session, metrics, an approval, a decision
-resolution or lifecycle advancement, nor mutates git/GitHub. **A tool call is
+so. **After item 4:** the same holds for all four tools. No inspection records
+a session, metrics, an approval, a decision resolution or lifecycle advancement,
+nor mutates git/GitHub. **A tool call is
 never human approval.** Existing separately authorized grant contracts are
 unchanged, but guidance does not inspect, validate or spend a grant; it cannot
 claim a grant authorizes any suggested action. These restrictions apply to
-**all three inspection tools and all three CLI inspection commands**, not just
+**all four inspection tools and all four CLI inspection commands**, not just
 `Next` or `orch_run_next`. Stateful lifecycle verbs retain their existing behavior.
 
 ## Review and merge readiness
@@ -178,7 +197,7 @@ Read the three stages separately:
 
 ### External read probes and limits
 
-Only readiness, not status/next, opens the existing `ghops` handle in the bound
+Readiness, not status/next, opens the existing `ghops` handle in the bound
 repository and runs this read-only allowlist through the existing runner:
 
 - `gh auth status`
@@ -215,6 +234,83 @@ unchanged; the stricter evidence inspection does not replace those verbs' own
 gates. The shared failed-probe correction described below applies to every
 `RequiredCI` caller, including lifecycle commands.
 
+## Doctor diagnostics
+
+Call `orch_doctor` with `{}` or `{"host":"opencode"}`, or run:
+
+```sh
+orch doctor --json
+orch doctor --host opencode --json
+```
+
+`--json` and `--host` may appear in either order, once each. The tool accepts
+only the optional host string; empty/invalid hosts, wrong types, unknown fields
+and repository overrides are explicit input errors. Selecting a valid but
+unconfigured host is also an error (CLI exit 2), as before. Configuration load
+failures themselves remain diagnostic failures, not input errors.
+
+Both return `DoctorReport`, `schema_version: 1`, with the engine `version`,
+optional `selected_host`, overall `healthy`, and ordered `checks`. Each check
+has its existing `name`, a `status` of `success`, `failure` or `advisory`, and
+`detail` when present. Informational and skipped-check notes are advisories;
+`healthy` means **no failure**, not that every advisory passed. Prerequisite
+failures still skip dependent probes rather than inventing successful checks.
+Names can recur (for example a successful lock read plus a dead-acquirer note).
+
+One collector runs the existing doctor checks for human-readable CLI output,
+JSON and MCP; no rendered text is parsed to recover results. Without `--json`,
+the CLI retains its `ok`, `FAIL` and `note` output and repair suggestions.
+**Ordinary failed checks return the full report**, with `healthy: false` and
+MCP `isError` unset/false; structured content and JSON text agree. The CLI
+prints JSON to stdout before exiting 1, with its failure summary on stderr.
+Consumers must inspect `healthy`, not equate successful MCP transport with a
+healthy environment. Malformed inputs remain tool errors, without a report.
+
+With no host selected, failures for every configured host remain fatal. With
+a selected host, its adapter/model/agent-file failures and all common failures
+remain fatal; other configured hosts' failures become advisories naming the
+selection. Unconfigured hosts are not probed. Authentication still gates the
+GitHub repository and release probes. Missing GitHub association remains an
+Assist advisory, not permission to bypass Delivery's fail-closed preflight.
+Release checks are advisory and skipped on `dev` builds. Memhub `off` skips
+probing; `best-effort` failures are advisory and `required` failures are fatal;
+recall runs only after a successful health probe.
+
+Configuration/local overrides, adapter/runtime and model selections, generated
+agent freshness, managed-block-only project conventions, enabled metrics'
+ignore rule, state/lock consistency and dead-acquirer notes retain their existing
+semantics. Doctor never performs its suggested repairs or initializes missing
+files. It does not record a session, approval, grant use, metrics or lifecycle
+advancement, nor mutate git/GitHub. A healthy report is not a Delivery, review
+or merge authorization and does not replace the normal policy checks.
+
+### Doctor external read probes
+
+All process working directories and OpenCode location queries use the fixed
+bound repository, **not the server's launching directory**:
+
+- PATH lookups for Git, `gh` and configured host executables.
+- `git rev-parse --show-toplevel` verifies repository containment.
+- `gh auth status`, then `gh repo view --json nameWithOwner,defaultBranchRef,url`.
+- For authenticated, non-`dev` builds only,
+  `gh api repos/kninetimmy/orch/releases/latest --jq .tag_name` (fixed upstream,
+  not the working repository). Network/release errors remain advisory.
+- Configured Claude/Codex: `claude plugin list --json` /
+  `codex plugin list --json`; Claude also uses `claude --version`.
+- Configured OpenCode: `opencode2 --version` (with existing `opencode` V2
+  fallback), then the resolved executable's `api get /api/plugin`,
+  `api get /api/skill` and `api get /api/model`, each with the existing encoded
+  `location[directory]` query. Runtime warnings stay advisory; required plugin,
+  live skill-contract and selection checks still run. Raw skill/model settings
+  are not included in the report.
+- When memhub is not off: `memhub status`, then on success
+  `memhub recall "orch memhub recall probe" --json --max-results 1`. These are
+  the existing read-only health/retrieval probes, not memhub writes or rendering.
+
+The other checks read local files and process liveness. These are unlocked
+observations, not atomic guarantees; external tools may be unavailable or slow.
+No tool invocation grants permission to execute a repair from a detail string.
+
 ## Reproducible smoke test and trial checkpoint
 
 From the source checkout, run:
@@ -224,7 +320,7 @@ go test ./internal/cli -run '^TestMCPStdio$' -v -count=1
 ```
 
 This builds a temporary real `orch` binary and uses an SDK client over its
-stdio pipes to initialize, discover and call all three tools, then disconnect and
+stdio pipes to initialize, discover and call all four tools, then disconnect and
 verify a successful process exit. No global install or client configuration
 is needed. The client stays connected while test fixtures change from Assist
 to blocked Delivery and inconsistent state/lock pairs. Output reports
@@ -244,6 +340,14 @@ inspection. Separate
 engine tests cover legacy/unsupported state, invalid configuration, all block
 causes and phase prerequisites, including inspection with metrics enabled and
 a Claude session id present.
+Doctor uses compiled scripted executables with an exact read allowlist, not
+live credentials or host services. Its healthy, failed, advisory, selected-host,
+configuration-failure and absent-tool reports are compared across CLI JSON, MCP
+structured content and JSON text; invalid input is rejected before probes.
+It also checks OpenCode warnings cannot leak human text into protocol stdout,
+unchanged bound/launching repository bytes, and a clean disconnect. Deterministic
+doctor tests compare human output with the same decoded report and cover the
+existing configuration, memhub, state/lock and advisory behavior.
 
 For a manual trial, use the configuration above, connect your client, discover
 `orch_run_status`, and call it with `{}`. Compare its decoded JSON with
@@ -260,17 +364,48 @@ For readiness, select an issue already in the active run, call
 `run readiness --issue <number> --json` from the same bound checkout. Review the
 exact audited commit against the live head and inspect unmet requirements; do
 not call merge-report merely to obtain a read-only preview.
+For diagnostics, call `orch_doctor` with `{}`, compare with `orch doctor --json`,
+then repeat with the same configured host in `{"host":"opencode"}` and
+`orch doctor --host opencode --json`. Inspect `healthy`, individual outcomes and
+details even when the tool call succeeds. CLI exit 1 must still carry JSON.
 
 **Before trial item 2:** This increment implements roadmap item 1 (live status)
 only. **After trial item 2:** source implements live status and read-only
 next-action guidance, not the subsequent readiness/doctor items. **After trial
 item 3:** source also implements read-only readiness, but not item 4 doctor.
+**After trial item 4:** source implements all four trial tools, including doctor.
 No source increment is claimed installed by this guide. The trial
 checkpoint is to **finish roadmap items 1 through 4, then stop and assess the
 benefit against CLI usage before approving later roadmap items**. This status
 server does not approve or implement those later increments.
 
+### Benefit checklist — assess with the user before any expansion
+
+Use a real client bound to the intended checkout and record observations, not
+assumptions or a tool-discovery-only success:
+
+- [ ] **Correct structured evidence:** compare each of the four tool reports
+  with its CLI counterpart. Check live status/blocks, next-action prerequisites,
+  exact review/live heads and CI evidence, and doctor success/failure/advisory
+  details and host selection. Record discrepancies or missing evidence.
+- [ ] **Reduced shell construction:** for the same inspection tasks, record
+  tool calls versus CLI commands, quoting/cwd/argument construction avoided,
+  manual output parsing still needed, and any extra client setup or friction.
+  Decide whether the MCP path actually helped rather than claiming savings.
+- [ ] **Preserved policy checks:** confirm overrides/malformed input fail,
+  failed mandatory probes never become approval or successful checks, repository
+  bytes stay unchanged, and separate guard, review, merge and human approval
+  gates still apply. Do not
+  invoke a mutator merely to test an inspection or treat a call as approval.
+- [ ] **User decision:** review these results with the user after items 1–4.
+  Stop here unless the user judges the benefit worthwhile and separately
+  approves later roadmap scope. Installation, release and later tools are not
+  authorized by completing this source change.
+
 ## Trial item 2 blast radius
+
+The tables below record the earlier increments; the current four-tool contract
+and doctor checks are documented above.
 
 | Touched element | Does its previous behavior still hold? |
 | --- | --- |
