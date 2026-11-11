@@ -105,9 +105,10 @@ func TestOpenCodeDeepSeekPresetCLIApplicationBoundaries(t *testing.T) {
 				}
 				t.Logf("proposed configuration:\n%s", proposal)
 				applyFlag := "--apply"
-				if kind == "init" {
+				switch kind {
+				case "init":
 					applyFlag = "--bootstrap"
-				} else if kind == "configure" {
+				case "configure":
 					applyFlag = "--deliver"
 				}
 				// Application requires explicit final approval, not just a preset.
