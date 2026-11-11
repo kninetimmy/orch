@@ -62,8 +62,8 @@ type command struct {
 
 // commands lists the full PRD §22 surface in documentation order, so
 // `orch help` always shows every logical command even before it works.
-// `run` is listed last and labeled plumbing (F2): it is adapter-facing
-// JSON stdin/stdout, not a command a human runs directly.
+// Mutating `run` verbs remain adapter-facing JSON stdin/stdout plumbing (F2);
+// argv-only read inspections are also available directly.
 func commands() []command {
 	return []command{
 		{"init", "Interview and bootstrap this repository", runInit},
@@ -77,8 +77,8 @@ func commands() []command {
 		{"eval", "Evaluation preview/run/status/stop/report/grade (eval preview --plan FILE; eval help for arguments)", runEval},
 		{"grant", "Show the active autonomy grant; grant revoke ends it; grant relay hands it to a fresh Claude Code session; grant preview and grant create propose and record one (JSON stdin/stdout)", runGrant},
 		{"render-agents", "Render project agent definitions for every enabled host", noArgs("render-agents", runRenderAgents)},
-		{"mcp", "Serve read-only run status and next-action guidance over stdio (mcp [--repo <path>])", runMCP},
-		{"run", "Adapter plumbing: Delivery run verbs (JSON stdin/stdout; not a human command)", runRunVerb},
+		{"mcp", "Serve read-only run status, next actions and review/merge readiness over stdio (mcp [--repo <path>])", runMCP},
+		{"run", "Adapter plumbing: Delivery verbs (JSON stdin/stdout); inspection: status|next --json, readiness --issue <number> --json", runRunVerb},
 		{"guard", "Adapter plumbing: pre-write enforcement for host hooks (not a human command)", runGuard},
 		{"hook", "Adapter plumbing: host lifecycle-event verbs (not a human command)", runHook},
 	}

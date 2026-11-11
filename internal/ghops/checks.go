@@ -50,7 +50,7 @@ type CISummary struct {
 // no-CI-at-all (empty rollup — PRD §16's explicit no-CI statement)
 // before `pr checks --required` reads the required subset, whose
 // exit codes 0 (passing), 1 (something failed), and 8 (pending,
-// documented by gh) are all data, not errors.
+// documented by gh) can carry check data, not just probe errors.
 func (g *GH) RequiredCI(ctx context.Context, number int) (CISummary, error) {
 	var rollup struct {
 		StatusCheckRollup []json.RawMessage `json:"statusCheckRollup"`
@@ -72,7 +72,7 @@ func (g *GH) RequiredCI(ctx context.Context, number int) (CISummary, error) {
 		// Data. gh documents 1 (something failed) and 8 (pending) for
 		// the human-output mode; with --json, gh 2.87.3 exits 0 in
 		// every state (verified live, fact 17). All three are accepted
-		// so the state derivation below owns the signal either way.
+		// with valid check data; a bare failure exit is not CI evidence.
 		// When the repo has checks but branch protection marks none of
 		// them required, gh 2.87.3 exits 0 with empty stdout (not `[]`)
 		// and the stderr notice "no required checks reported on the
@@ -81,19 +81,32 @@ func (g *GH) RequiredCI(ctx context.Context, number int) (CISummary, error) {
 	default:
 		return CISummary{}, fmt.Errorf("gh pr checks in %s exited %d: %s", g.root, res.ExitCode, strings.TrimSpace(res.Stderr))
 	}
+	trimmed, notice := strings.TrimSpace(res.Stdout), strings.TrimSpace(res.Stderr)
+	if trimmed == "" {
+		if res.ExitCode != 0 || !strings.HasPrefix(notice, "no required checks reported on the '") || !strings.HasSuffix(notice, "' branch") || strings.ContainsAny(notice, "\r\n") {
+			return CISummary{}, fmt.Errorf("gh pr checks in %s exited %d without required-check data: %s", g.root, res.ExitCode, notice)
+		}
+		trimmed = "[]" // The supported successful no-required-checks notice.
+	}
 	var decoded []struct {
 		Name   string `json:"name"`
 		State  string `json:"state"`
 		Bucket string `json:"bucket"`
 		Link   string `json:"link"`
 	}
-	if trimmed := strings.TrimSpace(res.Stdout); trimmed != "" {
-		if err := json.Unmarshal([]byte(trimmed), &decoded); err != nil {
-			return CISummary{}, fmt.Errorf("gh pr checks in %s returned unparsable JSON: %w", g.root, err)
-		}
+	if err := json.Unmarshal([]byte(trimmed), &decoded); err != nil {
+		return CISummary{}, fmt.Errorf("gh pr checks in %s returned unparsable JSON: %w", g.root, err)
+	}
+	if decoded == nil || (len(decoded) == 0 && res.ExitCode != 0) {
+		return CISummary{}, fmt.Errorf("gh pr checks in %s exited %d without a valid required-check array: %s", g.root, res.ExitCode, notice)
 	}
 	required := make([]Check, len(decoded))
 	for i, c := range decoded {
+		switch c.Bucket {
+		case "pass", "fail", "pending", "skipping", "cancel":
+		default:
+			return CISummary{}, fmt.Errorf("gh pr checks in %s returned invalid bucket %q for check %q", g.root, c.Bucket, c.Name)
+		}
 		required[i] = Check{Name: c.Name, State: c.State, Bucket: c.Bucket, Link: c.Link}
 	}
 	return CISummary{State: deriveCIState(required), Required: required, Total: total}, nil

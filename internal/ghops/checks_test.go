@@ -2,6 +2,7 @@ package ghops
 
 import (
 	"context"
+	"fmt"
 	"strings"
 	"testing"
 
@@ -94,6 +95,72 @@ func TestRequiredCIFailingExit1(t *testing.T) {
 	}
 }
 
+func TestRequiredCIFailedChecksEmptyStdout(t *testing.T) {
+	root := tempRoot(t)
+	call := checksCall(root, "", 1)
+	call.Stderr = "error connecting to api.github.com"
+	g, script := openScripted(t, root,
+		rollupCall(root, `{"statusCheckRollup":[{}]}`),
+		call,
+	)
+	sum, err := g.RequiredCI(t.Context(), 43)
+	script.AssertExhausted()
+	if err == nil || !strings.Contains(err.Error(), call.Stderr) {
+		t.Fatalf("sum = %+v, err = %v, want explicit probe failure", sum, err)
+	}
+}
+
+func TestRequiredCIInvalidCheckData(t *testing.T) {
+	for _, tc := range []struct {
+		name, stdout, stderr string
+		exit                 int
+	}{
+		{"pending without data", "", "", 8},
+		{"failed whitespace", "\n \t", "network down", 1},
+		{"success without evidence", "", "", 0},
+		{"success with error notice", "", "error connecting to api.github.com", 0},
+		{"failed no-required notice", "", "no required checks reported on the 'main' branch", 1},
+		{"mixed no-required notice", "", "no required checks reported on the 'main' branch\nnetwork down", 0},
+		{"failed empty array", "[]", "", 1},
+		{"pending empty array", "[]", "", 8},
+		{"null array", "null", "", 0},
+		{"failed null array", "null", "network down", 1},
+		{"null check", "[null]", "", 0},
+		{"missing bucket", `[{}]`, "", 0},
+		{"unknown bucket", `[{"name":"build","bucket":"unknown"}]`, "", 1},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			root := tempRoot(t)
+			call := checksCall(root, tc.stdout, tc.exit)
+			call.Stderr = tc.stderr
+			g, script := openScripted(t, root, rollupCall(root, `{"statusCheckRollup":[{}]}`), call)
+			sum, err := g.RequiredCI(t.Context(), 43)
+			script.AssertExhausted()
+			if err == nil || sum.State != "" {
+				t.Fatalf("sum = %+v, err = %v, want invalid probe error and no CI state", sum, err)
+			}
+		})
+	}
+}
+
+func TestRequiredCIValidCheckDataExitCodes(t *testing.T) {
+	for _, exit := range []int{0, 1, 8} {
+		for bucket, want := range map[string]CIState{"pass": CIPassing, "skipping": CIPassing, "pending": CIPending, "fail": CIFailing, "cancel": CIFailing} {
+			t.Run(fmt.Sprintf("exit%d/%s", exit, bucket), func(t *testing.T) {
+				root := tempRoot(t)
+				data := fmt.Sprintf(`[{"name":"build","state":"X","bucket":%q,"link":"https://ci/1"}]`, bucket)
+				g, script := openScripted(t, root,
+					rollupCall(root, `{"statusCheckRollup":[{}]}`), checksCall(root, data, exit))
+				sum, err := g.RequiredCI(t.Context(), 43)
+				script.AssertExhausted()
+				if err != nil || sum.State != want || sum.Total != 1 || len(sum.Required) != 1 || sum.Required[0] != (Check{Name: "build", State: "X", Bucket: bucket, Link: "https://ci/1"}) {
+					t.Fatalf("sum = %+v, err = %v, want %s with unchanged evidence", sum, err, want)
+				}
+			})
+		}
+	}
+}
+
 func TestRequiredCINoneRequired(t *testing.T) {
 	root := tempRoot(t)
 	// Checks exist but none is required: no-checks with Total > 0 so
@@ -138,12 +205,15 @@ func TestRequiredCINoRequiredChecksDiscoveryEmptyStdout(t *testing.T) {
 
 // TestRequiredCIWhitespaceOnlyStdout confirms whitespace-only stdout
 // (e.g. a stray newline) is treated the same as truly empty stdout,
-// not as malformed JSON.
+// not as malformed JSON. Before the probe-failure repair any empty output
+// was accepted; now it requires the successful no-required-checks notice.
 func TestRequiredCIWhitespaceOnlyStdout(t *testing.T) {
 	root := tempRoot(t)
+	call := checksCall(root, "\n  \t\n", 0)
+	call.Stderr = "no required checks reported on the 'main' branch\n"
 	g, script := openScripted(t, root,
 		rollupCall(root, `{"statusCheckRollup":[{},{}]}`),
-		checksCall(root, "\n  \t\n", 0),
+		call,
 	)
 	sum, err := g.RequiredCI(context.Background(), 43)
 	if err != nil {

@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"strconv"
 	"strings"
 	"time"
 
@@ -15,11 +16,11 @@ import (
 )
 
 // runUsage is the one-line usage for the adapter plumbing surface.
-const runUsage = "orch run: usage: orch run plan|activate|dispatch|pr-open|review-worktree|review|escalate|ci|merge-report|merge|block|resolve-block|abandon|cleanup|complete (JSON document on stdin) | orch run status|next --json"
+const runUsage = "orch run: usage: orch run plan|activate|dispatch|pr-open|review-worktree|review|escalate|ci|merge-report|merge|block|resolve-block|abandon|cleanup|complete (JSON document on stdin) | orch run status|next --json | orch run readiness --issue <number> --json"
 
 // runVerbs maps each document-taking verb to its run-engine entry point.
 // Every one reads a JSON request on stdin and writes a JSON result on
-// stdout; status and next are separate because neither may read stdin.
+// stdout; status, next and readiness are separate because none may read stdin.
 var runVerbs = map[string]func(context.Context, run.Env, []byte) (any, error){
 	"plan":            adaptRunVerb(run.Plan),
 	"activate":        adaptRunVerb(run.Activate),
@@ -52,18 +53,27 @@ func adaptRunVerb[T any](fn func(context.Context, run.Env, []byte) (T, error)) f
 }
 
 // runRunVerb dispatches the adapter-facing plumbing verbs (PRD §22):
-// `orch run <verb>` (JSON stdin/stdout) plus `orch run status|next --json`.
-// Host adapters shell out to it after their own native dialogs; it is
-// never invoked by a human directly.
+// `orch run <verb>` (JSON stdin/stdout) plus the argv-only inspections.
+// Host adapters invoke mutating verbs after their native dialogs. The
+// read-only inspections are also available directly to people and clients.
 func runRunVerb(env Env, args []string) error {
-	// Before next, status alone bypassed stdin. Both inspection commands
-	// now bypass stdin and mutation serialization, even on a console.
+	// Before next, status alone bypassed stdin; item 2 added next. All three
+	// inspections now bypass stdin and mutation serialization, even on a console.
 	if len(args) == 2 && (args[0] == "status" || args[0] == "next") && args[1] == "--json" {
 		return emitRunResult(env, args[0], func(ctx context.Context, runEnv run.Env) (any, error) {
 			if args[0] == "next" {
 				return run.Next(ctx, runEnv)
 			}
 			return run.Status(ctx, runEnv)
+		})
+	}
+	if len(args) == 4 && args[0] == "readiness" && args[1] == "--issue" && args[3] == "--json" {
+		number, err := strconv.Atoi(args[2])
+		if err != nil || number <= 0 {
+			return usageError("orch run: usage: orch run readiness --issue <positive integer> --json")
+		}
+		return emitRunResult(env, "readiness", func(ctx context.Context, runEnv run.Env) (any, error) {
+			return run.Readiness(ctx, runEnv, number)
 		})
 	}
 	if len(args) != 1 {
@@ -88,7 +98,7 @@ func runRunVerb(env Env, args []string) error {
 			return handler(ctx, runEnv, input)
 		})
 	}
-	// Plan is the only document-taking read-only run verb. Status and next
+	// Plan is the only document-taking read-only run verb. The inspections
 	// were handled above; every other runVerbs entry is a mutating Delivery
 	// command and holds one repository serializer through its final state
 	// and metrics write. This is a command-class rule, not a Dispatch-only

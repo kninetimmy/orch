@@ -100,21 +100,27 @@ func MergeReport(ctx context.Context, env Env, reqJSON []byte) (*MergeReportResu
 		return nil, err
 	}
 
+	return mergeReportResult(issue, pr, summary, c.cfg.Merge.Strategy, c.cfg.ConfigRevision), nil
+}
+
+// mergeReportResult formats evidence only. Calling it does not record a gate;
+// MergeReport retains all of its preconditions and mutations above.
+func mergeReportResult(issue *state.Issue, pr ghops.PR, summary ghops.CISummary, strategy, revision string) *MergeReportResult {
 	result := &MergeReportResult{
 		SchemaVersion:  MergeReportSchemaVersion,
 		IssueNumber:    issue.Number,
 		PRNumber:       pr.Number,
 		PRURL:          pr.URL,
 		HeadOID:        pr.HeadRefOid,
-		MergeStrategy:  c.cfg.Merge.Strategy,
+		MergeStrategy:  strategy,
 		CI:             MergeReportCI{State: string(summary.State), Required: ciChecks(summary), Total: summary.Total},
 		ReviewCycles:   issue.ReviewCycles,
-		ConfigRevision: c.cfg.ConfigRevision,
+		ConfigRevision: revision,
 	}
 	if summary.State == ghops.CINoChecks {
 		result.NoCIStatement = "no required CI checks gate this merge (PRD §16)"
 	}
-	return result, nil
+	return result
 }
 
 // checkApprovingReview is the local prerequisite for merge-report. Next uses

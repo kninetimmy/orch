@@ -73,6 +73,20 @@ func runMCP(env Env, args []string) error {
 		}
 		return nil, doc, nil
 	})
+	mcp.AddTool(server, &mcp.Tool{
+		Name:        "orch_run_readiness",
+		Description: "Inspect one active-run issue's review commit, live PR/required CI and merge requirements without recording a merge gate or authorizing a merge (same document as orch run readiness --issue <number> --json). Uses read-only GitHub probes.",
+		InputSchema: json.RawMessage(`{"type":"object","properties":{"issue_number":{"type":"integer","minimum":1}},"required":["issue_number"],"additionalProperties":false}`),
+		Annotations: &mcp.ToolAnnotations{ReadOnlyHint: true, OpenWorldHint: new(true)},
+	}, func(ctx context.Context, _ *mcp.CallToolRequest, input struct {
+		IssueNumber int `json:"issue_number"`
+	}) (*mcp.CallToolResult, any, error) {
+		doc, err := run.Readiness(ctx, run.Env{RepoRoot: root, Runner: env.Runner}, input.IssueNumber)
+		if err != nil {
+			return nil, nil, err
+		}
+		return nil, doc, nil
+	})
 	return server.Run(context.Background(), &mcp.IOTransport{
 		Reader: io.NopCloser(env.Stdin),
 		Writer: mcpWriter{env.Stdout},
