@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -60,28 +61,96 @@ var (
 	}
 )
 
-const doctorUsage = "orch doctor: usage: orch doctor [--host <claude|codex|opencode>]"
+const doctorUsage = "orch doctor: usage: orch doctor [--host <claude|codex|opencode>] [--json]"
+
+// DoctorReport is shared by human CLI output, CLI JSON and MCP. An unhealthy
+// report is a successful inspection, not an input or transport error.
+type DoctorReport struct {
+	SchemaVersion int           `json:"schema_version"`
+	Version       string        `json:"version"`
+	SelectedHost  string        `json:"selected_host,omitempty"`
+	Healthy       bool          `json:"healthy"`
+	Checks        []DoctorCheck `json:"checks"`
+}
+
+type DoctorCheck struct {
+	Name   string `json:"name"`
+	Status string `json:"status"` // success, failure or advisory
+	Detail string `json:"detail,omitempty"`
+}
 
 func runDoctor(env Env, args []string) error {
-	selectedHost, err := doctorHost(args)
+	selectedHost, asJSON, err := doctorArgs(args)
 	if err != nil {
 		return err
 	}
+	doc, err := doctorReport(env, selectedHost)
+	if err != nil {
+		return err
+	}
+	if asJSON {
+		if err := json.NewEncoder(env.Stdout).Encode(doc); err != nil {
+			return err
+		}
+	} else {
+		printDoctor(env.Stdout, doc)
+	}
+	if !doc.Healthy {
+		return errors.New("one or more checks failed")
+	}
+	return nil
+}
 
-	fmt.Fprintf(env.Stdout, "note  orch version: %s\n", Version)
+func printDoctor(w io.Writer, doc *DoctorReport) {
+	for _, check := range doc.Checks {
+		prefix := "ok    "
+		switch check.Status {
+		case "failure":
+			prefix = "FAIL  "
+		case "advisory":
+			prefix = "note  "
+		}
+		text := check.Name
+		if check.Detail != "" {
+			text += ": " + check.Detail
+		}
+		// Preserve the existing prose-only notes while keeping a stable check
+		// name in structured results. Their detail is the complete note.
+		if check.Status == "advisory" {
+			switch check.Name {
+			case "gh repository", "local overrides", "project conventions", "opencode runtime":
+				text = check.Detail
+			}
+		}
+		fmt.Fprintln(w, prefix+text)
+	}
+}
 
-	failed := false
+// doctorReport only observes. Repair suggestions are details, never commands
+// executed here. All command working directories come from env.RepoRoot.
+func doctorReport(env Env, selectedHost string) (*DoctorReport, error) {
+	if err := validateDoctorHost(selectedHost); err != nil {
+		return nil, err
+	}
+	doc := &DoctorReport{SchemaVersion: 1, Version: Version, SelectedHost: selectedHost, Healthy: true, Checks: []DoctorCheck{}}
+	add := func(name, status, detail string) {
+		doc.Checks = append(doc.Checks, DoctorCheck{Name: name, Status: status, Detail: detail})
+		if status == "failure" {
+			doc.Healthy = false
+		}
+	}
+	note := func(name, detail string) { add(name, "advisory", detail) }
+	note("orch version", Version)
 	check := func(name string, err error) {
 		if err != nil {
-			failed = true
-			fmt.Fprintf(env.Stdout, "FAIL  %s: %v\n", name, err)
+			add(name, "failure", err.Error())
 			return
 		}
-		fmt.Fprintf(env.Stdout, "ok    %s\n", name)
+		add(name, "success", "")
 	}
 	checkHost := func(host, name string, err error) {
 		if err != nil && selectedHost != "" && host != selectedHost {
-			fmt.Fprintf(env.Stdout, "note  %s: %v (advisory; selected host is %s)\n", name, err, selectedHost)
+			note(name, fmt.Sprintf("%v (advisory; selected host is %s)", err, selectedHost))
 			return
 		}
 		check(name, err)
@@ -109,11 +178,11 @@ func runDoctor(env Env, args []string) error {
 			case errors.Is(repoErr, ghops.ErrNoGitHubRepo):
 				// Assist works without a remote (PRD §5); Delivery
 				// preflight fails closed on this same probe.
-				fmt.Fprintf(env.Stdout, "note  no GitHub repository resolved; Assist works without one, Delivery will fail closed (%v)\n", repoErr)
+				note("gh repository", fmt.Sprintf("no GitHub repository resolved; Assist works without one, Delivery will fail closed (%v)", repoErr))
 			case repoErr != nil:
 				check("gh repository", repoErr)
 			default:
-				fmt.Fprintf(env.Stdout, "ok    gh repository: %s\n", repo.NameWithOwner)
+				add("gh repository", "success", repo.NameWithOwner)
 			}
 
 			// Best-effort per task 39: a broken network, missing
@@ -124,11 +193,11 @@ func runDoctor(env Env, args []string) error {
 				latest, relErr := ghops.LatestRelease(context.Background(), env.Runner, env.RepoRoot)
 				switch {
 				case relErr != nil:
-					fmt.Fprintf(env.Stdout, "note  release check: %v\n", relErr)
+					note("release check", relErr.Error())
 				case latest != Version:
-					fmt.Fprintf(env.Stdout, "note  newer release available: installed %s, latest %s; re-run the installer to update\n", Version, latest)
+					note("newer release available", fmt.Sprintf("installed %s, latest %s; re-run the installer to update", Version, latest))
 				default:
-					fmt.Fprintf(env.Stdout, "ok    release: up to date (%s)\n", Version)
+					add("release", "success", fmt.Sprintf("up to date (%s)", Version))
 				}
 			}
 		}
@@ -137,17 +206,17 @@ func runDoctor(env Env, args []string) error {
 	cfg, cfgErr := config.Load(env.RepoRoot)
 	check("configuration", cfgErr)
 	if cfgErr == nil && selectedHost != "" && cfg.Host(selectedHost) == nil {
-		return usageError(fmt.Sprintf("orch doctor: host %q is not configured", selectedHost))
+		return nil, usageError(fmt.Sprintf("orch doctor: host %q is not configured", selectedHost))
 	}
 	if cfgErr == nil {
-		fmt.Fprintf(env.Stdout, "note  protected survey: %s\n", protectedListStatus(cfg))
+		note("protected survey", protectedListStatus(cfg))
 	}
 
 	if cfgErr == nil && config.HasLocalOverride(env.RepoRoot) {
 		if len(cfg.Overrides) > 0 {
-			fmt.Fprintf(env.Stdout, "note  %s applied; overrides: %s\n", config.LocalOverridePath, strings.Join(cfg.Overrides, ", "))
+			note("local overrides", fmt.Sprintf("%s applied; overrides: %s", config.LocalOverridePath, strings.Join(cfg.Overrides, ", ")))
 		} else {
-			fmt.Fprintf(env.Stdout, "note  %s present; no overrides set\n", config.LocalOverridePath)
+			note("local overrides", fmt.Sprintf("%s present; no overrides set", config.LocalOverridePath))
 		}
 	}
 
@@ -157,16 +226,16 @@ func runDoctor(env Env, args []string) error {
 			// A note, never a failure: an unchecked Claude Code version
 			// only silences the grant's relay instruction.
 			if version, problem := claudeVersionProblem(env); problem == "" {
-				fmt.Fprintf(env.Stdout, "ok    claude code version: %s; the transcript reader recognizes it\n", version)
+				add("claude code version", "success", fmt.Sprintf("%s; the transcript reader recognizes it", version))
 			} else {
-				fmt.Fprintf(env.Stdout, "note  claude code: %s; under an autonomy grant the context-relay instruction will not fire\n", problem)
+				note("claude code", problem+"; under an autonomy grant the context-relay instruction will not fire")
 			}
 		}
 		if cfg.Hosts.Codex != nil {
 			checkHost("codex", "codex adapter", checkAdapter(env, codexAdapter))
 		}
 		if cfg.Hosts.OpenCode != nil {
-			catalog, err := checkOpenCodeAdapter(env, opencodeAdapter)
+			catalog, err := checkOpenCodeAdapter(env, opencodeAdapter, note)
 			checkHost("opencode", "opencode adapter", err)
 			if err == nil {
 				for _, selection := range opencodecatalog.CheckSelections(cfg.Hosts.OpenCode.Roles, catalog) {
@@ -232,7 +301,7 @@ func runDoctor(env Env, args []string) error {
 			if err != nil || !ch.DeleteWholeFile {
 				continue
 			}
-			fmt.Fprintf(env.Stdout, "note  %s holds the Orch managed block and nothing else; %s agents see no project conventions — add them outside the block, or run `orch configure`, which offers to seed them from %s when that file has them\n", file, host, interview.SiblingInstructionFile(host))
+			note("project conventions", fmt.Sprintf("%s holds the Orch managed block and nothing else; %s agents see no project conventions — add them outside the block, or run `orch configure`, which offers to seed them from %s when that file has them", file, host, interview.SiblingInstructionFile(host)))
 		}
 	}
 
@@ -256,7 +325,7 @@ func runDoctor(env Env, args []string) error {
 	if cfgErr == nil {
 		switch cfg.Memhub.Mode {
 		case "off":
-			fmt.Fprintf(env.Stdout, "note  memhub: skipped (mode off)\n")
+			note("memhub", "skipped (mode off)")
 		default:
 			mh := memhub.New(env.Runner, env.RepoRoot)
 			mhErr := mh.Probe(context.Background())
@@ -270,9 +339,9 @@ func runDoctor(env Env, args []string) error {
 			if cfg.Memhub.Mode == "required" {
 				check("memhub", mhErr)
 			} else if mhErr != nil {
-				fmt.Fprintf(env.Stdout, "note  memhub: %v\n", mhErr)
+				note("memhub", mhErr.Error())
 			} else {
-				fmt.Fprintf(env.Stdout, "ok    memhub\n")
+				check("memhub", nil)
 			}
 		}
 	}
@@ -289,28 +358,40 @@ func runDoctor(env Env, args []string) error {
 
 	if owner != nil {
 		if hostname, err := os.Hostname(); err == nil && owner.Hostname == hostname && !lockfile.PIDAlive(owner.PID) {
-			fmt.Fprintf(env.Stdout, "note  delivery lock: acquiring process (pid %d) is no longer running — normal between commands; if no Delivery run is active, run `orch abort`\n", owner.PID)
+			note("delivery lock", fmt.Sprintf("acquiring process (pid %d) is no longer running — normal between commands; if no Delivery run is active, run `orch abort`", owner.PID))
 		}
 	}
 
-	if failed {
-		return errors.New("one or more checks failed")
-	}
-	return nil
+	return doc, nil
 }
 
-func doctorHost(args []string) (string, error) {
-	if len(args) == 0 {
-		return "", nil
+func doctorArgs(args []string) (host string, asJSON bool, err error) {
+	for i := 0; i < len(args); i++ {
+		switch args[i] {
+		case "--json":
+			if asJSON {
+				return "", false, usageError(doctorUsage)
+			}
+			asJSON = true
+		case "--host":
+			if host != "" || i+1 == len(args) || args[i+1] == "" {
+				return "", false, usageError(doctorUsage)
+			}
+			i++
+			host = args[i]
+		default:
+			return "", false, usageError(doctorUsage)
+		}
 	}
-	if len(args) != 2 || args[0] != "--host" {
-		return "", usageError(doctorUsage)
-	}
-	switch args[1] {
-	case "claude", "codex", "opencode":
-		return args[1], nil
+	return host, asJSON, validateDoctorHost(host)
+}
+
+func validateDoctorHost(host string) error {
+	switch host {
+	case "", "claude", "codex", "opencode":
+		return nil
 	default:
-		return "", usageError(fmt.Sprintf("orch doctor: invalid host %q; expected claude, codex, or opencode", args[1]))
+		return usageError(fmt.Sprintf("orch doctor: invalid host %q; expected claude, codex, or opencode", host))
 	}
 }
 
@@ -427,7 +508,7 @@ const minimumOpenCodeVersion = opencodecatalog.MinimumVersion
 // and live skill contracts, then returns the verified project-scoped model
 // catalog for role selection checks. V2's plugin API does not currently expose
 // adapter versions.
-func checkOpenCodeAdapter(env Env, spec adapterSpec) (opencodecatalog.Catalog, error) {
+func checkOpenCodeAdapter(env Env, spec adapterSpec, note func(string, string)) (opencodecatalog.Catalog, error) {
 	fail := func(detail string) (opencodecatalog.Catalog, error) {
 		return opencodecatalog.Catalog{}, fmt.Errorf("%s; %s", detail, spec.repair)
 	}
@@ -436,7 +517,7 @@ func checkOpenCodeAdapter(env Env, spec adapterSpec) (opencodecatalog.Catalog, e
 		return fail(err.Error())
 	}
 	if runtime.Warning != "" {
-		fmt.Fprintf(env.Stdout, "note  %s\n", runtime.Warning)
+		note("opencode runtime", runtime.Warning)
 	}
 	if err := runtime.CheckPlugin(context.Background(), env.Runner, env.RepoRoot, spec.pluginID); err != nil {
 		return fail(err.Error())
