@@ -431,6 +431,7 @@ commands:
   eval             Evaluation preview/run/status/stop/report (eval help for arguments)
   grant            Show the active autonomy grant; grant revoke ends it; grant relay hands it to a fresh Claude Code session; grant preview and grant create propose and record one (JSON stdin/stdout)
   render-agents    Render project agent definitions for every enabled host
+  mcp              Serve read-only live run status over stdio (mcp [--repo <path>])
   run              Adapter plumbing: Delivery run verbs (JSON stdin/stdout; not a human command)
   guard            Adapter plumbing: pre-write enforcement for host hooks (not a human command)
   hook             Adapter plumbing: host lifecycle-event verbs (not a human command)
@@ -438,6 +439,10 @@ commands:
 
 The last three rows — `run`, `guard`, `hook` — are what the host
 adapters call for you; you never invoke them by hand.
+
+For optional MCP client access to live run state, see the
+[read-only stdio MCP guide](docs/mcp-status.md). This source-only addition does
+not install anything or replace the host plugins and their enforcement hooks.
 
 Previously `metrics` only accepted its read-only report form. That form still
 works; `metrics record` now accepts durable observation JSON. See the
