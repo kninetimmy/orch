@@ -341,6 +341,41 @@ main session against `hosts.opencode.roles.architect`, including its optional
 variant. It reports a mismatch in context but never changes the session model;
 child sessions are not compared to the Architect selection.
 
+#### Optional DeepSeek-led mixed-provider setup preset
+
+With a supported OpenCode V2 runtime (`opencode2` or `opencode`) detected and
+enabled, init offers an explicitly opt-in alternative to the shipped defaults
+above. Configure and configure-local offer the same preset when editing
+OpenCode roles. Merely detecting or enabling OpenCode never selects it.
+
+| Role | Provider/model | Variant |
+|---|---|---|
+| Architect | `opencode-go/deepseek-v4.1-flash` | `max` |
+| Scout | `opencode-go/glm-5.3-flash` | `high` |
+| Implementer | `openai/gpt-6.1-sol` | `high` |
+| Specialist | `openai/gpt-6.1-sol` | `xhigh` |
+| Reviewer | `openai/gpt-6.1-sol` | `xhigh` |
+| Safe review downgrade | `opencode-go/deepseek-v4.1-flash` | `max` |
+
+Every exact provider/model and variant must be present in the current project
+catalog before the preset can be selected, proposed, or applied. Each step,
+including summary and application, revalidates completeness even if a role was
+customized. Missing models, variants, or catalog data produce actionable
+explanations, never substitute models. A nonempty but incomplete catalog still
+permits ordinary manual role customization.
+
+The preset seeds the existing per-role questions, not a runtime mode or general
+preset framework. Users may customize every selection before the existing final
+approval. Declining preserves the manual/default path, committed selections,
+and effective local preferences as appropriate. Output uses separate `model`
+and `variant`, with no legacy `effort` for preset-selected roles. Unrelated hosts
+and settings remain unchanged, as do shipped defaults and this repository's
+Codex-matching shared role selections unless explicitly edited and approved.
+There is no binary installation, global host configuration change, or automatic
+session switch. Users must manually select the main-session Architect model and
+variant in OpenCode: `opencode-go/deepseek-v4.1-flash` with `max` when accepting
+the preset defaults.
+
 ### Claude Code
 
 | Role | Model | Effort |

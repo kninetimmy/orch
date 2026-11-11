@@ -121,7 +121,8 @@
           }
         ]
       },
-      "default": "openai/gpt-5.6-sol"
+      "default": "openai/gpt-5.6-sol",
+      "hint": "DeepSeek-led mixed-provider preset unavailable: architect requires model opencode-go/deepseek-v4.1-flash in the current project catalog; refresh catalog discovery or decline the preset and customize roles manually"
     }
   ]
 }
