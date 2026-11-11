@@ -1,4 +1,4 @@
-# Read-only status, next actions, readiness and doctor diagnostics over MCP
+# Read-only status, next actions, readiness, doctor and effective configuration over MCP
 
 `orch mcp` is an optional local stdio MCP server using the official Go SDK
 v1.8.0. This is an unreleased source feature, not part of the v0.15.2 binary.
@@ -63,10 +63,14 @@ to **every tool this server exposed**, not only `orch_run_status`.
 accepts only `{"issue_number":447}` with a positive integer. Unknown fields,
 including repository overrides, are rejected for **all three tools**. The
 positive-issue argument is readiness-only, not a change to status or next.
-**After trial item 4:** current source discovers exactly **four** read-only
+**After trial item 4:** source discovered exactly **four** read-only
 tools, adding **`orch_doctor`**, which accepts `{}` or only an optional `host`
 from `claude`, `codex` or `opencode`. Unknown fields and repository overrides
-are rejected for **all four tools**. Existing input schemas are unchanged.
+were rejected for **all four tools**. **After separately approved item 5:**
+current source discovers exactly **five** read-only tools, adding
+**`orch_config_effective`**, accepting only `{}`. Unknown fields, repository
+overrides and non-object input (including explicit `null`) are rejected.
+Existing tools' input schemas and behavior are unchanged.
 
 | Tool | Input | CLI counterpart (from the bound checkout) | Report schema |
 | --- | --- | --- | --- |
@@ -74,6 +78,7 @@ are rejected for **all four tools**. Existing input schemas are unchanged.
 | `orch_run_next` | `{}` | `orch run next --json` | 1 |
 | `orch_run_readiness` | `{"issue_number":447}` | `orch run readiness --issue 447 --json` | 1 |
 | `orch_doctor` | `{}` or `{"host":"opencode"}` | `orch doctor --json` or `orch doctor --host opencode --json` | 1 |
+| `orch_config_effective` | `{}` | None; directly uses shared `config.Load` | 1 |
 
 Each `orch_run_status` invocation reads fresh local
 state through the same engine as `orch run status --json` and returns that
@@ -93,6 +98,11 @@ still avoid repository writes and lifecycle mutations, including on failure.
 section below. Initialization, discovery, disconnect and status/next remain
 local-only; readiness and doctor have `openWorldHint: true`. All four tools
 still avoid repository writes and lifecycle mutations, including on failure.
+**After item 5:** effective configuration is also local-only
+(`openWorldHint: false`). Initialization, discovery, disconnect and all
+status/next/configuration calls, including failures, execute no external commands.
+All five tools avoid repository writes and lifecycle mutations; readiness and
+doctor retain only their existing external read probes.
 This server does not replace the CLI, the thin host plugins or their guards,
 and it does not change Orch's separate memhub CLI integration.
 
@@ -156,13 +166,14 @@ or abort. That statement clears neither pending decisions nor changed scope.
 **Before item 3:** neither of the two inspection tools recorded a session,
 metrics, an approval, a decision resolution or lifecycle advancement, nor
 mutated git/GitHub. **After item 3:** none of the three inspection tools does
-so. **After item 4:** the same holds for all four tools. No inspection records
+so. **After item 4:** the same holds for all four tools. **After item 5:** the
+same holds for all five tools. No inspection records
 a session, metrics, an approval, a decision resolution or lifecycle advancement,
 nor mutates git/GitHub. **A tool call is
 never human approval.** Existing separately authorized grant contracts are
 unchanged, but guidance does not inspect, validate or spend a grant; it cannot
 claim a grant authorizes any suggested action. These restrictions apply to
-**all four inspection tools and all four CLI inspection commands**, not just
+**all five inspection tools and all four existing CLI inspection commands**, not just
 `Next` or `orch_run_next`. Stateful lifecycle verbs retain their existing behavior.
 
 ## Review and merge readiness
@@ -311,6 +322,60 @@ The other checks read local files and process liveness. These are unlocked
 observations, not atomic guarantees; external tools may be unavailable or slow.
 No tool invocation grants permission to execute a repair from a detail string.
 
+## Effective configuration
+
+Call `orch_config_effective` with `{}`. Each call runs the existing
+`config.Load` for the fixed launch-time repository, without loading run state or
+locks, taking a mutation serializer, executing commands or performing repairs.
+Initialization and discovery do not load configuration, so invalid configuration
+does not prevent connection or discovery. Successive calls on one connection
+observe file changes and recover after configuration errors.
+
+The report has exactly two members: `schema_version: 1` and `configuration`.
+MCP structured content and JSON text contain the same report. `configuration`
+is the existing serialized `Config`, **not a new TOML-shaped JSON schema**:
+
+| Configuration member | Meaning |
+| --- | --- |
+| `SchemaVersion`, `ConfigRevision` | Configuration schema and revision as read by the loader; the tool does not recompute or attest the revision. |
+| `Concurrency.MaxSubagents`, `Merge.Strategy`, `Memhub.Mode`, `Metrics.Enabled` | Resolved settings, including existing defaults and permitted local preferences. |
+| `Hosts.Claude`, `Hosts.Codex`, `Hosts.OpenCode` | Enabled hosts' `Roles`, with existing role names such as `Architect` and `ReviewDowngrade`; disabled hosts are `null`. Profiles retain `Model`, `Effort` and optional `Variant`. |
+| `Protected` (when configured) | `MethodologyVersion` and `Paths`, each with `Path` and `Reason`. This is the configured repository list, not the built-in protected-path floor or a grant authorization. |
+| `Overrides` | Sorted dotted keys applied from `config.local.toml`. `null` means no keys applied; it cannot distinguish an absent local file from an empty one. |
+
+These existing JSON names and omission rules are preserved; adding this access
+path changes neither configuration revisions nor approval fingerprints.
+OpenCode's legacy `Effort` remains the loader's compatibility spelling for the
+same-named effective variant. Native `Variant` is not independently synthesized
+from legacy `Effort`. For native profiles, an empty variant selects the bare
+model and is omitted from JSON. Claude/Codex keep their required `Effort` semantics.
+
+Missing, malformed, unsupported or invalid committed configuration, malformed
+or invalid local configuration, and forbidden local policy overrides yield an
+explicit tool error (`isError: true`) with the loader's error text and **no
+partial report**. Corrupt run state or locks do not prevent valid configuration
+inspection. Unlike doctor, a configuration failure is not an unhealthy success
+report.
+
+This is an unlocked observation of **current file contents**, including
+uncommitted edits and local overrides, not an atomic snapshot, Git HEAD
+attestation, health check, or an active run's approved execution configuration.
+It does not validate installed hosts/models, survey currency, grants or approval
+eligibility. Re-inspect after changes; ordinary lifecycle gates still enforce
+their own configuration and approval checks. No inspection records sessions,
+metrics, approvals or lifecycle advancement.
+
+### Reuse and retained surfaces
+
+`config.Load` owns parsing, defaults, validation and local overlay policy;
+`Config` owns the serialized configuration representation. MCP reuses both
+directly and the SDK supplies structured/text output. No CLI output is parsed,
+new command or dependency added, or second resolver retained. No existing
+implementation is superseded: bare `configure` summarizes committed settings,
+`configure-local` summarizes local overrides and interview guidance, `status`
+combines mode/state with a configuration summary, and `doctor` probes health.
+Those distinct surfaces and the existing revision/fingerprint rules remain.
+
 ## Reproducible smoke test and trial checkpoint
 
 From the source checkout, run:
@@ -320,7 +385,7 @@ go test ./internal/cli -run '^TestMCPStdio$' -v -count=1
 ```
 
 This builds a temporary real `orch` binary and uses an SDK client over its
-stdio pipes to initialize, discover and call all four tools, then disconnect and
+stdio pipes to initialize, discover and call all five tools, then disconnect and
 verify a successful process exit. No global install or client configuration
 is needed. The client stays connected while test fixtures change from Assist
 to blocked Delivery and inconsistent state/lock pairs. Output reports
@@ -348,6 +413,17 @@ It also checks OpenCode warnings cannot leak human text into protocol stdout,
 unchanged bound/launching repository bytes, and a clean disconnect. Deterministic
 doctor tests compare human output with the same decoded report and cover the
 existing configuration, memhub, state/lock and advisory behavior.
+Effective-configuration fixtures compare `config.Load = structured = JSON text`,
+covering defaults, fresh committed/local values, all host profiles, native and
+legacy OpenCode spellings, bare-model overrides, configured protected entries
+and sorted override keys. The same connection observes explicit missing,
+malformed, unsupported, invalid and forbidden-policy errors and recovery despite
+corrupt state/lock data. Strict input, fixed binding, unchanged bound/launching
+repositories and clean shutdown are checked with no executables on PATH.
+`TestMCPLocalToolsNeverRunExternalCommands` additionally rejects any executable
+lookup or runner call during initialization, discovery, local-tool success or
+failure, and shutdown. These source checks neither install a binary nor prove
+which binary an existing client launches.
 
 For a manual trial, use the configuration above, connect your client, discover
 `orch_run_status`, and call it with `{}`. Compare its decoded JSON with
@@ -368,18 +444,24 @@ For diagnostics, call `orch_doctor` with `{}`, compare with `orch doctor --json`
 then repeat with the same configured host in `{"host":"opencode"}` and
 `orch doctor --host opencode --json`. Inspect `healthy`, individual outcomes and
 details even when the tool call succeeds. CLI exit 1 must still carry JSON.
+For effective configuration, discover `orch_config_effective` and call `{}`.
+Inspect its resolved settings and applied keys, not CLI summary text as though
+it were the same report. There is intentionally no new CLI counterpart; shared
+loader parity is exercised by the automated test above.
 
 **Before trial item 2:** This increment implements roadmap item 1 (live status)
 only. **After trial item 2:** source implements live status and read-only
 next-action guidance, not the subsequent readiness/doctor items. **After trial
 item 3:** source also implements read-only readiness, but not item 4 doctor.
 **After trial item 4:** source implements all four trial tools, including doctor.
-No source increment is claimed installed by this guide. The trial
-checkpoint is to **finish roadmap items 1 through 4, then stop and assess the
-benefit against CLI usage before approving later roadmap items**. This status
-server does not approve or implement those later increments.
+The trial checkpoint was to **finish roadmap items 1 through 4, then stop and
+assess the benefit against CLI usage before approving later roadmap items**.
+**After that checkpoint and separately approved item 5:** current source also
+implements effective configuration. No source increment is claimed installed
+by this guide. The checkpoint does not authorize subsequent roadmap scope;
+each expansion and any installation still require separate approval.
 
-### Benefit checklist — assess with the user before any expansion
+### Original trial benefit checklist — assess with the user before expansion
 
 Use a real client bound to the intended checkout and record observations, not
 assumptions or a tool-discovery-only success:
@@ -404,8 +486,8 @@ assumptions or a tool-discovery-only success:
 
 ## Trial item 2 blast radius
 
-The tables below record the earlier increments; the current four-tool contract
-and doctor checks are documented above.
+The tables below record the earlier increments; the current five-tool contract,
+doctor checks and effective configuration are documented above.
 
 | Touched element | Does its previous behavior still hold? |
 | --- | --- |
