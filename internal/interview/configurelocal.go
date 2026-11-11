@@ -566,7 +566,11 @@ func localOpenCodeRoleDocSpecs(facts Facts, committed *config.Config, seeded, an
 		return nil, err
 	}
 	h := committed.Hosts.OpenCode
-	docs := make([]docSpec, 0, len(roleSpecs)*2)
+	docs, presetHint, err := openCodePresetStart(facts, answers)
+	if err != nil {
+		return nil, err
+	}
+	presetSelected := len(docs) > 0 && answers[idOpenCodeDeepSeekPreset] == "yes"
 	for _, rs := range roleSpecs {
 		cp := committedProfile(h, rs.key)
 		modelKey := localRoleModelID("opencode", rs.key)
@@ -574,6 +578,9 @@ func localOpenCodeRoleDocSpecs(facts Facts, committed *config.Config, seeded, an
 		defModel := effectiveModel
 		if _, advertised := openCodeCatalogModel(facts.OpenCodeCatalog, defModel); !advertised && defModel != cp.Model {
 			defModel = cp.Model
+		}
+		if presetSelected {
+			defModel = openCodeDeepSeekProfiles[rs.key].model
 		}
 		modelOpts := openCodeModelOptions(facts.OpenCodeCatalog, defModel, cp.Model)
 		for i := range modelOpts {
@@ -586,6 +593,9 @@ func localOpenCodeRoleDocSpecs(facts Facts, committed *config.Config, seeded, an
 		modelQ := question.Question{
 			ID: modelKey, Header: rs.header, Prompt: fmt.Sprintf("%s model (%s)", rs.label, hostLabels["opencode"]),
 			Kind: question.KindSelect, Options: modelOpts, Default: defModel,
+		}
+		if rs.key == "architect" {
+			modelQ.Hint = presetHint
 		}
 		modelQ.Pagination = question.PaginateOptions(modelQ.Options)
 		docs = append(docs, docSpec{questions: []question.Question{modelQ}})
@@ -605,6 +615,9 @@ func localOpenCodeRoleDocSpecs(facts Facts, committed *config.Config, seeded, an
 		preferredVariant := cp.EffectiveOpenCodeVariant()
 		if defModel == effectiveModel {
 			preferredVariant = effectiveVariant
+		}
+		if presetSelected {
+			preferredVariant = openCodeDeepSeekProfiles[rs.key].execution
 		}
 		defVariant := ""
 		if selected == defModel && slices.Contains(model.Variants, preferredVariant) {

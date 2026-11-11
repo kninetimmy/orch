@@ -582,6 +582,37 @@ longer available. The plugin compares only the main session's selected model to
 the configured Architect reference: a mismatch adds a warning but never switches
 the session automatically, and child sessions are not compared to the Architect.
 
+**Optional DeepSeek-led mixed-provider preset.** When a supported OpenCode V2
+runtime (`opencode2` or `opencode`) is detected and enabled, `orch init` offers
+this opt-in alternative. `orch configure` and `orch configure-local` offer it
+when editing OpenCode roles. Detecting or enabling the host does not select it;
+declining keeps the manual/default path, committed selections, or effective
+local preferences. Every role remains customizable before final approval.
+
+| Role | Provider/model | Variant |
+|---|---|---|
+| Architect | `opencode-go/deepseek-v4.1-flash` | `max` |
+| Scout | `opencode-go/glm-5.3-flash` | `high` |
+| Implementer | `openai/gpt-6.1-sol` | `high` |
+| Specialist | `openai/gpt-6.1-sol` | `xhigh` |
+| Reviewer | `openai/gpt-6.1-sol` | `xhigh` |
+| Review downgrade | `opencode-go/deepseek-v4.1-flash` | `max` |
+
+The preset is offered only when the current project catalog contains every
+exact model and variant above. Setup rechecks that requirement before proposal
+and application, even after per-role customization; missing entries are explained
+without substitutions. A nonempty catalog still supports manual role choices
+when the preset is unavailable. Configuration stores separate `model` and
+`variant` values, not legacy `effort` values.
+
+Select the main-session Architect model and variant **manually** in OpenCode:
+for these defaults, choose `opencode-go/deepseek-v4.1-flash` and `max`.
+The preset does not switch sessions, install binaries, change global host
+configuration, replace the shipped defaults above, or rewrite this repository's
+Codex-matching shared role selections automatically. It changes only the
+OpenCode roles approved in the chosen interview; other hosts and settings stay
+unchanged.
+
 Typical tuning: point a role at a bigger or smaller model on one
 machine with `configure-local` (run the Architect on a frontier model
 only where you have the subscription), raise `max_subagents` on a

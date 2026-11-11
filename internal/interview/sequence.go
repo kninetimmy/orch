@@ -353,7 +353,14 @@ func openCodeRoleDocSpecs(facts Facts, showExplain bool, defaults func(string) p
 		return nil, err
 	}
 
-	docs := make([]docSpec, 0, len(roleSpecs)*2)
+	docs, presetHint, err := openCodePresetStart(facts, answers)
+	if err != nil {
+		return nil, err
+	}
+	if len(docs) > 0 && answers[idOpenCodeDeepSeekPreset] == "yes" {
+		defaults = func(role string) profile { return openCodeDeepSeekProfiles[role] }
+		retainDefaults = false
+	}
 	for _, rs := range roleSpecs {
 		preferred := defaults(rs.key)
 		defModel := preferred.model
@@ -368,6 +375,9 @@ func openCodeRoleDocSpecs(facts Facts, showExplain bool, defaults func(string) p
 			ID: roleModelID("opencode", rs.key), Header: rs.header,
 			Prompt: fmt.Sprintf("%s model (%s)", rs.label, hostLabels["opencode"]),
 			Kind:   question.KindSelect, Options: openCodeModelOptions(facts.OpenCodeCatalog, defModel, retained...), Default: defModel,
+		}
+		if rs.key == "architect" {
+			modelQ.Hint = presetHint
 		}
 		modelQ.Pagination = question.PaginateOptions(modelQ.Options)
 		if showExplain {
