@@ -33,6 +33,10 @@ func mcpDoctorExercise(t *testing.T, binary string) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	rootInfo, err := os.Stat(canonical)
+	if err != nil {
+		t.Fatal(err)
+	}
 	suffix := ""
 	if runtime.GOOS == "windows" {
 		suffix = ".exe"
@@ -226,7 +230,14 @@ func mcpDoctorExercise(t *testing.T, binary string) {
 	}
 	for _, line := range strings.Split(strings.TrimSpace(string(log)), "\n") {
 		parts := strings.SplitN(line, "\t", 2)
-		if len(parts) != 2 || !strings.EqualFold(parts[0], canonical) {
+		if len(parts) != 2 {
+			t.Fatalf("invalid probe log: %s", line)
+		}
+		dirInfo, err := os.Stat(parts[0])
+		if err != nil {
+			t.Fatalf("stat probe directory %q: %v", parts[0], err)
+		}
+		if !os.SameFile(rootInfo, dirInfo) {
 			t.Fatalf("probe escaped binding: %s", line)
 		}
 		found := false

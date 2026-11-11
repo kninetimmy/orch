@@ -50,7 +50,15 @@ func respond() (int, error) {
 	if writeErr != nil {
 		return 0, writeErr
 	}
-	if !strings.EqualFold(cwd, fixture.Root) {
+	rootInfo, err := os.Stat(fixture.Root)
+	if err != nil {
+		return 0, fmt.Errorf("stat fixture repository %q: %w", fixture.Root, err)
+	}
+	dirInfo, err := os.Stat(cwd)
+	if err != nil {
+		return 0, fmt.Errorf("stat probe directory %q: %w", cwd, err)
+	}
+	if !os.SameFile(rootInfo, dirInfo) {
 		return 0, fmt.Errorf("wrong repository: %s, want %s", cwd, fixture.Root)
 	}
 	probe, ok := fixture.Probes[command]
