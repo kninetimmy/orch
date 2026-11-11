@@ -431,16 +431,22 @@ commands:
   eval             Evaluation preview/run/status/stop/report (eval help for arguments)
   grant            Show the active autonomy grant; grant revoke ends it; grant relay hands it to a fresh Claude Code session; grant preview and grant create propose and record one (JSON stdin/stdout)
   render-agents    Render project agent definitions for every enabled host
-  mcp              Serve read-only live run status over stdio (mcp [--repo <path>])
-  run              Adapter plumbing: Delivery run verbs (JSON stdin/stdout; not a human command)
+  mcp              Serve read-only run status, next actions and review/merge readiness over stdio (mcp [--repo <path>])
+  run              Adapter plumbing: Delivery verbs (JSON stdin/stdout); inspection: status|next --json, readiness --issue <number> --json
   guard            Adapter plumbing: pre-write enforcement for host hooks (not a human command)
   hook             Adapter plumbing: host lifecycle-event verbs (not a human command)
 ```
 
-The last three rows — `run`, `guard`, `hook` — are what the host
-adapters call for you; you never invoke them by hand.
+Before the read-only inspection trial, the last three rows — `run`, `guard`,
+`hook` — were described as what host adapters call for you, never invoked by
+hand. Mutating Delivery verbs and the guards/hooks still have that role.
+After trial item 3, `run status --json`, `run next --json` and
+`run readiness --issue <number> --json` are also explicit read-only client or
+human inspection entry points; none grants approval or advances the run.
 
-For optional MCP client access to live run state, see the
+Before the trial, `mcp` help described live run status alone. After item 3,
+discovery also includes next-action guidance and review/merge readiness.
+For optional MCP client access to those reports, see the
 [read-only stdio MCP guide](docs/mcp-status.md). This source-only addition does
 not install anything or replace the host plugins and their enforcement hooks.
 

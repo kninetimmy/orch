@@ -51,15 +51,31 @@ func TestRunVerbUsageErrors(t *testing.T) {
 		{"run", "next"},
 		{"run", "next", "--xml"},
 		{"run", "next", "--json", "--repo", "other"},
+		{"run", "readiness"},
+		{"run", "readiness", "--issue", "1"},
+		{"run", "readiness", "--json"},
+		{"run", "readiness", "--issue", "0", "--json"},
+		{"run", "readiness", "--issue", "-1", "--json"},
+		{"run", "readiness", "--issue", "1.5", "--json"},
+		{"run", "readiness", "--issue", "one", "--json"},
+		{"run", "readiness", "--issue", "99999999999999999999999999999", "--json"},
+		{"run", "readiness", "--issue", "1", "--json", "--repo", "other"},
+		{"run", "readiness", "--issue", "1", "--json", "extra"},
 	}
 	for _, args := range cases {
 		t.Run(strings.Join(args, " "), func(t *testing.T) {
-			env, _, stderr := testEnv(t)
+			env, stdout, stderr := testEnv(t)
+			env.Stdin = blockingReader{t: t}
+			env.Runner = fakeRunner{beforeRun: func(cmd execx.Cmd) { t.Errorf("usage error launched an external command: %+v", cmd) }}
+			before := mcpTree(t, env.RepoRoot)
 			if code := Run(args, env); code != ExitUsage {
 				t.Errorf("exit = %d, want %d", code, ExitUsage)
 			}
 			if !strings.Contains(stderr.String(), "orch run: usage") {
 				t.Errorf("stderr = %q", stderr.String())
+			}
+			if stdout.Len() != 0 || mcpTree(t, env.RepoRoot) != before {
+				t.Fatal("usage error wrote a report or changed repository files")
 			}
 		})
 	}
@@ -144,6 +160,19 @@ func TestRunNextNeverReadsStdin(t *testing.T) {
 	}
 }
 
+func TestRunReadinessNeverReadsStdin(t *testing.T) {
+	env, stdout, stderr := testEnv(t)
+	writeConfig(t, env.RepoRoot, validTOML)
+	env.Stdin = blockingReader{t: t}
+	before := mcpTree(t, env.RepoRoot)
+	if code := Run([]string{"run", "readiness", "--issue", "1", "--json"}, env); code != ExitError || !strings.Contains(stderr.String(), "no delivery run is active") {
+		t.Fatalf("exit=%d stderr=%s", code, stderr.String())
+	}
+	if stdout.Len() != 0 || mcpTree(t, env.RepoRoot) != before {
+		t.Fatal("failed readiness wrote a report or changed repository files")
+	}
+}
+
 func TestRunPlanAndStatusDoNotWaitForMutationSerialization(t *testing.T) {
 	env, _, _ := testEnv(t)
 	writeConfig(t, env.RepoRoot, validTOML)
@@ -158,9 +187,10 @@ func TestRunPlanAndStatusDoNotWaitForMutationSerialization(t *testing.T) {
 	}()
 
 	for name, args := range map[string][]string{
-		"plan":   {"run", "plan"},
-		"status": {"run", "status", "--json"},
-		"next":   {"run", "next", "--json"},
+		"plan":      {"run", "plan"},
+		"status":    {"run", "status", "--json"},
+		"next":      {"run", "next", "--json"},
+		"readiness": {"run", "readiness", "--issue", "1", "--json"},
 	} {
 		t.Run(name, func(t *testing.T) {
 			callEnv := env
@@ -174,8 +204,12 @@ func TestRunPlanAndStatusDoNotWaitForMutationSerialization(t *testing.T) {
 			go func() { done <- Run(args, callEnv) }()
 			select {
 			case code := <-done:
-				if code != ExitOK {
-					t.Fatalf("exit = %d, want %d; stderr = %s", code, ExitOK, callStderr.String())
+				want := ExitOK
+				if name == "readiness" {
+					want = ExitError // No active Delivery run, but still no serializer.
+				}
+				if code != want {
+					t.Fatalf("exit = %d, want %d; stderr = %s", code, want, callStderr.String())
 				}
 			case <-time.After(2 * time.Second):
 				t.Fatalf("%s waited for mutation serialization", name)

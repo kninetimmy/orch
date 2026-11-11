@@ -246,6 +246,10 @@ func TestMCPStdio(t *testing.T) {
 		closeSession()
 	})
 
+	t.Run("review and merge readiness", func(t *testing.T) {
+		mcpReadinessExercise(t, binary)
+	})
+
 	t.Run("repository binding", func(t *testing.T) {
 		root := t.TempDir()
 		writeConfig(t, root, validTOML)
@@ -370,18 +374,23 @@ func mcpDiscover(t *testing.T, ctx context.Context, session *mcp.ClientSession, 
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(list.Tools) != 2 || list.NextCursor != "" {
+	if len(list.Tools) != 3 || list.NextCursor != "" {
 		t.Fatalf("tool discovery = %+v", list)
 	}
 	want := mcpDecoded(t, []byte(`{"type":"object","properties":{},"additionalProperties":false}`))
 	seen := map[string]bool{}
 	for _, tool := range list.Tools {
-		if (tool.Name != "orch_run_status" && tool.Name != "orch_run_next") || seen[tool.Name] || tool.Annotations == nil || !tool.Annotations.ReadOnlyHint || tool.Annotations.OpenWorldHint == nil || *tool.Annotations.OpenWorldHint {
+		readiness := tool.Name == "orch_run_readiness"
+		if (tool.Name != "orch_run_status" && tool.Name != "orch_run_next" && !readiness) || seen[tool.Name] || tool.Annotations == nil || !tool.Annotations.ReadOnlyHint || tool.Annotations.OpenWorldHint == nil || *tool.Annotations.OpenWorldHint != readiness {
 			t.Fatalf("tool = %+v", tool)
 		}
 		seen[tool.Name] = true
-		if !reflect.DeepEqual(tool.InputSchema, want) {
-			t.Fatalf("%s input schema = %#v, want %#v", tool.Name, tool.InputSchema, want)
+		wantSchema := want
+		if readiness {
+			wantSchema = mcpDecoded(t, []byte(`{"type":"object","properties":{"issue_number":{"type":"integer","minimum":1}},"required":["issue_number"],"additionalProperties":false}`))
+		}
+		if !reflect.DeepEqual(tool.InputSchema, wantSchema) {
+			t.Fatalf("%s input schema = %#v, want %#v", tool.Name, tool.InputSchema, wantSchema)
 		}
 	}
 	if mcpTree(t, root) != before {
@@ -520,7 +529,10 @@ func mcpDirectoryLink(t *testing.T, target, link string) {
 	}
 }
 
-func TestMCPNeverRunsExternalCommands(t *testing.T) {
+// Before readiness every tool was local-only. This restriction still applies
+// to all status/next calls (including failures), initialization and discovery;
+// readiness's external read allowlist is tested with a real stdio client.
+func TestMCPLocalToolsNeverRunExternalCommands(t *testing.T) {
 	env, _, stderr := testEnv(t)
 	writeConfig(t, env.RepoRoot, "invalid config is not loaded")
 	env.LookPath = func(name string) (string, error) {
