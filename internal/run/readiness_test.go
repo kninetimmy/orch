@@ -213,7 +213,7 @@ func TestReadinessEvidence(t *testing.T) {
 }
 
 func TestReadinessCIAndProbeFailures(t *testing.T) {
-	for _, name := range []string{"passing", "pending", "failing", "no-checks", "none required", "auth failure", "PR failure", "issue failure", "rollup failure", "checks failure", "checks malformed", "head moved", "final PR failure", "invalid live head", "wrong PR branch"} {
+	for _, name := range []string{"passing", "pending", "failing", "no-checks", "none required", "auth failure", "PR failure", "issue failure", "rollup failure", "checks failure", "checks empty exit1", "checks empty exit8", "checks null", "checks malformed", "head moved", "final PR failure", "invalid live head", "wrong PR branch"} {
 		t.Run(name, func(t *testing.T) {
 			issue := fixtureIssue("a", 1, state.PhaseInReview)
 			issue.LastReviewVerdict, issue.ReviewCycles = VerdictApprove, 1
@@ -234,6 +234,9 @@ func TestReadinessCIAndProbeFailures(t *testing.T) {
 				ci = "no-checks"
 			}
 			calls := readinessCalls(t, issue, readinessHead, "OPEN", body, body, ci)
+			if name == "none required" {
+				calls[4].Stderr = "no required checks reported on the 'main' branch"
+			}
 			if name == "pending" {
 				calls[4].Exit = 8 // Documented gh pending exit is data, not failure.
 			}
@@ -251,6 +254,15 @@ func TestReadinessCIAndProbeFailures(t *testing.T) {
 			case "checks malformed":
 				calls[4].Stdout = "not JSON"
 				calls, wantErr = calls[:5], "unparsable JSON"
+			case "checks empty exit1", "checks empty exit8":
+				calls[4].Stdout, calls[4].Exit, calls[4].Stderr = "", 1, "read probe failed"
+				if name == "checks empty exit8" {
+					calls[4].Exit = 8
+				}
+				calls, wantErr = calls[:5], "without required-check data: read probe failed"
+			case "checks null":
+				calls[4].Stdout = "null"
+				calls, wantErr = calls[:5], "without a valid required-check array"
 			case "head moved":
 				calls[5] = readinessPRCall(t, issue, readinessOldHead, "OPEN", body)
 				wantErr = "changed during readiness"

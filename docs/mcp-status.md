@@ -192,7 +192,17 @@ repository and runs this read-only allowlist through the existing runner:
 Authentication, PR and CI retrieval failures are explicit tool/CLI errors;
 unavailable or unparsable issue audit evidence is explicitly unverified in the
 report and prevents prerequisites-met. No failed probe becomes passing CI or
-approval. The snapshot is unlocked and GitHub probes are not atomic. Manifest
+approval. The shared `GH.RequiredCI` helper, not readiness-specific parsing,
+accepts check arrays with known buckets on exits 0, 1 or 8. A successful empty
+array, an empty rollup, or exit 0 with blank/whitespace stdout and the single
+`no required checks reported on the '<branch>' branch` stderr notice still
+reports `no-checks`. Blank output without that successful notice, nonzero exits
+without checks, JSON `null`, and missing/unknown buckets are explicit errors.
+Passing/skipping, pending and failing/cancelled check data keep their existing
+meanings; a human merge still allows explicit no-checks while a grant merge
+still requires passing required CI.
+
+The snapshot is unlocked and GitHub probes are not atomic. Manifest
 parsing checks canonical JSON/markdown consistency, **not cryptographic
 provenance**; consistently hand-edited records remain undetectable. No new
 signing or trust mechanism is claimed.
@@ -200,8 +210,10 @@ signing or trust mechanism is claimed.
 Readiness never calls the session-writing lifecycle loader, audit-writing `ci`,
 state/status/metrics-writing `merge-report`, `merge`, git mutations or a grant
 store. It performs no repairs, tests, worktree or host preflights. Existing
-review, merge-report, merge and grant enforcement is unchanged; the stricter
-evidence inspection does not replace those verbs' own gates.
+review, merge-report, merge and grant enforcement for valid evidence is
+unchanged; the stricter evidence inspection does not replace those verbs' own
+gates. The shared failed-probe correction described below applies to every
+`RequiredCI` caller, including lifecycle commands.
 
 ## Reproducible smoke test and trial checkpoint
 
@@ -282,16 +294,34 @@ are recorded in their original sections above; status and next retain their
 previous contracts. Restrictions on no writes/no approval and fixed repository
 binding apply to **every inspection entry point**, not just `Readiness`.
 
+**Before the fix-cycle repair:** the GitHub/CI entry stated "Yes; unchanged
+commands, authentication and four-state CI semantics." Initial readiness reused
+the helper unchanged, but it accepted blank check output on exits 0, 1 and 8 as
+zero required checks, including an exit-1 network/API failure. JSON `null` also
+became no-checks, and missing/unknown buckets could fold to passing. Thus a failed
+probe could incorrectly satisfy readiness and human lifecycle CI gates despite
+the failed-read guarantee above.
+
+**After the repair:** commands, authentication and valid four-state semantics
+remain; the shared helper rejects those unsupported/invalid responses as
+described under external probes. No readiness-specific CI parser is added.
+`Readiness`, `CI`, `MergeReport`, `Merge` (human and grant) and `observeIssue`
+through `Resume` all propagate the error before their downstream actions. This
+corrects probe handling, not the approval policy: no-checks remains distinct
+from passing, allowed for human merges, and insufficient for grant merges.
+
 | Touched element | Does its previous behavior still hold? |
 | --- | --- |
 | Run inspection (`readiness.go`: `Readiness`, `ReadinessDoc`, `ReadinessReview`, `ReadinessMergeReport`, `ReadinessMerge`, `ReadinessSchemaVersion`, `readinessReviewEvidence`, `sameReadinessAudit`, `finishReadiness`) | New schema-1 evidence inspection only. It does not replace next-action policy or any lifecycle verb; only this inspection adds GitHub reads. |
 | Merge-report (`mergereport.go`: `MergeReport`, extracted `mergeReportResult`, existing `checkApprovingReview`/`requireMergeableCI`) | Yes. Pure result formatting is shared with the preview; existing ordering, PR/CI gates, head pinning, phase/status/metrics writes remain in `MergeReport`. The formatter never records a gate, for **any caller**, not just readiness. |
 | Reused local prerequisites (`state.Load`, `lockfile.Inspect`, `state.CheckConsistent`, `loadExecutionConfig`, `checkApprovedWork`, `phaseAllowed`, `sameWork`, `headOIDPattern`) | Yes; implementations unchanged. Inspection uses them without `loadVerb` or session attribution. Full-OID validation is also used for readiness evidence; existing review-worktree validation is not weakened. |
 | Audit path (`readIssueManifest`, `manifest.Parse`, `manifest.Verification`, engine-owned cycle/criterion name patterns) | Yes; implementations/schema unchanged. Readiness checks existing evidence and the open PR mirror, ignoring only independently rotated verification detail text; it never repairs or writes a record. Canonical consistency still does not prove provenance. |
-| GitHub/CI (`openGitHub`, `ghops.Open`, `GH.PR`, `GH.RequiredCI`, `ciChecks`, `MergeReportCI`/`MergeReportResult`/`CICheck`) | Yes; unchanged commands, authentication and four-state CI semantics. Readiness adds consumers, preserves required-check evidence, and explicitly fails/unverifies failed reads. No mutation method is called. |
+| GitHub/CI (`openGitHub`, `ghops.Open`, `GH.PR`, `GH.RequiredCI`, `deriveCIState`, `ciChecks`, `MergeReportCI`/`MergeReportResult`/`CICheck`) | Commands, authentication and valid four-state semantics still hold. The shared helper's failed/invalid-probe behavior changes as recorded immediately above; bucket folding itself is unchanged. Readiness preserves check evidence and calls no mutation method. |
+| Shared CI consumers (`CI`, `MergeReport`, `Merge`, `observeIssue`/`Resume`, `Readiness`) | Valid-response policies and lifecycle implementations remain. Every caller now receives the same probe error: no CI audit write, merge-report pin/phase/status write, merge/grant spend, resume classification/apply or ready preview follows that error. No approval or grant contract changes. |
 | CLI (`run.go`: `runUsage`, `runRunVerb`; `cli.go`: `commands`; run package command/concurrency comments) | Yes for existing commands. Before: only status/next bypassed stdin/serialization among inspections. After: readiness joins them with strict issue argv; all mutators retain serialization and JSON-input handling. Help exposes readiness and clarifies inspection versus mutating plumbing. |
 | MCP (`mcp.go`: `runMCP`, SDK registration/handler) | Before: two empty-input local-only tools. After: three read-only tools; readiness alone takes a positive issue and makes external reads (`openWorldHint: true`). Canonical fixed launch binding, status schema 4, next schema 1, strict existing inputs, structured/text parity, diagnostics and clean disconnect remain. |
-| Engine tests (`readiness_test.go`) | New scripted read-only/failure/evidence/CI coverage; existing lifecycle/review/merge/grant tests remain unchanged. Snapshots include repository names, kinds, modes, regular-file modification times and bytes, with metrics/session context enabled. |
-| CLI/MCP tests (`run_test.go`, `mcp_test.go`, `mcp_readiness_test.go`, `testdata/readiness-gh/main.go`) | Existing status/next parity, binding, local-only calls, shutdown and serialization tests remain. Discovery now expects three tools; real readiness stdio comparisons add a command allowlist and unchanged bound/launching repositories, including failures. The fake executable writes only its external test transcript, never the repository. |
+| Shared CI tests (`ghops/checks_test.go`) | Existing four-state, evidence, precedence and legitimate no-required-check coverage remains. The whitespace fixture now includes the supported successful notice, retaining the former acceptance rule as before/after in its comment. New regressions reject missing/invalid data and preserve all five valid buckets on exits 0, 1 and 8. |
+| Engine tests (`readiness_test.go`, `ci_probe_test.go`) | New scripted read-only/failure/evidence/CI coverage and regressions for every shared helper caller, including human/grant merge and resume's two CI-reading phases. Existing lifecycle/review/merge/grant success coverage remains. Snapshots include repository names, kinds, modes, regular-file modification times and bytes; readiness also enables metrics/session context. |
+| CLI/MCP tests (`run_test.go`, `mcp_test.go`, `mcp_readiness_test.go`, `testdata/readiness-gh/main.go`) | Existing status/next parity, binding, local-only calls, shutdown and serialization tests remain. Discovery now expects three tools; real readiness stdio comparisons add a command allowlist and unchanged bound/launching repositories, including failures. Before the fix cycle the fake probe failed with exit 2; now it uses exit 1 with empty stdout and asserts explicit CLI/MCP errors instead of a ready result. The fake executable writes only its external test transcript, never the repository. |
 | Guides (`docs/mcp-status.md`, `README.md`) | Source-only setup, optional use, host enforcement and four-item checkpoint remain. Historical status-only/empty-input/no-exec/plumbing claims are retained as before/after where originally stated, rather than silently removed. |
-| Lifecycle loading/review/merge/grants, next/status algorithms, persistent schemas, dependencies, adapters/guards, installed binaries and CI workflows | Untouched. No new authorization, automatic action, schema migration, dependency, host redesign, installation or item-4 doctor feature. All existing CI requirements remain. |
+| Lifecycle loading/review/merge/grant implementations, next/status algorithms, persistent schemas, dependencies, adapters/guards, installed binaries and CI workflows | Unchanged apart from the shared probe-error propagation and pure merge-report formatting described above. No new authorization, automatic action, schema migration, dependency, host redesign, installation or item-4 doctor feature. All existing CI requirements remain. |

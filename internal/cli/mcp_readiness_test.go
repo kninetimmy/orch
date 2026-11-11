@@ -197,6 +197,9 @@ func mcpReadinessExercise(t *testing.T, binary string) {
 				if !ok || !strings.Contains(string(cliOut), text.Text) {
 					t.Fatalf("failure parity: CLI=%s MCP=%+v", cliOut, result)
 				}
+				if name == "probe failure" && !strings.Contains(text.Text, "exited 1") {
+					t.Fatalf("missing exit-1 empty-stdout regression: %s", text.Text)
+				}
 				t.Logf("CLI = MCP explicit failure: %s; repositories unchanged", text.Text)
 				return
 			}
