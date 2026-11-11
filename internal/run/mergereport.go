@@ -61,8 +61,8 @@ func MergeReport(ctx context.Context, env Env, reqJSON []byte) (*MergeReportResu
 		return nil, err
 	}
 	issue := c.issue()
-	if issue.LastReviewVerdict != VerdictApprove {
-		return nil, fmt.Errorf("issue #%d has no approving review (last verdict %q); cannot report it ready to merge", issue.Number, issue.LastReviewVerdict)
+	if err := checkApprovingReview(issue); err != nil {
+		return nil, err
 	}
 
 	gh, err := openGitHub(ctx, env)
@@ -115,6 +115,15 @@ func MergeReport(ctx context.Context, env Env, reqJSON []byte) (*MergeReportResu
 		result.NoCIStatement = "no required CI checks gate this merge (PRD §16)"
 	}
 	return result, nil
+}
+
+// checkApprovingReview is the local prerequisite for merge-report. Next uses
+// it without claiming the live PR/CI checks below have been performed.
+func checkApprovingReview(issue *state.Issue) error {
+	if issue.LastReviewVerdict != VerdictApprove {
+		return fmt.Errorf("issue #%d has no approving review (last verdict %q); cannot report it ready to merge", issue.Number, issue.LastReviewVerdict)
+	}
+	return nil
 }
 
 // requireMergeableCI fails closed unless state is passing or no-checks
