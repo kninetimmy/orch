@@ -1571,9 +1571,19 @@ func TestDoctorJSONAndHumanShareResults(t *testing.T) {
 			case "conventions":
 				writeInstructionFile(t, env.RepoRoot, "CLAUDE.md", managedBlock(t))
 			}
+			rootInfo, err := os.Stat(env.RepoRoot)
+			if err != nil {
+				t.Fatal(err)
+			}
 			runner.beforeRun = func(cmd execx.Cmd) {
-				if cmd.Dir != env.RepoRoot {
-					t.Errorf("probe escaped root: %+v", cmd)
+				dirInfo, err := os.Stat(cmd.Dir)
+				if err != nil {
+					t.Fatalf("stat probe directory %q: %v", cmd.Dir, err)
+				}
+				// Git and GitHub canonicalize the root, which can change its
+				// spelling (e.g. /var to /private/var on macOS), not its identity.
+				if !os.SameFile(rootInfo, dirInfo) {
+					t.Errorf("probe escaped root %q: %+v", env.RepoRoot, cmd)
 				}
 				if strings.HasPrefix(name, "memhub ") && cmd.Name == "memhub" && cmd.Args[0] == "recall" {
 					t.Fatal("recall ran despite health failure or mode off")
