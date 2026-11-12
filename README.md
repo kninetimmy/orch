@@ -431,7 +431,7 @@ commands:
   eval             Evaluation preview/run/status/stop/report (eval help for arguments)
   grant            Show the active autonomy grant; grant revoke ends it; grant relay hands it to a fresh Claude Code session; grant preview and grant create propose and record one (JSON stdin/stdout)
   render-agents    Render project agent definitions for every enabled host
-  mcp              Serve read-only run inspections, doctor diagnostics, effective configuration, recorded metrics and retained evaluations over stdio (mcp [--repo <path>] [--eval-storage-root <absolute-local-path>])
+  mcp              Serve inspections and bounded evaluation preparation over stdio (mcp [--repo <path>] [--eval-storage-root <absolute-local-path>])
   run              Adapter plumbing: Delivery verbs (JSON stdin/stdout); inspection: status|next --json, readiness --issue <number> --json
   guard            Adapter plumbing: pre-write enforcement for host hooks (not a human command)
   hook             Adapter plumbing: host lifecycle-event verbs (not a human command)
@@ -471,8 +471,19 @@ Without the storage binding it returns an explicit tool error. Inspection does
 not publish reports, grade, execute, stop or infer process liveness; private
 source and raw worker output remain guarded references, not returned contents.
 For optional MCP client access to those reports, see the
-[read-only stdio MCP guide](docs/mcp-status.md). This source-only addition does
+[local stdio MCP guide](docs/mcp-status.md). This source-only addition does
 not install anything or replace the host plugins and their enforcement hooks.
+Before item 13, that MCP surface and its help were exclusively read-only.
+After separately approved item 13, `orch_eval_preview` also accepts only a
+repository-relative `plan_file` and may retain an immutable preparation record
+in the launch-bound store. The proposal's canonical storage root must match that
+binding before publication. This tool is not read-only: interrupted publication
+may also retain `.pending-*` artifacts. It reuses CLI preview normalization,
+read-only Git probes and no-replace publication, without creating an evaluation
+execution, worker, approval, Delivery run, configuration or GitHub artifact.
+Existing inspections and CLI preview (including external plan paths) remain
+available; preparation never grants execution approval. See the guide for the
+exact write footprint, path restrictions and blast radius.
 Source tests do not upgrade the binary an MCP client launches; separately verify
 that binary's identity and discovered tools after an explicitly approved install.
 

@@ -531,15 +531,7 @@ func Preview(ctx context.Context, repo, file string, runner execx.Runner) (*Reco
 	if err != nil {
 		return nil, fmt.Errorf("plan file: %w", err)
 	}
-	var p Proposal
-	if err := strictJSON(data, &p); err != nil {
-		return nil, fmt.Errorf("plan JSON: %w", err)
-	}
-	if p.Version < 1 || p.Version > 3 {
-		return nil, fmt.Errorf("plan version %d unsupported; require version 1, 2 or 3", p.Version)
-	}
-	base := filepath.Dir(name)
-	record, err := normalize(ctx, repo, base, p, runner)
+	record, err := preparePreview(ctx, repo, name, data, runner)
 	if err != nil {
 		return nil, err
 	}
@@ -547,6 +539,19 @@ func Preview(ctx context.Context, repo, file string, runner execx.Runner) (*Reco
 		return nil, err
 	}
 	return record, nil
+}
+
+// preparePreview is the single decoding/normalization path for CLI and bounded
+// repository previews. Publication follows only after entry-point binding checks.
+func preparePreview(ctx context.Context, repo, name string, data []byte, runner execx.Runner) (*Record, error) {
+	var p Proposal
+	if err := strictJSON(data, &p); err != nil {
+		return nil, fmt.Errorf("plan JSON: %w", err)
+	}
+	if p.Version < 1 || p.Version > 3 {
+		return nil, fmt.Errorf("plan version %d unsupported; require version 1, 2 or 3", p.Version)
+	}
+	return normalize(ctx, repo, filepath.Dir(name), p, runner)
 }
 
 // normalize is shared by preview and saved-record revalidation. It never writes.

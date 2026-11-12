@@ -261,6 +261,9 @@ func TestMCPStdio(t *testing.T) {
 	t.Run("retained evaluations", func(t *testing.T) {
 		mcpEvalExercise(t, binary)
 	})
+	t.Run("bounded evaluation preparation", func(t *testing.T) {
+		mcpEvalPreviewExercise(t, binary)
+	})
 
 	t.Run("repository binding", func(t *testing.T) {
 		root := t.TempDir()
@@ -388,7 +391,7 @@ func mcpDiscover(t *testing.T, ctx context.Context, session *mcp.ClientSession, 
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(list.Tools) != 8 || list.NextCursor != "" {
+	if len(list.Tools) != 9 || list.NextCursor != "" {
 		t.Fatalf("tool discovery = %+v", list)
 	}
 	want := mcpDecoded(t, []byte(`{"type":"object","properties":{},"additionalProperties":false}`))
@@ -398,8 +401,12 @@ func mcpDiscover(t *testing.T, ctx context.Context, session *mcp.ClientSession, 
 		doctor := tool.Name == "orch_doctor"
 		metrics := tool.Name == "orch_metrics" || tool.Name == "orch_metrics_report"
 		evaluation := tool.Name == "orch_eval_status"
-		if (tool.Name != "orch_run_status" && tool.Name != "orch_run_next" && tool.Name != "orch_config_effective" && !readiness && !doctor && !metrics && !evaluation) || seen[tool.Name] || tool.Annotations == nil || !tool.Annotations.ReadOnlyHint || tool.Annotations.OpenWorldHint == nil || *tool.Annotations.OpenWorldHint != (readiness || doctor) {
+		preview := tool.Name == "orch_eval_preview"
+		if (tool.Name != "orch_run_status" && tool.Name != "orch_run_next" && tool.Name != "orch_config_effective" && !readiness && !doctor && !metrics && !evaluation && !preview) || seen[tool.Name] || tool.Annotations == nil || tool.Annotations.ReadOnlyHint == preview || tool.Annotations.OpenWorldHint == nil || *tool.Annotations.OpenWorldHint != (readiness || doctor) {
 			t.Fatalf("tool = %+v", tool)
+		}
+		if preview && (tool.Annotations.DestructiveHint == nil || *tool.Annotations.DestructiveHint || !tool.Annotations.IdempotentHint) {
+			t.Fatalf("preview publication annotations = %+v", tool.Annotations)
 		}
 		seen[tool.Name] = true
 		wantSchema := want
@@ -411,6 +418,9 @@ func mcpDiscover(t *testing.T, ctx context.Context, session *mcp.ClientSession, 
 		}
 		if evaluation {
 			wantSchema = mcpDecoded(t, []byte(`{"type":"object","properties":{"run_id":{"type":"string","minLength":1}},"required":["run_id"],"additionalProperties":false}`))
+		}
+		if preview {
+			wantSchema = mcpDecoded(t, []byte(`{"type":"object","properties":{"plan_file":{"type":"string","minLength":1}},"required":["plan_file"],"additionalProperties":false}`))
 		}
 		if !reflect.DeepEqual(tool.InputSchema, wantSchema) {
 			t.Fatalf("%s input schema = %#v, want %#v", tool.Name, tool.InputSchema, wantSchema)
@@ -553,8 +563,9 @@ func mcpDirectoryLink(t *testing.T, target, link string) {
 }
 
 // Before readiness every tool was local-only. This restriction still applies
-// to status/next/configuration/metrics/evaluation calls (including failures), initialization and
-// discovery; readiness's and doctor's external read allowlists use real stdio clients.
+// to status/next/configuration/metrics/evaluation-status calls (including failures),
+// initialization and discovery. Preview adds only fixed Git reads; its and
+// readiness's/doctor's external read allowlists use real stdio clients.
 func TestMCPLocalToolsNeverRunExternalCommands(t *testing.T) {
 	env, _, stderr := testEnv(t)
 	writeConfig(t, env.RepoRoot, "invalid config is not loaded")
@@ -584,6 +595,9 @@ func TestMCPLocalToolsNeverRunExternalCommands(t *testing.T) {
 	mcpCall(t, ctx, session, env.RepoRoot, "orch_run_next", map[string]any{})
 	if result := mcpCall(t, ctx, session, env.RepoRoot, "orch_eval_status", map[string]any{"run_id": mcpEvalID}); !result.IsError {
 		t.Fatalf("unbound evaluation storage result = %+v", result)
+	}
+	if result := mcpCall(t, ctx, session, env.RepoRoot, "orch_eval_preview", map[string]any{"plan_file": "plan.json"}); !result.IsError {
+		t.Fatalf("unbound evaluation preview result = %+v", result)
 	}
 	if result := mcpCall(t, ctx, session, env.RepoRoot, "orch_config_effective", map[string]any{}); !result.IsError || result.StructuredContent != nil {
 		t.Fatalf("invalid configuration result = %+v", result)
