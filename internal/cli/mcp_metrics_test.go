@@ -17,6 +17,7 @@ import (
 	"github.com/kninetimmy/orch/internal/lockfile"
 	"github.com/kninetimmy/orch/internal/manifest"
 	"github.com/kninetimmy/orch/internal/metrics"
+	"github.com/kninetimmy/orch/internal/paths"
 	"github.com/kninetimmy/orch/internal/state"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
@@ -320,6 +321,11 @@ func mcpMetricsParity(t *testing.T, ctx context.Context, binary, root string, se
 
 func mcpMetricsErrors(t *testing.T, ctx context.Context, binary, root string, session *mcp.ClientSession) {
 	t.Helper()
+	// Match MCP's bound root, including macOS symlinks and Windows short paths.
+	root, err := paths.Canonical(root)
+	if err != nil {
+		t.Fatal(err)
+	}
 	_, historyErr := inspectMetrics(root)
 	_, reportErr := inspectMetricsReport(root)
 	for _, tc := range []struct {
@@ -340,8 +346,14 @@ func mcpMetricsErrors(t *testing.T, ctx context.Context, binary, root string, se
 			t.Fatalf("%s error mismatch: shared=%v CLI=%s err=%v MCP=%+v", tc.tool, tc.err, out, err, result)
 		}
 		text, ok := result.Content[0].(*mcp.TextContent)
-		if !ok || text.Text != tc.err.Error() || mcpTree(t, root) != before {
-			t.Fatalf("%s error/no-write mismatch: %+v", tc.tool, result)
+		if !ok {
+			t.Fatalf("%s error content = %T", tc.tool, result.Content[0])
+		}
+		if text.Text != tc.err.Error() {
+			t.Fatalf("%s error text mismatch: shared=%q MCP=%q", tc.tool, tc.err.Error(), text.Text)
+		}
+		if after := mcpTree(t, root); after != before {
+			t.Fatalf("%s error inspection changed repository: before=%q after=%q", tc.tool, before, after)
 		}
 	}
 }
