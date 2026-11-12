@@ -273,6 +273,9 @@ func TestMCPStdio(t *testing.T) {
 	t.Run("configuration interviews", func(t *testing.T) {
 		mcpInterviewExercise(t, binary)
 	})
+	t.Run("approval evidence", func(t *testing.T) {
+		mcpApprovalExercise(t, binary)
+	})
 
 	t.Run("repository binding", func(t *testing.T) {
 		root := t.TempDir()
@@ -400,7 +403,7 @@ func mcpDiscover(t *testing.T, ctx context.Context, session *mcp.ClientSession, 
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(list.Tools) != 13 || list.NextCursor != "" {
+	if len(list.Tools) != 14 || list.NextCursor != "" {
 		t.Fatalf("tool discovery = %+v", list)
 	}
 	want := mcpDecoded(t, []byte(`{"type":"object","properties":{},"additionalProperties":false}`))
@@ -414,7 +417,8 @@ func mcpDiscover(t *testing.T, ctx context.Context, session *mcp.ClientSession, 
 		issueContext := tool.Name == "orch_issue_context"
 		interview := tool.Name == "orch_configure_step" || tool.Name == "orch_configure_local_step"
 		planGate := tool.Name == "orch_plan_gate"
-		if (tool.Name != "orch_run_status" && tool.Name != "orch_run_next" && tool.Name != "orch_config_effective" && !readiness && !doctor && !metrics && !evaluation && !preview && !issueContext && !interview && !planGate) || seen[tool.Name] || tool.Annotations == nil || tool.Annotations.ReadOnlyHint == (preview || planGate) || tool.Annotations.OpenWorldHint == nil || *tool.Annotations.OpenWorldHint != (readiness || doctor || interview || planGate) {
+		approval := tool.Name == "orch_approval_status"
+		if (tool.Name != "orch_run_status" && tool.Name != "orch_run_next" && tool.Name != "orch_config_effective" && !readiness && !doctor && !metrics && !evaluation && !preview && !issueContext && !interview && !planGate && !approval) || seen[tool.Name] || tool.Annotations == nil || tool.Annotations.ReadOnlyHint == (preview || planGate) || tool.Annotations.OpenWorldHint == nil || *tool.Annotations.OpenWorldHint != (readiness || doctor || interview || planGate || approval) {
 			t.Fatalf("tool = %+v", tool)
 		}
 		if preview && (tool.Annotations.DestructiveHint == nil || *tool.Annotations.DestructiveHint || !tool.Annotations.IdempotentHint) {

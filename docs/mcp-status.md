@@ -19,8 +19,11 @@ adding the non-activating plan decision gate. The preceding ten contracts hold;
 the gate's existing external memhub probes may have memhub-owned side effects.
 Before plan-gate integration, item 12 on the ten-tool baseline exposed **twelve
 tools**, including both read-only configuration interviews. With items 10 and 12
-integrated, the source catalog contains **thirteen tools**. Preview alone may
+integrated, the source catalog contained **thirteen tools**. Preview alone may
 persist preparation; the gate retains its separate external side-effect boundary.
+**After separately approved item 8:** current source contains **fourteen tools**:
+twelve read-only inspections/interviews, adding approval/grant evidence, plus
+bounded preview and the plan gate. All thirteen preceding contracts hold.
 
 ## Launch and repository binding
 
@@ -146,6 +149,13 @@ idempotent** because of its external memhub probes; see its dedicated section be
 With item 12 integrated, unknown outer fields and repository overrides remain
 rejected for **all thirteen tools**; the gate and interviews retain distinct input shapes.
 
+**Before item 8:** the thirteen tools above exposed no combined approval/grant
+snapshot. **After separately approved item 8:** source discovers **fourteen** tools,
+adding `orch_approval_status` with an explicit empty-object input. The earlier
+thirteen schemas and behaviors remain; the appended item-8 section specifies the
+new tool's evidence-only meaning and Git read probes. Unknown fields and root
+overrides remain rejected for **every tool**, not only `orch_approval_status`.
+
 | Tool | Input | CLI counterpart (from the bound checkout) | Report schema |
 | --- | --- | --- | --- |
 | `orch_run_status` | `{}` | `orch run status --json` | 4 |
@@ -161,6 +171,7 @@ rejected for **all thirteen tools**; the gate and interviews retain distinct inp
 | `orch_plan_gate` | `{"plan":{...}}` | `orch run plan` (submitted plan JSON on stdin) | 3 |
 | `orch_configure_step` | `{"schema_version":2,"answers":{}}` | `orch configure --step` (AnswerSet on stdin) | 2 |
 | `orch_configure_local_step` | `{"schema_version":2,"answers":{}}` | `orch configure-local --step` (AnswerSet on stdin) | 2 |
+| `orch_approval_status` | `{}` | None; directly combines shared `run.Status` and grant observation | 1 |
 
 Each `orch_run_status` invocation reads fresh local
 state through the same engine as `orch run status --json` and returns that
@@ -202,6 +213,11 @@ command-free**; no tool gains lifecycle or execution authority.
 **After item 12:** both configuration interviews add the existing setup read
 probes, without writes or lifecycle authority. Effective-configuration inspection
 (`orch_config_effective`) remains command-free; the interviews do not.
+**After item 8:** approval status also uses read-only Git probes, with no writes.
+All twelve read-only inspections/interviews retain no-write contracts; preview
+alone may persist bounded preparation, while the gate keeps its separate external
+memhub boundary below. Initialization, discovery, disconnect and local-only calls remain
+command-free; no tool gains approval or lifecycle authority.
 This server does not replace the CLI, the thin host plugins or their guards,
 and it does not change Orch's separate memhub CLI integration.
 **Before item 10:** the ten-tool catalog had only the inspection probes and
@@ -297,6 +313,8 @@ memhub implementation; its narrower side-effect boundary is documented below.
 With item 12 integrated, the no-session/no-approval/no-lifecycle/no-Git-or-GitHub-
 mutation restrictions hold for **all thirteen MCP tools**; the gate's external
 memhub exception and preview's bounded preparation writes remain unchanged.
+After item 8, these restrictions hold for **all fourteen MCP tools**, including
+approval/grant observation; the same two write/side-effect exceptions remain.
 
 ## Review and merge readiness
 
@@ -870,6 +888,7 @@ disconnect and verify a successful process exit. After item 13 and issue #468,
 the same test also exercises bounded preparation and issue context. After item
 10, it covered all eleven tools, including the full plan gate. With item 12 also
 integrated, it covers all thirteen tools and both configuration interviews.
+After item 8, it covers all fourteen tools, including approval/grant evidence.
 The earlier interview-only integration covered twelve tools. No global install
 or client configuration is needed. The client stays connected while test fixtures
 change from Assist to blocked Delivery and inconsistent state/lock pairs. Output reports
@@ -1121,8 +1140,10 @@ inspections plus bounded preview. Context's schema and no-command/no-write
 contract are unchanged; preview alone may persist a preparation artifact.
 After item 12 on the earlier baseline, discovery returned twelve tools, also including the two read-only
 interviews and their separate setup-probe allowlist. Context remains command-free.
-With item 10 also integrated, discovery returns thirteen tools, including the plan
+With item 10 also integrated, discovery returned thirteen tools, including the plan
 gate with its separate external memhub side-effect boundary. Context is unchanged.
+After item 8, discovery returns fourteen tools, adding read-only approval/grant
+evidence without changing context, preview, the plan gate or either interview.
 
 Call with only a positive integer issue number, for example:
 
@@ -1339,3 +1360,99 @@ an omitted plan declaration.
 | Tests (`mcp_test.go`: `TestMCPStdio`, `mcpDiscover`; new `mcp_plan_gate_test.go`: `mcpGatePlan`, `mcpGateJSON`, `mcpPlanGateSchema`, `mcpPlanGateExercise`, `mcpPlanGateParity`, `mcpGateResultParity`, `TestMCPPlanGateMemhubParity`) | Existing ten-tool tests and annotations remain asserted, including context and preview; discovery expects eleven tools and adds the gate's conservative annotations/output schema. New isolated tests exercise full-document parity, strict errors, freshness and unchanged Orch/Git artifacts, without live memhub writes. |
 | Source guide (`docs/mcp-status.md`) | Optional/source-only setup and prior checkpoint hold. Before: the title and discovery/smoke/no-write descriptions covered inspections and bounded preparation only. After: the same document preserves those historical statements and explicitly adds the non-activating gate, memhub-owned side-effect exception and separate human approval handoff. Earlier item-7/13/context sections remain historical records, not current catalog totals. |
 | Dependencies, persistent schemas, engine algorithms, adapters/guards, configuration, CI workflows, installed binaries and releases | Untouched. No migration, new dependency, broader authorization, installation, release or remote transport is added; existing required checks still apply. |
+
+## Item 8: recorded approval evidence and active-grant observation
+
+Call `orch_approval_status` with an explicit `{}`. Omitted arguments, `null`,
+non-objects, unknown fields, grant/issue selectors and repository overrides are
+errors, before any probes. The server remains bound to its launch-time checkout.
+There is no new CLI command: the run portion is exactly the existing
+`orch run status --json` document; grant observation reuses the grant store.
+
+The snapshot has `schema_version: 1` and these members, returned identically as
+MCP structured content and JSON text:
+
+| Member | Meaning |
+| --- | --- |
+| `status` | The full existing schema-4 `StatusDoc`. `run.plan`, when present, retains recorded title, digest, approver/time, configuration revision, contract version and execution digest. `run.issues[].approved_head_oid`, when present, is the recorded merge-report pin, alongside its issue/PR identity and phase. Mode, lock, consistency warning, stopped reason and all other status fields remain intact. |
+| `active_grant` | The full existing schema-1 `Grant` record, or explicit `null` when no record is active (including absent storage, empty storage, expired or revoked grants). Terms retain scope, covered gates, expiry, all limits, original session and relay permission mode. The record retains its current holder, approval identity/time/digest, consumed `runs`/`merges`, recorded gate `approvals` and relay history. No remaining-budget or authorization calculation is synthesized. |
+| `limitations` | Evidence-only meaning, unlocked/non-atomic concurrency limits and the checks deliberately not performed. |
+
+A merge-report pin is **not a recorded human merge approval**. An active grant
+means only not revoked and not yet expired at observation time; even exhausted
+limits or a different current holder remain visible. Neither a pin nor an active
+record authorizes a future action. The call does not validate scope eligibility,
+session ownership, remaining budget, protected paths, live PR heads, reviews or
+CI. Normal plan/merge gates and separate human approvals remain required outside
+the existing separately authorized grant contract. A tool call is never approval
+and never creates, renews, relays, revokes, validates authority under or spends a
+grant. These no-approval/no-write restrictions apply to **all twelve read-only
+inspection/interview tools**, not only this symbol. The no-approval restriction
+also applies to bounded preview and the plan gate, whose preparation writes and
+external memhub side effects remain separately documented; lifecycle and
+grant mutation APIs retain their own distinct enforcement contracts.
+
+### Read probes, freshness and concurrency
+
+Each call reloads status through `run.Status`, then opens the clone's shared grant
+store through `grant.Open`. It uses exactly these read-only Git probes, with the
+fixed bound checkout as cwd and the existing noninteractive Git environment:
+
+- `git rev-parse --show-toplevel` (existing top-level binding check)
+- `git rev-parse --path-format=absolute --git-common-dir` (clone-shared store)
+
+No fetch, GitHub, host, memhub or other subprocess is invoked. Initialization,
+discovery, invalid arguments and disconnect launch no probe. The tool is annotated
+read-only with `openWorldHint: true`, because it invokes Git. The other tools keep
+their previous probe/local-only contracts.
+
+`Store.ObserveActive` shares `all`/`readRecord` and `active`/`Grant.Active` with the
+existing locked `Store.Active` path. Every JSON record is read strictly, including
+ended records; malformed, unreadable, unsupported or filename-mismatched records
+and duplicate-active grants are explicit errors, not absence. Failed Git probes,
+unverifiable common directories and corrupt state/locks also return tool errors
+without a partial snapshot. Existing inconsistent state/lock pairs remain
+inspectable with their original `Status` warning. Configuration is not loaded.
+Successive calls on the same connection observe changes and can recover after
+errors; no cached approval or grant is reused.
+
+This is an **unlocked, non-atomic observation**, not a cross-file transaction:
+state, Delivery lock and individual grant records can change between reads or
+immediately afterward. Concurrent replacement can yield a mixed observation;
+concurrent removal can yield an explicit read error. No retry can turn it into an
+authorization. Re-inspect after changes and let normal lifecycle verbs recheck
+under their existing locks. Observation creates no grant directory or lock file,
+rewrites no record, consumes no limit, registers no session and records no approval,
+metrics or lifecycle advancement, including on failure.
+
+### Item 8 verification and blast radius
+
+`TestObserveActive*` pins absence, empty/expired/revoked/active/exhausted and
+duplicate-active selection, strict malformed/unsupported records, freshness and
+lock-free/no-lock-file behavior. `TestOpenGrantStoreGitFailures` pins the two-probe
+allowlist, binding and failed/invalid common-directory results. `TestApprovalStatus*`
+compares the full status view and recorded approval/pin evidence, legacy inspection,
+warnings, failures and unchanged files with metrics/session context present.
+
+`go test ./internal/cli -run '^TestMCPStdio$/approval_evidence' -v -count=1`
+builds a real stdio server and reuses the scripted probe executable with only the
+two Git reads allowed. It compares shared/structured/text snapshots and nested
+status against CLI JSON, checks fresh grants and errors on one connection, fixed
+cwd binding, strict input, missing Git, clean shutdown and unchanged bound/launching
+repositories **and the separate clone-common store**, including lock-file absence.
+The existing raw-stdio omitted-arguments regression now also covers this tool.
+These tests are included in `go test ./...`; they are not an installation, release
+or claim that every hosted CI check has run.
+
+| Touched element | Does its previous behavior still hold? |
+| --- | --- |
+| Grant store opening (`store.go`: `Open`, `DirName` documentation) | Valid clone/worktree resolution and the same two Git probes hold. Before: a successful but blank/relative/missing/non-directory common-dir result could become an unchecked store path. After: `Open` explicitly rejects those results. This fail-closed check applies to **every `grant.Open` caller**, not just MCP; no valid grant's locking or authorization changes. The old comment's every-access lock claim is retained as before/after beside `DirName`. |
+| New observation (`observe.go`: `Store.ObserveActive`) | Adds unlocked read-only observation only. Before: every existing store read used the lifecycle lock except the missing-store fast path. After: those methods still do; only `ObserveActive` bypasses locking and never creates the directory/lock. This no-lock guarantee belongs to **that method**, not every grant API. |
+| Reused grant representation/parser/selection (`Grant`, `Terms`, `Use`, `RecordedApproval`, `Relay`, `empty`, `all`, `readRecord`, `decodeStrict`, `active`, `Grant.Active`) | Yes; implementations, strict schema/unknown-field/filename failures, expiry/revocation and duplicate-active rules are unchanged. Full records are returned without a second parser, semantic validator or eligibility calculation. |
+| Existing grant lifecycle (`withLock`, `Active`, `Get`, `Create`, `Revoke`, `RecordRun`, `RecordMerge`, `RecordApproval`, `record`, `update`, `Store.Relay`) and run grant gates | Yes, for valid Git results; code and cross-process locking, holder/limit/scope checks, spend/approval recording and relay behavior are unchanged. No lifecycle caller switches to unlocked observation. |
+| New run snapshot (`approval_status.go`: `ApprovalStatus`, `ApprovalStatusDoc`, `ApprovalStatusSchemaVersion`) | Adds a schema-1 evidence wrapper with explicit grant absence and limitations; no authorization boolean, new status parser or CLI verb. |
+| Reused status/time/path/Git (`Status`, `StatusDoc`, `RunView`, `PlanRef`, `Issue`, `state.Load`, `lockfile.Inspect`, `CheckConsistent`, `Env.now`, `gitops.Open`/`CommonDir`, `paths.Canonical`/containment) | Yes; implementations and nested schemas remain. The snapshot preserves full approval/pin data and existing inconsistent-state warnings; it never calls `loadVerb`, readiness or grant authorization methods. |
+| MCP (`mcp_approval.go`: `addApprovalStatusTool`; `mcp.go`: registration) | Existing launch binding, transport, thirteen tool contracts (including issue context, bounded preview, `addPlanGateTool` and both `addMCPInterviewTools` entries), structured/text output, protocol-only stdout, stderr diagnostics and clean disconnect hold. Thirteen-only discovery becomes fourteen as recorded in the original discovery section above; the added strict-empty-input tool is read-only with Git probes. Preview alone retains preparation writes; the gate's conservative annotations/external memhub boundary and interviews' read-only setup probes are not weakened. |
+| Tests (`grant/observe_test.go`, `run/approval_status_test.go`, `cli/mcp_approval_test.go`, `mcp_test.go`: `TestMCPStdio`, `mcpDiscover`, no-command contract comment; `mcp_metrics_test.go`: `mcpMetricsOmittedArguments`) | Existing coverage remains, including issue context's local-only checks, bounded preview's preparation/schema/annotations, the plan gate's typed schema/conservative annotations and both interviews' schemas/probe contracts. Discovery now expects fourteen tools and includes the new schema/annotation; real stdio adds approval/grant/binding/error/no-write parity, while the shared raw-input loop adds this tool's omitted-argument refusal. The existing `testdata/doctor-probe` is reused unchanged; its test-only transcript stays outside inspected repositories/stores. |
+| Guide (`docs/mcp-status.md`) | Source-only launch/storage binding, prior trial checkpoint and installation boundaries hold. Previous discovery and store/probe limits are retained as explicit history; new snapshot/approval/concurrency limits are documented, not authority to perform later actions. |
+| Persistent state/status/grant schemas, lifecycle/session/approval algorithms, dependencies, CLI commands/help, host adapters/guards, installed binaries and CI workflows | Unchanged. No migration, dependency, mutator, automatic approval, installation, release or remote access is added. Existing required checks remain required. |
