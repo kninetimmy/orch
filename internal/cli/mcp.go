@@ -184,6 +184,20 @@ func runMCP(env Env, args []string) error {
 		}
 		return nil, doc, nil
 	})
+	mcp.AddTool(server, &mcp.Tool{
+		Name:        "orch_issue_context",
+		Description: "Observe one active-run issue's recorded work, current routing, dependencies and engine prerequisites without dispatching it. Local-only context is not a dispatch receipt, authorization or live host/worktree/PR readiness.",
+		InputSchema: json.RawMessage(`{"type":"object","properties":{"issue_number":{"type":"integer","minimum":1}},"required":["issue_number"],"additionalProperties":false}`),
+		Annotations: &mcp.ToolAnnotations{ReadOnlyHint: true, OpenWorldHint: new(bool)},
+	}, func(ctx context.Context, _ *mcp.CallToolRequest, input struct {
+		IssueNumber int `json:"issue_number"`
+	}) (*mcp.CallToolResult, any, error) {
+		doc, err := run.IssueContext(ctx, run.Env{RepoRoot: root}, input.IssueNumber)
+		if err != nil {
+			return nil, nil, err
+		}
+		return nil, doc, nil
+	})
 	return server.Run(context.Background(), &mcp.IOTransport{
 		Reader: io.NopCloser(env.Stdin),
 		Writer: mcpWriter{env.Stdout},

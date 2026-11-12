@@ -786,3 +786,90 @@ original sections above. No existing implementation is superseded by this tool.
 | MCP tests (`mcp_test.go`: `TestMCPStdio`, `mcpDiscover`, local no-command regression; new `mcp_eval_test.go` fixtures/parity/error/launch checks) | Existing seven-tool parity/binding/no-write/shutdown and probe allowlists hold; discovery now expects eight and checks the evaluation-only schema/local annotation. Deterministic real-stdio cases add report parity, binding/identity/path/evidence/unknown/privacy/no-write coverage. Test-only retained data/grade setup is not production execution or trial approval. |
 | Guides (`docs/mcp-status.md`, `README.md`) | Optional source-only setup, explicit installation boundary, host enforcement and prior checkpoint hold. Previous launch/discovery limits are retained as before/after in the same sections; storage opt-in, identity scope and report limitations are explicit. |
 | Core progress `Status`, CLI evaluation parser/status/run/stop/grade/report, publication, lifecycle/state/lock/approval/metrics/grant algorithms, persistent schemas, dependencies, adapters/guards, installed binaries and CI | Unchanged. No useful CLI surface is removed, no execution/approval rule is relaxed and no installation, release, schema migration or remote access is added. Required existing checks still apply. |
+
+## Issue context (issue #468)
+
+**Before issue #468:** the eight-tool discovery/table and smoke-test count above
+described the source surface, with no focused issue-context report. Identity and
+dependency-reference sanity checks belonged to `Next` only, not `Status`.
+**After issue #468:** source adds **`orch_issue_context`**, a ninth read-only tool
+in this increment. Existing eight tools, launch flags and report schemas retain
+their contracts. The same next-action classifier now also serves issue context;
+its identity/reference restrictions apply to both guidance entry points, not
+`Status` or every inspection function. Later separately approved increments may
+add other tools; building source still does not update an installed server.
+
+Call with only a positive integer issue number, for example:
+
+```json
+{"issue_number":468}
+```
+
+Missing/zero/negative/wrong-type numbers, non-object input, unknown fields and
+repository overrides are tool errors. The tool is local-only
+(`readOnlyHint: true`, `openWorldHint: false`). There is no new CLI command;
+`run.IssueContext` is the shared engine report path for this observation.
+Success returns `schema_version: 1` as equivalent structured content and JSON text:
+
+| Member | Source and meaning |
+| --- | --- |
+| `mode`, `consistent`, optional `warning` and `lock` | Existing status representation, preserving inconsistent state/lock warnings. |
+| `run` | Status run identity, host, start time, approved plan metadata and any whole-run stopped reason; no unrelated issues. |
+| `issue` | The exact recorded `state.Issue` from status: current phase, objective, acceptance criteria, required tests, optional `tests_ci_does_not_run`, branch/worktree references, current decision/executor/reviewer, escalation attempts, PR metadata and block/resolution histories. Missing work or routing stays missing. |
+| `dependencies` | Matching direct dependency issue records from status in recorded issue order, with the same case-insensitive plan-ID matching as the engine. Declared IDs remain in `issue.depends_on`; missing records are never invented. |
+| `guidance` | Existing schema-1 next-action report, narrowed to this issue **plus every run-level action**, with unchanged reasons, prerequisites, blockers, approval requirements and limitations. Run-level recovery, configuration/contract drift, stopped-run and all-cleaned guidance has neither an issue number nor a plan ID and is never filtered away; unrelated unnumbered planned issues are excluded. |
+| `limitations` | Explicit observation/dispatch/readiness boundaries. |
+
+Local-only test declarations are transcribed, not inferred. An absent or empty
+`tests_ci_does_not_run` does **not** establish that CI runs every required test.
+Current selections include escalations; unresolved decisions and their original
+causes remain visible. Recorded PR fields do not establish live PR readiness.
+
+No active run (including ordinary Assist), unknown/ambiguous requested issue
+numbers and unreadable/corrupt/unsupported state or locks are explicit errors,
+with no partial report. Next-action identity/reference errors propagate.
+Inconsistency and configuration/contract drift preserve the existing engine's
+recovery/blocker precedence, never proceed advice. Missing approved work/routing
+uses the existing re-plan guidance, not an issue-body reconstruction.
+
+Status projection and next-action classification share **one loaded state/lock
+pair**, rather than independently loading and combining different runs, phases
+or routing selections. Reads of that pair and effective configuration remain
+unlocked and non-atomic; re-inspect after changes. A mismatch observed between
+state and lock remains a consistency warning plus recovery guidance.
+
+**Context is an observation, not dispatch authorization or a dispatch receipt.**
+It does not dispatch, fetch, run external commands, probe GitHub/CI/hosts or
+worktree existence, save lifecycle state, attribute a session, write metrics,
+spend a grant or record approval. These no-command limits apply to every
+local-only inspection tool, not just `orch_issue_context`; readiness and doctor
+retain their separately documented external read probes. Every lifecycle verb
+keeps its normal live preflights, dependency checks and separate approval gates.
+
+Deterministic engine tests cover phases, dependency waits/abandonment, native and
+escalated selections, pending/resolved blocks, missing work/routing, legacy and
+drifted contracts, inconsistency, identity/reference failures and corrupt or
+unreadable state. They compare recorded work and guidance with status/next,
+forbid commands and verify unchanged file names, kinds, modes, modification times
+and bytes with metrics and session context enabled. Real stdio on one connection
+adds fresh routing/phase changes, strict inputs, fixed binding, structured/text
+parity, explicit errors/recovery, protocol-only stdout and clean shutdown with
+no external executables on PATH. These checks run in `go test ./...`; a focused
+smoke command is:
+
+```sh
+go test ./internal/cli -run '^TestMCPStdio$/^issue_context$' -v -count=1
+```
+
+### Issue #468 blast radius
+
+| Touched element | Does its previous behavior still hold? |
+| --- | --- |
+| Status (`status.go`: `Status`, new `inspectStatus`, reused `StatusDoc`/`RunView`) | Yes. One read-only loader now supplies the existing schema-4 status projection plus its loaded state. Config-free inspection, load errors, consistency warnings and full recorded issues remain unchanged; status gains no identity/routing policy. |
+| Next-action engine (`next.go`: `Next`, extracted `next`, reused `NextDoc`/`NextAction`/`NextSchemaVersion`) | Yes. Snapshot loading delegates to `inspectStatus`; the same classifier, ordering, error/blocker precedence, schema 1, limitations and prerequisites serve `Next` and context. No new scheduler or lifecycle rule is introduced. The before/after scope of identity checks is recorded above. |
+| New context engine (`issue_context.go`: `IssueContext`, `IssueContextDoc`, `IssueContextRun`, `IssueContextSchemaVersion`) | Additive schema-1 projection only; exact status issue/dependency records and filtered existing guidance replace no prior API. Requested-number ambiguity is an explicit error even when the run is stopped or drifted. |
+| Reused state/configuration/prerequisite structure (`state.Issue`, `Decision`, `Attempt`, `Block`/`BlockResolution`, `PlanRef`, `state.Load`, `lockfile.Inspect`, `state.CheckConsistent`, `loadExecutionConfig`, `checkApprovedWork`, `checkDependencies`, `Issue.DecisionPending`, `allCleaned`) | Yes; implementations and persistent schemas are untouched. Missing fields, current selections and unresolved history are observed, not repaired, re-routed or authorized. |
+| MCP (`mcp.go`: `runMCP`, new registration/handler, existing SDK transport/output and binding) | Existing eight input/output contracts, fixed launch binding, diagnostics and shutdown hold. Eight-only discovery becomes nine in this increment, as recorded above. The new strict issue-number tool is read-only/local-only and returns no dispatch result. |
+| Tests (`issue_context_test.go`, `mcp_issue_context_test.go`; `mcp_test.go`: `TestMCPStdio`, `mcpDiscover`, `TestMCPLocalToolsNeverRunExternalCommands`) | Existing parity, schemas, annotations, no-write/no-command, binding and disconnect coverage remains; discovery adds context and feature-specific fixtures exercise both shared sources and real stdio. The shared-snapshot regression verifies advice does not reload replacement run/phase/routing state. |
+| Guide (`docs/mcp-status.md`) | Existing launch, optional source-only use, installation boundary and approval checkpoint hold. Earlier eight-tool-only and `Next`-only statements remain as explicit before/after in this same document; the new report and restriction scopes are documented here. |
+| Lifecycle/dispatch/readiness/review/merge/grant behavior, CLI commands, dependencies, adapters/guards, CI workflows and installed binaries | Untouched. No dispatch receipt, new readiness claim, approval, mutation capability, migration, install or release is added. All existing checks and gates remain required. |

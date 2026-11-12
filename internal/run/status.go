@@ -45,13 +45,20 @@ type RunView struct {
 
 // Status reports the run-state document.
 func Status(ctx context.Context, env Env) (*StatusDoc, error) {
+	_, doc, err := inspectStatus(env)
+	return doc, err
+}
+
+// inspectStatus loads one state/lock pair for status and guidance to share.
+// Reads remain unlocked; no caller may treat the snapshot as a reservation.
+func inspectStatus(env Env) (*state.State, *StatusDoc, error) {
 	st, err := state.Load(env.RepoRoot)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	owner, err := lockfile.Inspect(env.RepoRoot)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
 	doc := &StatusDoc{
@@ -74,5 +81,5 @@ func Status(ctx context.Context, env Env) (*StatusDoc, error) {
 			StoppedReason: st.Run.StoppedReason,
 		}
 	}
-	return doc, nil
+	return st, doc, nil
 }
