@@ -261,6 +261,9 @@ func TestMCPStdio(t *testing.T) {
 	t.Run("retained evaluations", func(t *testing.T) {
 		mcpEvalExercise(t, binary)
 	})
+	t.Run("plan gate", func(t *testing.T) {
+		mcpPlanGateExercise(t, binary)
+	})
 
 	t.Run("repository binding", func(t *testing.T) {
 		root := t.TempDir()
@@ -388,7 +391,7 @@ func mcpDiscover(t *testing.T, ctx context.Context, session *mcp.ClientSession, 
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(list.Tools) != 8 || list.NextCursor != "" {
+	if len(list.Tools) != 9 || list.NextCursor != "" {
 		t.Fatalf("tool discovery = %+v", list)
 	}
 	want := mcpDecoded(t, []byte(`{"type":"object","properties":{},"additionalProperties":false}`))
@@ -398,7 +401,8 @@ func mcpDiscover(t *testing.T, ctx context.Context, session *mcp.ClientSession, 
 		doctor := tool.Name == "orch_doctor"
 		metrics := tool.Name == "orch_metrics" || tool.Name == "orch_metrics_report"
 		evaluation := tool.Name == "orch_eval_status"
-		if (tool.Name != "orch_run_status" && tool.Name != "orch_run_next" && tool.Name != "orch_config_effective" && !readiness && !doctor && !metrics && !evaluation) || seen[tool.Name] || tool.Annotations == nil || !tool.Annotations.ReadOnlyHint || tool.Annotations.OpenWorldHint == nil || *tool.Annotations.OpenWorldHint != (readiness || doctor) {
+		planGate := tool.Name == "orch_plan_gate"
+		if (tool.Name != "orch_run_status" && tool.Name != "orch_run_next" && tool.Name != "orch_config_effective" && !readiness && !doctor && !metrics && !evaluation && !planGate) || seen[tool.Name] || tool.Annotations == nil || tool.Annotations.ReadOnlyHint == planGate || tool.Annotations.OpenWorldHint == nil || *tool.Annotations.OpenWorldHint != (readiness || doctor || planGate) {
 			t.Fatalf("tool = %+v", tool)
 		}
 		seen[tool.Name] = true
@@ -411,6 +415,10 @@ func mcpDiscover(t *testing.T, ctx context.Context, session *mcp.ClientSession, 
 		}
 		if evaluation {
 			wantSchema = mcpDecoded(t, []byte(`{"type":"object","properties":{"run_id":{"type":"string","minLength":1}},"required":["run_id"],"additionalProperties":false}`))
+		}
+		if planGate {
+			wantSchema = mcpDecoded(t, []byte(`{"type":"object","properties":{"plan":{"type":"object"}},"required":["plan"],"additionalProperties":false}`))
+			mcpPlanGateSchema(t, tool)
 		}
 		if !reflect.DeepEqual(tool.InputSchema, wantSchema) {
 			t.Fatalf("%s input schema = %#v, want %#v", tool.Name, tool.InputSchema, wantSchema)

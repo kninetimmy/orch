@@ -1,4 +1,4 @@
-# Read-only status, next actions, readiness, doctor, configuration, metrics and evaluations over MCP
+# Status, inspection and plan decision gates over MCP
 
 `orch mcp` is an optional local stdio MCP server using the official Go SDK
 v1.8.0. This is an unreleased source feature, not part of the v0.15.2 binary.
@@ -95,12 +95,21 @@ requires an explicit empty object `{}`; omitted arguments, `null`, other
 non-objects, unknown fields and repository overrides are errors. Existing five
 tool contracts remain unchanged.
 **Before item 7:** seven-tool discovery had no evaluation inspection.
-**After separately approved item 7:** current source discovers exactly **eight**
+**After separately approved item 7:** source discovered exactly **eight**
 read-only tools, adding **`orch_eval_status`**, accepting only a nonempty string
 `run_id`. Its stricter evaluation-ID syntax is enforced by the existing reader.
 The explicit-empty-object restriction still applies to configuration and both
 metrics tools, not every tool. Unknown fields and root overrides are rejected
 for **all eight tools**; the existing seven contracts are unchanged.
+
+**Before item 10:** discovery exposed only those eight read-only tools, with no
+plan decision gate. **After separately approved item 10:** source discovers
+**nine** tools, adding **`orch_plan_gate`** with only `{"plan": {...}}`. The
+existing eight tools keep their schemas, annotations and behavior. Unknown
+outer fields and repository overrides are rejected for **all nine tools**;
+the gate also uses the engine's strict nested plan decoder. The new gate is
+non-activating, but conservatively **not annotated read-only or idempotent**
+because of its external memhub probes; see its dedicated section below.
 
 | Tool | Input | CLI counterpart (from the bound checkout) | Report schema |
 | --- | --- | --- | --- |
@@ -112,6 +121,7 @@ for **all eight tools**; the existing seven contracts are unchanged.
 | `orch_metrics` | `{}` | `orch metrics` (human-readable; shared summary results) | 1 |
 | `orch_metrics_report` | `{}` | `orch metrics report` (human-readable; shared rollup results) | 1 |
 | `orch_eval_status` | `{"run_id":"eval-aaaaaaaaaaaaaaaaaaaaaaaaaa"}` | `orch eval status --run ID --storage-root ROOT --json` (same retained report; MCP additionally checks repository identity) | 3 |
+| `orch_plan_gate` | `{"plan":{...}}` | `orch run plan` (submitted plan JSON on stdin) | 3 |
 
 Each `orch_run_status` invocation reads fresh local
 state through the same engine as `orch run status --json` and returns that
@@ -147,6 +157,12 @@ initialization, discovery, disconnect and every local-only tool call execute no
 external commands. Readiness and doctor keep their existing read probes only.
 This server does not replace the CLI, the thin host plugins or their guards,
 and it does not change Orch's separate memhub CLI integration.
+**Before item 10:** that described an entirely read-only eight-tool server.
+**After item 10:** the existing eight retain those limits; the new gate runs
+the CLI gate's existing memhub probes, without suppressing memhub-owned side
+effects. It still creates no Orch, Git or GitHub artifacts and performs no
+lifecycle transition. Initialization, discovery and disconnect remain local
+and command-free; no gate is evaluated merely by connecting.
 
 ## Next-action guidance and approval boundaries
 
@@ -223,6 +239,10 @@ After item 7 these no-write/no-approval restrictions apply to **all eight MCP
 tools** and the retained evaluation CLI `status` inspection too. They do not
 describe evaluation `preview`, `run`, `stop`, `grade` or report publication, which
 remain distinct, explicitly invoked operations with their existing contracts.
+After item 10, the no-session/no-approval/no-lifecycle/no-Git-or-GitHub-mutation
+restrictions also hold for `orch_plan_gate`, hence for **all nine MCP tools**.
+The blanket no-storage-write guarantee does not extend to the gate's external
+memhub implementation; its narrower side-effect boundary is documented below.
 
 ## Review and merge readiness
 
@@ -590,7 +610,7 @@ go test ./internal/cli -run '^TestMCPStdio$' -v -count=1
 ```
 
 This builds a temporary real `orch` binary and uses an SDK client over its
-stdio pipes to initialize, discover and call all eight tools, then disconnect and
+stdio pipes to initialize, discover and call every exposed tool, then disconnect and
 verify a successful process exit. No global install or client configuration
 is needed. The client stays connected while test fixtures change from Assist
 to blocked Delivery and inconsistent state/lock pairs. Output reports
@@ -713,7 +733,7 @@ assumptions or a tool-discovery-only success:
 
 ## Trial item 2 blast radius
 
-The tables below record the earlier increments; the current eight-tool contract,
+The tables below record the earlier increments; the item-7 eight-tool contract,
 doctor checks, effective configuration and metrics are documented above.
 
 | Touched element | Does its previous behavior still hold? |
@@ -786,3 +806,142 @@ original sections above. No existing implementation is superseded by this tool.
 | MCP tests (`mcp_test.go`: `TestMCPStdio`, `mcpDiscover`, local no-command regression; new `mcp_eval_test.go` fixtures/parity/error/launch checks) | Existing seven-tool parity/binding/no-write/shutdown and probe allowlists hold; discovery now expects eight and checks the evaluation-only schema/local annotation. Deterministic real-stdio cases add report parity, binding/identity/path/evidence/unknown/privacy/no-write coverage. Test-only retained data/grade setup is not production execution or trial approval. |
 | Guides (`docs/mcp-status.md`, `README.md`) | Optional source-only setup, explicit installation boundary, host enforcement and prior checkpoint hold. Previous launch/discovery limits are retained as before/after in the same sections; storage opt-in, identity scope and report limitations are explicit. |
 | Core progress `Status`, CLI evaluation parser/status/run/stop/grade/report, publication, lifecycle/state/lock/approval/metrics/grant algorithms, persistent schemas, dependencies, adapters/guards, installed binaries and CI | Unchanged. No useful CLI surface is removed, no execution/approval rule is relaxed and no installation, release, schema migration or remote access is added. Required existing checks still apply. |
+
+## Effective-contract plan decision gate (item 10)
+
+Call `orch_plan_gate` with exactly one outer member, `plan`, containing the
+submitted schema-1 `PlanDoc` object. For example, a complete minimal request is:
+
+```json
+{
+  "plan": {
+    "schema_version": 1,
+    "host": "opencode",
+    "title": "Fix a status defect",
+    "issues": [{
+      "id": "fix-status",
+      "title": "Fix status reporting",
+      "objective": "Report the recorded mode accurately",
+      "acceptance_criteria": ["Status matches the recorded mode"],
+      "type": "bug",
+      "facts": {"read_only": false},
+      "wave": 1,
+      "required_tests": ["go test ./..."],
+      "usage_class": "light"
+    }]
+  }
+}
+```
+
+The host must be enabled in the bound repository. The equivalent CLI invocation
+is `orch run plan`, with **the inner plan only** on stdin. Missing/null/non-object
+arguments or plans, extra outer members (including roots or approval assertions),
+unknown nested plan/issue/facts/downgrade fields, invalid types and unsupported
+schema/host values fail explicitly. The MCP schema checks the wrapper and plan
+object shape; raw nested JSON goes straight to `run.Plan` and its existing
+`DecodePlan`/`PlanDoc.Validate`, not a second plan decoder or validator.
+
+Success returns the **entire existing `GateDoc`, schema 3**, as equivalent
+`structuredContent` and JSON text. Its discovered output schema is inferred from
+that same Go type, including execution profiles, issues, memhub and CI reports.
+No adapter projection, legacy `PlanDoc.Digest` substitution or MCP approval hash
+is involved. The document preserves:
+
+- `plan_digest`: the engine's effective-contract digest, binding the submitted
+  plan, resolved execution configuration and effective issues, including
+  engine-contributed acceptance criteria;
+- title, host, configuration revision, sorted applied override keys and merge
+  strategy; `execution` includes all six selected-host profiles (effort, variant
+  or explicit `no_variant`), concurrency, memhub/metrics policy and blast-radius
+  criterion;
+- issue objective/criteria, role, executor/reviewer, downgrade/rationale, dependency
+  waves, required tests, declared local-only tests, fixes, risk, usage class and
+  labels, with the engine's original ordering and omission rules;
+- memhub probe/recall outcomes and failure detail, plus the CI workflow-presence
+  statement. CI is still a **pre-PR heuristic**, not required-check evidence.
+  Omitted `tests_ci_does_not_run` is no declaration, not proof CI runs every test.
+
+### Preconditions, external probes and side effects
+
+Every call freshly invokes `run.Plan` for the fixed launch-bound root. The engine
+loads and validates committed/local configuration, requires consistent Assist
+state with no Delivery lock, decodes/validates the plan, builds the effective
+contract/digest, observes workflow presence and applies memhub policy, in the
+same order as CLI. Invalid configuration, active Delivery, orphan/missing/corrupt
+locks or state, invalid plans and required-memhub failures return explicit tool
+errors with no partial gate. The MCP layer neither repairs nor changes that
+policy, and recovery is possible on the same connection after remediation.
+
+The **only subprocesses** are the existing gate's memhub commands in the bound
+root (bind the primary checkout, never a worktree with no memhub DB):
+
+1. `memhub status` when mode is not `off`.
+2. Only after status succeeds,
+   `memhub recall "orch memhub recall probe" --json --max-results 1`.
+
+`off` skips both. `best-effort` records health or recall failures and continues;
+`required` fails closed on either, including spawn errors, nonzero exits and
+invalid recall JSON. There are no Git, GitHub, host/model-catalog or test probes.
+Returned probe health is not approval or a promise activation preflights pass.
+
+**Side-effect boundary:** Orch invokes only status and recall, not a memhub write,
+render, reindex or sync command. That does **not** guarantee the external memhub
+process leaves its own environment untouched: depending on its implementation
+and configuration, opening its database or serving recall may update memhub-owned
+storage, caches or retrieval bookkeeping and contact configured providers. Those
+effects are not suppressed, sandboxed or rolled back by MCP, just as in CLI.
+The tool therefore advertises `readOnlyHint: false`, `idempotentHint: false` and
+`openWorldHint: true`, retaining the conservative default destructive hint rather
+than promising external side-effect safety. No destructive Orch operation is
+invoked. These annotations are not permission or an approval record.
+
+The gate itself takes no mutation serializer and creates no state, Delivery or
+mutation lock, run/history record, session, metrics event, approval, grant use,
+issue, PR, branch or worktree. Tests isolate injected probe fixtures and empty
+PATH processes; they never open the user's actual memhub store. Unchanged
+Orch/Git artifacts in these tests are not proof that arbitrary live memhub
+implementations are side-effect-free.
+
+### Separate human approval handoff
+
+Present the **full returned gate** to the human, including effective scope,
+contributed criteria, routing profiles/rationale, waves, local-only test
+declarations, overrides and probe/CI limitations. The choices remain approve and
+enter Delivery, adjust routing facts, revise scope, or cancel and stay in Assist.
+Validation alone, a digest, successful MCP transport and a successful gate call
+are **never approval**. MCP adds no approval or activation tool here.
+
+Only after explicit approval of this exact effective contract may the normal
+separately invoked activation path submit the unchanged plan and its digest-bound
+human assertion (`approve-and-enter-delivery`, approver and timestamp) through
+`orch run activate`. Activation still recomputes and checks the effective digest
+and enforces its own preconditions/preflights; changed scope or effective policy
+requires a fresh gate and human approval. Existing autonomy-grant authorization
+contracts remain separate and unchanged; this call inspects or spends no grant.
+The gate is an unlocked observation, not a reservation or atomic future promise.
+
+### Verification and blast radius
+
+`go test ./internal/cli -run '^(TestMCPPlanGateMemhubParity|TestMCPStdio)$' -v -count=1`
+compares complete CLI/MCP documents and effective digests. Real stdio covers all
+three host profiles, OpenCode variants/bare models, reviewer downgrade, contributed
+criteria, local preferences/override keys, waves/tests/labels/fixes, workflow
+presence, strict wrapper/nested errors, configuration errors, active runs,
+inconsistent/corrupt locks/state, required missing memhub, best-effort failure and
+same-connection recovery. Injected ordered runners additionally exercise healthy,
+failed and malformed recall, required failures and off-mode zero probes. Snapshots
+compare names, kinds, modes, regular-file modification times and bytes, including
+real `.git` metadata, with metrics/session context enabled and clean shutdown.
+All these checks run under `go test ./...`; no CI-coverage inference is made from
+an omitted plan declaration.
+
+| Touched element | Does its previous behavior still hold? |
+| --- | --- |
+| MCP registration (`mcp.go`: `runMCP`; new `mcp_plan_gate.go`: `addPlanGateTool`) | The eight-tool-only surface changes to nine as recorded above. Existing tools, canonical fixed-root binding, launch argv, protocol-only stdout, stderr diagnostics and clean disconnect hold. The new wrapper delegates directly to the engine without staging or activation. |
+| Input/output boundary (SDK `AddTool`, raw `plan`, typed `GateDoc`) | Existing eight schemas remain. The gate adds a strict outer object and preserves the engine's nested decoder/validator; typed output exposes the complete engine schema without translating or hashing it. Root overrides are rejected for **every tool**, not only `orch_plan_gate`; only this tool accepts `plan` in this increment. |
+| Reused gate (`run.Plan`, `GateDoc`, `GateIssue`, `GateSchemaVersion`, `DecodePlan`, `PlanDoc.Validate`, `requireAssistNoLock`, `effectiveContract`, `gateIssues`, `contentDigest`, `executionConfig`, `detectCI`, `memhubGate` and memhub client) | Yes; implementations, schemas, ordering, digest/routing/contribution rules, errors and probes are untouched. Assist/no-lock is the existing shared **Plan/Activate** precondition, not a blanket rule for every inspection or lifecycle verb. The legacy submitted-plan digest remains available but is not used as approval identity. |
+| Approval/activation/lifecycle/grant boundaries | Yes; no implementation is changed or invoked. No gate caller, CLI or MCP, acquires human approval merely by successfully receiving a document. Existing activation, grant and merge checks remain separate. |
+| CLI help (`cli.go`: `commands`) and README help/guide link | Command dispatch/argv and existing CLI gate behavior hold. Before: help described the MCP server as read-only inspections only. After: it also advertises plan decision gates, with the external memhub exception stated here and in README. No useful surface is removed. |
+| Tests (`mcp_test.go`: `TestMCPStdio`, `mcpDiscover`; new `mcp_plan_gate_test.go` fixtures/schema/parity/probe checks) | Existing eight-tool tests and annotations remain asserted; discovery expects the added gate and its conservative annotations/output schema. New isolated tests exercise full-document parity, strict errors, freshness and unchanged Orch/Git artifacts, without live memhub writes. |
+| Source guide (`docs/mcp-status.md`) | Optional/source-only setup and prior checkpoint hold. Before: the title and discovery/smoke/no-write descriptions covered eight read-only inspections only. After: the same document preserves those historical statements and explicitly adds the non-activating gate, memhub-owned side-effect exception and separate human approval handoff. |
+| Dependencies, persistent schemas, engine algorithms, adapters/guards, configuration, CI workflows, installed binaries and releases | Untouched. No migration, new dependency, broader authorization, installation, release or remote transport is added; existing required checks still apply. |
