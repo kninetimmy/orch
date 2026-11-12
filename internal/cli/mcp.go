@@ -124,6 +124,36 @@ func runMCP(env Env, args []string) error {
 			Configuration *config.Config `json:"configuration"`
 		}{1, cfg}, nil
 	})
+	mcp.AddTool(server, &mcp.Tool{
+		Name:        "orch_metrics",
+		Description: "Read whether metrics are enabled and per-run summaries of recorded metrics in the bound repository. Recorded metrics are not a complete archive of all runs; no commands or writes occur.",
+		InputSchema: json.RawMessage(`{"type":"object","properties":{},"additionalProperties":false}`),
+		Annotations: &mcp.ToolAnnotations{ReadOnlyHint: true, OpenWorldHint: new(bool)},
+	}, func(_ context.Context, req *mcp.CallToolRequest, _ struct{}) (*mcp.CallToolResult, any, error) {
+		if args := bytes.TrimSpace(req.Params.Arguments); len(args) == 0 || args[0] != '{' {
+			return nil, nil, fmt.Errorf("orch_metrics: arguments must be an empty object")
+		}
+		doc, err := inspectMetrics(root)
+		if err != nil {
+			return nil, nil, err
+		}
+		return nil, doc, nil
+	})
+	mcp.AddTool(server, &mcp.Tool{
+		Name:        "orch_metrics_report",
+		Description: "Read the existing cross-run rollup of recorded metrics in the bound repository, including outcomes, separate usage groups, elapsed times and escaped-defect attribution. Not a complete run archive; no commands or writes occur.",
+		InputSchema: json.RawMessage(`{"type":"object","properties":{},"additionalProperties":false}`),
+		Annotations: &mcp.ToolAnnotations{ReadOnlyHint: true, OpenWorldHint: new(bool)},
+	}, func(_ context.Context, req *mcp.CallToolRequest, _ struct{}) (*mcp.CallToolResult, any, error) {
+		if args := bytes.TrimSpace(req.Params.Arguments); len(args) == 0 || args[0] != '{' {
+			return nil, nil, fmt.Errorf("orch_metrics_report: arguments must be an empty object")
+		}
+		doc, err := inspectMetricsReport(root)
+		if err != nil {
+			return nil, nil, err
+		}
+		return nil, doc, nil
+	})
 	return server.Run(context.Background(), &mcp.IOTransport{
 		Reader: io.NopCloser(env.Stdin),
 		Writer: mcpWriter{env.Stdout},
