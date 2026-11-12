@@ -71,6 +71,17 @@ func openGuarded(name string) (*guardedDir, error) {
 	return g, nil
 }
 
+// CheckStorageRoot verifies an explicit existing local storage directory without
+// creating anything. Inspection repeats these same checks for every read.
+func CheckStorageRoot(storageRoot string) error {
+	g, err := openGuarded(storageRoot)
+	if err != nil {
+		return err
+	}
+	defer g.close()
+	return g.check()
+}
+
 func (g *guardedDir) close() { _ = g.root.Close() }
 
 func (g *guardedDir) check() error {
