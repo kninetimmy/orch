@@ -92,6 +92,12 @@ func TestObserveActiveStrictRecordsAndFreshness(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	if err := os.WriteFile(path, valid, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if got, err := s.ObserveActive(now); err != nil || !reflect.DeepEqual(got, g) {
+		t.Fatalf("valid record before adding trailing data: %+v, %v", got, err)
+	}
 	for _, tc := range []struct{ data, want string }{
 		{"{broken", "unreadable"},
 		{`null`, "schema_version 0"},
@@ -100,7 +106,9 @@ func TestObserveActiveStrictRecordsAndFreshness(t *testing.T) {
 		{strings.Replace(string(valid), `"schema_version":1`, `"schema_version":1,"unknown":true`, 1), "unknown field"},
 		{strings.Replace(string(valid), `"terms":{`, `"terms":{"unknown":true,`, 1), "unknown field"},
 		{strings.Replace(string(valid), g.Terms.ID, "wrong-id", 1), "does not hold grant"},
-		{string(valid) + ` {}`, "trailing data"},
+		// The schema-header json.Unmarshal rejects trailing JSON before
+		// decodeStrict; require rejection, not a particular parser's wording.
+		{string(valid) + ` {}`, "unreadable"},
 	} {
 		if err := os.WriteFile(path, []byte(tc.data), 0o644); err != nil {
 			t.Fatal(err)
