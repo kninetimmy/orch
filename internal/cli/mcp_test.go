@@ -255,6 +255,9 @@ func TestMCPStdio(t *testing.T) {
 	t.Run("effective configuration", func(t *testing.T) {
 		mcpConfigExercise(t, binary)
 	})
+	t.Run("recorded metrics", func(t *testing.T) {
+		mcpMetricsExercise(t, binary)
+	})
 
 	t.Run("repository binding", func(t *testing.T) {
 		root := t.TempDir()
@@ -281,6 +284,7 @@ func TestMCPStdio(t *testing.T) {
 				mcpParity(t, ctx, binary, root, session)
 				mcpNextParity(t, ctx, binary, root, session)
 				mcpConfigParity(t, ctx, root, session)
+				mcpMetricsParity(t, ctx, binary, root, session)
 				closeSession()
 			})
 		}
@@ -381,7 +385,7 @@ func mcpDiscover(t *testing.T, ctx context.Context, session *mcp.ClientSession, 
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(list.Tools) != 5 || list.NextCursor != "" {
+	if len(list.Tools) != 7 || list.NextCursor != "" {
 		t.Fatalf("tool discovery = %+v", list)
 	}
 	want := mcpDecoded(t, []byte(`{"type":"object","properties":{},"additionalProperties":false}`))
@@ -389,7 +393,8 @@ func mcpDiscover(t *testing.T, ctx context.Context, session *mcp.ClientSession, 
 	for _, tool := range list.Tools {
 		readiness := tool.Name == "orch_run_readiness"
 		doctor := tool.Name == "orch_doctor"
-		if (tool.Name != "orch_run_status" && tool.Name != "orch_run_next" && tool.Name != "orch_config_effective" && !readiness && !doctor) || seen[tool.Name] || tool.Annotations == nil || !tool.Annotations.ReadOnlyHint || tool.Annotations.OpenWorldHint == nil || *tool.Annotations.OpenWorldHint != (readiness || doctor) {
+		metrics := tool.Name == "orch_metrics" || tool.Name == "orch_metrics_report"
+		if (tool.Name != "orch_run_status" && tool.Name != "orch_run_next" && tool.Name != "orch_config_effective" && !readiness && !doctor && !metrics) || seen[tool.Name] || tool.Annotations == nil || !tool.Annotations.ReadOnlyHint || tool.Annotations.OpenWorldHint == nil || *tool.Annotations.OpenWorldHint != (readiness || doctor) {
 			t.Fatalf("tool = %+v", tool)
 		}
 		seen[tool.Name] = true
@@ -541,7 +546,7 @@ func mcpDirectoryLink(t *testing.T, target, link string) {
 }
 
 // Before readiness every tool was local-only. This restriction still applies
-// to status/next/configuration calls (including failures), initialization and
+// to status/next/configuration/metrics calls (including failures), initialization and
 // discovery; readiness's and doctor's external read allowlists use real stdio clients.
 func TestMCPLocalToolsNeverRunExternalCommands(t *testing.T) {
 	env, _, stderr := testEnv(t)
@@ -573,7 +578,31 @@ func TestMCPLocalToolsNeverRunExternalCommands(t *testing.T) {
 	if result := mcpCall(t, ctx, session, env.RepoRoot, "orch_config_effective", map[string]any{}); !result.IsError || result.StructuredContent != nil {
 		t.Fatalf("invalid configuration result = %+v", result)
 	}
+	for _, tool := range []string{"orch_metrics", "orch_metrics_report"} {
+		if result := mcpCall(t, ctx, session, env.RepoRoot, tool, map[string]any{}); !result.IsError {
+			t.Fatalf("invalid metrics configuration result = %+v", result)
+		}
+	}
 	mcpWrite(t, filepath.Join(env.RepoRoot, ".orchestrator", "config.toml"), []byte(validTOML))
+	for _, tool := range []string{"orch_metrics", "orch_metrics_report"} {
+		if result := mcpCall(t, ctx, session, env.RepoRoot, tool, map[string]any{}); result.IsError {
+			t.Fatalf("empty metrics result = %+v", result)
+		}
+	}
+	for _, doc := range mcpMetricsFixtures(t) {
+		writeMetricsFixture(t, env.RepoRoot, doc.RunID, doc)
+	}
+	for _, tool := range []string{"orch_metrics", "orch_metrics_report"} {
+		if result := mcpCall(t, ctx, session, env.RepoRoot, tool, map[string]any{}); result.IsError {
+			t.Fatalf("recorded metrics result = %+v", result)
+		}
+	}
+	mcpWrite(t, filepath.Join(env.RepoRoot, ".orchestrator", "metrics", "run-corrupt.json"), []byte("{corrupt metrics"))
+	for _, tool := range []string{"orch_metrics", "orch_metrics_report"} {
+		if result := mcpCall(t, ctx, session, env.RepoRoot, tool, map[string]any{}); !result.IsError {
+			t.Fatalf("corrupt metrics result = %+v", result)
+		}
+	}
 	if _, err := state.EnterDelivery(env.RepoRoot, "claude", testApprovedPlanRef(t, env.RepoRoot), testIssues()); err != nil {
 		t.Fatal(err)
 	}

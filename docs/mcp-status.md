@@ -1,4 +1,4 @@
-# Read-only status, next actions, readiness, doctor and effective configuration over MCP
+# Read-only status, next actions, readiness, doctor, configuration and metrics over MCP
 
 `orch mcp` is an optional local stdio MCP server using the official Go SDK
 v1.8.0. This is an unreleased source feature, not part of the v0.15.2 binary.
@@ -67,10 +67,15 @@ positive-issue argument is readiness-only, not a change to status or next.
 tools, adding **`orch_doctor`**, which accepts `{}` or only an optional `host`
 from `claude`, `codex` or `opencode`. Unknown fields and repository overrides
 were rejected for **all four tools**. **After separately approved item 5:**
-current source discovers exactly **five** read-only tools, adding
+source discovered exactly **five** read-only tools, adding
 **`orch_config_effective`**, accepting only `{}`. Unknown fields, repository
 overrides and non-object input (including explicit `null`) are rejected.
 Existing tools' input schemas and behavior are unchanged.
+**After separately approved item 6:** current source discovers exactly **seven**
+read-only tools, adding **`orch_metrics`** and **`orch_metrics_report`**. Each
+requires an explicit empty object `{}`; omitted arguments, `null`, other
+non-objects, unknown fields and repository overrides are errors. Existing five
+tool contracts remain unchanged.
 
 | Tool | Input | CLI counterpart (from the bound checkout) | Report schema |
 | --- | --- | --- | --- |
@@ -79,6 +84,8 @@ Existing tools' input schemas and behavior are unchanged.
 | `orch_run_readiness` | `{"issue_number":447}` | `orch run readiness --issue 447 --json` | 1 |
 | `orch_doctor` | `{}` or `{"host":"opencode"}` | `orch doctor --json` or `orch doctor --host opencode --json` | 1 |
 | `orch_config_effective` | `{}` | None; directly uses shared `config.Load` | 1 |
+| `orch_metrics` | `{}` | `orch metrics` (human-readable; shared summary results) | 1 |
+| `orch_metrics_report` | `{}` | `orch metrics report` (human-readable; shared rollup results) | 1 |
 
 Each `orch_run_status` invocation reads fresh local
 state through the same engine as `orch run status --json` and returns that
@@ -103,6 +110,11 @@ still avoid repository writes and lifecycle mutations, including on failure.
 status/next/configuration calls, including failures, execute no external commands.
 All five tools avoid repository writes and lifecycle mutations; readiness and
 doctor retain only their existing external read probes.
+**After item 6:** both metrics tools are also local-only
+(`openWorldHint: false`). All seven tools avoid repository writes and lifecycle
+mutations. Initialization, discovery, disconnect and status/next/configuration/
+metrics calls execute no external commands; readiness and doctor retain their
+existing external read probes only.
 This server does not replace the CLI, the thin host plugins or their guards,
 and it does not change Orch's separate memhub CLI integration.
 
@@ -173,7 +185,9 @@ nor mutates git/GitHub. **A tool call is
 never human approval.** Existing separately authorized grant contracts are
 unchanged, but guidance does not inspect, validate or spend a grant; it cannot
 claim a grant authorizes any suggested action. These restrictions apply to
-**all five inspection tools and all four existing CLI inspection commands**, not just
+**all five inspection tools and all four existing CLI inspection commands** at
+item 5; after item 6 they apply to **all seven tools and all six CLI inspection
+commands**, not just
 `Next` or `orch_run_next`. Stateful lifecycle verbs retain their existing behavior.
 
 ## Review and merge readiness
@@ -376,6 +390,99 @@ implementation is superseded: bare `configure` summarizes committed settings,
 combines mode/state with a configuration summary, and `doctor` probes health.
 Those distinct surfaces and the existing revision/fingerprint rules remain.
 
+## Recorded metrics history and cross-run report
+
+Call `orch_metrics` or `orch_metrics_report` with an explicit `{}`. Their CLI
+counterparts remain human-readable, without a new JSON flag:
+
+```sh
+orch metrics
+orch metrics report
+```
+
+Each tool returns `schema_version: 1`, current `enabled`, and
+`history_scope: "recorded-metrics-only"`, plus `runs` (history) or `report`
+(rollup). MCP structured content and JSON text are equivalent. Both CLI and MCP
+use the same read-only inspectors, `summarizeRun` and `buildMetricsReport`;
+review-cycle means, per-merged-issue counters, architect shares and elapsed sums
+also share their calculations. Explicit JSON encoders expose these existing
+private results; they do not parse CLI output or implement a second metrics
+engine. The previous CLI-only loading loops are replaced by the shared paths.
+Human CLI formatting, success/error meanings and legacy storage stay unchanged.
+
+### History schema
+
+`runs` contains one summary per recorded metrics document, in the filename order
+returned by `metrics.LoadAll`:
+
+| Summary members | Meaning |
+| --- | --- |
+| `run_id`, `event_count`, `first_at`, `last_at` | Recorded run identity and event bounds; bounds are empty strings with no events and may be unparseable legacy timestamps. They do not measure active time. |
+| `issues_seen`, `merged`, `abandoned`, `blocked`, `block_classes`, `escalations` | Existing issue and event counts; repeated blocks count again, while merged/abandoned counts use distinct issue numbers. |
+| `review_cycles`, `reviewed_issues`, `first_pass_approve`, `ci_by_state` | Verdict-bearing review counts (not executor usage siblings), first-review approvals and the last recorded CI state per issue. |
+| `legacy_usage` | Separate lifecycle-event rows: `index` (1-based), `verb`, `issue_number`, `role`, `review_cycle` and original `usage`. Missing role is empty, not inferred except the existing reviewer fallback. Review cycle 0 means no recorded review cycle. Legacy usage retains absent fields versus explicit zero, including unclassified `duration_ms`. |
+| `usage_samples` | Original `observation` attribution, requested/observed profiles and source evidence, plus its contributed `counters` (not necessarily the original cumulative values). Missing counters are omitted; measured zero is 0. |
+| `usage_groups` | Compatible `key: {host, source, stream}`, `samples` and named `counters`. Every counter has `total` (integer or null) and `measured` (number of contributing samples). |
+| `recorded_usage_roles`, `missing_usage_roles`, `usage_sessions`, `missing_usage_sessions`, `unknown_role_records`, `incomplete_session_records` | Existing coverage evidence. Session labels are host/session; missing sessions include only known recorded identities. The complete native session count is unknown. |
+| `unavailable` | Recorded observations with explicit unavailable reasons, not zero usage or failure outcomes. |
+| `timing` | Present interval kinds only: `intervals`, `incomplete_sessions`, `session_effort_ns` and `wall_clock_ns`. Session effort unions intervals per complete host/session and sums sessions; wall clock unions all intervals. Session effort is null if no complete identity was measured, a known-session subtotal if some identities are incomplete. An absent kind is unknown; a measured zero duration is 0. |
+| `reported_outcomes`, `engine_outcomes` | Separate reported outcome counts and engine approval/escalation counts; other historical events remain unclassified. |
+
+The six counter names are `input_tokens`, `output_tokens`, `cache_read_tokens`,
+`cache_creation_tokens`, `total_tokens` and `reasoning_output_tokens`. Total and
+reasoning counters are independent, never synthesized from splits. The existing
+`CounterContributions` replay scopes baselines by run, host, session, source and
+stream. Cumulative samples contribute only increases; omission contributes
+nothing and retains the baseline. No native total combines different groups or
+legacy lifecycle usage. A counter with `measured: 0` has `total: null`, not 0.
+Empty optional collections can be `null`; this means no records, not measured
+zero or complete coverage. The top-level empty history is `runs: []`.
+
+### Rollup schema
+
+`report` contains the existing cross-run results:
+
+| Member | Meaning |
+| --- | --- |
+| `runs` | Number of recorded metrics documents, not all Delivery runs. |
+| `routes` | Groups with `key: {role, executor, reviewer, downgraded, approval}` and `outcomes`. Profile labels retain explicit bare variants; unrecorded dimensions are `"unknown"`, never guessed approvals or false routing facts. |
+| `dimensions` | Ordered `title`/`groups` breakdowns by host, any risk domain declared, unusually difficult, and downgrade facts mechanical, low risk, fully specified and unsurprising. Each group has `value` and `outcomes`. |
+| `usage` | Separate observed host/source/stream and `lifecycle: true` legacy groups, with `key`, `samples`, contributing `runs`, `merged_runs`, named `counters` and `architect_counters`. Legacy groups have empty key fields because those identities were not recorded. `per_merged_issue` and `architect_share_percent` map counter names to numbers or null. No measurements or no merged denominator means no mean; no architect evidence or a zero total means no share (CLI prints n/a for a measured zero denominator). |
+| `runs_without_arch_use` | Runs without recorded architect-role counters; this does not mean the architect used zero tokens. |
+| `elapsed` | Ordered `{run_id, elapsed_ns, measured}` rows. Elapsed time is first-to-last recorded event wall clock, not active time; missing/unparseable/reversed bounds yield null and false. A parseable zero span is 0 and true. |
+| `elapsed_total_ns`, `elapsed_measured` | Existing sum of measured run wall-clock times and its coverage count; total is null with no measured runs. This sum is not a union across runs or total active time. |
+| `escapes`, `unattributed` | Distinct merged PRs declared fixed by plan issues, attributed through recorded merge events; unrecognized PR numbers remain unattributed. Escape rows retain `pr`, fixer/origin run and issue, plus `origin.route`, first verdict, review cycles (null if unreviewed) and merge approval. Repeated declarations count once; the first recorded run/issue declaration names the fixer. |
+
+Each `outcomes` has `issues`, `merged`, `abandoned`, `blocked`, `escalations`,
+`reviewed`, `first_approved`, `review_cycles`, `merge_approval`, `fix_cycles`,
+`review_blocks`, `cause_unrecorded` and `escaped_defects`.
+`review_cycles_per_reviewed_issue` is null with no reviewed issues. Request-change
+fix cycles, wrong-criterion/fix-cycle-limit blocks and legacy unrecorded causes
+remain distinct. Escaped defects are **declared attribution**, not independent
+defect discovery or proof of causation.
+
+### History and inspection limits
+
+These are **recorded metrics**, not a complete run-history archive. Only existing
+`.orchestrator/metrics/run-*.json` documents are loaded; disabled periods,
+unrecorded sessions, removed files and never-recorded runs cannot be recovered
+from current state, Git or GitHub. Currently disabled metrics can still have
+visible recorded history. Empty history is successful whether enabled or
+disabled; the rollup then has zero runs and unknown/unmeasured values. Schema-1
+and schema-2 history remain readable without migration. Invalid configuration,
+corrupt/unsupported/mismatched history, invalid observations and aggregation
+overflow are explicit tool errors, with no partial structured report, matching
+the CLI's operational failure meaning rather than fabricated empty history.
+
+Each call reloads configuration and history in the fixed launch-bound repository
+and can recover on the same connection after errors. Reads are unlocked and not
+an atomic snapshot. Neither inspector reads run state/Delivery locks nor creates
+metrics, history, mutation locks, sessions, approvals or lifecycle records. No
+subprocess runs, even with metrics enabled or a host session identifier present.
+No dependency, host plugin or installed binary is changed by this source feature.
+Building this seven-tool source does not upgrade or verify an existing five-tool
+installation; discover the tools from the binary the client actually launches.
+
 ## Reproducible smoke test and trial checkpoint
 
 From the source checkout, run:
@@ -385,7 +492,7 @@ go test ./internal/cli -run '^TestMCPStdio$' -v -count=1
 ```
 
 This builds a temporary real `orch` binary and uses an SDK client over its
-stdio pipes to initialize, discover and call all five tools, then disconnect and
+stdio pipes to initialize, discover and call all seven tools, then disconnect and
 verify a successful process exit. No global install or client configuration
 is needed. The client stays connected while test fixtures change from Assist
 to blocked Delivery and inconsistent state/lock pairs. Output reports
@@ -420,6 +527,15 @@ and sorted override keys. The same connection observes explicit missing,
 malformed, unsupported, invalid and forbidden-policy errors and recovery despite
 corrupt state/lock data. Strict input, fixed binding, unchanged bound/launching
 repositories and clean shutdown are checked with no executables on PATH.
+Metrics fixtures compare human CLI output with shared-result formatting and
+shared JSON with both MCP representations, across empty/enabled/disabled,
+legacy, observed and corrupt histories on one connection. They cover omitted
+cumulative fields, measured zeros, independent totals/reasoning, separate
+hosts/sources/streams/sessions, coverage, interval unions, routing/outcome
+dimensions, elapsed unknowns and deduplicated/unattributed escaped defects.
+Configuration/history/replay/overflow failures retain CLI/shared error parity.
+Raw stdio additionally checks omitted arguments (the SDK client substitutes an
+empty object for nil arguments), unchanged files and real process shutdown.
 `TestMCPLocalToolsNeverRunExternalCommands` additionally rejects any executable
 lookup or runner call during initialization, discovery, local-tool success or
 failure, and shutdown. These source checks neither install a binary nor prove
@@ -457,7 +573,8 @@ item 3:** source also implements read-only readiness, but not item 4 doctor.
 The trial checkpoint was to **finish roadmap items 1 through 4, then stop and
 assess the benefit against CLI usage before approving later roadmap items**.
 **After that checkpoint and separately approved item 5:** current source also
-implements effective configuration. No source increment is claimed installed
+implements effective configuration. **After separately approved item 6:** source
+also implements recorded metrics history and rollups. No source increment is claimed installed
 by this guide. The checkpoint does not authorize subsequent roadmap scope;
 each expansion and any installation still require separate approval.
 
@@ -486,8 +603,8 @@ assumptions or a tool-discovery-only success:
 
 ## Trial item 2 blast radius
 
-The tables below record the earlier increments; the current five-tool contract,
-doctor checks and effective configuration are documented above.
+The tables below record the earlier increments; the current seven-tool contract,
+doctor checks, effective configuration and metrics are documented above.
 
 | Touched element | Does its previous behavior still hold? |
 | --- | --- |

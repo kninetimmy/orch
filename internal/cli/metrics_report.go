@@ -18,29 +18,44 @@ const unknownValue = "unknown"
 // metrics document. Like cmdMetrics it never creates or rewrites storage.
 func cmdMetricsReport(env Env) error {
 	fmt.Fprintf(env.Stdout, "orch:   %s\n", Version)
-	cfg, err := config.Load(env.RepoRoot)
+	doc, err := inspectMetricsReport(env.RepoRoot)
+	if doc != nil {
+		fmt.Fprintf(env.Stdout, "metrics enabled: %t\n", doc.Enabled)
+	}
 	if err != nil {
 		return err
 	}
-	fmt.Fprintf(env.Stdout, "metrics enabled: %t\n", cfg.Metrics.Enabled)
-	docs, err := metrics.LoadAll(env.RepoRoot)
-	if err != nil {
-		return err
-	}
-	if len(docs) == 0 {
-		if cfg.Metrics.Enabled {
+	if doc.Report.runs == 0 {
+		if doc.Enabled {
 			fmt.Fprintln(env.Stdout, "no metrics recorded; no report to print.")
 		} else {
 			fmt.Fprintln(env.Stdout, "metrics are disabled and none are recorded; no report to print.")
 		}
 		return nil
 	}
-	report, err := buildMetricsReport(docs)
-	if err != nil {
-		return err
-	}
-	printMetricsReport(env.Stdout, report)
+	printMetricsReport(env.Stdout, doc.Report)
 	return nil
+}
+
+type metricsReportDoc struct {
+	SchemaVersion int           `json:"schema_version"`
+	Enabled       bool          `json:"enabled"`
+	HistoryScope  string        `json:"history_scope"`
+	Report        metricsReport `json:"report"`
+}
+
+func inspectMetricsReport(root string) (*metricsReportDoc, error) {
+	cfg, err := config.Load(root)
+	if err != nil {
+		return nil, err
+	}
+	r := &metricsReportDoc{SchemaVersion: 1, Enabled: cfg.Metrics.Enabled, HistoryScope: metricsHistoryScope}
+	docs, err := metrics.LoadAll(root)
+	if err != nil {
+		return r, err
+	}
+	r.Report, err = buildMetricsReport(docs)
+	return r, err
 }
 
 // routeKey is the tuple issue outcomes are grouped by. A dimension a run did
@@ -146,8 +161,8 @@ func (o outcomes) print(w io.Writer) {
 		merged += " (by merge approval: " + sortedCounts(o.mergeApproval) + ")"
 	}
 	cycles := "unknown (no reviewed issues)"
-	if o.reviewed > 0 {
-		cycles = fmt.Sprintf("%.2f", float64(o.reviewCycles)/float64(o.reviewed))
+	if mean := o.cyclesPerReviewedIssue(); mean != nil {
+		cycles = fmt.Sprintf("%.2f", *mean)
 	}
 	fmt.Fprintf(w, "    issues %d; merged %s; abandoned %d; blocked %d; escalations %d; first-review approvals %d of %d reviewed; review cycles per reviewed issue %s\n",
 		o.issues, merged, o.abandoned, o.blocked, o.escalations, o.firstApproved, o.reviewed, cycles)
@@ -155,6 +170,13 @@ func (o outcomes) print(w io.Writer) {
 	fmt.Fprintf(w, "    request-changes fix cycles %d; reviews that blocked their issue %d (wrong criterion %d, fix-cycle limit %d); request-changes reviews with block cause not recorded %d\n",
 		o.fixCycles, wrong+limit, wrong, limit, o.causeUnrecorded)
 	fmt.Fprintf(w, "    escaped defects attributed to these issues %d\n", o.escapedDefects)
+}
+
+func (o outcomes) cyclesPerReviewedIssue() *float64 {
+	if o.reviewed == 0 {
+		return nil
+	}
+	return new(float64(o.reviewCycles) / float64(o.reviewed))
 }
 
 // reportUsageKey separates usage recorded on lifecycle events (no host,
@@ -175,6 +197,20 @@ type reportUsageGroup struct {
 	archSeen   [6]int
 }
 
+func (g reportUsageGroup) perMergedIssue(i int) *float64 {
+	if g.measured[i] == 0 || g.mergedRuns == 0 {
+		return nil
+	}
+	return new(float64(g.totals[i]) / float64(g.mergedRuns))
+}
+
+func (g reportUsageGroup) architectSharePercent(i int) *float64 {
+	if g.archSeen[i] == 0 || g.totals[i] == 0 {
+		return nil
+	}
+	return new(100 * float64(g.archTotals[i]) / float64(g.totals[i]))
+}
+
 type runElapsed struct {
 	runID    string
 	elapsed  time.Duration
@@ -191,6 +227,18 @@ type metricsReport struct {
 	escapes            []escapedDefect
 	// unattributed holds the fixed PRs no recorded merge event names.
 	unattributed []int
+}
+
+func (r metricsReport) elapsedSummary() (time.Duration, int) {
+	var total time.Duration
+	measured := 0
+	for _, e := range r.elapsed {
+		if e.measured {
+			total += e.elapsed
+			measured++
+		}
+	}
+	return total, measured
 }
 
 // escapedDefect is one fixed PR attributed to the issue whose merge event
@@ -549,14 +597,14 @@ func printMetricsReport(w io.Writer, r metricsReport) {
 				continue
 			}
 			perMerged := "per merged issue unknown (no merged issues)"
-			if g.mergedRuns > 0 {
-				perMerged = fmt.Sprintf("%.1f per merged issue", float64(g.totals[i])/float64(g.mergedRuns))
+			if mean := g.perMergedIssue(i); mean != nil {
+				perMerged = fmt.Sprintf("%.1f per merged issue", *mean)
 			}
 			line := fmt.Sprintf("    %s: %d (%d/%d measured); %s", label, g.totals[i], g.measured[i], g.samples, perMerged)
 			if g.archSeen[i] > 0 {
 				share := "n/a"
-				if g.totals[i] > 0 {
-					share = fmt.Sprintf("%.1f%%", 100*float64(g.archTotals[i])/float64(g.totals[i]))
+				if percent := g.architectSharePercent(i); percent != nil {
+					share = fmt.Sprintf("%.1f%%", *percent)
 				}
 				line += fmt.Sprintf("; architect share %s (%d of %d)", share, g.archTotals[i], g.totals[i])
 			}
@@ -573,16 +621,13 @@ func printMetricsReport(w io.Writer, r metricsReport) {
 	}
 
 	fmt.Fprintln(w, "\nrun elapsed time (wall-clock from first to last recorded event, not active time):")
-	var total time.Duration
-	measured := 0
+	total, measured := r.elapsedSummary()
 	for _, e := range r.elapsed {
 		if !e.measured {
 			fmt.Fprintf(w, "  %s: unknown (no parseable first and last event time)\n", e.runID)
 			continue
 		}
 		fmt.Fprintf(w, "  %s: %s\n", e.runID, e.elapsed)
-		total += e.elapsed
-		measured++
 	}
 	if measured == 0 {
 		fmt.Fprintf(w, "  sum of wall-clock times: unknown (0 of %d runs measured)\n", r.runs)

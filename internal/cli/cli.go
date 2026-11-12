@@ -77,7 +77,7 @@ func commands() []command {
 		{"eval", "Evaluation preview/run/status/stop/report/grade (eval preview --plan FILE; eval help for arguments)", runEval},
 		{"grant", "Show the active autonomy grant; grant revoke ends it; grant relay hands it to a fresh Claude Code session; grant preview and grant create propose and record one (JSON stdin/stdout)", runGrant},
 		{"render-agents", "Render project agent definitions for every enabled host", noArgs("render-agents", runRenderAgents)},
-		{"mcp", "Serve read-only run status, next actions, review/merge readiness, doctor diagnostics and effective configuration over stdio (mcp [--repo <path>])", runMCP},
+		{"mcp", "Serve read-only run status, next actions, review/merge readiness, doctor diagnostics, effective configuration and recorded metrics over stdio (mcp [--repo <path>])", runMCP},
 		{"run", "Adapter plumbing: Delivery verbs (JSON stdin/stdout); inspection: status|next --json, readiness --issue <number> --json", runRunVerb},
 		{"guard", "Adapter plumbing: pre-write enforcement for host hooks (not a human command)", runGuard},
 		{"hook", "Adapter plumbing: host lifecycle-event verbs (not a human command)", runHook},

@@ -90,37 +90,64 @@ func runMetrics(env Env, args []string) error {
 // enabled metrics leaves it exactly as it found it.
 func cmdMetrics(env Env) error {
 	fmt.Fprintf(env.Stdout, "orch:   %s\n", Version)
-
-	cfg, err := config.Load(env.RepoRoot)
+	doc, err := inspectMetrics(env.RepoRoot)
+	if doc != nil {
+		fmt.Fprintf(env.Stdout, "metrics enabled: %t\n", doc.Enabled)
+		for i, summary := range doc.Runs {
+			if i > 0 {
+				fmt.Fprintln(env.Stdout)
+			}
+			printRunSummary(env.Stdout, summary)
+		}
+	}
 	if err != nil {
+		// The original loop printed the separator before summarizing the
+		// failing run, even when no summary for that run could be printed.
+		if doc != nil && len(doc.Runs) > 0 {
+			fmt.Fprintln(env.Stdout)
+		}
 		return err
 	}
-	fmt.Fprintf(env.Stdout, "metrics enabled: %t\n", cfg.Metrics.Enabled)
-
-	docs, err := metrics.LoadAll(env.RepoRoot)
-	if err != nil {
-		return err
-	}
-	if len(docs) == 0 {
+	if len(doc.Runs) == 0 {
 		// Metrics may be disabled right now with no history at all, or
 		// disabled after an earlier enabled period left nothing behind
 		// (LoadAll only ever reports what is actually on disk); either
 		// way an empty history is not an error.
 		fmt.Fprintln(env.Stdout, "no metrics recorded.")
-		return nil
-	}
-
-	for i, doc := range docs {
-		if i > 0 {
-			fmt.Fprintln(env.Stdout)
-		}
-		summary, err := summarizeRun(doc)
-		if err != nil {
-			return fmt.Errorf("summarize metrics for %s: %w", doc.RunID, err)
-		}
-		printRunSummary(env.Stdout, summary)
 	}
 	return nil
+}
+
+const metricsHistoryScope = "recorded-metrics-only"
+
+type metricsHistoryDoc struct {
+	SchemaVersion int          `json:"schema_version"`
+	Enabled       bool         `json:"enabled"`
+	HistoryScope  string       `json:"history_scope"`
+	Runs          []runSummary `json:"runs"`
+}
+
+// inspectMetrics reads recorded documents, not a complete archive of Delivery
+// runs. A partial result is used only by the CLI to retain its error output;
+// MCP never returns a report on error.
+func inspectMetrics(root string) (*metricsHistoryDoc, error) {
+	cfg, err := config.Load(root)
+	if err != nil {
+		return nil, err
+	}
+	r := &metricsHistoryDoc{SchemaVersion: 1, Enabled: cfg.Metrics.Enabled, HistoryScope: metricsHistoryScope, Runs: []runSummary{}}
+	docs, err := metrics.LoadAll(root)
+	if err != nil {
+		return r, err
+	}
+	for _, doc := range docs {
+		summary, err := summarizeRun(doc)
+		if err != nil {
+			return r, fmt.Errorf("summarize metrics for %s: %w", doc.RunID, err)
+		}
+		r.Runs = append(r.Runs, summary)
+	}
+	return r, nil
 }
 
 // runSummary is the printable digest of one metrics.Document, computed
