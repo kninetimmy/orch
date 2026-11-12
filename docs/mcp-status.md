@@ -1,4 +1,4 @@
-# Read-only status, next actions, readiness, doctor, configuration and metrics over MCP
+# Read-only status, next actions, readiness, doctor, configuration, metrics and evaluations over MCP
 
 `orch mcp` is an optional local stdio MCP server using the official Go SDK
 v1.8.0. This is an unreleased source feature, not part of the v0.15.2 binary.
@@ -15,6 +15,24 @@ Point an MCP client at an absolute path to your built binary with these argument
 ```text
 orch mcp --repo /absolute/path/to/main-checkout
 ```
+
+**Before item 7:** the launch syntax was `orch mcp [--repo <path>]`.
+**After item 7:** those forms still work; optionally opt in to retained evaluation
+inspection with one explicit, existing absolute local storage root:
+
+```text
+orch mcp --repo /absolute/path/to/main-checkout --eval-storage-root /absolute/local/evaluation-storage
+```
+
+The two flags may appear in either order, once each. Storage-only argv retains
+the cwd repository binding. No store is guessed from configuration, environment,
+run IDs or ancestors, and no directory is created. The existing evaluation path
+verifier rejects missing/non-directory roots, traversal, network/device paths,
+symlinks/junctions, Windows drive/short-name aliases and unverifiable identities.
+Resolve trusted OS aliases before selecting the root. Verification is repeated
+on each evaluation call, not just at launch. Without this opt-in the server and
+its other tools still work; `orch_eval_status` returns an explicit binding error.
+No tool request can supply or override **either** root.
 
 Without `--repo`, Orch binds to the process's current working directory. The
 selected directory must already exist and contain a real `.orchestrator/`
@@ -71,11 +89,18 @@ source discovered exactly **five** read-only tools, adding
 **`orch_config_effective`**, accepting only `{}`. Unknown fields, repository
 overrides and non-object input (including explicit `null`) are rejected.
 Existing tools' input schemas and behavior are unchanged.
-**After separately approved item 6:** current source discovers exactly **seven**
+**After separately approved item 6:** source discovered exactly **seven**
 read-only tools, adding **`orch_metrics`** and **`orch_metrics_report`**. Each
 requires an explicit empty object `{}`; omitted arguments, `null`, other
 non-objects, unknown fields and repository overrides are errors. Existing five
 tool contracts remain unchanged.
+**Before item 7:** seven-tool discovery had no evaluation inspection.
+**After separately approved item 7:** current source discovers exactly **eight**
+read-only tools, adding **`orch_eval_status`**, accepting only a nonempty string
+`run_id`. Its stricter evaluation-ID syntax is enforced by the existing reader.
+The explicit-empty-object restriction still applies to configuration and both
+metrics tools, not every tool. Unknown fields and root overrides are rejected
+for **all eight tools**; the existing seven contracts are unchanged.
 
 | Tool | Input | CLI counterpart (from the bound checkout) | Report schema |
 | --- | --- | --- | --- |
@@ -86,6 +111,7 @@ tool contracts remain unchanged.
 | `orch_config_effective` | `{}` | None; directly uses shared `config.Load` | 1 |
 | `orch_metrics` | `{}` | `orch metrics` (human-readable; shared summary results) | 1 |
 | `orch_metrics_report` | `{}` | `orch metrics report` (human-readable; shared rollup results) | 1 |
+| `orch_eval_status` | `{"run_id":"eval-aaaaaaaaaaaaaaaaaaaaaaaaaa"}` | `orch eval status --run ID --storage-root ROOT --json` (same retained report; MCP additionally checks repository identity) | 3 |
 
 Each `orch_run_status` invocation reads fresh local
 state through the same engine as `orch run status --json` and returns that
@@ -115,6 +141,10 @@ doctor retain only their existing external read probes.
 mutations. Initialization, discovery, disconnect and status/next/configuration/
 metrics calls execute no external commands; readiness and doctor retain their
 existing external read probes only.
+**After item 7:** evaluation inspection is also local-only (`openWorldHint: false`).
+All eight tools avoid repository/storage writes and lifecycle mutations;
+initialization, discovery, disconnect and every local-only tool call execute no
+external commands. Readiness and doctor keep their existing read probes only.
 This server does not replace the CLI, the thin host plugins or their guards,
 and it does not change Orch's separate memhub CLI integration.
 
@@ -189,6 +219,10 @@ claim a grant authorizes any suggested action. These restrictions apply to
 item 5; after item 6 they apply to **all seven tools and all six CLI inspection
 commands**, not just
 `Next` or `orch_run_next`. Stateful lifecycle verbs retain their existing behavior.
+After item 7 these no-write/no-approval restrictions apply to **all eight MCP
+tools** and the retained evaluation CLI `status` inspection too. They do not
+describe evaluation `preview`, `run`, `stop`, `grade` or report publication, which
+remain distinct, explicitly invoked operations with their existing contracts.
 
 ## Review and merge readiness
 
@@ -480,8 +514,72 @@ an atomic snapshot. Neither inspector reads run state/Delivery locks nor creates
 metrics, history, mutation locks, sessions, approvals or lifecycle records. No
 subprocess runs, even with metrics enabled or a host session identifier present.
 No dependency, host plugin or installed binary is changed by this source feature.
-Building this seven-tool source does not upgrade or verify an existing five-tool
+Before item 7 this was seven-tool source; after item 7 it is eight-tool source.
+Building it does not upgrade or verify an existing five-tool
 installation; discover the tools from the binary the client actually launches.
+
+## Retained evaluation inspection (explicit storage opt-in)
+
+Launch with `--eval-storage-root` as above, then call `orch_eval_status` with only
+`{"run_id":"eval-aaaaaaaaaaaaaaaaaaaaaaaaaa"}` (replace the example with a retained
+evaluation ID). The ID must match the existing `eval-` plus 26 lowercase base32
+characters (`a-z`, `2-7`), not a Delivery run ID, plan digest or path. Missing,
+empty, wrong-type and invalid IDs, non-object input, unknown fields and attempted
+storage/repository overrides are errors. Discovery is available without a store;
+calling the tool without the launch binding is not an empty or successful report.
+
+The tool reuses `evalplan.Inspect`, the report inspection underlying CLI `status`,
+through `InspectRepository`; it does not parse CLI text or create a second
+evidence/grading/measurement engine. Success returns the existing schema-3
+`Report` as equivalent MCP structured content and JSON text, preserving:
+
+- `snapshot_sha256`, the proposed report `destination`, evaluation/plan identities
+  and hashes, frozen scope/limits/schedule and retained approval **assertions**;
+- progress, consumed attempts/repairs, unrun units, completed evidence counts,
+  snapshot chain and digest-linked artifact/evaluator references;
+- existing initial/final grading, disputes/coverage/trust limits and typed native
+  evidence; retained evaluator identities/independence are not authentication;
+- separate compatible counters, coverage, matched values/repeat ranges and receipt
+  wall spans, with absent values/identities remaining unknown and measured zero
+  remaining zero; task-agent subtotals do not establish whole-Orch cost;
+- blockers, safety findings, unknowns, inconclusive decisions and undefined cost
+  per acceptance when no validated nonzero denominator exists.
+
+The existing public projection suppresses raw worker output, private source/key/
+probe bytes, arbitrary controller reasons, native error prose and evaluator
+citations/reason prose. References and digests are returned, **not file contents**.
+Reading referenced bytes to verify integrity does not execute them. An inspection
+does not publish a report, submit a grade, execute work, stop a controller, inspect
+process liveness, resume, spend approval or adopt a profile. `destination` and
+`reproduction_argv` are retained metadata, not proof of publication or permission
+to execute the mutating `report` command. Process liveness stays explicitly unknown;
+stop receipt and recorded controller acknowledgement remain distinct.
+
+`InspectRepository` verifies that the stored repository is an existing guarded
+local directory, matches the launch-bound checkout's canonical path **and opened
+filesystem identity**, and belongs to the frozen preparation's repository roots.
+A different checkout (including a sibling worktree), missing/unverifiable stored
+repository or alias is an explicit tool error, with no partial report. This added
+binding applies to **MCP evaluation inspection**, not all evaluation APIs:
+`Inspect`/CLI `status` still inspect retained evidence without needing the original
+checkout, source artifacts, effective configuration or live hosts. Other MCP
+tools retain their existing fixed repository binding and validation semantics.
+Filesystem identity checks establish the current local directory match, not
+authenticated historical provenance or protection against a privileged actor
+consistently rewriting all retained records.
+
+The existing guarded reader validates the bounded inventory, generated wire
+shapes/versions, progress chain, approval claims, grading journal and referenced
+hashes. Malformed/corrupt/unsupported data, missing required referenced bytes,
+persistent hard links, linked directories and identity failures are explicit
+errors, without repairs. A valid prepared/running snapshot, unfinished attempt,
+unpublished pending file or interrupted grading publication instead retains the
+reader's existing incomplete/unknown status; incomplete evidence never becomes
+successful execution or measured zero. Reads are unlocked observations of retained
+immutable records, not atomic live-host guarantees. No storage, report bundle,
+lock, approval claim, session, metric or lifecycle record is created, on success
+or failure. `evalplan.Status` (core progress-only inspection), CLI status, immutable
+report publication and grading/execution/stop remain useful distinct surfaces.
 
 ## Reproducible smoke test and trial checkpoint
 
@@ -492,7 +590,7 @@ go test ./internal/cli -run '^TestMCPStdio$' -v -count=1
 ```
 
 This builds a temporary real `orch` binary and uses an SDK client over its
-stdio pipes to initialize, discover and call all seven tools, then disconnect and
+stdio pipes to initialize, discover and call all eight tools, then disconnect and
 verify a successful process exit. No global install or client configuration
 is needed. The client stays connected while test fixtures change from Assist
 to blocked Delivery and inconsistent state/lock pairs. Output reports
@@ -540,6 +638,15 @@ empty object for nil arguments), unchanged files and real process shutdown.
 lookup or runner call during initialization, discovery, local-tool success or
 failure, and shutdown. These source checks neither install a binary nor prove
 which binary an existing client launches.
+Evaluation fixtures compare `CLI = shared report = structured = JSON text` for
+prepared, running/unfinished, refused and graded snapshots. They verify snapshot
+hashes, approval assertions, private-output suppression, unknown versus measured
+zero counters, explicit/absent storage binding, both flag orders and cwd binding,
+strict IDs/inputs, cross-repository rejection, unsafe paths/links, corrupt/partial/
+unsupported evidence and recovery on the same connection. Repository/storage
+names, kinds, modes, regular-file modification times and bytes are unchanged
+across reads, including failures; no executable is available on PATH. Synthetic
+retained fixtures and evaluator assertions are not model-trial performance.
 
 For a manual trial, use the configuration above, connect your client, discover
 `orch_run_status`, and call it with `{}`. Compare its decoded JSON with
@@ -577,6 +684,9 @@ implements effective configuration. **After separately approved item 6:** source
 also implements recorded metrics history and rollups. No source increment is claimed installed
 by this guide. The checkpoint does not authorize subsequent roadmap scope;
 each expansion and any installation still require separate approval.
+After separately approved item 7, source also exposes retained evaluation
+inspection with explicit storage opt-in. It adds no installation, remote access,
+evaluation execution or report-publication authority.
 
 ### Original trial benefit checklist — assess with the user before expansion
 
@@ -603,7 +713,7 @@ assumptions or a tool-discovery-only success:
 
 ## Trial item 2 blast radius
 
-The tables below record the earlier increments; the current seven-tool contract,
+The tables below record the earlier increments; the current eight-tool contract,
 doctor checks, effective configuration and metrics are documented above.
 
 | Touched element | Does its previous behavior still hold? |
@@ -659,3 +769,20 @@ from passing, allowed for human merges, and insufficient for grant merges.
 | CLI/MCP tests (`run_test.go`, `mcp_test.go`, `mcp_readiness_test.go`, `testdata/readiness-gh/main.go`) | Existing status/next parity, binding, local-only calls, shutdown and serialization tests remain. Discovery now expects three tools; real readiness stdio comparisons add a command allowlist and unchanged bound/launching repositories, including failures. Before the fix cycle the fake probe failed with exit 2; now it uses exit 1 with empty stdout and asserts explicit CLI/MCP errors instead of a ready result. The fake executable writes only its external test transcript, never the repository. |
 | Guides (`docs/mcp-status.md`, `README.md`) | Source-only setup, optional use, host enforcement and four-item checkpoint remain. Historical status-only/empty-input/no-exec/plumbing claims are retained as before/after where originally stated, rather than silently removed. |
 | Lifecycle loading/review/merge/grant implementations, next/status algorithms, persistent schemas, dependencies, adapters/guards, installed binaries and CI workflows | Unchanged apart from the shared probe-error propagation and pure merge-report formatting described above. No new authorization, automatic action, schema migration, dependency, host redesign, installation or item-4 doctor feature. All existing CI requirements remain. |
+
+## Item 7 blast radius
+
+The before/after discovery, launch and local-command statements remain in their
+original sections above. No existing implementation is superseded by this tool.
+
+| Touched element | Does its previous behavior still hold? |
+| --- | --- |
+| CLI command/help table (`cli.go`: `commands`) | Yes for dispatch and every existing command. MCP help now advertises retained evaluations and optional storage argv; exit-code mapping and all mutators are unchanged. |
+| MCP launch (`mcp.go`: `runMCP`, strict argv parsing, repository binding) | Existing cwd/`--repo` forms and canonical repository/real-metadata checks remain. Before: only optional `--repo` was accepted. After: one optional `--eval-storage-root` is also accepted, in either flag order, verified without creation; requests cannot alter either binding. No implicit store, config/environment lookup or ancestor discovery is added. |
+| MCP registration, handler and SDK transport/output | Seven-tool-only discovery changes to eight as recorded above. New `orch_eval_status` takes only nonempty `run_id`, is read-only/local-only and returns the existing report; the other seven tools' schemas/annotations/results, protocol-only stdout, stderr diagnostics and clean disconnect hold. No mutation or remote transport is exposed. |
+| Evaluation path boundary (`guarded.go`: new `CheckStorageRoot`; reused `openGuarded`, `guardedDir.check`; `localPath`, `directory`, `openDirectory`, platform drive/reparse/link checks) | Existing validation/anchoring holds for **every guarded evaluation read/write**, not just the new launch check. `CheckStorageRoot` only opens/verifies/closes an existing root; each inspection repeats the existing checks. No publication, storage creation or weaker alias fallback is introduced. |
+| Shared report inspection (`report.go`: `Inspect`, extracted `inspect`, new `InspectRepository`) | Original CLI/`Inspect` behavior, including source/checkout-independent retained inspection, holds. MCP adds guarded canonical-path/opened-directory identity and frozen-root membership checks before report construction; this restriction belongs to `InspectRepository`, not every evaluation API. Both entry points share one report implementation and unchanged schema/hash semantics. |
+| Reused report/evidence types and readers (`Report`, `Snapshot`, `openEvaluation`, `readProgress`, `readApproval`, `inspectGrading`, `publicNative`, `measure` and their guarded record/artifact readers) | Existing wire shapes, ID rules, bounds, chain/hash/approval/grading validation, public projection, counters/missingness, blockers and unknowns hold. No second parser, raw-output exposure, grade submission, report publication or liveness inference is added. |
+| MCP tests (`mcp_test.go`: `TestMCPStdio`, `mcpDiscover`, local no-command regression; new `mcp_eval_test.go` fixtures/parity/error/launch checks) | Existing seven-tool parity/binding/no-write/shutdown and probe allowlists hold; discovery now expects eight and checks the evaluation-only schema/local annotation. Deterministic real-stdio cases add report parity, binding/identity/path/evidence/unknown/privacy/no-write coverage. Test-only retained data/grade setup is not production execution or trial approval. |
+| Guides (`docs/mcp-status.md`, `README.md`) | Optional source-only setup, explicit installation boundary, host enforcement and prior checkpoint hold. Previous launch/discovery limits are retained as before/after in the same sections; storage opt-in, identity scope and report limitations are explicit. |
+| Core progress `Status`, CLI evaluation parser/status/run/stop/grade/report, publication, lifecycle/state/lock/approval/metrics/grant algorithms, persistent schemas, dependencies, adapters/guards, installed binaries and CI | Unchanged. No useful CLI surface is removed, no execution/approval rule is relaxed and no installation, release, schema migration or remote access is added. Required existing checks still apply. |

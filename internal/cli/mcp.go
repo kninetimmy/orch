@@ -11,18 +11,25 @@ import (
 	"path/filepath"
 
 	"github.com/kninetimmy/orch/internal/config"
+	"github.com/kninetimmy/orch/internal/evalplan"
 	"github.com/kninetimmy/orch/internal/paths"
 	"github.com/kninetimmy/orch/internal/run"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
 func runMCP(env Env, args []string) error {
-	root := env.RepoRoot
-	if len(args) != 0 {
-		if len(args) != 2 || args[0] != "--repo" || args[1] == "" {
-			return usageError("orch mcp: usage: orch mcp [--repo <path>]")
+	const usage = "orch mcp: usage: orch mcp [--repo <path>] [--eval-storage-root <absolute-local-path>]"
+	flags := map[string]string{}
+	for i := 0; i < len(args); i += 2 {
+		flag := args[i]
+		if flag != "--repo" && flag != "--eval-storage-root" || flags[flag] != "" || i+1 == len(args) || args[i+1] == "" {
+			return usageError(usage)
 		}
-		root = args[1]
+		flags[flag] = args[i+1]
+	}
+	root := env.RepoRoot
+	if flags["--repo"] != "" {
+		root = flags["--repo"]
 	}
 	root, err := paths.Canonical(root)
 	if err != nil {
@@ -44,6 +51,12 @@ func runMCP(env Env, args []string) error {
 	}
 	if !info.IsDir() {
 		return fmt.Errorf("%s is not a real directory", metadata)
+	}
+	evalStorageRoot := flags["--eval-storage-root"]
+	if evalStorageRoot != "" {
+		if err := evalplan.CheckStorageRoot(evalStorageRoot); err != nil {
+			return fmt.Errorf("evaluation storage binding: %w", err)
+		}
 	}
 
 	server := mcp.NewServer(&mcp.Implementation{Name: "orch", Version: Version}, &mcp.ServerOptions{
@@ -149,6 +162,23 @@ func runMCP(env Env, args []string) error {
 			return nil, nil, fmt.Errorf("orch_metrics_report: arguments must be an empty object")
 		}
 		doc, err := inspectMetricsReport(root)
+		if err != nil {
+			return nil, nil, err
+		}
+		return nil, doc, nil
+	})
+	mcp.AddTool(server, &mcp.Tool{
+		Name:        "orch_eval_status",
+		Description: "Inspect one retained evaluation in the launch-bound local storage root, verifying its repository identity. Returns the same read-only report as orch eval status --json, not raw worker/private source contents. Does not publish reports, grade, execute, stop or infer process liveness; requires --eval-storage-root at server launch.",
+		InputSchema: json.RawMessage(`{"type":"object","properties":{"run_id":{"type":"string","minLength":1}},"required":["run_id"],"additionalProperties":false}`),
+		Annotations: &mcp.ToolAnnotations{ReadOnlyHint: true, OpenWorldHint: new(bool)},
+	}, func(_ context.Context, _ *mcp.CallToolRequest, input struct {
+		RunID string `json:"run_id"`
+	}) (*mcp.CallToolResult, any, error) {
+		if evalStorageRoot == "" {
+			return nil, nil, fmt.Errorf("orch_eval_status requires launch-time --eval-storage-root <absolute-local-path> binding")
+		}
+		doc, err := evalplan.InspectRepository(root, evalStorageRoot, input.RunID)
 		if err != nil {
 			return nil, nil, err
 		}

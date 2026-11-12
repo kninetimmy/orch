@@ -431,7 +431,7 @@ commands:
   eval             Evaluation preview/run/status/stop/report (eval help for arguments)
   grant            Show the active autonomy grant; grant revoke ends it; grant relay hands it to a fresh Claude Code session; grant preview and grant create propose and record one (JSON stdin/stdout)
   render-agents    Render project agent definitions for every enabled host
-  mcp              Serve read-only run status, next actions, review/merge readiness, doctor diagnostics and effective configuration over stdio (mcp [--repo <path>])
+  mcp              Serve read-only run inspections, doctor diagnostics, effective configuration, recorded metrics and retained evaluations over stdio (mcp [--repo <path>] [--eval-storage-root <absolute-local-path>])
   run              Adapter plumbing: Delivery verbs (JSON stdin/stdout); inspection: status|next --json, readiness --issue <number> --json
   guard            Adapter plumbing: pre-write enforcement for host hooks (not a human command)
   hook             Adapter plumbing: host lifecycle-event verbs (not a human command)
@@ -448,7 +448,7 @@ Before the trial, `mcp` help described live run status alone. After item 3,
 discovery also includes next-action guidance and review/merge readiness.
 After item 4, discovery adds `orch_doctor`, equivalent to `orch doctor --json`
 with optional host selection. Failed checks retain their report and CLI exit 1.
-After separately approved item 5, current source discovers five tools, adding
+After separately approved item 5, source discovered five tools, adding
 `orch_config_effective`. It accepts only `{}` and returns `schema_version: 1`
 with `configuration` equal to the shared loader's fresh effective configuration:
 defaults, permitted local overrides, host profiles, configured protected paths
@@ -460,6 +460,16 @@ approved configuration, and runs no health probes. Bare `configure` remains a
 committed-setting summary, `configure-local` an override summary, `status` a
 mode/configuration summary, and `doctor` health diagnostics; no new CLI command
 is added.
+Before items 6–7, that five-tool discovery and `mcp [--repo <path>]` launch
+description did not include metrics or evaluations. After item 6, discovery adds
+recorded metrics history and rollups; after separately approved item 7, source
+discovers eight read-only tools, adding `orch_eval_status`. Existing launch forms
+still work, with optional `--eval-storage-root <absolute-local-path>` to opt in to
+one existing guarded local store. The new tool accepts only `run_id`, reuses CLI
+status's retained evaluation report and rejects another repository's evidence.
+Without the storage binding it returns an explicit tool error. Inspection does
+not publish reports, grade, execute, stop or infer process liveness; private
+source and raw worker output remain guarded references, not returned contents.
 For optional MCP client access to those reports, see the
 [read-only stdio MCP guide](docs/mcp-status.md). This source-only addition does
 not install anything or replace the host plugins and their enforcement hooks.

@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"io/fs"
+	"os"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -166,11 +167,45 @@ func blockers(e *Evaluation) []Blocker {
 // Inspect is read-only. The validated chain is frozen at the observed sequence;
 // later immutable records never change that snapshot or imply a live process.
 func Inspect(storageRoot, id string) (*Report, error) {
+	return inspect(storageRoot, id, nil)
+}
+
+// InspectRepository adds a fixed checkout identity boundary to Inspect. It uses
+// retained metadata and guarded filesystem identities, not Git or live sources.
+// Inspect itself remains usable without the original checkout for CLI status.
+func InspectRepository(repo, storageRoot, id string) (*Report, error) {
+	repository, err := openGuarded(repo)
+	if err != nil {
+		return nil, fmt.Errorf("bound evaluation repository identity: %w", err)
+	}
+	defer repository.close()
+	r, err := inspect(storageRoot, id, repository)
+	if err != nil {
+		return nil, err
+	}
+	if err := repository.check(); err != nil {
+		return nil, err
+	}
+	return r, nil
+}
+
+func inspect(storageRoot, id string, repository *guardedDir) (*Report, error) {
 	g, e, hash, err := openEvaluation(storageRoot, id)
 	if err != nil {
 		return nil, err
 	}
 	defer g.close()
+	if repository != nil {
+		retained, err := openGuarded(e.Repository)
+		if err != nil {
+			return nil, fmt.Errorf("retained evaluation repository identity: %w", err)
+		}
+		defer retained.close()
+		same, err := samePath(repository.path, retained.path)
+		if err != nil || !same || !os.SameFile(repository.info, retained.info) || !slices.Contains(e.Preparation.Plan.RepositoryRoots, e.Repository) {
+			return nil, fmt.Errorf("retained evaluation repository does not match the bound checkout or frozen repository roots: %v", err)
+		}
+	}
 	p, err := readProgress(g, e, hash)
 	if err != nil {
 		return nil, err
