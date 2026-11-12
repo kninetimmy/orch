@@ -199,6 +199,7 @@ func runMCP(env Env, args []string) error {
 		return nil, doc, nil
 	})
 	addEvalPreviewTool(server, root, evalStorageRoot, env.Runner)
+	addMCPInterviewTools(server, env, root)
 	return server.Run(context.Background(), &mcp.IOTransport{
 		Reader: io.NopCloser(env.Stdin),
 		Writer: mcpWriter{env.Stdout},
