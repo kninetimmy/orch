@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -9,6 +10,7 @@ import (
 	"os"
 	"path/filepath"
 
+	"github.com/kninetimmy/orch/internal/config"
 	"github.com/kninetimmy/orch/internal/paths"
 	"github.com/kninetimmy/orch/internal/run"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
@@ -102,6 +104,25 @@ func runMCP(env Env, args []string) error {
 			return nil, nil, err
 		}
 		return nil, doc, nil
+	})
+	mcp.AddTool(server, &mcp.Tool{
+		Name:        "orch_config_effective",
+		Description: "Read the bound repository's freshly loaded effective Orch configuration, including defaults and permitted local overrides. Reports current files, not Git HEAD or an active run's approved configuration; performs no health probes.",
+		InputSchema: json.RawMessage(`{"type":"object","properties":{},"additionalProperties":false}`),
+		Annotations: &mcp.ToolAnnotations{ReadOnlyHint: true, OpenWorldHint: new(bool)},
+	}, func(_ context.Context, req *mcp.CallToolRequest, _ struct{}) (*mcp.CallToolResult, any, error) {
+		// The SDK treats null/omitted arguments as {}; this tool requires an object.
+		if args := bytes.TrimSpace(req.Params.Arguments); len(args) == 0 || args[0] != '{' {
+			return nil, nil, fmt.Errorf("orch_config_effective: arguments must be an empty object")
+		}
+		cfg, err := config.Load(root)
+		if err != nil {
+			return nil, nil, err
+		}
+		return nil, struct {
+			SchemaVersion int            `json:"schema_version"`
+			Configuration *config.Config `json:"configuration"`
+		}{1, cfg}, nil
 	})
 	return server.Run(context.Background(), &mcp.IOTransport{
 		Reader: io.NopCloser(env.Stdin),

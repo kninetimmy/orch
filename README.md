@@ -431,7 +431,7 @@ commands:
   eval             Evaluation preview/run/status/stop/report (eval help for arguments)
   grant            Show the active autonomy grant; grant revoke ends it; grant relay hands it to a fresh Claude Code session; grant preview and grant create propose and record one (JSON stdin/stdout)
   render-agents    Render project agent definitions for every enabled host
-  mcp              Serve read-only run status, next actions, review/merge readiness and doctor diagnostics over stdio (mcp [--repo <path>])
+  mcp              Serve read-only run status, next actions, review/merge readiness, doctor diagnostics and effective configuration over stdio (mcp [--repo <path>])
   run              Adapter plumbing: Delivery verbs (JSON stdin/stdout); inspection: status|next --json, readiness --issue <number> --json
   guard            Adapter plumbing: pre-write enforcement for host hooks (not a human command)
   hook             Adapter plumbing: host lifecycle-event verbs (not a human command)
@@ -448,9 +448,23 @@ Before the trial, `mcp` help described live run status alone. After item 3,
 discovery also includes next-action guidance and review/merge readiness.
 After item 4, discovery adds `orch_doctor`, equivalent to `orch doctor --json`
 with optional host selection. Failed checks retain their report and CLI exit 1.
+After separately approved item 5, current source discovers five tools, adding
+`orch_config_effective`. It accepts only `{}` and returns `schema_version: 1`
+with `configuration` equal to the shared loader's fresh effective configuration:
+defaults, permitted local overrides, host profiles, configured protected paths
+and sorted applied-override keys. Existing `Config` JSON names (for example,
+`ConfigRevision`, `Hosts`, `Overrides`) and legacy OpenCode `Effort` spelling
+are preserved. Configuration failures are tool errors, not partial reports.
+This local-only inspection reads current files, not Git HEAD or an active run's
+approved configuration, and runs no health probes. Bare `configure` remains a
+committed-setting summary, `configure-local` an override summary, `status` a
+mode/configuration summary, and `doctor` health diagnostics; no new CLI command
+is added.
 For optional MCP client access to those reports, see the
 [read-only stdio MCP guide](docs/mcp-status.md). This source-only addition does
 not install anything or replace the host plugins and their enforcement hooks.
+Source tests do not upgrade the binary an MCP client launches; separately verify
+that binary's identity and discovered tools after an explicitly approved install.
 
 Previously `metrics` only accepted its read-only report form. That form still
 works; `metrics record` now accepts durable observation JSON. See the

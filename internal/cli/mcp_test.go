@@ -252,6 +252,9 @@ func TestMCPStdio(t *testing.T) {
 	t.Run("doctor diagnostics", func(t *testing.T) {
 		mcpDoctorExercise(t, binary)
 	})
+	t.Run("effective configuration", func(t *testing.T) {
+		mcpConfigExercise(t, binary)
+	})
 
 	t.Run("repository binding", func(t *testing.T) {
 		root := t.TempDir()
@@ -277,6 +280,7 @@ func TestMCPStdio(t *testing.T) {
 				mcpDiscover(t, ctx, session, root)
 				mcpParity(t, ctx, binary, root, session)
 				mcpNextParity(t, ctx, binary, root, session)
+				mcpConfigParity(t, ctx, root, session)
 				closeSession()
 			})
 		}
@@ -377,7 +381,7 @@ func mcpDiscover(t *testing.T, ctx context.Context, session *mcp.ClientSession, 
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(list.Tools) != 4 || list.NextCursor != "" {
+	if len(list.Tools) != 5 || list.NextCursor != "" {
 		t.Fatalf("tool discovery = %+v", list)
 	}
 	want := mcpDecoded(t, []byte(`{"type":"object","properties":{},"additionalProperties":false}`))
@@ -385,7 +389,7 @@ func mcpDiscover(t *testing.T, ctx context.Context, session *mcp.ClientSession, 
 	for _, tool := range list.Tools {
 		readiness := tool.Name == "orch_run_readiness"
 		doctor := tool.Name == "orch_doctor"
-		if (tool.Name != "orch_run_status" && tool.Name != "orch_run_next" && !readiness && !doctor) || seen[tool.Name] || tool.Annotations == nil || !tool.Annotations.ReadOnlyHint || tool.Annotations.OpenWorldHint == nil || *tool.Annotations.OpenWorldHint != (readiness || doctor) {
+		if (tool.Name != "orch_run_status" && tool.Name != "orch_run_next" && tool.Name != "orch_config_effective" && !readiness && !doctor) || seen[tool.Name] || tool.Annotations == nil || !tool.Annotations.ReadOnlyHint || tool.Annotations.OpenWorldHint == nil || *tool.Annotations.OpenWorldHint != (readiness || doctor) {
 			t.Fatalf("tool = %+v", tool)
 		}
 		seen[tool.Name] = true
@@ -537,8 +541,8 @@ func mcpDirectoryLink(t *testing.T, target, link string) {
 }
 
 // Before readiness every tool was local-only. This restriction still applies
-// to all status/next calls (including failures), initialization and discovery;
-// readiness's and doctor's external read allowlists use real stdio clients.
+// to status/next/configuration calls (including failures), initialization and
+// discovery; readiness's and doctor's external read allowlists use real stdio clients.
 func TestMCPLocalToolsNeverRunExternalCommands(t *testing.T) {
 	env, _, stderr := testEnv(t)
 	writeConfig(t, env.RepoRoot, "invalid config is not loaded")
@@ -550,6 +554,7 @@ func TestMCPLocalToolsNeverRunExternalCommands(t *testing.T) {
 	input, clientWriter := io.Pipe()
 	clientReader, output := io.Pipe()
 	env.Stdin, env.Stdout = input, output
+	before := mcpTree(t, env.RepoRoot)
 	done := make(chan int, 1)
 	go func() { done <- Run([]string{"mcp"}, env) }()
 	ctx, cancel := context.WithTimeout(t.Context(), 10*time.Second)
@@ -560,16 +565,25 @@ func TestMCPLocalToolsNeverRunExternalCommands(t *testing.T) {
 		t.Fatal(err)
 	}
 	mcpDiscover(t, ctx, session, env.RepoRoot)
+	if mcpTree(t, env.RepoRoot) != before {
+		t.Fatal("initialization/discovery changed repository files")
+	}
 	mcpCall(t, ctx, session, env.RepoRoot, "orch_run_status", map[string]any{})
 	mcpCall(t, ctx, session, env.RepoRoot, "orch_run_next", map[string]any{})
+	if result := mcpCall(t, ctx, session, env.RepoRoot, "orch_config_effective", map[string]any{}); !result.IsError || result.StructuredContent != nil {
+		t.Fatalf("invalid configuration result = %+v", result)
+	}
 	mcpWrite(t, filepath.Join(env.RepoRoot, ".orchestrator", "config.toml"), []byte(validTOML))
 	if _, err := state.EnterDelivery(env.RepoRoot, "claude", testApprovedPlanRef(t, env.RepoRoot), testIssues()); err != nil {
 		t.Fatal(err)
 	}
 	mcpCall(t, ctx, session, env.RepoRoot, "orch_run_next", map[string]any{})
+	mcpConfigParity(t, ctx, env.RepoRoot, session)
 	mcpWrite(t, filepath.Join(env.RepoRoot, state.Path), []byte("{corrupt state"))
 	mcpCall(t, ctx, session, env.RepoRoot, "orch_run_status", map[string]any{})
 	mcpCall(t, ctx, session, env.RepoRoot, "orch_run_next", map[string]any{})
+	mcpConfigParity(t, ctx, env.RepoRoot, session)
+	before = mcpTree(t, env.RepoRoot)
 	if err := session.Close(); err != nil {
 		t.Fatal(err)
 	}
@@ -580,6 +594,9 @@ func TestMCPLocalToolsNeverRunExternalCommands(t *testing.T) {
 		}
 	case <-ctx.Done():
 		t.Fatal("server did not shut down")
+	}
+	if mcpTree(t, env.RepoRoot) != before {
+		t.Fatal("shutdown changed repository files")
 	}
 	if err := output.Close(); err != nil {
 		t.Fatal(err)
