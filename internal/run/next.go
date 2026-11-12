@@ -7,7 +7,6 @@ import (
 	"strings"
 
 	"github.com/kninetimmy/orch/internal/config"
-	"github.com/kninetimmy/orch/internal/lockfile"
 	"github.com/kninetimmy/orch/internal/state"
 )
 
@@ -41,14 +40,16 @@ type NextAction struct {
 // loadVerb (which records sessions), Plan (which can probe memhub), or any
 // lifecycle verb. Corrupt/unrecognized state or locks are errors, as in Status.
 func Next(_ context.Context, env Env) (*NextDoc, error) {
-	st, err := state.Load(env.RepoRoot)
+	st, status, err := inspectStatus(env)
 	if err != nil {
 		return nil, err
 	}
-	owner, err := lockfile.Inspect(env.RepoRoot)
-	if err != nil {
-		return nil, err
-	}
+	return next(env, st, status)
+}
+
+// next uses the same loaded snapshot as the status representation. In
+// particular, issue context must not combine independently loaded work/advice.
+func next(env Env, st *state.State, status *StatusDoc) (*NextDoc, error) {
 	doc := &NextDoc{SchemaVersion: NextSchemaVersion, Mode: st.Mode, Limitations: []string{
 		"Local state and configuration only; no live git, GitHub, CI, worktree, host availability or test checks were performed. Every action still requires its normal verb preflights.",
 		"Guidance grants no approval or confirmation and performs no action. Human plan/merge gates and explicit decision resolutions remain separate; existing grant contracts are unchanged and are not evaluated here.",
@@ -57,10 +58,10 @@ func Next(_ context.Context, env Env) (*NextDoc, error) {
 	if st.Run != nil {
 		doc.RunID = st.Run.ID
 	}
-	if err := state.CheckConsistent(st, owner); err != nil {
+	if !status.Consistent {
 		doc.Actions = []NextAction{{
 			Action: "recover", Reason: "State and Delivery lock disagree.",
-			Blockers:      []string{err.Error()},
+			Blockers:      []string{status.Warning},
 			Prerequisites: []string{"Investigate and preserve the run before explicit `orch abort` recovery; resume cannot repair an inconsistent state/lock pair."},
 		}}
 		return doc, nil

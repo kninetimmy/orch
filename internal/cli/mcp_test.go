@@ -261,6 +261,9 @@ func TestMCPStdio(t *testing.T) {
 	t.Run("retained evaluations", func(t *testing.T) {
 		mcpEvalExercise(t, binary)
 	})
+	t.Run("issue context", func(t *testing.T) {
+		mcpIssueContextExercise(t, binary)
+	})
 
 	t.Run("repository binding", func(t *testing.T) {
 		root := t.TempDir()
@@ -388,7 +391,7 @@ func mcpDiscover(t *testing.T, ctx context.Context, session *mcp.ClientSession, 
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(list.Tools) != 8 || list.NextCursor != "" {
+	if len(list.Tools) != 9 || list.NextCursor != "" {
 		t.Fatalf("tool discovery = %+v", list)
 	}
 	want := mcpDecoded(t, []byte(`{"type":"object","properties":{},"additionalProperties":false}`))
@@ -398,12 +401,13 @@ func mcpDiscover(t *testing.T, ctx context.Context, session *mcp.ClientSession, 
 		doctor := tool.Name == "orch_doctor"
 		metrics := tool.Name == "orch_metrics" || tool.Name == "orch_metrics_report"
 		evaluation := tool.Name == "orch_eval_status"
-		if (tool.Name != "orch_run_status" && tool.Name != "orch_run_next" && tool.Name != "orch_config_effective" && !readiness && !doctor && !metrics && !evaluation) || seen[tool.Name] || tool.Annotations == nil || !tool.Annotations.ReadOnlyHint || tool.Annotations.OpenWorldHint == nil || *tool.Annotations.OpenWorldHint != (readiness || doctor) {
+		issueContext := tool.Name == "orch_issue_context"
+		if (tool.Name != "orch_run_status" && tool.Name != "orch_run_next" && tool.Name != "orch_config_effective" && !readiness && !doctor && !metrics && !evaluation && !issueContext) || seen[tool.Name] || tool.Annotations == nil || !tool.Annotations.ReadOnlyHint || tool.Annotations.OpenWorldHint == nil || *tool.Annotations.OpenWorldHint != (readiness || doctor) {
 			t.Fatalf("tool = %+v", tool)
 		}
 		seen[tool.Name] = true
 		wantSchema := want
-		if readiness {
+		if readiness || issueContext {
 			wantSchema = mcpDecoded(t, []byte(`{"type":"object","properties":{"issue_number":{"type":"integer","minimum":1}},"required":["issue_number"],"additionalProperties":false}`))
 		}
 		if doctor {
@@ -553,7 +557,7 @@ func mcpDirectoryLink(t *testing.T, target, link string) {
 }
 
 // Before readiness every tool was local-only. This restriction still applies
-// to status/next/configuration/metrics/evaluation calls (including failures), initialization and
+// to status/next/configuration/metrics/evaluation/context calls (including failures), initialization and
 // discovery; readiness's and doctor's external read allowlists use real stdio clients.
 func TestMCPLocalToolsNeverRunExternalCommands(t *testing.T) {
 	env, _, stderr := testEnv(t)
@@ -582,6 +586,7 @@ func TestMCPLocalToolsNeverRunExternalCommands(t *testing.T) {
 	}
 	mcpCall(t, ctx, session, env.RepoRoot, "orch_run_status", map[string]any{})
 	mcpCall(t, ctx, session, env.RepoRoot, "orch_run_next", map[string]any{})
+	mcpIssueContextError(t, ctx, env.RepoRoot, session, 1)
 	if result := mcpCall(t, ctx, session, env.RepoRoot, "orch_eval_status", map[string]any{"run_id": mcpEvalID}); !result.IsError {
 		t.Fatalf("unbound evaluation storage result = %+v", result)
 	}
@@ -613,14 +618,23 @@ func TestMCPLocalToolsNeverRunExternalCommands(t *testing.T) {
 			t.Fatalf("corrupt metrics result = %+v", result)
 		}
 	}
-	if _, err := state.EnterDelivery(env.RepoRoot, "claude", testApprovedPlanRef(t, env.RepoRoot), testIssues()); err != nil {
+	st, err := state.EnterDelivery(env.RepoRoot, "claude", testApprovedPlanRef(t, env.RepoRoot), testIssues())
+	if err != nil {
 		t.Fatal(err)
+	}
+	st.Run.Issues[0].Number = 1
+	if err := state.Save(env.RepoRoot, st); err != nil {
+		t.Fatal(err)
+	}
+	if result := mcpCall(t, ctx, session, env.RepoRoot, "orch_issue_context", map[string]any{"issue_number": 1}); result.IsError {
+		t.Fatalf("recorded context result = %+v", result)
 	}
 	mcpCall(t, ctx, session, env.RepoRoot, "orch_run_next", map[string]any{})
 	mcpConfigParity(t, ctx, env.RepoRoot, session)
 	mcpWrite(t, filepath.Join(env.RepoRoot, state.Path), []byte("{corrupt state"))
 	mcpCall(t, ctx, session, env.RepoRoot, "orch_run_status", map[string]any{})
 	mcpCall(t, ctx, session, env.RepoRoot, "orch_run_next", map[string]any{})
+	mcpIssueContextError(t, ctx, env.RepoRoot, session, 1)
 	mcpConfigParity(t, ctx, env.RepoRoot, session)
 	before = mcpTree(t, env.RepoRoot)
 	if err := session.Close(); err != nil {
