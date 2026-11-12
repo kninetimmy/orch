@@ -12,6 +12,8 @@ configuration remain separate, explicit work.
 **After separately approved item 13:** evaluation preview can persist a bounded
 preparation artifact; it is not read-only and grants no execution authority.
 The eight earlier tools retain their existing inspection contracts.
+With issue #468 also integrated, the source catalog contains **ten tools**:
+nine read-only inspections (including issue context) and bounded preview.
 
 ## Launch and repository binding
 
@@ -115,6 +117,9 @@ nonempty repository-relative `plan_file`. It is annotated `readOnlyHint: false`,
 unchanged inputs replay immutable local preparation, not remote execution.
 Unknown fields and repository/storage overrides are rejected for this tool too.
 The preceding eight tools keep their schemas, annotations and results.
+Issue #468 separately adds **`orch_issue_context`**, taking a positive
+`issue_number` and remaining read-only and command-free. Together these
+increments expose ten tools; preview alone may persist preparation.
 
 | Tool | Input | CLI counterpart (from the bound checkout) | Report schema |
 | --- | --- | --- | --- |
@@ -126,6 +131,7 @@ The preceding eight tools keep their schemas, annotations and results.
 | `orch_metrics` | `{}` | `orch metrics` (human-readable; shared summary results) | 1 |
 | `orch_metrics_report` | `{}` | `orch metrics report` (human-readable; shared rollup results) | 1 |
 | `orch_eval_status` | `{"run_id":"eval-aaaaaaaaaaaaaaaaaaaaaaaaaa"}` | `orch eval status --run ID --storage-root ROOT --json` (same retained report; MCP additionally checks repository identity) | 3 |
+| `orch_issue_context` | `{"issue_number":468}` | None; directly uses shared `run.IssueContext` | 1 |
 | `orch_eval_preview` | `{"plan_file":"plans/evaluation.json"}` | `orch eval preview --plan FILE --json` (same preparation; MCP additionally confines the proposal file and binds storage) | Existing proposal version 1, 2 or 3 |
 
 Each `orch_run_status` invocation reads fresh local
@@ -918,16 +924,111 @@ original sections above. No existing implementation is superseded by this tool.
 Historical read-only-only discovery, no-command/no-write and CLI-only preparation
 limits are retained as before/after in the sections that stated them above. The
 item-2/3/7 tables describe their increments, not today's entire catalog.
+Integrating issue #468 preserves its report and shared status/next snapshot
+behavior unchanged. Discovery and real-stdio coverage now compose both features
+as ten tools; context remains a read-only, command-free inspection.
 
 | Touched element | Does its previous behavior still hold? |
 | --- | --- |
 | CLI help (`cli.go`: `commands`; README command row) | Dispatch, argv and exits are unchanged. Before: MCP help advertised read-only inspections only. After: help also advertises bounded preparation; it does not advertise execution. |
-| MCP registration (`mcp.go`: `runMCP`; `mcp_eval_preview.go`: `addEvalPreviewTool`, SDK schema/annotations/handler) | Existing launch/storage parsing, fixed roots, eight tools, schemas/results/probes, diagnostics and clean transport shutdown hold. Before: no preparation tool and every exposed tool was read-only. After: one strict `plan_file` tool may persist preparation only; structured/text parity still holds. Discovery itself performs no probes/writes. |
+| MCP registration (`mcp.go`: `runMCP`; `mcp_eval_preview.go`: `addEvalPreviewTool`, SDK schema/annotations/handler) | Existing launch/storage parsing, fixed roots, nine inspection tools including integrated issue context, schemas/results/probes, diagnostics and clean transport shutdown hold. Before: no preparation tool and every exposed tool was read-only. After: one strict `plan_file` tool may persist preparation only; structured/text parity still holds. Discovery itself performs no probes/writes. |
 | Preview core (`plan.go`: `Preview`, extracted `preparePreview`; new `preview.go`: `PreviewRepository`) | CLI `Preview` keeps its absolute/external-plan and proposal-storage behavior, decode/error ordering and save semantics. Both entry points share strict decoding, supported versions and `normalize`. Only `PreviewRepository` adds portable repository-relative proposal confinement, opened repository/storage identities and canonical-path plus opened-identity destination matching before publication; this restriction is not attributed to every evaluation function. |
 | Shared preparation (`strictJSON`, `normalize`, `readArtifact`, `pinSelection`, `plannedCounts`, `selectCases`, `effectiveConfiguration`, `storagePaths`, `evidence`; `Record`, `Plan`, `Evidence`, `Unit`) | Yes; implementations/wire shapes, versions, configuration/source pins, bounds, exclusions, schedule/digest, privacy projection, false execution/approval and unknown/blocker semantics hold for both previews and existing saved-record revalidation. No second policy pipeline or planner is retained. |
 | Guarded filesystem (`relativeName`, `openGuarded`, `guardedDir.read/parent/child/check/publish/publishBytes`, `localPath`, `directory`, `openDirectory`, `readRoot`, `samePath`, platform drive/reparse/link checks) | Yes; implementations unchanged. The new entry point reuses portable names and anchored reads, checks both opened bindings before publication and publishes through the bound handle. Existing validation applies to every guarded evaluation operation that uses these helpers, not only the new wrapper; repository-relative proposal/storage-match restrictions are wrapper-only. |
 | Immutable publication (`save`, `publishRoot`, `existingRecord`) | Yes; CLI still uses `save`; bounded MCP uses guarded publication with the same serialization and `publishRoot`/`existingRecord`. Size ceiling, exclusive pending files, atomic no-replace link, idempotent bytes, conflict/alias refusal, interrupted-artifact preservation and bounded grace hold for all users of this publisher, including controller records. No sweep/repair/overwrite behavior is added. |
 | Git boundary (`gitRead`, existing runner and fixed query vectors) | Yes; read-only allowlist, fixed repository, no lazy fetch/replacement, timeout/output bounds and errors hold. MCP preview now reaches these existing probes; retained evaluation status remains command-free. Neither statement is generalized to every evaluation entry point. |
-| Tests (`mcp_test.go`: `mcpDiscover`, `TestMCPStdio`, `TestMCPLocalToolsNeverRunExternalCommands`; new `mcp_eval_preview_test.go`: `mcpPreviewFixture`, `mcpPreviewInventory`, `mcpPreviewResult`, `mcpEvalPreviewExercise`, `previewIdentityRunner.Run`, `TestEvalPreviewRepositoryRechecksOpenedIdentities`; reused doctor-probe executable) | Prior tool coverage remains; discovery adds the mutating/idempotent annotation and strict schema. New isolated tests exercise preparation persistence, bounded failures/replay/interruption, unchanged repositories, exact Git reads and opened-root replacement refusal. Existing synthetic controller/CLI/publication tests still run; no paid/native host or live evaluation is launched. The probe implementation is unchanged. |
+| Tests (`mcp_test.go`: `mcpDiscover`, `TestMCPStdio`, `TestMCPLocalToolsNeverRunExternalCommands`; new `mcp_eval_preview_test.go`: `mcpPreviewFixture`, `mcpPreviewInventory`, `mcpPreviewResult`, `mcpEvalPreviewExercise`, `previewIdentityRunner.Run`, `TestEvalPreviewRepositoryRechecksOpenedIdentities`; reused doctor-probe executable) | Prior tool coverage remains, including issue context's parity and no-command checks; discovery expects ten tools and adds the preview-only mutating/idempotent annotation and strict schema. New isolated tests exercise preparation persistence, bounded failures/replay/interruption, unchanged repositories, exact Git reads and opened-root replacement refusal. Existing synthetic controller/CLI/publication tests still run; no paid/native host or live evaluation is launched. The probe implementation is unchanged. |
 | Guides (`docs/mcp-status.md`, `README.md`) | Source-only setup, prior checkpoints and separate installation/approval boundaries hold. Before/after limits remain in the same documents; persistence footprint, entry-point-specific restrictions, exact probes and preparation-versus-execution limits are explicit. |
 | CLI evaluation parsing/run/status/stop/grade/report, evaluation controllers/workers/approval/grading/report algorithms, Delivery lifecycle/state/locks/grants/metrics, persistent schemas, configuration, dependencies, adapters/hooks, installations/releases and CI workflows | Unchanged. No useful command, authority boundary or existing check is removed or weakened; no new dependency, schema migration, host execution, configuration application, GitHub artifact or remote transport is added. |
+
+## Issue context (issue #468)
+
+**Before issue #468:** the eight-tool discovery/table and smoke-test count above
+described the source surface, with no focused issue-context report. Identity and
+dependency-reference sanity checks belonged to `Next` only, not `Status`.
+**After issue #468:** source adds **`orch_issue_context`**, a ninth read-only tool
+in this increment. Existing eight tools, launch flags and report schemas retain
+their contracts. The same next-action classifier now also serves issue context;
+its identity/reference restrictions apply to both guidance entry points, not
+`Status` or every inspection function. Later separately approved increments may
+add other tools; building source still does not update an installed server.
+After integrating item 13, discovery returns ten tools: these nine read-only
+inspections plus bounded preview. Context's schema and no-command/no-write
+contract are unchanged; preview alone may persist a preparation artifact.
+
+Call with only a positive integer issue number, for example:
+
+```json
+{"issue_number":468}
+```
+
+Missing/zero/negative/wrong-type numbers, non-object input, unknown fields and
+repository overrides are tool errors. The tool is local-only
+(`readOnlyHint: true`, `openWorldHint: false`). There is no new CLI command;
+`run.IssueContext` is the shared engine report path for this observation.
+Success returns `schema_version: 1` as equivalent structured content and JSON text:
+
+| Member | Source and meaning |
+| --- | --- |
+| `mode`, `consistent`, optional `warning` and `lock` | Existing status representation, preserving inconsistent state/lock warnings. |
+| `run` | Status run identity, host, start time, approved plan metadata and any whole-run stopped reason; no unrelated issues. |
+| `issue` | The exact recorded `state.Issue` from status: current phase, objective, acceptance criteria, required tests, optional `tests_ci_does_not_run`, branch/worktree references, current decision/executor/reviewer, escalation attempts, PR metadata and block/resolution histories. Missing work or routing stays missing. |
+| `dependencies` | Matching direct dependency issue records from status in recorded issue order, with the same case-insensitive plan-ID matching as the engine. Declared IDs remain in `issue.depends_on`; missing records are never invented. |
+| `guidance` | Existing schema-1 next-action report, narrowed to this issue **plus every run-level action**, with unchanged reasons, prerequisites, blockers, approval requirements and limitations. Run-level recovery, configuration/contract drift, stopped-run and all-cleaned guidance has neither an issue number nor a plan ID and is never filtered away; unrelated unnumbered planned issues are excluded. |
+| `limitations` | Explicit observation/dispatch/readiness boundaries. |
+
+Local-only test declarations are transcribed, not inferred. An absent or empty
+`tests_ci_does_not_run` does **not** establish that CI runs every required test.
+Current selections include escalations; unresolved decisions and their original
+causes remain visible. Recorded PR fields do not establish live PR readiness.
+
+No active run (including ordinary Assist), unknown/ambiguous requested issue
+numbers and unreadable/corrupt/unsupported state or locks are explicit errors,
+with no partial report. Next-action identity/reference errors propagate.
+Inconsistency and configuration/contract drift preserve the existing engine's
+recovery/blocker precedence, never proceed advice. Missing approved work/routing
+uses the existing re-plan guidance, not an issue-body reconstruction.
+
+Status projection and next-action classification share **one loaded state/lock
+pair**, rather than independently loading and combining different runs, phases
+or routing selections. Reads of that pair and effective configuration remain
+unlocked and non-atomic; re-inspect after changes. A mismatch observed between
+state and lock remains a consistency warning plus recovery guidance.
+
+**Context is an observation, not dispatch authorization or a dispatch receipt.**
+It does not dispatch, fetch, run external commands, probe GitHub/CI/hosts or
+worktree existence, save lifecycle state, attribute a session, write metrics,
+spend a grant or record approval. These no-command limits apply to every
+local-only inspection tool, not just `orch_issue_context`; readiness and doctor
+retain their separately documented external read probes. Every lifecycle verb
+keeps its normal live preflights, dependency checks and separate approval gates.
+Preview's separately documented Git reads and bounded preparation writes do not
+change these inspection limits.
+
+Deterministic engine tests cover phases, dependency waits/abandonment, native and
+escalated selections, pending/resolved blocks, missing work/routing, legacy and
+drifted contracts, inconsistency, identity/reference failures and corrupt or
+unreadable state. They compare recorded work and guidance with status/next,
+forbid commands and verify unchanged file names, kinds, modes, modification times
+and bytes with metrics and session context enabled. Real stdio on one connection
+adds fresh routing/phase changes, strict inputs, fixed binding, structured/text
+parity, explicit errors/recovery, protocol-only stdout and clean shutdown with
+no external executables on PATH. These checks run in `go test ./...`; a focused
+smoke command is:
+
+```sh
+go test ./internal/cli -run '^TestMCPStdio$/^issue_context$' -v -count=1
+```
+
+### Issue #468 blast radius
+
+| Touched element | Does its previous behavior still hold? |
+| --- | --- |
+| Status (`status.go`: `Status`, new `inspectStatus`, reused `StatusDoc`/`RunView`) | Yes. One read-only loader now supplies the existing schema-4 status projection plus its loaded state. Config-free inspection, load errors, consistency warnings and full recorded issues remain unchanged; status gains no identity/routing policy. |
+| Next-action engine (`next.go`: `Next`, extracted `next`, reused `NextDoc`/`NextAction`/`NextSchemaVersion`) | Yes. Snapshot loading delegates to `inspectStatus`; the same classifier, ordering, error/blocker precedence, schema 1, limitations and prerequisites serve `Next` and context. No new scheduler or lifecycle rule is introduced. The before/after scope of identity checks is recorded above. |
+| New context engine (`issue_context.go`: `IssueContext`, `IssueContextDoc`, `IssueContextRun`, `IssueContextSchemaVersion`) | Additive schema-1 projection only; exact status issue/dependency records and filtered existing guidance replace no prior API. Requested-number ambiguity is an explicit error even when the run is stopped or drifted. |
+| Reused state/configuration/prerequisite structure (`state.Issue`, `Decision`, `Attempt`, `Block`/`BlockResolution`, `PlanRef`, `state.Load`, `lockfile.Inspect`, `state.CheckConsistent`, `loadExecutionConfig`, `checkApprovedWork`, `checkDependencies`, `Issue.DecisionPending`, `allCleaned`) | Yes; implementations and persistent schemas are untouched. Missing fields, current selections and unresolved history are observed, not repaired, re-routed or authorized. |
+| MCP (`mcp.go`: `runMCP`, new registration/handler, existing SDK transport/output and binding) | Existing eight input/output contracts, fixed launch binding, diagnostics and shutdown hold. Eight-only discovery becomes nine in this increment, as recorded above. The new strict issue-number tool is read-only/local-only and returns no dispatch result. |
+| Tests (`issue_context_test.go`, `mcp_issue_context_test.go`; `mcp_test.go`: `TestMCPStdio`, `mcpDiscover`, `TestMCPLocalToolsNeverRunExternalCommands`) | Existing parity, schemas, annotations, no-write/no-command, binding and disconnect coverage remains; discovery adds context and feature-specific fixtures exercise both shared sources and real stdio. The shared-snapshot regression verifies advice does not reload replacement run/phase/routing state. |
+| Guide (`docs/mcp-status.md`) | Existing launch, optional source-only use, installation boundary and approval checkpoint hold. Earlier eight-tool-only and `Next`-only statements remain as explicit before/after in this same document; the new report and restriction scopes are documented here. |
+| Lifecycle/dispatch/readiness/review/merge/grant behavior, CLI commands, dependencies, adapters/guards, CI workflows and installed binaries | Untouched. No dispatch receipt, new readiness claim, approval, mutation capability, migration, install or release is added. All existing checks and gates remain required. |
