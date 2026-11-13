@@ -281,3 +281,41 @@ func TestExecutionDriftAndLegacyRunAreReadOnly(t *testing.T) {
 		script.AssertExhausted()
 	}
 }
+
+func TestContractOneRunRemainsInspectionOnly(t *testing.T) {
+	root := setupDeliveryRepo(t, "r1", []state.Issue{fixtureIssue("a", 1, state.PhaseWorktreeReady)})
+	st := loadRun(t, root)
+	cfg, err := config.Load(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	execution, err := executionConfig(cfg, st.Run.Host)
+	if err != nil {
+		t.Fatal(err)
+	}
+	execution.Version = 1
+	st.Run.Plan.ContractVersion = 1
+	st.Run.Plan.ExecutionDigest, err = execution.Digest()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := state.Save(root, st); err != nil {
+		t.Fatal(err)
+	}
+	before := stateBytes(t, root)
+	script := &execxtest.Script{T: t}
+	env := ghEnv(root, script)
+	if _, err := Status(t.Context(), env); err != nil {
+		t.Fatalf("contract-1 inspection: %v", err)
+	}
+	if _, err := loadVerb(env, 1, []state.Phase{state.PhaseWorktreeReady}, false); !errors.Is(err, ErrBadApproval) {
+		t.Fatalf("contract-1 lifecycle: %v", err)
+	}
+	if _, err := resumeLoad(env); !errors.Is(err, ErrBadApproval) {
+		t.Fatalf("contract-1 resume: %v", err)
+	}
+	if string(before) != string(stateBytes(t, root)) {
+		t.Fatal("contract-1 refusal migrated or changed state")
+	}
+	script.AssertExhausted()
+}

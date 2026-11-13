@@ -7,14 +7,17 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/kninetimmy/orch/internal/config"
 	"github.com/kninetimmy/orch/internal/execx"
 	"github.com/kninetimmy/orch/internal/execx/execxtest"
 )
 
 // Gate plan_digest values as builds before the fixes field computed them,
 // taken from a scratch run of Plan on unmodified main (setupRepo with
-// testConfigTOML), pinned as literals: a plan listing no fixes must stay
-// digest-identical, or every previously approved plan fails approval.
+// testConfigTOML), pinned as literals. Before contract v2 a plan listing no
+// fixes had to stay digest-identical to preserve existing approvals. Now v2
+// intentionally requires fresh approval; the contract-v1 projection must still
+// match these literals, proving the absent fixes field itself changes nothing.
 const (
 	preFixesValidGateDigest    = "sha256:4ed88f5b107353974e9e18281322429df075f4ee69938f36c64b40b0821a4263"
 	preFixesTwoIssueGateDigest = "sha256:d56dadabb150868bf8e93203029a220fc457bf7f0cf33c3fca5d957e46112e84"
@@ -22,13 +25,29 @@ const (
 
 func TestGateDigestUnchangedForAPlanListingNoFixes(t *testing.T) {
 	root := setupRepo(t, testConfigTOML)
+	cfg, err := config.Load(root)
+	if err != nil {
+		t.Fatal(err)
+	}
 	for plan, want := range map[string]string{validPlanJSON(): preFixesValidGateDigest, twoIssuePlanJSON(): preFixesTwoIssueGateDigest} {
 		doc, err := Plan(context.Background(), Env{RepoRoot: root}, []byte(plan))
 		if err != nil {
 			t.Fatal(err)
 		}
-		if doc.PlanDigest != want {
-			t.Errorf("plan_digest = %q, want the pre-fixes digest %q", doc.PlanDigest, want)
+		legacy, err := effectiveContract(mustDecodePlan(t, plan), cfg)
+		if err != nil {
+			t.Fatal(err)
+		}
+		legacy.Execution.Version = 1
+		digest, err := contentDigest(legacy)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if digest != want {
+			t.Errorf("contract-v1 plan_digest = %q, want the pre-fixes digest %q", digest, want)
+		}
+		if doc.PlanDigest == want {
+			t.Error("contract-v2 gate reused a contract-v1 approval digest")
 		}
 		gateJSON, err := json.Marshal(doc)
 		if err != nil {
@@ -61,7 +80,11 @@ func TestPlanGateShowsFixes(t *testing.T) {
 	if got := doc.Issues[0].Fixes; len(got) != 2 || got[0] != 12 || got[1] != 7 {
 		t.Errorf("gate fixes = %v, want [12 7]", got)
 	}
-	if doc.PlanDigest == preFixesValidGateDigest {
+	ordinary, err := Plan(context.Background(), Env{RepoRoot: root}, []byte(validPlanJSON()))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if doc.PlanDigest == ordinary.PlanDigest {
 		t.Error("listing fixes left the plan_digest unchanged")
 	}
 }

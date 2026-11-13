@@ -28,6 +28,11 @@ func (g *Git) Push(ctx context.Context, dir, remote, branch string) error {
 // up to origin/<default> inside its worktree before work begins; a
 // pre-dispatch branch has no commits by construction, so any divergence
 // is a fail-closed signal (ErrNotFastForward) and nothing changes.
+// That assumption holds for initial dispatch, not for recovered implementation:
+// before explicit repair, recovered divergent work was stranded by this same
+// refusal. Now the run engine can authorize repair without calling this helper.
+// FastForwardIn, FastForward and every ff-only integration still refuse divergence;
+// repair does not relax git's fast-forward rule or perform integration itself.
 func (g *Git) FastForwardIn(ctx context.Context, dir, ref string) error {
 	res, err := g.run(ctx, dir, "merge", "--ff-only", ref)
 	if err != nil {

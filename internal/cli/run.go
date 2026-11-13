@@ -15,8 +15,8 @@ import (
 	"github.com/kninetimmy/orch/internal/run"
 )
 
-// runUsage is the one-line usage for the adapter plumbing surface.
-const runUsage = "orch run: usage: orch run plan|activate|dispatch|pr-open|review-worktree|review|escalate|ci|merge-report|merge|block|resolve-block|abandon|cleanup|complete (JSON document on stdin) | orch run status|next --json | orch run readiness --issue <number> --json"
+// runUsage names the adapter plumbing surface and its scoped repair guidance.
+const runUsage = "orch run: usage: orch run plan|activate|dispatch|repair|pr-open|review-worktree|review|escalate|ci|merge-report|merge|block|resolve-block|abandon|cleanup|complete (JSON document on stdin) | orch run status|next --json | orch run readiness --issue <number> --json\nrepair: explicit scoped integration authorization for recovered pre-PR work or a pinned open PR; see docs/decision-block-recovery.md for schema 1 and the renewed verification/review/merge gates"
 
 // runVerbs maps each document-taking verb to its run-engine entry point.
 // Every one reads a JSON request on stdin and writes a JSON result on
@@ -25,6 +25,7 @@ var runVerbs = map[string]func(context.Context, run.Env, []byte) (any, error){
 	"plan":            adaptRunVerb(run.Plan),
 	"activate":        adaptRunVerb(run.Activate),
 	"dispatch":        adaptRunVerb(run.Dispatch),
+	"repair":          adaptRunVerb(run.Repair),
 	"pr-open":         adaptRunVerb(run.PROpen),
 	"review-worktree": adaptRunVerb(run.ReviewWorktree),
 	"review":          adaptRunVerb(run.Review),

@@ -176,6 +176,10 @@ func Readiness(ctx context.Context, env Env, issueNumber int) (*ReadinessDoc, er
 	if err := checkApprovingReview(issue); err != nil {
 		doc.Review.Requirements = append(doc.Review.Requirements, err.Error())
 	}
+	if err := checkRepairReview(issue, pr.HeadRefOid); err != nil {
+		doc.Review.Current = false
+		doc.Review.Requirements = append(doc.Review.Requirements, err.Error())
+	}
 	summary, err := gh.RequiredCI(ctx, issue.PRNumber)
 	if err != nil {
 		return nil, fmt.Errorf("readiness required CI: %w", err)
@@ -202,6 +206,10 @@ func Readiness(ctx context.Context, env Env, issueNumber int) (*ReadinessDoc, er
 		doc.MergeReport.Requirements = append(doc.MergeReport.Requirements, "The pinned merge-report head differs from the live PR head; the recorded gate is stale and must be refreshed through the normal workflow.")
 	}
 	finishReadiness(doc)
+	if repair := latestRepair(issue); repair != nil {
+		doc.Merge.ApprovalRequired += fmt.Sprintf(" Acknowledge repair_number %d and date the new approval after %s.", repair.Number, repair.At)
+		doc.Merge.Requirements = append(doc.Merge.Requirements, doc.Merge.ApprovalRequired)
+	}
 	return doc, nil
 }
 

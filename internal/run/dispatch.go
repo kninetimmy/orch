@@ -138,6 +138,12 @@ func Dispatch(ctx context.Context, env Env, reqJSON []byte) (*DispatchResult, er
 		return nil, err
 	}
 
+	return dispatchResult(issue), nil
+}
+
+// dispatchResult is also the execution brief returned by explicit repair.
+// Neither constructing the brief nor repair itself spawns an agent.
+func dispatchResult(issue *state.Issue) *DispatchResult {
 	return &DispatchResult{
 		SchemaVersion:      DispatchSchemaVersion,
 		IssueNumber:        issue.Number,
@@ -150,7 +156,7 @@ func Dispatch(ctx context.Context, env Env, reqJSON []byte) (*DispatchResult, er
 		AcceptanceCriteria: issue.AcceptanceCriteria,
 		RequiredTests:      issue.RequiredTests,
 		TestsCIDoesNotRun:  issue.TestsCIDoesNotRun,
-	}, nil
+	}
 }
 
 // checkApprovedWork fails closed when the issue carries no approved work

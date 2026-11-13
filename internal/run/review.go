@@ -64,12 +64,15 @@ type CriterionJudgment struct {
 // equal the issue's routed reviewer, so a review run on the wrong model
 // fails closed instead of polluting the audit record.
 type ReviewRequest struct {
-	SchemaVersion   int                `json:"schema_version"`
-	IssueNumber     int                `json:"issue_number"`
-	ReviewedHeadOID string             `json:"reviewed_head_oid"`
-	Verdict         string             `json:"verdict"`
-	Summary         string             `json:"summary"`
-	Reviewer        manifest.Selection `json:"reviewer"`
+	SchemaVersion   int    `json:"schema_version"`
+	IssueNumber     int    `json:"issue_number"`
+	ReviewedHeadOID string `json:"reviewed_head_oid"`
+	// RepairNumber acknowledges the latest explicit integration repair.
+	// Pre-repair requests cannot be replayed, even on an unchanged PR head.
+	RepairNumber int                `json:"repair_number,omitempty"`
+	Verdict      string             `json:"verdict"`
+	Summary      string             `json:"summary"`
+	Reviewer     manifest.Selection `json:"reviewer"`
 	// Judgments carries exactly one judgment, with its reason, for each
 	// acceptance criterion the issue holds (checkJudgments). It is
 	// mandatory: a consolidated summary can approve while saying nothing
@@ -205,6 +208,16 @@ func Review(ctx context.Context, env Env, reqJSON []byte) (*ReviewResult, error)
 	if req.ReviewedHeadOID != pr.HeadRefOid {
 		return nil, fmt.Errorf("%w: reviewed head %q is not the PR's live head %q; the PR changed under the reviewer, re-review", ErrReviewStale, req.ReviewedHeadOID, pr.HeadRefOid)
 	}
+	if repair := latestRepair(issue); repair != nil {
+		if req.RepairNumber != repair.Number {
+			return nil, fmt.Errorf("%w: review must acknowledge integration repair_number %d; obtain fresh independent review", ErrReviewStale, repair.Number)
+		}
+		if (repair.VerifiedHeadOID == "" || repair.VerifiedHeadOID != pr.HeadRefOid) && len(verifications) == 0 {
+			return nil, fmt.Errorf("%w: integration repair requires verification evidence on the reviewed head; supply verifications", ErrBadRequest)
+		}
+	} else if req.RepairNumber != 0 {
+		return nil, fmt.Errorf("%w: no integration repair matches repair_number %d", ErrBadRequest, req.RepairNumber)
+	}
 
 	// In a run a grant activated, a non-approving review past the grant's
 	// fix-cycle limit is the human's decision. Before #353 no review
@@ -216,6 +229,11 @@ func Review(ctx context.Context, env Env, reqJSON []byte) (*ReviewResult, error)
 		}
 	}
 
+	if repair := latestRepair(issue); repair != nil {
+		// Invalidate even same-head evidence before saving a new verdict:
+		// either audit write can fail after a previously verified review.
+		repair.VerifiedHeadOID = ""
+	}
 	issue.ReviewCycles++
 	issue.LastReviewVerdict = req.Verdict
 	issue.Phase = state.PhaseInReview
@@ -268,6 +286,14 @@ func Review(ctx context.Context, env Env, reqJSON []byte) (*ReviewResult, error)
 	})
 	if err := writeManifest(ctx, gh, iss, &pr, m); err != nil {
 		return nil, wrapAfterMutation(err)
+	}
+	if repair := latestRepair(issue); repair != nil {
+		// A failed issue/PR audit write must not make repair verification
+		// usable by merge-report. Persist this only after both writes.
+		repair.VerifiedHeadOID = pr.HeadRefOid
+		if err := c.save(); err != nil {
+			return nil, wrapAfterMutation(err)
+		}
 	}
 
 	switch {

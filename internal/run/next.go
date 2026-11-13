@@ -167,6 +167,9 @@ func nextIssue(run *state.Run, issue *state.Issue) NextAction {
 	case state.PhaseWorktreeReady:
 		a.Action, a.Reason = "dispatch", "The issue is recorded worktree-ready."
 		a.Prerequisites = []string{"`orch run dispatch` must fetch origin, fast-forward the issue branch to the live default branch and set in-progress before handing approved work to the routed executor."}
+		if len(issue.Blocks) > 0 {
+			a.Prerequisites = append(a.Prerequisites, "If recovered implementation commits diverge and ff-only dispatch refuses, preserve the branch and request explicit `orch run repair` authorization; never reset work or open an out-of-band PR. Bind schema 1 to this run/issue, expected phase/full head, next repair_number, authorized_by, reason and the repair statement in docs/decision-block-recovery.md.")
+		}
 	case state.PhaseDispatched:
 		a.Action, a.Reason = "implement", "The routed executor has been dispatched; no PR is recorded yet."
 		a.Prerequisites = []string{"Implement only the approved work in the issue worktree, run required tests, commit and push. `orch run pr-open` requires verification evidence, a clean worktree, commits ahead of origin/default and no existing open PR."}
@@ -181,10 +184,17 @@ func nextIssue(run *state.Run, issue *state.Issue) NextAction {
 			a.Action, a.Reason = "review", "The PR needs a consolidated review before a merge report."
 			a.Prerequisites = []string{"The PR must stop changing; the routed reviewer must review its live head and record a verdict plus one reasoned judgment per approved acceptance criterion with `orch run review`."}
 		}
+		if repair := latestRepair(issue); repair != nil {
+			a.Prerequisites = append(a.Prerequisites, fmt.Sprintf("Review must acknowledge repair_number %d and supply fresh verification evidence for the repaired live head; pre-repair reviews and merge approvals cannot be reused.", repair.Number))
+		}
 	case state.PhaseAwaitingMerge:
 		a.Action, a.Reason = "merge", "A merge report pinned this PR at the merge gate; it is not permission to merge."
 		a.Prerequisites = []string{"Present the report and obtain a separate approval before `orch run merge`; the engine must still verify the live PR head/required CI and confirm merge and issue closure."}
+		a.Prerequisites = append(a.Prerequisites, "If integration is needed even at this unchanged pinned head, obtain explicit human/Architect authorization and use `orch run repair` (docs/decision-block-recovery.md). It clears the old pin/verdict before writes and requires verification, fresh review/CI, a new merge report and new merge approval; resume alone does not authorize repair.")
 		a.ApprovalRequired = fmt.Sprintf("Fresh human approval for PR #%d at head %s with statement %q (or a separately valid existing grant contract, not evaluated here).", issue.PRNumber, issue.ApprovedHeadOID, MergeApprovalStatement)
+		if repair := latestRepair(issue); repair != nil {
+			a.ApprovalRequired += fmt.Sprintf(" Approval must acknowledge repair_number %d and be dated after %s.", repair.Number, repair.At)
+		}
 	case state.PhaseMerged, state.PhaseAbandoned:
 		a.Action, a.Reason = "cleanup", "The issue is terminal but its git artifacts are not recorded cleaned."
 		a.Prerequisites = []string{"`orch run cleanup` must inspect/remove the remote branch, issue and disposable review worktrees, and local branch; failures leave cleanup incomplete."}

@@ -33,6 +33,9 @@ type MergeApproval struct {
 	ApprovedBy string    `json:"approved_by"`
 	ApprovedAt time.Time `json:"approved_at"`
 	Statement  string    `json:"statement"`
+	// Repaired issues require an explicit acknowledgement of the latest
+	// authorization; a pre-repair approval cannot be replayed at the same OID.
+	RepairNumber int `json:"repair_number,omitempty"`
 }
 
 // MergeRequest asks to merge an approved, awaiting-merge issue.
@@ -87,6 +90,15 @@ func Merge(ctx context.Context, env Env, reqJSON []byte) (*MergeResult, error) {
 	}
 	if req.Approval.HeadOID != issue.ApprovedHeadOID {
 		return nil, fmt.Errorf("%w: approval head_oid %q does not match the approved head %q pinned at merge-report; re-run merge-report", ErrMergeApproval, req.Approval.HeadOID, issue.ApprovedHeadOID)
+	}
+	if repair := latestRepair(issue); repair != nil {
+		at, err := time.Parse(time.RFC3339, repair.At)
+		if err != nil || req.Approval.RepairNumber != repair.Number || !req.Approval.ApprovedAt.After(at) {
+			return nil, fmt.Errorf("%w: integration repair %d invalidated earlier merge approvals; obtain a new approval with repair_number %d after %s", ErrMergeApproval, repair.Number, repair.Number, repair.At)
+		}
+		if err := checkRepairReview(issue, issue.ApprovedHeadOID); err != nil {
+			return nil, err
+		}
 	}
 	var grants *grant.Store
 	var g *grant.Grant
