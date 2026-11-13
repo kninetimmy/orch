@@ -279,6 +279,9 @@ func TestMCPStdio(t *testing.T) {
 	t.Run("plan validation", func(t *testing.T) {
 		mcpPlanValidationExercise(t, binary)
 	})
+	t.Run("context resources", func(t *testing.T) {
+		mcpResourcesExercise(t, binary)
+	})
 
 	t.Run("repository binding", func(t *testing.T) {
 		root := t.TempDir()
@@ -459,6 +462,7 @@ func mcpDiscover(t *testing.T, ctx context.Context, session *mcp.ClientSession, 
 	if mcpTree(t, root) != before {
 		t.Fatal("discovery changed repository files")
 	}
+	mcpDiscoverResources(t, ctx, session, root)
 }
 
 func mcpCall(t *testing.T, ctx context.Context, session *mcp.ClientSession, root, tool string, args any) *mcp.CallToolResult {
@@ -594,8 +598,9 @@ func mcpDirectoryLink(t *testing.T, target, link string) {
 
 // Before readiness every tool was local-only. This restriction still applies
 // to status/next/configuration/metrics/evaluation-status/context/validation calls
-// (including failures), initialization and discovery. Preview adds only fixed Git
-// reads; its and readiness's/doctor's/interviews'/approval-status's external read
+// (including failures), every resource read, initialization and discovery.
+// Preview adds only fixed Git reads; its and
+// readiness's/doctor's/interviews'/approval-status's external read
 // allowlists use real stdio clients. The gate's memhub probes have separate parity tests.
 func TestMCPLocalToolsNeverRunExternalCommands(t *testing.T) {
 	env, _, stderr := testEnv(t)
@@ -619,6 +624,8 @@ func TestMCPLocalToolsNeverRunExternalCommands(t *testing.T) {
 		t.Fatal(err)
 	}
 	mcpDiscover(t, ctx, session, env.RepoRoot)
+	mcpResourceReports(t, ctx, env.RepoRoot, session, 1)
+	mcpResourceRejectURIs(t, ctx, env.RepoRoot, session)
 	if mcpTree(t, env.RepoRoot) != before {
 		t.Fatal("initialization/discovery changed repository files")
 	}
@@ -641,6 +648,7 @@ func TestMCPLocalToolsNeverRunExternalCommands(t *testing.T) {
 		}
 	}
 	mcpWrite(t, filepath.Join(env.RepoRoot, ".orchestrator", "config.toml"), []byte(strings.Replace(validTOML, `mode = "off"`, `mode = "required"`, 1)+"\n[metrics]\nenabled = true\n"))
+	mcpResourceReports(t, ctx, env.RepoRoot, session, 1)
 	mcpPlanValidationChecks(t, ctx, env.RepoRoot, session)
 	mcpWrite(t, filepath.Join(env.RepoRoot, ".orchestrator", "config.toml"), []byte(validTOML))
 	for _, tool := range []string{"orch_metrics", "orch_metrics_report"} {
@@ -651,12 +659,14 @@ func TestMCPLocalToolsNeverRunExternalCommands(t *testing.T) {
 	for _, doc := range mcpMetricsFixtures(t) {
 		writeMetricsFixture(t, env.RepoRoot, doc.RunID, doc)
 	}
+	mcpResourceReports(t, ctx, env.RepoRoot, session, 1)
 	for _, tool := range []string{"orch_metrics", "orch_metrics_report"} {
 		if result := mcpCall(t, ctx, session, env.RepoRoot, tool, map[string]any{}); result.IsError {
 			t.Fatalf("recorded metrics result = %+v", result)
 		}
 	}
 	mcpWrite(t, filepath.Join(env.RepoRoot, ".orchestrator", "metrics", "run-corrupt.json"), []byte("{corrupt metrics"))
+	mcpResourceReports(t, ctx, env.RepoRoot, session, 1)
 	for _, tool := range []string{"orch_metrics", "orch_metrics_report"} {
 		if result := mcpCall(t, ctx, session, env.RepoRoot, tool, map[string]any{}); !result.IsError {
 			t.Fatalf("corrupt metrics result = %+v", result)
@@ -673,9 +683,11 @@ func TestMCPLocalToolsNeverRunExternalCommands(t *testing.T) {
 	if result := mcpCall(t, ctx, session, env.RepoRoot, "orch_issue_context", map[string]any{"issue_number": 1}); result.IsError {
 		t.Fatalf("recorded context result = %+v", result)
 	}
+	mcpResourceReports(t, ctx, env.RepoRoot, session, 1)
 	mcpCall(t, ctx, session, env.RepoRoot, "orch_run_next", map[string]any{})
 	mcpConfigParity(t, ctx, env.RepoRoot, session)
 	mcpWrite(t, filepath.Join(env.RepoRoot, state.Path), []byte("{corrupt state"))
+	mcpResourceReports(t, ctx, env.RepoRoot, session, 1)
 	mcpCall(t, ctx, session, env.RepoRoot, "orch_run_status", map[string]any{})
 	mcpCall(t, ctx, session, env.RepoRoot, "orch_run_next", map[string]any{})
 	mcpIssueContextError(t, ctx, env.RepoRoot, session, 1)

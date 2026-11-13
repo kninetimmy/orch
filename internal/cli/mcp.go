@@ -10,7 +10,6 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/kninetimmy/orch/internal/config"
 	"github.com/kninetimmy/orch/internal/evalplan"
 	"github.com/kninetimmy/orch/internal/paths"
 	"github.com/kninetimmy/orch/internal/run"
@@ -61,6 +60,12 @@ func runMCP(env Env, args []string) error {
 
 	server := mcp.NewServer(&mcp.Implementation{Name: "orch", Version: Version}, &mcp.ServerOptions{
 		Logger: slog.New(slog.NewTextHandler(env.Stderr, &slog.HandlerOptions{Level: slog.LevelWarn})),
+		// Keep the existing logging/tool capabilities, but do not infer
+		// resource list notifications or subscriptions from registration.
+		Capabilities: &mcp.ServerCapabilities{
+			Logging:   &mcp.LoggingCapabilities{}, //nolint:staticcheck // SA1019: SDK v1.8.0 requires this to retain logging with explicit resource capabilities.
+			Resources: &mcp.ResourceCapabilities{},
+		},
 	})
 	mcp.AddTool(server, &mcp.Tool{
 		Name:        "orch_run_status",
@@ -128,14 +133,11 @@ func runMCP(env Env, args []string) error {
 		if args := bytes.TrimSpace(req.Params.Arguments); len(args) == 0 || args[0] != '{' {
 			return nil, nil, fmt.Errorf("orch_config_effective: arguments must be an empty object")
 		}
-		cfg, err := config.Load(root)
+		doc, err := inspectEffectiveConfig(root)
 		if err != nil {
 			return nil, nil, err
 		}
-		return nil, struct {
-			SchemaVersion int            `json:"schema_version"`
-			Configuration *config.Config `json:"configuration"`
-		}{1, cfg}, nil
+		return nil, doc, nil
 	})
 	mcp.AddTool(server, &mcp.Tool{
 		Name:        "orch_metrics",
@@ -203,6 +205,7 @@ func runMCP(env Env, args []string) error {
 	addMCPInterviewTools(server, env, root)
 	addApprovalStatusTool(server, env, root)
 	addMCPPlanValidation(server, root)
+	addMCPResources(server, root)
 	return server.Run(context.Background(), &mcp.IOTransport{
 		Reader: io.NopCloser(env.Stdin),
 		Writer: mcpWriter{env.Stdout},
