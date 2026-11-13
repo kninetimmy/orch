@@ -205,6 +205,7 @@ func runMCP(env Env, args []string) error {
 	addMCPInterviewTools(server, env, root)
 	addApprovalStatusTool(server, env, root)
 	addMCPPlanValidation(server, root)
+	addMCPActivation(server, env, root)
 	addMCPResources(server, root)
 	return server.Run(context.Background(), &mcp.IOTransport{
 		Reader: io.NopCloser(env.Stdin),

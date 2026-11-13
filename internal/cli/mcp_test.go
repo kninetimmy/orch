@@ -282,6 +282,9 @@ func TestMCPStdio(t *testing.T) {
 	t.Run("context resources", func(t *testing.T) {
 		mcpResourcesExercise(t, binary)
 	})
+	t.Run("explicit activation", func(t *testing.T) {
+		mcpActivationExercise(t, binary)
+	})
 
 	t.Run("repository binding", func(t *testing.T) {
 		root := t.TempDir()
@@ -368,8 +371,14 @@ func mcpProcess(ctx context.Context, binary, cwd string, args ...string) *exec.C
 
 func mcpConnect(t *testing.T, ctx context.Context, binary, cwd, root string, args ...string) (*mcp.ClientSession, func()) {
 	t.Helper()
-	before, cwdBefore := mcpTree(t, root), mcpTree(t, cwd)
 	cmd := mcpProcess(ctx, binary, cwd, append([]string{"mcp"}, args...)...)
+	return mcpConnectCommand(t, ctx, cmd, root)
+}
+
+func mcpConnectCommand(t *testing.T, ctx context.Context, cmd *exec.Cmd, root string) (*mcp.ClientSession, func()) {
+	t.Helper()
+	cwd := cmd.Dir
+	before, cwdBefore := mcpTree(t, root), mcpTree(t, cwd)
 	var stderr bytes.Buffer
 	cmd.Stderr = &stderr
 	client := mcp.NewClient(&mcp.Implementation{Name: "orch-test", Version: "1"}, nil)
@@ -409,7 +418,7 @@ func mcpDiscover(t *testing.T, ctx context.Context, session *mcp.ClientSession, 
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(list.Tools) != 15 || list.NextCursor != "" {
+	if len(list.Tools) != 16 || list.NextCursor != "" {
 		t.Fatalf("tool discovery = %+v", list)
 	}
 	want := mcpDecoded(t, []byte(`{"type":"object","properties":{},"additionalProperties":false}`))
@@ -425,7 +434,8 @@ func mcpDiscover(t *testing.T, ctx context.Context, session *mcp.ClientSession, 
 		planGate := tool.Name == "orch_plan_gate"
 		approval := tool.Name == "orch_approval_status"
 		validation := tool.Name == "orch_plan_validate"
-		if (tool.Name != "orch_run_status" && tool.Name != "orch_run_next" && tool.Name != "orch_config_effective" && !readiness && !doctor && !metrics && !evaluation && !preview && !issueContext && !interview && !planGate && !approval && !validation) || seen[tool.Name] || tool.Annotations == nil || tool.Annotations.ReadOnlyHint == (preview || planGate) || tool.Annotations.OpenWorldHint == nil || *tool.Annotations.OpenWorldHint != (readiness || doctor || interview || planGate || approval) {
+		activation := tool.Name == "orch_run_activate"
+		if (tool.Name != "orch_run_status" && tool.Name != "orch_run_next" && tool.Name != "orch_config_effective" && !readiness && !doctor && !metrics && !evaluation && !preview && !issueContext && !interview && !planGate && !approval && !validation && !activation) || seen[tool.Name] || tool.Annotations == nil || tool.Annotations.ReadOnlyHint == (preview || planGate || activation) || tool.Annotations.OpenWorldHint == nil || *tool.Annotations.OpenWorldHint != (readiness || doctor || interview || planGate || approval || activation) {
 			t.Fatalf("tool = %+v", tool)
 		}
 		if preview && (tool.Annotations.DestructiveHint == nil || *tool.Annotations.DestructiveHint || !tool.Annotations.IdempotentHint) {
@@ -454,6 +464,10 @@ func mcpDiscover(t *testing.T, ctx context.Context, session *mcp.ClientSession, 
 		}
 		if validation {
 			wantSchema = mcpDecoded(t, []byte(`{"type":"object","properties":{"plan":{"type":"object"}},"required":["plan"],"additionalProperties":false}`))
+		}
+		if activation {
+			wantSchema = mcpDecoded(t, []byte(`{"type":"object","properties":{"schema_version":{"type":"integer"},"plan":{"type":"object"},"approval":{"type":"object","properties":{"plan_digest":{"type":"string","minLength":1},"approved_by":{"type":"string","minLength":1},"approved_at":{"type":"string","minLength":1},"statement":{"type":"string","minLength":1}},"required":["plan_digest","approved_by","approved_at","statement"],"additionalProperties":false}},"required":["schema_version","plan","approval"],"additionalProperties":false}`))
+			mcpActivationSchema(t, tool)
 		}
 		if !reflect.DeepEqual(tool.InputSchema, wantSchema) {
 			t.Fatalf("%s input schema = %#v, want %#v", tool.Name, tool.InputSchema, wantSchema)

@@ -1,4 +1,4 @@
-# Local inspections, configuration interviews, bounded evaluation preparation and plan decision gates over MCP
+# Local inspections, configuration interviews, bounded evaluation preparation, plan decision gates and explicitly approved activation over MCP
 
 `orch mcp` is an optional local stdio MCP server using the official Go SDK
 v1.8.0. This is an unreleased source feature, not part of the v0.15.2 binary.
@@ -24,7 +24,7 @@ persist preparation; the gate retains its separate external side-effect boundary
 **After separately approved item 8:** source contained **fourteen tools**:
 twelve read-only inspections/interviews, adding approval/grant evidence, plus
 bounded preview and the plan gate. All thirteen preceding contracts hold.
-**After separately approved item 9:** current source contains **fifteen tools**:
+**After separately approved item 9:** source contained **fifteen tools**:
 thirteen read-only inspections/interviews, adding in-memory plan validation, plus
 bounded preview and the separate effective-contract plan gate. All fourteen
 preceding contracts hold.
@@ -33,6 +33,14 @@ preceding contracts hold.
 resources. **After separately approved item 14:** all fifteen tools retain their
 contracts, alongside four fixed JSON resources and one issue-context template.
 This describes source, independently of any installed server's capabilities.
+
+**Before item 15:** the fifteen tools exposed no lifecycle operation.
+**After separately approved item 15:** current source contains **sixteen tools**,
+adding only explicitly human-approved activation. The thirteen read-only
+inspections/interviews, bounded preview, non-activating gate, four fixed resources
+and one template retain their contracts. Activation is the sole lifecycle
+exception; it is not dispatch, merge, configuration application or evaluation
+execution authority.
 
 ## Launch and repository binding
 
@@ -170,6 +178,12 @@ tool. **After item 9:** `orch_plan_validate` joins discovery for **fifteen tools
 All fifteen tools reject unknown outer fields and root overrides; validation
 preserves the preceding fourteen input/output and command/write contracts.
 
+**Before item 15:** that fifteen-tool catalog had no activation endpoint.
+**After item 15:** `orch_run_activate` joins discovery for **sixteen tools**.
+Unknown outer fields and root overrides remain errors for **every tool**.
+Activation alone accepts the existing schema-2 activation request, with explicit
+human approval metadata; every preceding input schema remains unchanged.
+
 | Tool | Input | CLI counterpart (from the bound checkout) | Report schema |
 | --- | --- | --- | --- |
 | `orch_run_status` | `{}` | `orch run status --json` | 4 |
@@ -187,6 +201,7 @@ preserves the preceding fourteen input/output and command/write contracts.
 | `orch_configure_local_step` | `{"schema_version":2,"answers":{}}` | `orch configure-local --step` (AnswerSet on stdin) | 2 |
 | `orch_approval_status` | `{}` | None; directly combines shared `run.Status` and grant observation | 1 |
 | `orch_plan_validate` | `{"plan":{...}}` | None; directly uses shared `run.DecodePlan` and `PlanDoc.Validate` with fresh `config.Load` | 1 |
+| `orch_run_activate` | `{"schema_version":2,"plan":{...},"approval":{...}}` | `orch run activate` (activation request on stdin; MCP requires explicit human metadata and excludes grants) | 2 |
 
 Each `orch_run_status` invocation reads fresh local
 state through the same engine as `orch run status --json` and returns that
@@ -224,7 +239,7 @@ external commands. Readiness and doctor keep their existing read probes only.
 preceding local-only inspections, initialization, discovery and disconnect.
 Preview alone adds the existing local read-only Git queries and bounded storage
 publication described below. Thus **not every MCP tool is read-only or
-command-free**; no tool gains lifecycle or execution authority.
+command-free**; no tool gains lifecycle or execution authority **before item 15**.
 **After item 12:** both configuration interviews add the existing setup read
 probes, without writes or lifecycle authority. Effective-configuration inspection
 (`orch_config_effective`) remains command-free; the interviews do not.
@@ -241,6 +256,16 @@ their limits; the new gate runs the CLI gate's existing memhub probes, without
 suppressing memhub-owned side effects. It still creates no Orch, Git or GitHub
 artifacts and performs no lifecycle transition. Initialization, discovery and disconnect remain local
 and command-free; no gate is evaluated merely by connecting.
+
+**Before item 15:** the global no-lifecycle statements above applied to every
+exposed tool. **After item 15:** those statements still hold for the original
+fifteen tools and every resource, but not for the new `orch_run_activate`.
+Only an explicitly submitted human-approved activation request can enter
+Delivery and perform the existing activation mutations described below.
+Initialization, discovery, disconnect and resource reads remain command-free
+and non-mutating; no connection, report or gate inspection triggers activation.
+No MCP tool gains evaluation execution, dispatch, merge or configuration
+application authority.
 
 ## Next-action guidance and approval boundaries
 
@@ -333,6 +358,15 @@ approval/grant observation; the same two write/side-effect exceptions remain.
 After item 9, they hold for **all fifteen MCP tools**. Validation adds no command,
 write or authority; the thirteen read-only inspection/interview tools retain
 their no-write contracts, and preview/gate retain only their existing exceptions.
+
+**Before item 15:** these blanket no-session/no-metrics/no-approval/no-lifecycle/
+no-Git-or-GitHub-mutation restrictions described all fifteen tools.
+**After item 15:** they still describe those fifteen tools (with the documented
+preview/gate exceptions), not every tool of that kind: `orch_run_activate` alone
+can record the supplied approval, existing activation sessions/metrics and
+lifecycle/Git/GitHub artifacts. **A tool call is still never human approval**;
+the client must separately obtain and explicitly submit the human's evidence.
+Every resource retains the stricter no-command/no-write/no-approval contract.
 
 ## Review and merge readiness
 
@@ -1029,6 +1063,9 @@ session, metrics, approval or other artifact, even with metrics enabled and
 memhub required. All fifteen tool schemas, annotations and distinct command/write
 boundaries remain as documented above; resources do not make preview read-only
 or remove the gate's external memhub side-effect boundary.
+After item 15, these restrictions still apply to **every resource**, not just
+status or issue context. Resources cannot invoke the new activation capability;
+the original fifteen tool contracts remain alongside that separate mutator.
 
 Resource subscriptions, resource-update/list-change notifications, reusable
 prompts and remote access remain later roadmap items, not this increment.
@@ -1058,6 +1095,119 @@ GitHub artifact or memhub database is used by the resource tests.
 go test ./internal/cli -run '^(TestMCPStdio|TestMCPLocalToolsNeverRunExternalCommands)$' -v -count=1
 ```
 
+## Explicitly human-approved activation (item 15)
+
+First submit the plan to the separate effective-contract gate (`orch_plan_gate`
+or `orch run plan`), present the **entire gate** to the human and obtain their
+explicit approval. In-memory validation, a successful gate inspection, an
+interview answer and successful MCP transport never manufacture or replace
+approval. Then call `orch_run_activate` with the existing activation request
+itself, not an `activation_request` wrapper or a plan-file path:
+
+```text
+{
+  "schema_version": 2,
+  "plan": { ...the complete approved schema-1 PlanDoc... },
+  "approval": {
+    "plan_digest": "sha256:...the gate's effective-contract digest...",
+    "approved_by": "...the human approver...",
+    "approved_at": "...an explicit RFC3339 timestamp...",
+    "statement": "approve-and-enter-delivery"
+  }
+}
+```
+
+All three outer members and all four approval members are required. Plans and
+approvals must be objects; unknown outer, approval, plan, issue, facts and
+downgrade fields are errors. The original JSON reaches `run.DecodeActivation`,
+including nested fields and numeric literals; there is no second activation
+decoder, planner, digest calculator or router. The MCP boundary additionally
+requires a non-whitespace approver, nonzero timestamp and the existing
+`run.ApprovalStatement`. Timestamp parsing remains with the shared decoder.
+The shared engine still checks the effective-contract digest and refuses a
+human statement naming a grant approver.
+
+**Human-only is this MCP endpoint's restriction**, not a change to every
+activation entry point: shared `run.Activate` and CLI grant-based activation
+retain their existing policy. MCP does not accept `GrantApprovalStatement`,
+inspect/spend a grant or infer authorization from `orch_approval_status`.
+The recorded human assertion is not authenticated human identity or
+cryptographic provenance; the client remains responsible for the actual handoff.
+
+The handler reuses `withDeliveryMutation`, the existing CLI full-command
+serializer, through the final state/metrics write. It invokes `run.Activate`
+once with the fixed launch-bound repository and original request bytes, not a
+CLI subprocess. The engine reloads configuration on every call and retains its
+plan/configuration validation, effective-contract hashing, routing, Assist and
+no-Delivery-lock checks, live OpenCode selections, rendered-agent freshness,
+clean/default-branch checkout, authenticated GitHub association, existing area
+labels, merged-fixes checks, memhub gate and ignored-worktree preflights.
+The mutation serializer may wait; an existing Delivery run/lock still refuses
+activation. Configuration or plan drift invalidates the approved digest:
+inspect the new gate and seek fresh human approval, not an automatic retry.
+
+Success returns the existing schema-2 `run.ActivationResult`, unchanged as both
+structured content and equivalent JSON text: `run_id`, ordered created `issues`
+(`id`, `number`, `url`, `branch`, `worktree`) and optional engine `warnings`.
+The resulting run stays in Delivery with issues at `worktree-ready`.
+Activation can create missing GitHub taxonomy labels, GitHub issues with their
+existing audit bodies, branches/worktrees, state and the Delivery lock, plus the
+existing enabled metrics/session records. It does not create PRs, dispatch
+agents, review/merge work, apply configuration or execute evaluations. Subsequent
+dispatch and every later lifecycle action retain separate authority and
+preconditions; none is exposed by this increment.
+
+Annotations are deliberately conservative: `readOnlyHint: false`,
+`destructiveHint: true`, `idempotentHint: false`, `openWorldHint: true`.
+Activation is externally mutating and non-idempotent, unlike report reads.
+The engine's taxonomy preparation is the existing pre-Delivery-lock mutation:
+an error there can leave created labels even with Assist status. After entry,
+an issue/worktree or final persistence/metrics failure can leave partial
+artifacts, state and the Delivery lock. Such errors remain tool errors with no
+successful partial result; the engine's guidance stays visible:
+`state and the delivery lock are preserved; run orch abort ... or orch resume`.
+Inspect fresh status and existing artifacts, then have the authorized workflow
+choose explicit recovery. Resume adopts existing artifacts, never creates missing
+ones; abort preserves issues/branches/worktrees. Neither the handler nor resource
+reads retry, resume, abort, roll back or dispatch automatically.
+
+### Activation verification and blast radius
+
+`TestMCPStdio/explicit_activation` compares the shared engine with a real stdio
+MCP process, using independent isolated repositories and controlled command
+responses. Fresh run IDs differ; every activation-result field otherwise agrees
+with both MCP representations. Exact command transcripts pin repository binding,
+the activation-only allowlist and one attempt, including dirty/auth/default-branch
+refusals, pre-lock label failure and post-entry issue/worktree failures.
+Strict inputs, explicit metadata/human-only approval, raw numeric literals,
+unknown nested fields, plan/committed/local-configuration digest drift and
+active/orphan/corrupt/missing lock refusals are checked before external commands.
+Same-connection status and all resources expose fresh success/partial state,
+approval, approved work and routing without writes or commands.
+
+The existing compiled `doctor-probe` fixture is reused, not a new command
+framework: PATH contains only fake Git/GitHub executables with exact responses;
+even branch/worktree commands are simulated. No production GitHub artifact,
+live host or memhub database is used. The shared engine's existing real-Git
+sandbox tests remain part of `go test ./...`. Cumulative stdio discovery checks
+all sixteen tools, four resources and one template, retaining earlier
+schema/annotation, read-only, freshness, protocol-stdout and shutdown checks.
+
+| Touched element | Does its previous behavior still hold? |
+| --- | --- |
+| `mcp.go` registration and new `mcp_activate.go` (`addMCPActivation`, request schema, handler, annotations and typed result) | Fifteen-tool/no-lifecycle-only discovery becomes sixteen with the explicit before/after above. Launch/root/storage binding, existing fifteen schemas/results/annotations, SDK protocol-only stdout, logging/resource capabilities and clean disconnect hold. Only the new endpoint is a human-approved activation mutator. |
+| Reused shared engine (`DecodeActivation`, `ActivationRequest`, `Approval`, `ApprovalStatement`, `Activate`, `ActivationResult`, `config.Load`, plan validation, effective-contract hashing/routing and all preflight helpers) | Implementations and wire versions are unchanged. Original bytes reach strict nested decoding; the engine owns digest, routing, refusals and activation ordering. MCP alone requires the explicit metadata/human-only subset; CLI and grant policy are not tightened or replaced. |
+| Reused mutation/state/external boundaries (`withDeliveryMutation`, mutation serializer, Delivery lock/state, Git/GitHub helpers and issue audit, memhub gate, activation metrics/session recording, `wrapAfterEnter`) | Unchanged algorithms, ordering, errors, partial-failure preservation and explicit recovery. The new handler uses the same full-command serializer, calls activation once and never retries or invokes subsequent lifecycle actions. Existing memhub probe side effects are not hidden. |
+| `mcp_test.go` discovery, activation subtest and extracted `mcpConnectCommand`; new `mcp_activate_test.go` fixtures/schema/parity/refusal/state tests | Previous fifteen-tool and resource contracts/assertions remain; no deadline/assertion is weakened. The extracted connection helper retains initialization/shutdown snapshots and stderr/exit checks for all callers. New deterministic engine/stdio coverage uses the existing scripted runner and compiled probe, never live external artifacts. |
+| All four resources, the issue template and their report sources/tests | Untouched implementations. Every resource remains command-free/read-only and cannot invoke activation, despite the separate tool's new capability. Fresh reports observe activation state through their existing shared paths. The logging deprecation exceptions remain only at their two existing lines. |
+| CLI help (`cli.go` MCP summary; `TestMCPActivationHelp`), `README.md` and `docs/mcp-status.md` | Launch flags, source-only installation and host-enforcement limits hold. Help now also advertises human-approved activation; README and this guide record before/after in place. Historical catalog/global no-lifecycle statements remain; human approval, mutation/recovery and separate dispatch authority are now distinguished. |
+| Other CLI verbs, dispatch/review/merge/configuration/evaluation authority, grant enforcement/storage, adapters/hooks/native agents, schemas/protocol, dependencies, CI, installed binaries and release | Untouched. No additional operation, protocol extension, installation or release is authorized or implemented. |
+
+```sh
+go test ./internal/cli -run '^TestMCPStdio$/explicit_activation' -v -count=1
+go test ./internal/cli -run '^(TestMCPStdio|TestMCPLocalToolsNeverRunExternalCommands)$' -v -count=1
+```
+
 ## Reproducible smoke test and trial checkpoint
 
 From the source checkout, run:
@@ -1083,6 +1233,10 @@ binding and unchanged repository files. These tests run in `go test ./...`.
 validation alongside all fourteen preceding tools, including the plan gate,
 both interviews and approval/grant evidence, for fifteen-tool cumulative coverage.
 The earlier ten/thirteen/fourteen-tool counts remain historical checkpoints.
+**After item 15:** the same smoke test includes explicit activation and its
+refusals/partial failures, for sixteen tools; the item-14 four resources and one
+template remain read-only. Earlier blanket unchanged-file claims describe
+inspections, not the new activation mutator's expected writes.
 Next-action fixtures additionally cover dependency waits, implementation,
 review, merge-report, human merge approval, abandonment, decision resolution
 versus recovery, stopped runs, completion and effective configuration drift.
