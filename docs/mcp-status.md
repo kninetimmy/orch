@@ -1,4 +1,4 @@
-# Read-only status, next actions, readiness, doctor, configuration, metrics and evaluations over MCP
+# Local inspections and bounded evaluation preparation over MCP
 
 `orch mcp` is an optional local stdio MCP server using the official Go SDK
 v1.8.0. This is an unreleased source feature, not part of the v0.15.2 binary.
@@ -7,6 +7,13 @@ host configuration edits are performed automatically.
 Building source does not upgrade an installed MCP server. Verify the binary
 your client actually launches and its discovered tools; installation and host
 configuration remain separate, explicit work.
+
+**Before item 13:** this guide described an exclusively read-only MCP surface.
+**After separately approved item 13:** evaluation preview can persist a bounded
+preparation artifact; it is not read-only and grants no execution authority.
+The eight earlier tools retain their existing inspection contracts.
+With issue #468 also integrated, the source catalog contains **ten tools**:
+nine read-only inspections (including issue context) and bounded preview.
 
 ## Launch and repository binding
 
@@ -33,6 +40,8 @@ Resolve trusted OS aliases before selecting the root. Verification is repeated
 on each evaluation call, not just at launch. Without this opt-in the server and
 its other tools still work; `orch_eval_status` returns an explicit binding error.
 No tool request can supply or override **either** root.
+After item 13, `orch_eval_preview` also requires that same launch-time storage
+binding; no new flag, implicit storage selection or directory creation is added.
 
 Without `--repo`, Orch binds to the process's current working directory. The
 selected directory must already exist and contain a real `.orchestrator/`
@@ -95,12 +104,22 @@ requires an explicit empty object `{}`; omitted arguments, `null`, other
 non-objects, unknown fields and repository overrides are errors. Existing five
 tool contracts remain unchanged.
 **Before item 7:** seven-tool discovery had no evaluation inspection.
-**After separately approved item 7:** current source discovers exactly **eight**
+**After separately approved item 7:** source discovered exactly **eight**
 read-only tools, adding **`orch_eval_status`**, accepting only a nonempty string
 `run_id`. Its stricter evaluation-ID syntax is enforced by the existing reader.
 The explicit-empty-object restriction still applies to configuration and both
 metrics tools, not every tool. Unknown fields and root overrides are rejected
 for **all eight tools**; the existing seven contracts are unchanged.
+**Before item 13:** that eight-tool catalog contained no preparation operation.
+**After item 13:** discovery adds **`orch_eval_preview`**, accepting only a
+nonempty repository-relative `plan_file`. It is annotated `readOnlyHint: false`,
+`destructiveHint: false`, `idempotentHint: true`, `openWorldHint: false`:
+unchanged inputs replay immutable local preparation, not remote execution.
+Unknown fields and repository/storage overrides are rejected for this tool too.
+The preceding eight tools keep their schemas, annotations and results.
+Issue #468 separately adds **`orch_issue_context`**, taking a positive
+`issue_number` and remaining read-only and command-free. Together these
+increments expose ten tools; preview alone may persist preparation.
 
 | Tool | Input | CLI counterpart (from the bound checkout) | Report schema |
 | --- | --- | --- | --- |
@@ -112,6 +131,8 @@ for **all eight tools**; the existing seven contracts are unchanged.
 | `orch_metrics` | `{}` | `orch metrics` (human-readable; shared summary results) | 1 |
 | `orch_metrics_report` | `{}` | `orch metrics report` (human-readable; shared rollup results) | 1 |
 | `orch_eval_status` | `{"run_id":"eval-aaaaaaaaaaaaaaaaaaaaaaaaaa"}` | `orch eval status --run ID --storage-root ROOT --json` (same retained report; MCP additionally checks repository identity) | 3 |
+| `orch_issue_context` | `{"issue_number":468}` | None; directly uses shared `run.IssueContext` | 1 |
+| `orch_eval_preview` | `{"plan_file":"plans/evaluation.json"}` | `orch eval preview --plan FILE --json` (same preparation; MCP additionally confines the proposal file and binds storage) | Existing proposal version 1, 2 or 3 |
 
 Each `orch_run_status` invocation reads fresh local
 state through the same engine as `orch run status --json` and returns that
@@ -145,6 +166,11 @@ existing external read probes only.
 All eight tools avoid repository/storage writes and lifecycle mutations;
 initialization, discovery, disconnect and every local-only tool call execute no
 external commands. Readiness and doctor keep their existing read probes only.
+**After item 13:** those no-write/no-command guarantees still hold for the
+preceding local-only inspections, initialization, discovery and disconnect.
+Preview alone adds the existing local read-only Git queries and bounded storage
+publication described below. Thus **not every MCP tool is read-only or
+command-free**; no tool gains lifecycle or execution authority.
 This server does not replace the CLI, the thin host plugins or their guards,
 and it does not change Orch's separate memhub CLI integration.
 
@@ -223,6 +249,10 @@ After item 7 these no-write/no-approval restrictions apply to **all eight MCP
 tools** and the retained evaluation CLI `status` inspection too. They do not
 describe evaluation `preview`, `run`, `stop`, `grade` or report publication, which
 remain distinct, explicitly invoked operations with their existing contracts.
+After item 13, the original eight inspections still never write. MCP preview is
+the explicit exception for preparation persistence, not approval: the no-session,
+no-metrics, no-approval, no-lifecycle and no-Git/GitHub-mutation restrictions hold
+for **every MCP tool**, including `orch_eval_preview`.
 
 ## Review and merge readiness
 
@@ -581,6 +611,91 @@ lock, approval claim, session, metric or lifecycle record is created, on success
 or failure. `evalplan.Status` (core progress-only inspection), CLI status, immutable
 report publication and grading/execution/stop remain useful distinct surfaces.
 
+## Bounded evaluation preview/preparation (item 13)
+
+With the existing `--eval-storage-root` launch opt-in, call only:
+
+```json
+{"plan_file":"plans/evaluation.json"}
+```
+
+`orch_eval_preview` returns the existing `evalplan.Record`: `schema_version`
+(the proposal's supported version), `kind: "maintainer-preparation-record"`,
+`plan_digest`, `storage_destination`, normalized `plan`, and `preview` evidence
+including the complete schedule, finite counts, checks, unknowns and blockers.
+MCP structured content and JSON text are equivalent to CLI/shared preparation.
+Private corpus/profile/decision/readiness contents remain references and digests,
+not returned bytes. Preparation does not validate opaque readiness claims,
+decision semantics, historical worker source bytes or native isolation.
+`execution_available` and `approval_granted` remain false. A successful blocked
+preview is preparation, **not execution eligibility or human approval**.
+
+The proposal must already exist under the fixed checkout. `PreviewRepository`
+requires a portable slash-separated relative path (for example
+`plans/evaluation.json`), not an absolute path, `.`/`..`, a backslash alias or a
+network/device/ambiguous path. The existing guarded reader anchors every parent
+directory and checks opened identities, reparse/symlink status, regular-file
+identity, persistent hard links and the 64-KiB plan bound. Missing, linked,
+unverifiable and escaping paths fail closed. Both repository and store are
+guarded again on every call; identity changes before publication refuse.
+
+Only the **proposal-file** restriction is new and entry-point specific:
+`PreviewRepository`/MCP enforce it, not CLI `Preview` or every evaluation API.
+Referenced artifacts retain existing preview rules, including explicit absolute
+local paths and nontraversing proposal-relative paths, guarded regular files,
+size/digest checks and existing exclusion rules. They are not implicitly confined
+to the checkout. CLI `orch eval preview --plan FILE [--json]` still accepts its
+existing absolute/external proposal paths and proposal-selected storage.
+
+Both entry points share `preparePreview`, strict JSON/version decoding and
+`normalize`; no second planner, artifact validator, source-pinning algorithm,
+schedule, digest or evidence generator is introduced. After normalization and
+**before publication**, the proposal's canonical `storage_root` must match the
+launch-bound guarded root in both canonical path and opened filesystem identity
+(case folding alone cannot equate distinct case-sensitive directories).
+Repository roots (including registered worktrees),
+Git/common metadata and declared worker/scratch roots retain their existing
+nonoverlap checks. Publication uses the already opened bound storage handle,
+never a destination supplied by the tool request or an unchecked proposal path.
+
+### Exact write footprint and interruption limits
+
+This tool is **not read-only**, despite the word preview. Its only writes are
+the existing immutable preview publication footprint directly in the existing
+bound root: one `<64-lowercase-hex-plan-digest>.json` public record (at most
+16 MiB), a fresh exclusive `.pending-<random>` file while publishing, and removal
+of that invocation's own pending name after publication or a lost publication
+race. It creates no subdirectory or root. Bytes are written, synced and closed
+before atomic no-replace linking. Identical existing records succeed without
+rewriting bytes or mtimes; conflicting, corrupt or unverifiable records fail
+without replacement. Interrupted writes may leave a partial/complete pending
+file, or a completed digest name with its pending hard link if cleanup failed.
+Such failures are errors, not successful partial preparation. Unknown pending
+files are preserved, never swept; a persistent alias at the completed name fails
+closed after the existing bounded publisher grace period.
+
+No evaluation ID, execution/progress record, worker/scratch directory, controller,
+approval/assertion, grade, report bundle, Delivery run, configuration, session,
+metric, Git mutation or GitHub artifact is created. Existing CLI execution and
+approval gates remain separate and unchanged. A returned preparation digest is
+neither approval nor an instruction to run a model. Path/identity checks provide
+local binding, not authenticated historical provenance, protection from a
+privileged filesystem actor or an atomic snapshot of concurrently edited inputs.
+
+### Existing read-only Git probes
+
+Preview uses only these existing local Git argument vectors in the fixed repo:
+
+- `git --no-optional-locks --no-pager -c core.fsmonitor=false cat-file -e <full-OID>^{commit}` for each pinned baseline/candidate revision;
+- `git --no-optional-locks --no-pager -c core.fsmonitor=false rev-parse --path-format=absolute --show-toplevel --git-common-dir --git-dir`;
+- `git --no-optional-locks --no-pager -c core.fsmonitor=false worktree list --porcelain -z`.
+
+They retain `GIT_TERMINAL_PROMPT=0`, `GIT_NO_REPLACE_OBJECTS=1`,
+`GIT_NO_LAZY_FETCH=1`, `LC_ALL=C`, the existing timeout/output bounds and explicit
+failure handling. No fetch, source export, hook, `gh`, memhub, host executable or
+supplied artifact command runs. The no-command restriction on `orch_eval_status`
+still holds for that inspection, not every evaluation tool after item 13.
+
 ## Reproducible smoke test and trial checkpoint
 
 From the source checkout, run:
@@ -589,9 +704,10 @@ From the source checkout, run:
 go test ./internal/cli -run '^TestMCPStdio$' -v -count=1
 ```
 
-This builds a temporary real `orch` binary and uses an SDK client over its
-stdio pipes to initialize, discover and call all eight tools, then disconnect and
-verify a successful process exit. No global install or client configuration
+Before item 13, this built a temporary real `orch` binary and used an SDK client
+over its stdio pipes to initialize, discover and call all eight tools, then
+disconnect and verify a successful process exit. After item 13, the same test
+also exercises bounded preparation. No global install or client configuration
 is needed. The client stays connected while test fixtures change from Assist
 to blocked Delivery and inconsistent state/lock pairs. Output reports
 `CLI = structured = JSON text` for each decoded status comparison and the
@@ -647,6 +763,19 @@ unsupported evidence and recovery on the same connection. Repository/storage
 names, kinds, modes, regular-file modification times and bytes are unchanged
 across reads, including failures; no executable is available on PATH. Synthetic
 retained fixtures and evaluator assertions are not model-trial performance.
+Before item 13 that smoke test discovered only the eight inspection tools.
+After item 13 it also discovers and exercises bounded preview preparation.
+Preview fixtures compare versions 1/2/3 across shared preparation, real CLI,
+MCP structured content and JSON text, including CLI external-plan compatibility.
+They verify immutable idempotence, preserved interrupted pending files,
+conflicting/partial records and persistent post-link aliases, strict inputs,
+unsafe/missing/linked/reparse plans, runtime binding aliases, destination overrides,
+artifact/limit/pin/exclusion failures and recovery on the same connection.
+Only the exact scripted Git read allowlist is on PATH; no live host runs.
+Repository/Git/artifact/worker/scratch/launching files remain unchanged; successful
+storage changes are exactly the preparation's digest record. Direct deterministic
+tests also replace opened repository/storage identities during normalization and
+verify refusal before any publication into either original or replacement roots.
 
 For a manual trial, use the configuration above, connect your client, discover
 `orch_run_status`, and call it with `{}`. Compare its decoded JSON with
@@ -687,6 +816,9 @@ each expansion and any installation still require separate approval.
 After separately approved item 7, source also exposes retained evaluation
 inspection with explicit storage opt-in. It adds no installation, remote access,
 evaluation execution or report-publication authority.
+After separately approved item 13, source additionally exposes bounded preview
+persistence without execution approval. The CLI-only preparation limit is removed;
+the source-only installation boundary and separate live-trial approval remain.
 
 ### Original trial benefit checklist — assess with the user before expansion
 
@@ -713,8 +845,8 @@ assumptions or a tool-discovery-only success:
 
 ## Trial item 2 blast radius
 
-The tables below record the earlier increments; the current eight-tool contract,
-doctor checks, effective configuration and metrics are documented above.
+The tables below record the earlier increments; the eight-tool contract at item 7,
+doctor checks, effective configuration, metrics and later preview are documented above.
 
 | Touched element | Does its previous behavior still hold? |
 | --- | --- |
@@ -787,6 +919,28 @@ original sections above. No existing implementation is superseded by this tool.
 | Guides (`docs/mcp-status.md`, `README.md`) | Optional source-only setup, explicit installation boundary, host enforcement and prior checkpoint hold. Previous launch/discovery limits are retained as before/after in the same sections; storage opt-in, identity scope and report limitations are explicit. |
 | Core progress `Status`, CLI evaluation parser/status/run/stop/grade/report, publication, lifecycle/state/lock/approval/metrics/grant algorithms, persistent schemas, dependencies, adapters/guards, installed binaries and CI | Unchanged. No useful CLI surface is removed, no execution/approval rule is relaxed and no installation, release, schema migration or remote access is added. Required existing checks still apply. |
 
+## Item 13 blast radius
+
+Historical read-only-only discovery, no-command/no-write and CLI-only preparation
+limits are retained as before/after in the sections that stated them above. The
+item-2/3/7 tables describe their increments, not today's entire catalog.
+Integrating issue #468 preserves its report and shared status/next snapshot
+behavior unchanged. Discovery and real-stdio coverage now compose both features
+as ten tools; context remains a read-only, command-free inspection.
+
+| Touched element | Does its previous behavior still hold? |
+| --- | --- |
+| CLI help (`cli.go`: `commands`; README command row) | Dispatch, argv and exits are unchanged. Before: MCP help advertised read-only inspections only. After: help also advertises bounded preparation; it does not advertise execution. |
+| MCP registration (`mcp.go`: `runMCP`; `mcp_eval_preview.go`: `addEvalPreviewTool`, SDK schema/annotations/handler) | Existing launch/storage parsing, fixed roots, nine inspection tools including integrated issue context, schemas/results/probes, diagnostics and clean transport shutdown hold. Before: no preparation tool and every exposed tool was read-only. After: one strict `plan_file` tool may persist preparation only; structured/text parity still holds. Discovery itself performs no probes/writes. |
+| Preview core (`plan.go`: `Preview`, extracted `preparePreview`; new `preview.go`: `PreviewRepository`) | CLI `Preview` keeps its absolute/external-plan and proposal-storage behavior, decode/error ordering and save semantics. Both entry points share strict decoding, supported versions and `normalize`. Only `PreviewRepository` adds portable repository-relative proposal confinement, opened repository/storage identities and canonical-path plus opened-identity destination matching before publication; this restriction is not attributed to every evaluation function. |
+| Shared preparation (`strictJSON`, `normalize`, `readArtifact`, `pinSelection`, `plannedCounts`, `selectCases`, `effectiveConfiguration`, `storagePaths`, `evidence`; `Record`, `Plan`, `Evidence`, `Unit`) | Yes; implementations/wire shapes, versions, configuration/source pins, bounds, exclusions, schedule/digest, privacy projection, false execution/approval and unknown/blocker semantics hold for both previews and existing saved-record revalidation. No second policy pipeline or planner is retained. |
+| Guarded filesystem (`relativeName`, `openGuarded`, `guardedDir.read/parent/child/check/publish/publishBytes`, `localPath`, `directory`, `openDirectory`, `readRoot`, `samePath`, platform drive/reparse/link checks) | Yes; implementations unchanged. The new entry point reuses portable names and anchored reads, checks both opened bindings before publication and publishes through the bound handle. Existing validation applies to every guarded evaluation operation that uses these helpers, not only the new wrapper; repository-relative proposal/storage-match restrictions are wrapper-only. |
+| Immutable publication (`save`, `publishRoot`, `existingRecord`) | Yes; CLI still uses `save`; bounded MCP uses guarded publication with the same serialization and `publishRoot`/`existingRecord`. Size ceiling, exclusive pending files, atomic no-replace link, idempotent bytes, conflict/alias refusal, interrupted-artifact preservation and bounded grace hold for all users of this publisher, including controller records. No sweep/repair/overwrite behavior is added. |
+| Git boundary (`gitRead`, existing runner and fixed query vectors) | Yes; read-only allowlist, fixed repository, no lazy fetch/replacement, timeout/output bounds and errors hold. MCP preview now reaches these existing probes; retained evaluation status remains command-free. Neither statement is generalized to every evaluation entry point. |
+| Tests (`mcp_test.go`: `mcpDiscover`, `TestMCPStdio`, `TestMCPLocalToolsNeverRunExternalCommands`; new `mcp_eval_preview_test.go`: `mcpPreviewFixture`, `mcpPreviewInventory`, `mcpPreviewResult`, `mcpEvalPreviewExercise`, `previewIdentityRunner.Run`, `TestEvalPreviewRepositoryRechecksOpenedIdentities`; reused doctor-probe executable) | Prior tool coverage remains, including issue context's parity and no-command checks; discovery expects ten tools and adds the preview-only mutating/idempotent annotation and strict schema. New isolated tests exercise preparation persistence, bounded failures/replay/interruption, unchanged repositories, exact Git reads and opened-root replacement refusal. Existing synthetic controller/CLI/publication tests still run; no paid/native host or live evaluation is launched. The probe implementation is unchanged. |
+| Guides (`docs/mcp-status.md`, `README.md`) | Source-only setup, prior checkpoints and separate installation/approval boundaries hold. Before/after limits remain in the same documents; persistence footprint, entry-point-specific restrictions, exact probes and preparation-versus-execution limits are explicit. |
+| CLI evaluation parsing/run/status/stop/grade/report, evaluation controllers/workers/approval/grading/report algorithms, Delivery lifecycle/state/locks/grants/metrics, persistent schemas, configuration, dependencies, adapters/hooks, installations/releases and CI workflows | Unchanged. No useful command, authority boundary or existing check is removed or weakened; no new dependency, schema migration, host execution, configuration application, GitHub artifact or remote transport is added. |
+
 ## Issue context (issue #468)
 
 **Before issue #468:** the eight-tool discovery/table and smoke-test count above
@@ -798,6 +952,9 @@ their contracts. The same next-action classifier now also serves issue context;
 its identity/reference restrictions apply to both guidance entry points, not
 `Status` or every inspection function. Later separately approved increments may
 add other tools; building source still does not update an installed server.
+After integrating item 13, discovery returns ten tools: these nine read-only
+inspections plus bounded preview. Context's schema and no-command/no-write
+contract are unchanged; preview alone may persist a preparation artifact.
 
 Call with only a positive integer issue number, for example:
 
@@ -845,6 +1002,8 @@ spend a grant or record approval. These no-command limits apply to every
 local-only inspection tool, not just `orch_issue_context`; readiness and doctor
 retain their separately documented external read probes. Every lifecycle verb
 keeps its normal live preflights, dependency checks and separate approval gates.
+Preview's separately documented Git reads and bounded preparation writes do not
+change these inspection limits.
 
 Deterministic engine tests cover phases, dependency waits/abandonment, native and
 escalated selections, pending/resolved blocks, missing work/routing, legacy and
