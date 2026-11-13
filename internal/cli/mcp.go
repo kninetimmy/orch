@@ -200,6 +200,7 @@ func runMCP(env Env, args []string) error {
 	})
 	addEvalPreviewTool(server, root, evalStorageRoot, env.Runner)
 	addPlanGateTool(server, env, root)
+	addMCPInterviewTools(server, env, root)
 	return server.Run(context.Background(), &mcp.IOTransport{
 		Reader: io.NopCloser(env.Stdin),
 		Writer: mcpWriter{env.Stdout},

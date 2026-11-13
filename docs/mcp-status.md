@@ -1,4 +1,4 @@
-# Local inspections, bounded evaluation preparation and plan decision gates over MCP
+# Local inspections, configuration interviews, bounded evaluation preparation and plan decision gates over MCP
 
 `orch mcp` is an optional local stdio MCP server using the official Go SDK
 v1.8.0. This is an unreleased source feature, not part of the v0.15.2 binary.
@@ -14,9 +14,13 @@ preparation artifact; it is not read-only and grants no execution authority.
 The eight earlier tools retain their existing inspection contracts.
 With issue #468 also integrated, that source catalog contained **ten tools**:
 nine read-only inspections (including issue context) and bounded preview.
-**After separately approved item 10:** the catalog contains **eleven tools**,
+**After separately approved item 10:** the catalog contained **eleven tools**,
 adding the non-activating plan decision gate. The preceding ten contracts hold;
 the gate's existing external memhub probes may have memhub-owned side effects.
+Before plan-gate integration, item 12 on the ten-tool baseline exposed **twelve
+tools**, including both read-only configuration interviews. With items 10 and 12
+integrated, the source catalog contains **thirteen tools**. Preview alone may
+persist preparation; the gate retains its separate external side-effect boundary.
 
 ## Launch and repository binding
 
@@ -122,16 +126,25 @@ Unknown fields and repository/storage overrides are rejected for this tool too.
 The preceding eight tools keep their schemas, annotations and results.
 Issue #468 separately adds **`orch_issue_context`**, taking a positive
 `issue_number` and remaining read-only and command-free. Together these
-increments expose ten tools; preview alone may persist preparation.
+increments exposed ten tools before item 12; preview alone may persist preparation.
+
+**Before item 12:** the eleven-tool catalog, including item 10, exposed no configuration
+interview. **After item 12:** this increment adds **`orch_configure_step`** and
+**`orch_configure_local_step`**, for **thirteen tools** on that baseline. Both accept the
+existing schema-2 `AnswerSet`, not an empty-object request or a repository
+override. The other eleven contracts remain unchanged. Earlier tool counts
+describe their respective increments, not the current cumulative catalog.
 
 **Before item 10:** the integrated issue-context/preview catalog exposed ten
 tools, with no plan decision gate. **After separately approved item 10:** source
-discovers **eleven** tools, adding **`orch_plan_gate`** with only
+discovered **eleven** tools, adding **`orch_plan_gate`** with only
 `{"plan": {...}}`. The existing ten tools keep their schemas, annotations and
 behavior. Unknown outer fields and repository overrides are rejected for
-**all eleven tools**; the gate also uses the engine's strict nested plan decoder.
+**all eleven tools at that increment**; the gate also uses the engine's strict nested plan decoder.
 The new gate is non-activating, but conservatively **not annotated read-only or
 idempotent** because of its external memhub probes; see its dedicated section below.
+With item 12 integrated, unknown outer fields and repository overrides remain
+rejected for **all thirteen tools**; the gate and interviews retain distinct input shapes.
 
 | Tool | Input | CLI counterpart (from the bound checkout) | Report schema |
 | --- | --- | --- | --- |
@@ -146,6 +159,8 @@ idempotent** because of its external memhub probes; see its dedicated section be
 | `orch_issue_context` | `{"issue_number":468}` | None; directly uses shared `run.IssueContext` | 1 |
 | `orch_eval_preview` | `{"plan_file":"plans/evaluation.json"}` | `orch eval preview --plan FILE --json` (same preparation; MCP additionally confines the proposal file and binds storage) | Existing proposal version 1, 2 or 3 |
 | `orch_plan_gate` | `{"plan":{...}}` | `orch run plan` (submitted plan JSON on stdin) | 3 |
+| `orch_configure_step` | `{"schema_version":2,"answers":{}}` | `orch configure --step` (AnswerSet on stdin) | 2 |
+| `orch_configure_local_step` | `{"schema_version":2,"answers":{}}` | `orch configure-local --step` (AnswerSet on stdin) | 2 |
 
 Each `orch_run_status` invocation reads fresh local
 state through the same engine as `orch run status --json` and returns that
@@ -184,6 +199,9 @@ preceding local-only inspections, initialization, discovery and disconnect.
 Preview alone adds the existing local read-only Git queries and bounded storage
 publication described below. Thus **not every MCP tool is read-only or
 command-free**; no tool gains lifecycle or execution authority.
+**After item 12:** both configuration interviews add the existing setup read
+probes, without writes or lifecycle authority. Effective-configuration inspection
+(`orch_config_effective`) remains command-free; the interviews do not.
 This server does not replace the CLI, the thin host plugins or their guards,
 and it does not change Orch's separate memhub CLI integration.
 **Before item 10:** the ten-tool catalog had only the inspection probes and
@@ -273,9 +291,12 @@ the explicit exception for preparation persistence, not approval: the no-session
 no-metrics, no-approval, no-lifecycle and no-Git/GitHub-mutation restrictions hold
 for **every MCP tool**, including `orch_eval_preview`.
 After item 10, the no-session/no-approval/no-lifecycle/no-Git-or-GitHub-mutation
-restrictions also hold for `orch_plan_gate`, hence for **all eleven MCP tools**.
+restrictions also hold for `orch_plan_gate`, hence for **all eleven MCP tools at that increment**.
 The blanket no-storage-write guarantee does not extend to the gate's external
 memhub implementation; its narrower side-effect boundary is documented below.
+With item 12 integrated, the no-session/no-approval/no-lifecycle/no-Git-or-GitHub-
+mutation restrictions hold for **all thirteen MCP tools**; the gate's external
+memhub exception and preview's bounded preparation writes remain unchanged.
 
 ## Review and merge readiness
 
@@ -719,6 +740,122 @@ failure handling. No fetch, source export, hook, `gh`, memhub, host executable o
 supplied artifact command runs. The no-command restriction on `orch_eval_status`
 still holds for that inspection, not every evaluation tool after item 13.
 
+## Configuration interview steps (item 12)
+
+Start either `orch_configure_step` or `orch_configure_local_step` with
+`{"schema_version":2,"answers":{}}`. Present the returned questions using the
+existing native-question and pagination contract, then resubmit **all** collected
+answers, keyed by question ID, on each call. These stateless tools return the
+entire existing schema-2 `question.Document` as equivalent structured content and
+JSON text: questions, progress, catalog choices/defaults, proposed file contents
+and diffs, summary blockers, completion or abort. Pagination navigation is never
+an answer. Removing or revising answers re-derives the sequence; unknown,
+unreachable, stale and invalid answers remain explicit errors.
+
+The strict `question.DecodeAnswers` decoder is reused. Unknown outer fields,
+unsupported versions, non-object requests and non-string answer values are
+errors; omitted/null `answers` retains the decoder's empty-map normalization.
+Clients should always send the explicit initial shape above. Answers cannot
+supply detection facts, completed documents, paths or repository overrides.
+The AnswerSet input restriction applies to **both new tools**, not all MCP tools;
+the existing tools keep their individual schemas. Fixed launch binding and
+rejection of unknown outer fields continue to apply to every tool.
+
+Every call rechecks the existing active-Delivery/held-lock refusal **before
+probes**, decodes the answers, re-detects host facts and calls
+`interview.NextConfigure` or `NextConfigureLocalWithFacts`. No CLI subprocess or
+stdin/stdout handler is invoked or parsed. Configuration is re-read each time:
+configure defaults use committed configuration alone; configure-local uses the
+existing committed-plus-valid-local-preferences repair semantics. In particular,
+malformed local TOML remains repair data, not a newly introduced fatal loader
+error. Missing/invalid committed configuration and catalog failures keep the
+existing interview errors. Catalog availability is required for OpenCode role
+edits, not unrelated edits. Native variants, bare models, legacy profile
+compatibility and retained unavailable committed selections keep their current
+question/default/materialization rules.
+
+### Binding, probes and authority
+
+The server still requires the selected checkout's real `.orchestrator/` directory
+at launch. It does not search ancestors or bootstrap an uninitialized repository.
+**First-time `init` remains with the existing CLI and host setup workflow**; this
+increment exposes only the configure and configure-local interviews, not init,
+`configure --deliver`, `configure-local --apply` or any application endpoint.
+
+The two interviews have `readOnlyHint: true` and `openWorldHint: true`. Their
+external probes are the existing detection allowlist, in the bound repository:
+
+- PATH lookups for Claude, Codex, OpenCode V2, Git, `gh` and memhub.
+- If Git is available, `git rev-parse --show-toplevel`.
+- If memhub is available, `memhub status` (even when configuration says off,
+  matching setup detection); no recall, render or memory write.
+- If OpenCode is present, `opencode2 --version` with the existing `opencode` V2
+  fallback, then the resolved executable's `api get /api/model` with the existing
+  encoded `location[directory]` query. Runtime warnings remain document data,
+  never human text on protocol stdout.
+
+`DetectBound` shares detection with ordinary `Detect`, but verifies any reported
+Git root has the bound directory's filesystem identity **before** memhub,
+catalog or instruction-file probes. Different, relative, empty, missing or
+unverifiable reported roots fail explicitly; equivalent directory spellings
+are accepted while subsequent probes still use the bound root. Missing Git or
+a failed Git probe remains a false readiness fact, never permission to leave
+the binding. Ordinary `Detect` still follows the detected root for existing
+CLI/init workflows; the new fixed-root restriction belongs to **both MCP
+interviews**, not every detection caller or every interview-engine function.
+
+Other probes read the existing configuration, root/nested instruction files and
+ignore rules needed for proposals. Observations are unlocked, not an atomic
+snapshot or a held reservation against a new Delivery run. Active Delivery,
+held locks and unreadable state/locks retain their fail-closed refusal. That
+shared CLI refusal is reused by **both tools**; pure `NextConfigure` and
+`NextConfigureLocalWithFacts` do not independently enforce lifecycle preconditions.
+
+Answering the summary's existing `approval` question is **interview data only**.
+It can yield a complete document, but neither that answer, `bootstrap_ready`,
+nor a successful tool call applies/removes local configuration, delivers
+committed changes, initializes a repository, records a run/merge approval,
+registers a session, consumes a grant or advances lifecycle state. This applies
+to both MCP interviews and both CLI `--step` forms, not to separately invoked
+application workflows, which retain their own authorization and re-derivation
+checks. The earlier local-only "configuration" tool statements refer to
+`orch_config_effective`; these two interviews add only the read probes above.
+All pre-existing no-write/no-approval guarantees still hold for the nine prior
+inspections and also hold for these two tools. Bounded preview retains its
+separately documented preparation writes, never configuration application.
+The integrated plan gate retains its separately documented external memhub
+side-effect boundary and non-activating contract; neither interview invokes it.
+
+### Interview verification and blast radius
+
+`TestMCPStdio/configuration_interviews` walks both CLI/MCP interviews from initial
+questions through summary, completion, retry and abort with native and legacy
+OpenCode profiles. Scripted real executables accept only the detection allowlist;
+catalog/configuration changes on the same connection, bare-model/stale-variant
+answers, malformed requests, invalid/absent catalogs and configuration, local
+repair defaults, Delivery/lock/state refusals and Git-root mismatch are covered.
+CLI JSON, MCP structured content and JSON text agree. Bound and launching
+repository names, kinds, modes, regular-file modification times and bytes stay
+unchanged on success/failure, including approved completion. Discovery and
+shutdown run no probes; warnings cannot pollute protocol stdout. Detection tests
+also prove bound-root equivalence/refusal and retained ordinary root discovery.
+Run this focused real-stdio check without installation:
+
+```sh
+go test ./internal/cli -run '^TestMCPStdio$/configuration_interviews' -v -count=1
+```
+
+| Touched element | Does its previous behavior still hold? |
+| --- | --- |
+| MCP registration (`mcp.go` hook; new `mcp_interview.go`: `addMCPInterviewTools`, handlers, schemas/annotations) | Eleven-tool-only discovery becomes thirteen as recorded above; the earlier ten-to-twelve increment remains historical. Existing launch checks, bindings, eleven schemas/results/annotations (including plan gate, context and bounded preview), SDK structured/text transport, protocol-only stdout and clean disconnect hold. New handlers only decode/probe/derive; no application path is exposed. |
+| Integrated gate/context/preview (`addPlanGateTool`, `addEvalPreviewTool`, issue-context registration; `mcpPlanGateExercise`, `mcpPlanGateSchema` and existing context/preview fixtures) | Yes. The gate's strict plan/typed output and conservative annotations, existing engine/memhub probes and separate approval handoff remain unchanged. Context remains command-free; preview alone retains bounded preparation persistence. Discovery and stdio coverage compose all thirteen tools without duplicating policy or changing these handlers. |
+| Detection (`detect.go`: `Detect`, extracted `detect`, new `DetectBound`; reused `Deps`, `Facts`, Git/host/memhub/catalog/instruction probes) | Ordinary `Detect` still never returns an error and retains discovery/failure-as-facts behavior for every existing caller. Only `DetectBound` adds the pre-read identity refusal; both paths share the same probes. Facts and detection audit fields are unchanged. |
+| Reused refusal (`requireNoActiveDelivery`, `state.Load`, `lockfile.Inspect`) | Implementations and errors unchanged; both MCP tools call the same read-only refusal as CLI steps, without creating locks or acquiring a mutation serializer. This is not a new precondition inside all pure interview functions. |
+| Reused question/interview/configuration surfaces (`AnswerSet`, `DecodeAnswers`, `Document`, schema 2, `NextConfigure`, `NextConfigureLocalWithFacts`, catalog/default/validation/materialization/summary helpers, configuration readers and instruction/ignore planners) | Unchanged. Fresh reads, committed-versus-local defaults, local repair, native/legacy/bare profiles, pagination, blockers, completion/abort and explicit failures hold. Proposed bytes remain data for every step caller; completion does not write for either MCP or CLI steps. |
+| Tests (`mcp_test.go`: discovery and stdio exercise; new `mcp_interview_test.go`, `detect_bound_test.go`; reused scripted doctor probe) | Previous eleven-tool schema/parity/shutdown coverage, inspection no-write/no-command checks, gate schema/annotation checks and bounded-preview publication checks remain. Discovery now includes the two read-only/open-world AnswerSet tools. New deterministic transcript, freshness, failure, binding and no-write checks exercise both tools; no live host, credentials or memhub database is used. |
+| Guide (`docs/mcp-status.md`) | Source-only setup, host enforcement and separate installation/checkpoint boundaries hold. Historical eight/ten/eleven/twelve-tool, no-interview and local-only configuration statements remain with explicit before/after and symbol scope. Gate side-effect limits remain distinct. This increment adds no claim of installed capability. |
+| CLI steps/reports/application, init/bootstrap, lifecycle/approval/grant/state/lock algorithms, schemas, dependencies, adapters/guards, installed binaries, release and CI | Untouched. CLI detection and application behavior is not replaced, no first-time init or new authorization is exposed, and all existing required checks still apply. |
+
 ## Reproducible smoke test and trial checkpoint
 
 From the source checkout, run:
@@ -731,7 +868,9 @@ Before item 13, this built a temporary real `orch` binary and used an SDK client
 over its stdio pipes to initialize, discover and call all eight tools, then
 disconnect and verify a successful process exit. After item 13 and issue #468,
 the same test also exercises bounded preparation and issue context. After item
-10, it covers all eleven tools, including the full plan gate. No global install
+10, it covered all eleven tools, including the full plan gate. With item 12 also
+integrated, it covers all thirteen tools and both configuration interviews.
+The earlier interview-only integration covered twelve tools. No global install
 or client configuration is needed. The client stays connected while test fixtures
 change from Assist to blocked Delivery and inconsistent state/lock pairs. Output reports
 `CLI = structured = JSON text` for each decoded status comparison and the
@@ -949,8 +1088,9 @@ Historical read-only-only discovery, no-command/no-write and CLI-only preparatio
 limits are retained as before/after in the sections that stated them above. The
 item-2/3/7 tables describe their increments, not today's entire catalog.
 Integrating issue #468 preserves its report and shared status/next snapshot
-behavior unchanged. Discovery and real-stdio coverage now compose both features
-as ten tools; context remains a read-only, command-free inspection.
+behavior unchanged. At item 13, discovery and real-stdio coverage composed both
+features as ten tools; item 12 adds two interviews without changing either
+feature. Context remains a read-only, command-free inspection.
 
 | Touched element | Does its previous behavior still hold? |
 | --- | --- |
@@ -976,9 +1116,13 @@ their contracts. The same next-action classifier now also serves issue context;
 its identity/reference restrictions apply to both guidance entry points, not
 `Status` or every inspection function. Later separately approved increments may
 add other tools; building source still does not update an installed server.
-After integrating item 13, discovery returns ten tools: these nine read-only
+After integrating item 13, discovery returned ten tools: these nine read-only
 inspections plus bounded preview. Context's schema and no-command/no-write
 contract are unchanged; preview alone may persist a preparation artifact.
+After item 12 on the earlier baseline, discovery returned twelve tools, also including the two read-only
+interviews and their separate setup-probe allowlist. Context remains command-free.
+With item 10 also integrated, discovery returns thirteen tools, including the plan
+gate with its separate external memhub side-effect boundary. Context is unchanged.
 
 Call with only a positive integer issue number, for example:
 

@@ -3,6 +3,7 @@ package interview
 import (
 	"context"
 	"errors"
+	"fmt"
 	"io/fs"
 	"os"
 	"path/filepath"
@@ -97,6 +98,22 @@ type InstructionFileState struct {
 // directly (classifyInstructionFile), the one probe that touches the
 // repository's own content rather than its tooling.
 func Detect(ctx context.Context, deps Deps) Facts {
+	// Only bound detection has an error path; ordinary discovery stays infallible.
+	f, _ := detect(ctx, deps, false)
+	return f
+}
+
+// DetectBound uses the same probes as Detect, but never follows a different
+// detected Git root. MCP's launch binding must also cover the catalog and
+// instruction reads inside detection, not just the later interview call.
+// Missing Git remains a fact; a reported root with an unverifiable or different
+// directory identity is an error before any subsequent probes or file reads.
+// Ordinary Detect callers (including first-time init) retain root discovery.
+func DetectBound(ctx context.Context, deps Deps) (Facts, error) {
+	return detect(ctx, deps, true)
+}
+
+func detect(ctx context.Context, deps Deps, bound bool) (Facts, error) {
 	var f Facts
 	f.ClaudeCLI = lookPathOK(deps.LookPath, "claude")
 	f.CodexCLI = lookPathOK(deps.LookPath, "codex")
@@ -109,13 +126,30 @@ func Detect(ctx context.Context, deps Deps) Facts {
 		f.GitRoot = root
 	}
 
+	if bound && f.Git {
+		if !filepath.IsAbs(f.GitRoot) {
+			return Facts{}, fmt.Errorf("interview repository binding: detected Git root %q is not absolute", f.GitRoot)
+		}
+		rootInfo, err := os.Stat(deps.RepoRoot)
+		if err != nil {
+			return Facts{}, fmt.Errorf("interview repository binding: %w", err)
+		}
+		gitInfo, err := os.Stat(f.GitRoot)
+		if err != nil {
+			return Facts{}, fmt.Errorf("interview repository binding: detected Git root: %w", err)
+		}
+		if !gitInfo.IsDir() || !os.SameFile(rootInfo, gitInfo) {
+			return Facts{}, fmt.Errorf("interview repository binding: detected Git root %q does not match bound repository %q", f.GitRoot, deps.RepoRoot)
+		}
+	}
+
 	if lookPathOK(deps.LookPath, "memhub") {
 		f.MemhubCLI = true
 		f.MemhubHealthy, f.MemhubDetail = probeMemhub(ctx, deps)
 	}
 
 	root := f.GitRoot
-	if root == "" {
+	if bound || root == "" {
 		root = deps.RepoRoot
 	}
 	if openCodePresent {
@@ -139,7 +173,7 @@ func Detect(ctx context.Context, deps Deps) Facts {
 		"opencode": classifyInstructionFile(root, InstructionFile("opencode")),
 	}
 
-	return f
+	return f, nil
 }
 
 // classifyInstructionFile reports whether repoRoot/name exists, whether
@@ -154,10 +188,10 @@ func Detect(ctx context.Context, deps Deps) Facts {
 // over — a file this build cannot read or parse, and `orch init`/
 // `configure` still block on those files themselves.
 //
-// The root probed is the detected git root, falling back to
-// Deps.RepoRoot — the same resolution the callers apply before handing
-// a root to Next, so the files classified here are the files the
-// summary step later plans against.
+// Before bound detection, the root probed was always the detected git root,
+// falling back to Deps.RepoRoot. Ordinary Detect retains that resolution;
+// DetectBound verifies identity first and uses Deps.RepoRoot instead, so both
+// paths classify the same files their caller's summary will later plan against.
 func classifyInstructionFile(repoRoot, name string) InstructionFileState {
 	data, err := os.ReadFile(filepath.Join(repoRoot, name))
 	if errors.Is(err, fs.ErrNotExist) {
