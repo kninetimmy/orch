@@ -21,9 +21,13 @@ Before plan-gate integration, item 12 on the ten-tool baseline exposed **twelve
 tools**, including both read-only configuration interviews. With items 10 and 12
 integrated, the source catalog contained **thirteen tools**. Preview alone may
 persist preparation; the gate retains its separate external side-effect boundary.
-**After separately approved item 8:** current source contains **fourteen tools**:
+**After separately approved item 8:** source contained **fourteen tools**:
 twelve read-only inspections/interviews, adding approval/grant evidence, plus
 bounded preview and the plan gate. All thirteen preceding contracts hold.
+**After separately approved item 9:** current source contains **fifteen tools**:
+thirteen read-only inspections/interviews, adding in-memory plan validation, plus
+bounded preview and the separate effective-contract plan gate. All fourteen
+preceding contracts hold.
 
 ## Launch and repository binding
 
@@ -150,11 +154,16 @@ With item 12 integrated, unknown outer fields and repository overrides remain
 rejected for **all thirteen tools**; the gate and interviews retain distinct input shapes.
 
 **Before item 8:** the thirteen tools above exposed no combined approval/grant
-snapshot. **After separately approved item 8:** source discovers **fourteen** tools,
+snapshot. **After separately approved item 8:** source discovered **fourteen** tools,
 adding `orch_approval_status` with an explicit empty-object input. The earlier
 thirteen schemas and behaviors remain; the appended item-8 section specifies the
 new tool's evidence-only meaning and Git read probes. Unknown fields and root
 overrides remain rejected for **every tool**, not only `orch_approval_status`.
+
+**Before item 9:** the fourteen-tool catalog offered no in-memory plan-validation
+tool. **After item 9:** `orch_plan_validate` joins discovery for **fifteen tools**.
+All fifteen tools reject unknown outer fields and root overrides; validation
+preserves the preceding fourteen input/output and command/write contracts.
 
 | Tool | Input | CLI counterpart (from the bound checkout) | Report schema |
 | --- | --- | --- | --- |
@@ -172,6 +181,7 @@ overrides remain rejected for **every tool**, not only `orch_approval_status`.
 | `orch_configure_step` | `{"schema_version":2,"answers":{}}` | `orch configure --step` (AnswerSet on stdin) | 2 |
 | `orch_configure_local_step` | `{"schema_version":2,"answers":{}}` | `orch configure-local --step` (AnswerSet on stdin) | 2 |
 | `orch_approval_status` | `{}` | None; directly combines shared `run.Status` and grant observation | 1 |
+| `orch_plan_validate` | `{"plan":{...}}` | None; directly uses shared `run.DecodePlan` and `PlanDoc.Validate` with fresh `config.Load` | 1 |
 
 Each `orch_run_status` invocation reads fresh local
 state through the same engine as `orch run status --json` and returns that
@@ -315,6 +325,9 @@ mutation restrictions hold for **all thirteen MCP tools**; the gate's external
 memhub exception and preview's bounded preparation writes remain unchanged.
 After item 8, these restrictions hold for **all fourteen MCP tools**, including
 approval/grant observation; the same two write/side-effect exceptions remain.
+After item 9, they hold for **all fifteen MCP tools**. Validation adds no command,
+write or authority; the thirteen read-only inspection/interview tools retain
+their no-write contracts, and preview/gate retain only their existing exceptions.
 
 ## Review and merge readiness
 
@@ -874,6 +887,82 @@ go test ./internal/cli -run '^TestMCPStdio$/configuration_interviews' -v -count=
 | Guide (`docs/mcp-status.md`) | Source-only setup, host enforcement and separate installation/checkpoint boundaries hold. Historical eight/ten/eleven/twelve-tool, no-interview and local-only configuration statements remain with explicit before/after and symbol scope. Gate side-effect limits remain distinct. This increment adds no claim of installed capability. |
 | CLI steps/reports/application, init/bootstrap, lifecycle/approval/grant/state/lock algorithms, schemas, dependencies, adapters/guards, installed binaries, release and CI | Untouched. CLI detection and application behavior is not replaced, no first-time init or new authorization is exposed, and all existing required checks still apply. |
 
+## In-memory plan validation (item 9)
+
+**Before item 9:** the fourteen-tool source catalog (including issue context,
+bounded preview, the plan gate, both interviews and approval/grant evidence)
+offered no in-memory plan-submission validation tool.
+**After item 9:** fifteen-tool discovery also offers `orch_plan_validate`,
+annotated read-only and local-only (`openWorldHint: false`). Existing tools keep
+their input schemas, results and command/write limits. The explicit-empty-object
+restriction still belongs to effective configuration, metrics and approval
+status, not every tool; unknown fields and repository/root overrides remain
+errors for every tool, including validation.
+
+Call `orch_plan_validate` with exactly `{"plan":{...}}`, substituting a complete
+schema-1 `PlanDoc`. There is no plan-file path, repository override or staging
+step. Omitted/null/non-object arguments, missing/null/non-object plans, unknown
+outer or nested plan/issue/facts/downgrade fields, malformed data and unsupported
+hosts/schema versions are errors with no partial validation report. The MCP
+schema checks the envelope and requires an object plan; the original nested JSON
+(including number literals) reaches `run.DecodePlan`, not a typed intermediate
+that could discard unknown fields or normalize invalid numeric literals.
+
+Every call loads the bound repository's current configuration through
+`config.Load`, then calls `run.DecodePlan` and `PlanDoc.Validate`. These existing
+functions remain the only source of plan schema, enabled hosts, issue fields,
+dependency-wave/acyclicity rules, risk-domain membership, label shape/denylist and
+test-declaration checks. Errors retain the loader/decoder/validator text. Changes
+to committed configuration and permitted local model preferences take effect on
+the same connection, including recovery after errors.
+
+Success returns equivalent structured content and JSON text with exactly:
+
+| Member | Meaning |
+| --- | --- |
+| `schema_version: 1` | Version of this transport receipt, not the plan or gate schema. |
+| `validation_scope: "structural-configuration-only"` | Only decoding and validation against current configuration succeeded. |
+| `config_revision` | The freshly loaded configuration's existing revision, not a recomputed fingerprint or attestation. Local preferences can change validation without changing this committed revision. |
+| `plan` | The complete decoded `PlanDoc`, using its existing JSON representation and omission rules, identifying exactly the validated submission without computing a digest. |
+
+This is **not** the separate effective-contract plan gate (`orch_plan_gate` /
+`orch run plan`). It neither calls `run.Plan` nor derives routing, contributed
+acceptance criteria, effective execution profiles or any approval digest. It does not survey CI,
+check live models/labels/hosts, probe memhub or assert readiness. Required tests
+and any local-only declarations in the echoed plan remain author statements;
+an omitted declaration does not imply that CI runs every test. A successful
+call is never approval or permission to activate or dispatch.
+
+Unlike the gate, structural/configuration validation does not inspect state or
+locks and can succeed during Delivery or with unreadable state/locks. Assist and
+no-lock requirements still apply to **both `run.Plan` and `run.Activate`**, not
+only one named entry point. The gate's effective-contract digest, separate human
+approval and activation's preflights/digest verification remain unchanged; this
+receipt cannot replace any of them. The separately exposed `orch_plan_gate`
+continues to provide that existing gate; validation does not invoke or depend
+on it.
+
+Validation creates no file, issue, branch, worktree, approval, session, metrics
+event or Delivery state, and executes no command, even with metrics enabled and
+memhub required. Initialization, discovery and disconnect retain their existing
+no-command/no-write behavior. Reads are unlocked observations of current files,
+not an atomic snapshot or a Git HEAD/approved-configuration attestation. The
+launch-bound repository cannot be changed in a request. Building this source
+does not install/release it or alter host settings.
+
+`TestMCPStdio/plan_validation` compares full success documents and failure text
+with `config.Load`, `run.DecodePlan` and `PlanDoc.Validate` using a real binary
+and one stdio connection. It covers unknown nested fields, invalid dependency
+graphs, schema/host failures, numeric-literal preservation, strict arguments,
+fresh committed/local configuration, active/corrupt state independence, required
+memhub/enabled metrics, unchanged bound/launching files and clean shutdown with
+no executables on PATH. Raw stdio also exercises omitted arguments and the
+existing transport's explicit error exit on truncated JSON (not a validation
+receipt). The same success/failure matrix runs under
+`TestMCPLocalToolsNeverRunExternalCommands`, whose executable lookup and runner
+reject every command. These are source checks, not a claim about an installed
+server or full hosted CI coverage.
+
 ## Reproducible smoke test and trial checkpoint
 
 From the source checkout, run:
@@ -895,6 +984,10 @@ change from Assist to blocked Delivery and inconsistent state/lock pairs. Output
 `CLI = structured = JSON text` for each decoded status comparison and the
 explicit corrupt-state tool error. It also checks strict arguments, repository
 binding and unchanged repository files. These tests run in `go test ./...`.
+**After item 9:** the same smoke test also discovers and exercises plan
+validation alongside all fourteen preceding tools, including the plan gate,
+both interviews and approval/grant evidence, for fifteen-tool cumulative coverage.
+The earlier ten/thirteen/fourteen-tool counts remain historical checkpoints.
 Next-action fixtures additionally cover dependency waits, implementation,
 review, merge-report, human merge approval, abandonment, decision resolution
 versus recovery, stopped runs, completion and effective configuration drift.
@@ -1144,6 +1237,8 @@ With item 10 also integrated, discovery returned thirteen tools, including the p
 gate with its separate external memhub side-effect boundary. Context is unchanged.
 After item 8, discovery returns fourteen tools, adding read-only approval/grant
 evidence without changing context, preview, the plan gate or either interview.
+After item 9, discovery returns fifteen tools; local-only plan validation changes
+none of those existing contracts.
 
 Call with only a positive integer issue number, for example:
 
@@ -1457,3 +1552,34 @@ or claim that every hosted CI check has run.
 | Tests (`grant/observe_test.go`, `run/approval_status_test.go`, `cli/mcp_approval_test.go`, `mcp_test.go`: `TestMCPStdio`, `mcpDiscover`, no-command contract comment; `mcp_metrics_test.go`: `mcpMetricsOmittedArguments`) | Existing coverage remains, including issue context's local-only checks, bounded preview's preparation/schema/annotations, the plan gate's typed schema/conservative annotations and both interviews' schemas/probe contracts. Discovery now expects fourteen tools and includes the new schema/annotation; real stdio adds approval/grant/binding/error/no-write parity, while the shared raw-input loop adds this tool's omitted-argument refusal. The existing `testdata/doctor-probe` is reused unchanged; its test-only transcript stays outside inspected repositories/stores. |
 | Guide (`docs/mcp-status.md`) | Source-only launch/storage binding, prior trial checkpoint and installation boundaries hold. Previous discovery and store/probe limits are retained as explicit history; new snapshot/approval/concurrency limits are documented, not authority to perform later actions. |
 | Persistent state/status/grant schemas, lifecycle/session/approval algorithms, dependencies, CLI commands/help, host adapters/guards, installed binaries and CI workflows | Unchanged. No migration, dependency, mutator, automatic approval, installation, release or remote access is added. Existing required checks remain required. |
+
+## Item 9 blast radius
+
+The discovery-only limit removed by this increment is retained as before/after
+in the in-memory validation section above; no existing implementation is removed
+or superseded. These entries describe the cumulative integration of validation
+on the fourteen-tool base; earlier increment tables retain their historical counts.
+
+| Touched element | Does its previous behavior still hold? |
+| --- | --- |
+| MCP registration (`mcp.go`: `runMCP`; new `mcp_plan_validation.go`: `addMCPPlanValidation`, handler and `mcpPlanValidationResult`) | Yes for every pre-existing tool, launch argv/bindings, SDK transport/structured-text encoding, stderr diagnostics and disconnect. Before: fourteen tools, no plan-validation tool. After: fifteen tools, adding one object-only, read-only/local-only schema-1 validation receipt; no lifecycle mutator. Original argument bytes reach the shared decoder through `json.RawMessage`, preserving unknown nested fields and numeric literals. |
+| Existing local-only tools (`orch_run_status` / `run.Status`, `orch_run_next` / `run.Next`, `orch_config_effective` / `config.Load`, `orch_metrics` / `inspectMetrics`, `orch_metrics_report` / `inspectMetricsReport`, `orch_eval_status` / `evalplan.InspectRepository`, `orch_issue_context` / `run.IssueContext`) | Yes for each named tool: registration/handler, input/output schema, read-only/local annotation, fixed repository/storage binding, fresh reads and explicit errors remain unchanged. Every one remains command-free and write-free; validation joins this class without changing the shared status/next snapshot, retained evaluation identity/privacy checks or context's run-level guidance. |
+| Existing external-read inspections (`orch_run_readiness` / `run.Readiness`, `orch_doctor` / `doctorReport`, `orch_approval_status` / `addApprovalStatusTool` / `run.ApprovalStatus`) | Yes for each: existing strict inputs, report parity, read-only/open-world annotations and probe allowlists hold. Readiness still cannot authorize merging; doctor still returns unhealthy diagnostic reports; approval status still observes evidence/grants without grant locks, spending or authorization. None becomes part of the rejecting local-only runner test. |
+| Both configuration interviews (`orch_configure_step`, `orch_configure_local_step`; `addMCPInterviewTools`, `requireNoActiveDelivery`, `question.DecodeAnswers`, `DetectBound`, `interview.NextConfigure` / `NextConfigureLocalWithFacts`) | Yes for both: schema-2 AnswerSet/Document, read-only/open-world annotations, fixed-root detection/probe allowlist, active-Delivery refusal, configuration freshness/repair, native/legacy/bare profiles, proposals/completion/abort and no application or approval remain unchanged. Their existing stdio exercise stays registered. |
+| Existing preview (`orch_eval_preview`, `addEvalPreviewTool`, `evalplan.PreviewRepository`) | Yes: strict relative `plan_file`, explicit storage opt-in, guarded identities/confinement, read-only Git allowlist, non-read-only/idempotent annotations and exact bounded immutable preparation publication remain. No execution/approval authority is added; preview stays outside local-only success/no-write calls. |
+| Existing MCP gate (`orch_plan_gate`, `addPlanGateTool`, `mcpPlanGateSchema`, `mcpPlanGateExercise`, `TestMCPPlanGateMemhubParity`) | Yes: strict plan envelope/decoder, complete typed schema-3 GateDoc, effective digest, routing/contributed criteria, Assist/no-lock precondition and mode-dependent memhub behavior remain unchanged. Conservative non-read-only/non-idempotent/open-world annotations and separate explicit human approval hold. Validation shares the envelope shape, not this gate's digest, probes or authority; discovery keeps the gate-only output-schema assertion. |
+| Reused plan types/parser/validator (`PlanDoc`, `PlanIssue`, `PlanFacts`, `PlanDowngrade`, `PlanSchemaVersion`, `run.DecodePlan`, `PlanDoc.Validate`) | Yes; implementations, wire shapes, unknown-field rejection and all validation rules are unchanged. The strict decoder is shared, not reconstructed in MCP. Its unknown-field restriction covers every nested plan struct, not only `PlanDoc`. MCP adds an object-envelope requirement; it does not strengthen or weaken other callers' input contracts. |
+| Reused configuration (`config.Load`, `Config.ConfigRevision`, defaults/local overlay validation and model denylist inputs) | Yes; implementations and revision semantics are unchanged. Each validation request reloads the same effective configuration; it does not cache, write, hash or attest it. |
+| MCP tests (`mcp_test.go`: `TestMCPStdio`, `mcpDiscover`, `TestMCPLocalToolsNeverRunExternalCommands`; new `mcp_plan_validation_test.go`: `mcpPlanValidationExercise`, `mcpPlanValidationChecks`, `mcpPlanValidationParity`, `mcpPlanValidationRawStdio`) | Yes; all fourteen prior tool exercises, schemas, annotations, probe allowances, no-write/no-command, binding and shutdown checks remain. Discovery now requires exactly fifteen unique tools and adds validation's plan-envelope schema while retaining the gate's typed output/conservative annotations, interviews' probes, approval observation and preview persistence checks. New tests compare the full decoded plan/error and prove invalid graphs/nested fields, freshness, no authority and no side effects. |
+| Reused test infrastructure (`mcpConnect`, `mcpProcess`, `mcpCall`, `mcpTree`, `mcpDecoded`, `mcpWrite`, `writeConfigOnly`, `minimalPlanJSON`, existing feature exercises and scripted probe executables) | Yes; implementations are unchanged. Real stdio keeps protocol-only stdout, empty-PATH local checks and clean shutdown; snapshots still compare names/kinds/modes/regular-file mtimes/bytes, including failures. Synthetic fixture state writes are test setup, not validation behavior; no live GitHub, host or memhub database is used. |
+| Source guide (`docs/mcp-status.md`: tool table, validation section and this audit) | Yes; source-only setup, prior checkpoint, existing tool/CLI contracts and separate installation/approval boundaries remain. The removed no-plan-validation discovery limit is recorded above rather than silently deleted. |
+| Plan gate/activation (`run.Plan`, `GateDoc`, effective contract/content digest, `PlanDoc.Digest`, `run.Activate`, approval verification), status/next/readiness/doctor/issue-context/evaluation engines including bounded preview, routing, lifecycle/state/locks/grants/sessions/metrics, CLI help/dispatch, persistent schemas, dependencies, host adapters/guards, installed binaries/releases and CI | Untouched. No digest/approval rule, useful CLI surface, probe contract or enforcement path is replaced. No installation, release, new dependency or dispatch authority is added. |
+
+Restrictions are class-scoped, not a special exemption for one named tool:
+unknown outer fields and root overrides are rejected by **all fifteen tools**;
+only validation and the gate accept the plan envelope. No-command/no-write
+validation joins the seven other local-only tools named above, not the
+external-probe tools. The no-approval/no-session/no-metrics/no-lifecycle/
+no-Git-or-GitHub-mutation restrictions hold for **every MCP tool**. Preview's
+bounded preparation writes and the gate's external memhub side effects remain
+the only separately documented exceptions to a blanket no-write claim.
