@@ -31,7 +31,7 @@ func addMCPResources(server *mcp.Server, root string) {
 		return func(ctx context.Context, method string, req mcp.Request) (mcp.Result, error) {
 			result, err := next(ctx, method, req)
 			var rpcErr *jsonrpc.Error
-			if method == "resources/read" && errors.As(err, &rpcErr) && rpcErr.Code == mcp.CodeResourceNotFound &&
+			if method == "resources/read" && errors.As(err, &rpcErr) && rpcErr.Code == jsonrpc.CodeInvalidParams &&
 				rpcErr.Message == "Resource not found" && !json.Valid(rpcErr.Data) {
 				// SDK v1.8.0 Go-quotes this URI into RawMessage. Control
 				// bytes can produce invalid JSON (\x00); keep its error

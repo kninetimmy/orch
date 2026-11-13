@@ -27,8 +27,11 @@ func mcpDiscoverResources(t *testing.T, ctx context.Context, session *mcp.Client
 	t.Helper()
 	before := mcpTree(t, root)
 	caps := session.InitializeResult().Capabilities
+	if caps.Logging == nil { //nolint:staticcheck // SA1019: SDK v1.8.0 has no non-deprecated way to assert retained logging.
+		t.Fatal("resource increment removed existing logging capability")
+	}
 	if caps.Resources == nil || caps.Resources.Subscribe || caps.Resources.ListChanged || caps.Prompts != nil ||
-		caps.Logging == nil || caps.Tools == nil || !caps.Tools.ListChanged {
+		caps.Tools == nil || !caps.Tools.ListChanged {
 		t.Fatalf("resource increment changed unexpected capabilities: %+v", caps)
 	}
 	list, err := session.ListResources(ctx, nil)
@@ -166,7 +169,7 @@ func mcpResourceRejectURIs(t *testing.T, ctx context.Context, root string, sessi
 	for _, uri := range uris {
 		result, err := session.ReadResource(ctx, &mcp.ReadResourceParams{URI: uri})
 		var rpcErr *jsonrpc.Error
-		if result != nil || !errors.As(err, &rpcErr) || rpcErr.Code != mcp.CodeResourceNotFound || rpcErr.Message != "Resource not found" {
+		if result != nil || !errors.As(err, &rpcErr) || rpcErr.Code != jsonrpc.CodeInvalidParams || rpcErr.Message != "Resource not found" {
 			t.Fatalf("noncanonical URI %q: result=%+v err=%v", uri, result, err)
 		}
 		if !reflect.DeepEqual(mcpDecoded(t, rpcErr.Data), map[string]any{"uri": uri}) {

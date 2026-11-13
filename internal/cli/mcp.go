@@ -63,7 +63,7 @@ func runMCP(env Env, args []string) error {
 		// Keep the existing logging/tool capabilities, but do not infer
 		// resource list notifications or subscriptions from registration.
 		Capabilities: &mcp.ServerCapabilities{
-			Logging:   &mcp.LoggingCapabilities{},
+			Logging:   &mcp.LoggingCapabilities{}, //nolint:staticcheck // SA1019: SDK v1.8.0 requires this to retain logging with explicit resource capabilities.
 			Resources: &mcp.ResourceCapabilities{},
 		},
 	})
