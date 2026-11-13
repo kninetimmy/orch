@@ -431,7 +431,7 @@ commands:
   eval             Evaluation preview/run/status/stop/report (eval help for arguments)
   grant            Show the active autonomy grant; grant revoke ends it; grant relay hands it to a fresh Claude Code session; grant preview and grant create propose and record one (JSON stdin/stdout)
   render-agents    Render project agent definitions for every enabled host
-  mcp              Serve inspections, bounded evaluation preparation and plan decision gates over stdio (mcp [--repo <path>] [--eval-storage-root <absolute-local-path>])
+  mcp              Serve inspections, bounded evaluation preparation, plan decision gates and human-approved activation over stdio (mcp [--repo <path>] [--eval-storage-root <absolute-local-path>])
   run              Adapter plumbing: Delivery verbs (JSON stdin/stdout); inspection: status|next --json, readiness --issue <number> --json
   guard            Adapter plumbing: pre-write enforcement for host hooks (not a human command)
   hook             Adapter plumbing: host lifecycle-event verbs (not a human command)
@@ -494,6 +494,20 @@ idempotent. Human approval of that exact gate and separate activation are still
 required. Help now advertises the gate alongside inspections and preparation.
 Source tests do not upgrade the binary an MCP client launches; separately verify
 that binary's identity and discovered tools after an explicitly approved install.
+
+Before item 15, MCP help advertised inspections, bounded preparation and plan
+decision gates, with no lifecycle operation. After separately approved item 15,
+source exposes sixteen tools plus four read-only resources and one template.
+`orch_run_activate` alone submits an explicit human-approved schema-2 activation
+request to the existing engine. A call, validation or successful gate inspection
+is never approval; the human's statement, approver, timestamp and exact
+effective-contract digest must be supplied. Activation can mutate GitHub, Git,
+state/locks and existing audit/metrics records and is not automatically retried.
+Partial-failure recovery remains explicit; dispatch, merge, configuration
+application and evaluation execution retain separate authority. The preceding
+fifteen tool contracts and every resource's no-command/no-write contract hold.
+Grant-based activation remains excluded from MCP, not removed from the CLI.
+See the guide for the full approval handoff, mutations, recovery and blast radius.
 
 Previously `metrics` only accepted its read-only report form. That form still
 works; `metrics record` now accepts durable observation JSON. See the
