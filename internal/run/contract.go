@@ -10,7 +10,10 @@ import (
 
 // ContractVersion versions the meaning of approval independently of the
 // submitted PlanDoc. Bump it when execution policy changes incompatibly.
-const ContractVersion = 1
+// v2 binds integration-repair enforcement: v1 engines must refuse these runs
+// before a lifecycle save can discard repair receipts. Existing v1 runs remain
+// inspectable but require their original engine or fresh plan approval.
+const ContractVersion = 2
 
 // ExecutionConfig is the effective configuration approved for this run.
 // All six profiles are bound, including routes available to later escalation.

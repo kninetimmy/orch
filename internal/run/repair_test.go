@@ -530,52 +530,134 @@ func TestRepairRejectsUnhealthyArtifactsWithoutMutation(t *testing.T) {
 	}
 }
 
-func TestRepairReviewAuditFailureCannotRepin(t *testing.T) {
+func TestRepairApprovalContractRejectsOlderEngine(t *testing.T) {
 	root, _, head := repairRepo(t, true)
 	issue := loadRun(t, root).Run.Issues[0]
 	body := repairHistoryBody(t, issue, head)
 	if _, err := invokeRepair(t, root, requestBytes(t, repairRequest(t, root, head)), repairCalls(t, issue, head, body)...); err != nil {
 		t.Fatal(err)
 	}
-	review := ReviewRequest{SchemaVersion: ReviewSchemaVersion, IssueNumber: 1, RepairNumber: 1, ReviewedHeadOID: head,
-		Verdict: VerdictApprove, Summary: "new independent review at unchanged head", Reviewer: issue.Decision.Reviewer,
-		Judgments:     []CriterionJudgment{{Criterion: 1, Judgment: JudgmentSatisfied, Reason: "checked"}},
-		Verifications: []VerificationInput{{Name: "tests", Result: "pass"}}}
-	failure := ghSetPRBodyCall(10)
-	failure.Exit, failure.Stderr = 1, "controlled audit write failure"
-	script := &execxtest.Script{T: t, Calls: []execxtest.Call{ghAuth(), repairPRCall(t, issue, head, body),
-		repairIssueCall(t, body), ghSetIssueBodyCall(1), failure}}
-	if _, err := Review(t.Context(), Env{RepoRoot: root, Runner: script, Now: fixedNow}, requestBytes(t, review)); err == nil ||
-		!strings.Contains(err.Error(), failure.Stderr) {
-		t.Fatalf("missing partial-write error: %v", err)
+	before := stateBytes(t, root)
+	// Freeze the pre-repair engine's permissive decode and compatibility gate
+	// (93c01f7, contract.go). It ignores receipts, but must refuse execution
+	// before any lifecycle save can discard them.
+	var legacy struct {
+		SchemaVersion int `json:"schema_version"`
+		Run           struct {
+			Plan state.PlanRef `json:"plan"`
+		} `json:"run"`
+	}
+	if err := json.Unmarshal(before, &legacy); err != nil {
+		t.Fatal(err)
+	}
+	if legacy.SchemaVersion == 6 && legacy.Run.Plan.ContractVersion == 1 && legacy.Run.Plan.ExecutionDigest != "" {
+		t.Fatal("pre-repair engine accepts repaired authorization and can silently discard its receipts")
+	}
+	// The repair-aware engine accepts its own approved contract after reload.
+	script := &execxtest.Script{T: t}
+	env := ghEnv(root, script)
+	if _, err := loadVerb(env, 1, []state.Phase{state.PhaseInReview}, false); err != nil {
+		t.Fatal(err)
+	}
+	if string(before) != string(stateBytes(t, root)) {
+		t.Fatal("compatibility inspection changed repaired state")
 	}
 	script.AssertExhausted()
-	got := loadRun(t, root).Run.Issues[0]
-	if latestRepair(&got).VerifiedHeadOID != "" {
-		t.Fatal("failed audit write enabled repair verification")
+}
+
+func TestRepairReviewAuditFailureCannotRepin(t *testing.T) {
+	for _, priorReview := range []bool{false, true} {
+		for _, target := range []string{"issue", "PR"} {
+			t.Run(fmt.Sprintf("prior-review=%t/%s", priorReview, target), func(t *testing.T) {
+				root, _, head := repairRepo(t, true)
+				issue := loadRun(t, root).Run.Issues[0]
+				body := repairHistoryBody(t, issue, head)
+				if _, err := invokeRepair(t, root, requestBytes(t, repairRequest(t, root, head)), repairCalls(t, issue, head, body)...); err != nil {
+					t.Fatal(err)
+				}
+				review := ReviewRequest{SchemaVersion: ReviewSchemaVersion, IssueNumber: 1, RepairNumber: 1, ReviewedHeadOID: head,
+					Verdict: VerdictApprove, Summary: "new independent review at unchanged head", Reviewer: issue.Decision.Reviewer,
+					Judgments:     []CriterionJudgment{{Criterion: 1, Judgment: JudgmentSatisfied, Reason: "checked"}},
+					Verifications: []VerificationInput{{Name: "tests", Result: "pass"}}}
+				if priorReview {
+					changes := review
+					changes.Verdict = VerdictRequestChanges
+					changes.Judgments = []CriterionJudgment{{Criterion: 1, Judgment: JudgmentUnsatisfied, Reason: "audit needs correction"}}
+					_, posted := runVerbScript(t, root, Review, string(requestBytes(t, changes)),
+						ghAuth(), repairPRCall(t, issue, head, body), repairIssueCall(t, body), ghSetIssueBodyCall(1), ghSetPRBodyCall(10),
+						ghSetStatusCall(1, ghops.StatusInProgress))
+					body = posted.StdinAt(3)
+					got := loadRun(t, root).Run.Issues[0]
+					if latestRepair(&got).VerifiedHeadOID != head {
+						t.Fatal("successful prior review did not verify unchanged head")
+					}
+					// Reuse legitimate same-head evidence. Only the new verdict's
+					// audit must complete; no new push or verification is needed.
+					review.Verifications = nil
+				}
+				prBody := body
+				calls := []execxtest.Call{ghAuth(), repairPRCall(t, issue, head, prBody),
+					repairIssueCall(t, body), ghSetIssueBodyCall(1)}
+				if target == "PR" {
+					calls = append(calls, ghSetPRBodyCall(10))
+				}
+				failure := &calls[len(calls)-1]
+				failure.Exit, failure.Stderr = 1, "controlled "+target+" audit write failure"
+				script := &execxtest.Script{T: t, Calls: calls}
+				if _, err := Review(t.Context(), ghEnv(root, script), requestBytes(t, review)); err == nil ||
+					!strings.Contains(err.Error(), failure.Stderr) {
+					t.Fatalf("missing partial-write error: %v", err)
+				}
+				script.AssertExhausted()
+				got := loadRun(t, root).Run.Issues[0]
+				wantCycles := issue.ReviewCycles + 1
+				if priorReview {
+					wantCycles++
+				}
+				if got.LastReviewVerdict != VerdictApprove || got.ReviewCycles != wantCycles ||
+					latestRepair(&got).VerifiedHeadOID != "" {
+					t.Fatalf("failed audit write retained usable verification or lost cycle history: %+v", got)
+				}
+				if target == "PR" {
+					body = script.StdinAt(3) // Only the issue write succeeded.
+				}
+				before := stateBytes(t, root)
+				doc, resumed := resumeMux(t, root, ResumeRequest{}, ghAuth(), repairIssueCall(t, body),
+					repairPRCall(t, issue, head, prBody), ghRollupEmptyCall(10))
+				resumed.AssertExhausted()
+				if doc.Issues[0].PhaseAfter != state.PhaseInReview || string(before) != string(stateBytes(t, root)) {
+					t.Fatal("restart restored an incomplete approving review")
+				}
+				deniedRepairVerb(t, root, MergeReport, []byte(`{"schema_version":1,"issue_number":1}`))
+				// The invalidated receipt cannot serve as evidence for a retry.
+				review.Verifications = nil
+				deniedRepairVerb(t, root, Review, requestBytes(t, review), ghAuth(), repairPRCall(t, issue, head, prBody))
+				review.Verifications = []VerificationInput{{Name: "tests", Result: "pass"}}
+				_, posted := runVerbScript(t, root, Review, string(requestBytes(t, review)),
+					ghAuth(), repairPRCall(t, issue, head, prBody), repairIssueCall(t, body), ghSetIssueBodyCall(1), ghSetPRBodyCall(10))
+				if loadRun(t, root).Run.Issues[0].ReviewCycles != wantCycles+1 {
+					t.Fatal("retry reset review-cycle history")
+				}
+				report := runVerb(t, root, MergeReport, `{"schema_version":1,"issue_number":1}`, ghAuth(),
+					repairPRCall(t, issue, head, posted.StdinAt(3)), ghRollupEmptyCall(10), ghSetStatusCall(1, ghops.StatusNeedsHuman))
+				if report.HeadOID != head || report.RepairNumber != 1 {
+					t.Fatal("same-head report lost repair pin")
+				}
+				old := MergeRequest{SchemaVersion: 1, IssueNumber: 1, Approval: MergeApproval{PRNumber: 10, HeadOID: head,
+					ApprovedBy: "human", ApprovedAt: fixedNow(), Statement: MergeApprovalStatement}}
+				deniedRepairVerb(t, root, Merge, requestBytes(t, old))
+				// A replay of the original repair request cannot authorize this new gate.
+				stale := repairRequest(t, root, head)
+				stale.RepairNumber = 1
+				deniedRepairVerb(t, root, Repair, requestBytes(t, stale))
+				old.Approval.RepairNumber, old.Approval.ApprovedAt = 1, fixedNow().Add(time.Minute)
+				runVerb(t, root, Merge, string(requestBytes(t, old)), ghAuth(), repairPRCall(t, issue, head, posted.StdinAt(3)),
+					ghRollupEmptyCall(10), ghMergePRCall(10, head), ghPRViewCall(10, "MERGED", head),
+					ghSetStatusCall(1, ghops.StatusDelivered), repairIssueCall(t, posted.StdinAt(3)), ghCloseIssueCall(1), ghSetIssueBodyCall(1))
+				wantPhase(t, root, 1, state.PhaseMerged)
+			})
+		}
 	}
-	deniedRepairVerb(t, root, MergeReport, []byte(`{"schema_version":1,"issue_number":1}`))
-	// Same-head recovery still needs a new review acknowledgement, evidence,
-	// report and approval; old timestamps cannot be rescued by an identical OID.
-	_, posted := runVerbScript(t, root, Review, string(requestBytes(t, review)),
-		ghAuth(), repairPRCall(t, issue, head, body), repairIssueCall(t, script.StdinAt(3)), ghSetIssueBodyCall(1), ghSetPRBodyCall(10))
-	report := runVerb(t, root, MergeReport, `{"schema_version":1,"issue_number":1}`, ghAuth(),
-		repairPRCall(t, issue, head, posted.StdinAt(3)), ghRollupEmptyCall(10), ghSetStatusCall(1, ghops.StatusNeedsHuman))
-	if report.HeadOID != head {
-		t.Fatal("same-head report lost pin")
-	}
-	old := MergeRequest{SchemaVersion: 1, IssueNumber: 1, Approval: MergeApproval{PRNumber: 10, HeadOID: head,
-		ApprovedBy: "human", ApprovedAt: fixedNow(), Statement: MergeApprovalStatement}}
-	deniedRepairVerb(t, root, Merge, requestBytes(t, old))
-	// A replay of the original repair request cannot authorize this new gate.
-	stale := repairRequest(t, root, head)
-	stale.RepairNumber = 1
-	deniedRepairVerb(t, root, Repair, requestBytes(t, stale))
-	old.Approval.RepairNumber, old.Approval.ApprovedAt = 1, fixedNow().Add(time.Minute)
-	runVerb(t, root, Merge, string(requestBytes(t, old)), ghAuth(), repairPRCall(t, issue, head, posted.StdinAt(3)),
-		ghRollupEmptyCall(10), ghMergePRCall(10, head), ghPRViewCall(10, "MERGED", head),
-		ghSetStatusCall(1, ghops.StatusDelivered), repairIssueCall(t, posted.StdinAt(3)), ghCloseIssueCall(1), ghSetIssueBodyCall(1))
-	wantPhase(t, root, 1, state.PhaseMerged)
 }
 
 func TestRepairPrePRRejectsOrphanAndMissingImplementation(t *testing.T) {

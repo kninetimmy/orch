@@ -229,6 +229,11 @@ func Review(ctx context.Context, env Env, reqJSON []byte) (*ReviewResult, error)
 		}
 	}
 
+	if repair := latestRepair(issue); repair != nil {
+		// Invalidate even same-head evidence before saving a new verdict:
+		// either audit write can fail after a previously verified review.
+		repair.VerifiedHeadOID = ""
+	}
 	issue.ReviewCycles++
 	issue.LastReviewVerdict = req.Verdict
 	issue.Phase = state.PhaseInReview

@@ -194,7 +194,8 @@ type Issue struct {
 	Blocks            []Block   `json:"blocks,omitempty"`
 	// Repairs are explicit integration authorizations, not plan approvals.
 	// This optional v6 history is populated only by repair, never by migration
-	// or resume. Ordinary runs retain their existing persistence contract.
+	// or resume. Approval contract v2 fences out receipt-unaware lifecycle
+	// engines; ordinary runs retain their existing persistence shape.
 	Repairs []IntegrationRepair `json:"repairs,omitempty"`
 }
 

@@ -92,7 +92,7 @@ After success:
    An earlier review request without that repair acknowledgement is rejected.
 4. Resume normal required-CI inspection, `merge-report`, and the separate merge
    approval. The new report must pin the verified/reviewed live head. A repaired
-   issue's merge approval must acknowledge the report's latest
+   issue's merge approval must copy the report's top-level `repair_number` to
    `approval.repair_number` and have `approved_at` strictly later than
    the repair receipt's `at`, even if the head is unchanged. Earlier approvals
    cannot be replayed against the renewed gate. Existing grant checks remain
@@ -103,11 +103,23 @@ using existing atomic state persistence. Optional `repairs` entries retain the
 actor, reason, original phase/head, timestamp and pre-repair review-cycle count
 in state v6; they are created only by an explicit repair, never inferred or
 migrated from an older run. Status/issue context expose this history. Block
-resolutions, attempts, routing and review counts remain intact. Repaired review
-verification is persisted only after both audit-body writes succeed, so a partial
-write cannot enable a new report. Resume/restart does not restore the old pin.
-Use an engine supporting repair to continue a repaired run; older engines do not
-implement these additional repair-specific verification/approval preflights.
+resolutions, attempts, routing and review counts remain intact. Before the audit
+fix, a prior successful review's same-head verification receipt could survive a
+later review's failed audit write. Now each repaired review invalidates that
+receipt before saving its new verdict and restores it only after both audit-body
+writes succeed, so a partial write cannot enable a new report. Retrying after
+such a failure requires verification evidence again. Resume/restart does not
+restore the old pin or incomplete review's receipt.
+
+Before approval contract v2, optional v6 receipts could be ignored and discarded
+by a receipt-unaware lifecycle engine. New approvals now bind contract v2 in both
+the approved contract and execution fingerprint: the existing compatibility gate
+rejects these runs in contract-v1 engines before any lifecycle save. Conversely,
+the v2 engine can inspect but cannot execute existing contract-v1 runs. Finish
+those with their original engine, or abort and re-plan for fresh approval; no
+active run is migrated. State remains v6. Older engines do not implement the
+additional repair-specific verification/approval preflights and cannot continue
+newly approved v2 runs.
 Unrepaired review schema 3, merge schema 1 and report schema 1 retain their wire
 contracts. Repair acknowledgements are optional extensions for ordinary runs,
 but mandatory after explicit repair: an older client dropping the new field
@@ -151,14 +163,15 @@ driver, controller, dependency, model routing or host-isolation feature.
 | Element and consumers | Existing behavior retained / explicit change |
 | --- | --- |
 | `Repair`, `RepairRequest`, `RepairResult` | New schema 1 CLI engine transition only for recovered `worktree-ready` and pinned `awaiting-merge`. Exact authorization plus existing policy/artifact checks precede one atomic save. No autonomous action or git/GitHub mutation is introduced. |
-| `state.Issue.Repairs`, `IntegrationRepair`, state validation | Optional v6 issue-local receipts add repair provenance and a post-repair verified head. No schema migration or new phase is added; existing block/resolution, attempt, routing and review-count histories are retained. Invalid receipt identity, phase, OIDs, actor/reason, timestamp and counts fail closed through **every** `Load`/`Save` consumer, not only repair. Existing v4/v5 inspection/execution restrictions remain. |
-| `loadVerb`, `checkApprovedWork`, `checkDependencies`, configuration/contract checks | Reused unchanged, including lock ownership, stopped-run/config-drift refusals and dependency abandonment returning to the plan gate. Repair does not exempt these checks. Session attribution and opt-in `recordMetric` retain existing behavior; enabled metrics add a `repair` event, disabled metrics stay disabled. |
+| `state.Issue.Repairs`, `IntegrationRepair`, state validation | Optional v6 issue-local receipts add repair provenance and a post-repair verified head. No schema migration or new phase is added; existing block/resolution, attempt, routing and review-count histories are retained. Invalid receipt identity, phase, OIDs, actor/reason, timestamp and counts fail closed through **every** repair-aware `Load`/`Save` consumer, not only repair. Existing v4/v5 inspection/execution restrictions remain. |
+| `ContractVersion`, `ExecutionConfig`, approval/activation and compatibility gates | Before contract v2, older lifecycle engines could accept runs while discarding optional repair receipts. New approvals and execution fingerprints bind v2; existing `checkExecutionConfig` rejects v2 in v1 engines and v1 in v2 engines before lifecycle writes. This restriction covers **every** lifecycle verb, resume and next/readiness preflight, not only repair. Status/issue-context inspection remains available; explicit abort retains its reset behavior. Existing runs are not migrated: use their original engine or abort/re-plan. |
+| `loadVerb`, `checkApprovedWork`, `checkDependencies`, configuration checks | Reused unchanged, including lock ownership, stopped-run/config-drift refusals and dependency abandonment returning to the plan gate, with the versioned compatibility fence above. Repair does not exempt these checks. Session attribution and opt-in `recordMetric` retain existing behavior; enabled metrics add a `repair` event, disabled metrics stay disabled. |
 | `Dispatch`, `dispatchResult` | Ordinary dispatch retains its fetch, ff-only, dependency, status and phase behavior. Its existing schema-4 execution brief is factored for reuse, not re-routed or reinterpreted. Repair returns that brief without spawning. |
 | `gitops.FastForwardIn`, `FastForward`, worktree/git/path helpers | Runtime mechanics are unchanged; the historical pre-dispatch assumption is qualified in `branch.go`. Divergence refusal applies to **every ff-only operation**, not only `FastForwardIn`. Repair reuses read-only git/worktree/common-directory checks and canonical containment; no history rewrite or artifact creation/removal helper changes. |
 | `Resume`, `rederive`, `reconcileAwaitingMerge` | Reconciliation and conservative immutable phases remain unchanged. Reasons now identify the separate repair path for both historical traps; the before/after above records removal of “re-dispatch/head movement is the only continuation,” not removal of decision or fast-forward gates. |
-| `Review`, `ReviewRequest` | Existing schema 3, routed reviewer, stable-head, judgment coverage and cycle accumulation remain. Optional `repair_number` is required only after repair; fresh verification is required for each newly reviewed repaired head. A pre-repair request cannot authorize repair review. Verified-head persistence follows successful issue/PR audit writes. Ordinary unrepaired reviews retain their behavior. |
+| `Review`, `ReviewRequest` | Existing schema 3, routed reviewer, stable-head, judgment coverage and cycle accumulation remain. Optional `repair_number` is required only after repair; fresh verification is required for each newly reviewed repaired head. A pre-repair request cannot authorize repair review. Every new repaired verdict invalidates the previous receipt before its first save; only successful issue **and** PR audit writes restore verification, including on the same head. An incomplete attempt retains its cycle count but cannot authorize progression; retry needs evidence again. Ordinary unrepaired reviews retain their behavior. |
 | `MergeReport`, `Merge`, `MergeApproval`, `checkRepairReview` | Existing open-PR/CI, pin, human/grant and exact-head gates remain. Repaired issues additionally need the post-repair reviewed/verified live head, the latest repair number in report/approval, and a merge approval timestamp after authorization. This applies to both accepted merge-approval kinds, not only `approve-merge`; no grant is created or enlarged. |
 | `Next` / `nextIssue`, `Readiness`, issue context and MCP read-only consumers | Next keeps its local-only/read-only policy and gains actionable repair prerequisites. Readiness shares the repair-review preflight and cannot report stale repair evidence current. Issue context/status expose optional receipts via existing state projections; no inspection invokes repair or satisfies an approval. Existing wire versions and MCP tool/resource counts stay unchanged. |
 | CLI `runVerbs`, `runUsage`, `commands` | Adds `repair` to JSON plumbing and recovery help. It uses the same full-command mutation serializer as **every mutating run verb**, resume, abort and metrics record; the restriction is not Dispatch-specific. No adapter packaging, instruction, installed-host configuration or model selection changes. |
 | Guard and remaining lifecycle | Guard code is unchanged: **only** `dispatched`, `pr-open`, `in-review` permit contained branch-matched writes. Every other phase stays non-writable until a supported engine transition; this is a phase-class rule, not a special exception for one verb or host. PR opening, escalation, decision resolution, abandonment, cleanup, abort and completion keep existing gates. |
-| Regression tests | Isolated persisted lifecycle tests use real divergent/conflicting git histories and scripted GitHub responses, proving original-work preservation, containment, restart, stale-request/review/merge denial, renewed verification/review/CI/report/approval, partial-audit safety and no state mutation on invalid repair. They create no production GitHub artifacts or model sessions. |
+| Regression tests | Isolated persisted lifecycle tests use real divergent/conflicting git histories and scripted GitHub responses, proving original-work preservation, containment, restart, stale-request/review/merge denial, renewed verification/review/CI/report/approval and no state mutation on invalid repair. Compatibility tests freeze the contract-v1 gate, reject unmigrated v1 execution and retain historical v1 no-fixes digests separately from intentionally changed v2 approvals. Partial-audit tests cover both body writes on the first and a subsequent same-head review, restart and evidence-bearing retry. They create no production GitHub artifacts or model sessions. |
