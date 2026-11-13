@@ -2,6 +2,7 @@
 // lifecycle verbs (PRD §12 steps 8-22), each in its own file:
 //
 //	dispatch         worktree-ready → dispatched
+//	repair           recovered worktree-ready/awaiting-merge → dispatched/in-review
 //	pr-open          dispatched     → pr-open
 //	review-worktree  pr-open/in-review → same (git only, no state write)
 //	review           pr-open/in-review → in-review (blocked on a criterion judged wrong)

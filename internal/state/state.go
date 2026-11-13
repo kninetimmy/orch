@@ -11,6 +11,8 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"regexp"
+	"strings"
 	"time"
 
 	"github.com/kninetimmy/orch/internal/manifest"
@@ -190,7 +192,27 @@ type Issue struct {
 	BlockedReason     string    `json:"blocked_reason,omitempty"`
 	Attempts          []Attempt `json:"attempts,omitempty"`
 	Blocks            []Block   `json:"blocks,omitempty"`
+	// Repairs are explicit integration authorizations, not plan approvals.
+	// This optional v6 history is populated only by repair, never by migration
+	// or resume. Ordinary runs retain their existing persistence contract.
+	Repairs []IntegrationRepair `json:"repairs,omitempty"`
 }
+
+// IntegrationRepair binds one authorization to the issue's immutable phase and
+// head. ReviewCycles is the count before repair, not a reset of review history.
+// VerifiedHeadOID is set only by a subsequent review carrying fresh evidence.
+type IntegrationRepair struct {
+	Number          int    `json:"number"`
+	PhaseBefore     Phase  `json:"phase_before"`
+	HeadOID         string `json:"head_oid"`
+	AuthorizedBy    string `json:"authorized_by"`
+	Reason          string `json:"reason"`
+	At              string `json:"at"`
+	ReviewCycles    int    `json:"review_cycles"`
+	VerifiedHeadOID string `json:"verified_head_oid,omitempty"`
+}
+
+var fullOID = regexp.MustCompile(`^[0-9a-fA-F]{40}$|^[0-9a-fA-F]{64}$`)
 
 // Block retains each block's identity, cause and original reason, including
 // after resolution. IDs are one-based positions within this issue's history.
@@ -327,6 +349,19 @@ func (st *State) validate() error {
 // can be abandoned before its PR ever opened.
 func (r *Run) validateIssues() error {
 	for i, iss := range r.Issues {
+		for j, repair := range iss.Repairs {
+			if repair.Number != j+1 || (repair.PhaseBefore != PhaseWorktreeReady && repair.PhaseBefore != PhaseAwaitingMerge) ||
+				!fullOID.MatchString(repair.HeadOID) || strings.TrimSpace(repair.AuthorizedBy) == "" || strings.TrimSpace(repair.Reason) == "" ||
+				repair.ReviewCycles < 0 || repair.ReviewCycles > iss.ReviewCycles {
+				return fmt.Errorf("issue %d: invalid integration repair authorization", iss.Number)
+			}
+			if _, err := time.Parse(time.RFC3339, repair.At); err != nil {
+				return fmt.Errorf("issue %d: invalid integration repair timestamp", iss.Number)
+			}
+			if repair.VerifiedHeadOID != "" && (!fullOID.MatchString(repair.VerifiedHeadOID) || iss.ReviewCycles <= repair.ReviewCycles) {
+				return fmt.Errorf("issue %d: invalid integration repair verification", iss.Number)
+			}
+		}
 		for j, b := range iss.Blocks {
 			if b.ID != j+1 || b.Reason == "" {
 				return fmt.Errorf("issue %d: invalid block identity or reason", iss.Number)

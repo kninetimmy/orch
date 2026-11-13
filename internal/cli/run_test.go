@@ -81,6 +81,18 @@ func TestRunVerbUsageErrors(t *testing.T) {
 	}
 }
 
+func TestRepairHelpIsActionable(t *testing.T) {
+	env, stdout, stderr := testEnv(t)
+	if code := Run([]string{"help"}, env); code != ExitOK || !strings.Contains(stdout.String(), "explicit integration repair") {
+		t.Fatalf("help exit=%d stdout=%s stderr=%s", code, stdout.String(), stderr.String())
+	}
+	stdout.Reset()
+	if code := Run([]string{"run"}, env); code != ExitUsage || !strings.Contains(stderr.String(), "repair: explicit scoped integration authorization") ||
+		!strings.Contains(stderr.String(), "docs/decision-block-recovery.md") {
+		t.Fatalf("run usage exit=%d stdout=%s stderr=%s", code, stdout.String(), stderr.String())
+	}
+}
+
 func TestRunPlanEndToEnd(t *testing.T) {
 	env, stdout, stderr := testEnv(t)
 	writeConfig(t, env.RepoRoot, validTOML)
@@ -368,6 +380,7 @@ func TestConcurrentDispatchesPreserveBothStateAndMetrics(t *testing.T) {
 func TestRunLifecycleVerbsAreRouted(t *testing.T) {
 	verbs := map[string]string{
 		"dispatch":        `{"schema_version":4,"issue_number":1}`,
+		"repair":          `{"schema_version":1,"run_id":"r","issue_number":1,"repair_number":1,"expected_phase":"awaiting-merge","expected_head_oid":"0123456789abcdef0123456789abcdef01234567","authorized_by":"human","reason":"integrate base","statement":"authorize-integration-repair-without-scope-change"}`,
 		"pr-open":         `{"schema_version":1,"issue_number":1,"verifications":[{"name":"t","result":"pass"}]}`,
 		"review-worktree": `{"schema_version":1,"issue_number":1,"head_oid":"0123456789abcdef0123456789abcdef01234567"}`,
 		"review":          `{"schema_version":3,"issue_number":1,"reviewed_head_oid":"h","verdict":"approve","summary":"s","reviewer":{"model":"m","effort":"e"},"judgments":[{"criterion":1,"judgment":"satisfied","reason":"r"}]}`,

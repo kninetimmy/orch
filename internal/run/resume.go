@@ -442,8 +442,12 @@ func reconcileIssue(iss state.Issue, obs issueObservations) outcome {
 // reconciles against that phase, and
 // — when the result is not itself blocked — applies it with BlockedReason
 // cleared. A dispatched-keep hypothesis drops to worktree-ready, the
-// deliberate lower bound (re-running dispatch is proven safe and restores
-// the staleness-closing fast-forward before pr-open).
+// deliberate lower bound. Before repair the justification was "re-running
+// dispatch is proven safe and restores the staleness-closing fast-forward before
+// pr-open." That holds for initial work, not recovered divergent commits: ff-only
+// re-dispatch stranded those. Dispatch still refuses divergence; explicit
+// `orch run repair` now authorizes integration without moving HEAD or weakening
+// the guard.
 func rederive(iss state.Issue, obs issueObservations) outcome {
 	hyp := derivedPhase(iss)
 	syn := iss
@@ -451,7 +455,7 @@ func rederive(iss state.Issue, obs issueObservations) outcome {
 	core := reconcileCore(syn, obs)
 	if hyp == state.PhaseDispatched && core.action == ActionKept {
 		core.phase = state.PhaseWorktreeReady
-		core.reason = "worktree-ready; no PR found — re-run `orch run dispatch` to continue"
+		core.reason = "worktree-ready; no PR found — re-run `orch run dispatch` to continue; if preserved commits diverge, request explicit `orch run repair` authorization (docs/decision-block-recovery.md)"
 	}
 	if core.action == ActionBlocked {
 		// Stays blocked, but with a freshly derived reason.
@@ -655,12 +659,15 @@ func reconcileAwaitingMerge(iss state.Issue, obs issueObservations) outcome {
 			return blockOut(fmt.Sprintf("issue #%d was closed outside orch before its PR #%d merged", iss.Number, pr.Number))
 		}
 		if pr.HeadRefOid == iss.ApprovedHeadOID {
-			// Row 22.
-			return outcome{action: ActionKept, phase: state.PhaseAwaitingMerge, reason: fmt.Sprintf("kept; PR #%d open at the approved head", pr.Number)}
+			// Row 22 remains read-only reconciliation, not authorization to
+			// edit a pinned head. Repair is the explicit backwards transition.
+			return outcome{action: ActionKept, phase: state.PhaseAwaitingMerge, reason: fmt.Sprintf("kept; PR #%d open at the approved head; integration needed without a head change requires explicit `orch run repair` authorization", pr.Number)}
 		}
 		// Row 23: the head moved after approval. Demote to in-review,
-		// clearing the approval and the stale verdict — the one deliberate
-		// backwards move (blocked would be a permanent trap, and a stale
+		// clearing the approval and the stale verdict — historically the one
+		// deliberate backwards move, and still resume's only one. Explicit
+		// repair now separately authorizes an unchanged pinned head's return
+		// to review (blocked would be a permanent trap, and a stale
 		// approve verdict is the dangerous option: merge-report pins the
 		// live head from it).
 		return outcome{

@@ -39,6 +39,7 @@ type MergeReportResult struct {
 	ReviewCycles   int           `json:"review_cycles"`
 	ConfigRevision string        `json:"config_revision"`
 	NoCIStatement  string        `json:"no_ci_statement,omitempty"`
+	RepairNumber   int           `json:"repair_number,omitempty"`
 }
 
 // MergeReport moves an approved, mergeable issue to awaiting-merge and
@@ -75,6 +76,9 @@ func MergeReport(ctx context.Context, env Env, reqJSON []byte) (*MergeReportResu
 	}
 	if pr.State != "OPEN" {
 		return nil, fmt.Errorf("PR #%d is %s, not OPEN; cannot report it ready to merge", pr.Number, pr.State)
+	}
+	if err := checkRepairReview(issue, pr.HeadRefOid); err != nil {
+		return nil, err
 	}
 	summary, err := gh.RequiredCI(ctx, issue.PRNumber)
 	if err != nil {
@@ -120,6 +124,9 @@ func mergeReportResult(issue *state.Issue, pr ghops.PR, summary ghops.CISummary,
 	if summary.State == ghops.CINoChecks {
 		result.NoCIStatement = "no required CI checks gate this merge (PRD §16)"
 	}
+	if repair := latestRepair(issue); repair != nil {
+		result.RepairNumber = repair.Number
+	}
 	return result
 }
 
@@ -128,6 +135,9 @@ func mergeReportResult(issue *state.Issue, pr ghops.PR, summary ghops.CISummary,
 func checkApprovingReview(issue *state.Issue) error {
 	if issue.LastReviewVerdict != VerdictApprove {
 		return fmt.Errorf("issue #%d has no approving review (last verdict %q); cannot report it ready to merge", issue.Number, issue.LastReviewVerdict)
+	}
+	if repair := latestRepair(issue); repair != nil {
+		return checkRepairReview(issue, repair.VerifiedHeadOID)
 	}
 	return nil
 }
