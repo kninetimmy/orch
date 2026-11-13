@@ -276,6 +276,9 @@ func TestMCPStdio(t *testing.T) {
 	t.Run("approval evidence", func(t *testing.T) {
 		mcpApprovalExercise(t, binary)
 	})
+	t.Run("plan validation", func(t *testing.T) {
+		mcpPlanValidationExercise(t, binary)
+	})
 
 	t.Run("repository binding", func(t *testing.T) {
 		root := t.TempDir()
@@ -403,7 +406,7 @@ func mcpDiscover(t *testing.T, ctx context.Context, session *mcp.ClientSession, 
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(list.Tools) != 14 || list.NextCursor != "" {
+	if len(list.Tools) != 15 || list.NextCursor != "" {
 		t.Fatalf("tool discovery = %+v", list)
 	}
 	want := mcpDecoded(t, []byte(`{"type":"object","properties":{},"additionalProperties":false}`))
@@ -418,7 +421,8 @@ func mcpDiscover(t *testing.T, ctx context.Context, session *mcp.ClientSession, 
 		interview := tool.Name == "orch_configure_step" || tool.Name == "orch_configure_local_step"
 		planGate := tool.Name == "orch_plan_gate"
 		approval := tool.Name == "orch_approval_status"
-		if (tool.Name != "orch_run_status" && tool.Name != "orch_run_next" && tool.Name != "orch_config_effective" && !readiness && !doctor && !metrics && !evaluation && !preview && !issueContext && !interview && !planGate && !approval) || seen[tool.Name] || tool.Annotations == nil || tool.Annotations.ReadOnlyHint == (preview || planGate) || tool.Annotations.OpenWorldHint == nil || *tool.Annotations.OpenWorldHint != (readiness || doctor || interview || planGate || approval) {
+		validation := tool.Name == "orch_plan_validate"
+		if (tool.Name != "orch_run_status" && tool.Name != "orch_run_next" && tool.Name != "orch_config_effective" && !readiness && !doctor && !metrics && !evaluation && !preview && !issueContext && !interview && !planGate && !approval && !validation) || seen[tool.Name] || tool.Annotations == nil || tool.Annotations.ReadOnlyHint == (preview || planGate) || tool.Annotations.OpenWorldHint == nil || *tool.Annotations.OpenWorldHint != (readiness || doctor || interview || planGate || approval) {
 			t.Fatalf("tool = %+v", tool)
 		}
 		if preview && (tool.Annotations.DestructiveHint == nil || *tool.Annotations.DestructiveHint || !tool.Annotations.IdempotentHint) {
@@ -444,6 +448,9 @@ func mcpDiscover(t *testing.T, ctx context.Context, session *mcp.ClientSession, 
 		if planGate {
 			wantSchema = mcpDecoded(t, []byte(`{"type":"object","properties":{"plan":{"type":"object"}},"required":["plan"],"additionalProperties":false}`))
 			mcpPlanGateSchema(t, tool)
+		}
+		if validation {
+			wantSchema = mcpDecoded(t, []byte(`{"type":"object","properties":{"plan":{"type":"object"}},"required":["plan"],"additionalProperties":false}`))
 		}
 		if !reflect.DeepEqual(tool.InputSchema, wantSchema) {
 			t.Fatalf("%s input schema = %#v, want %#v", tool.Name, tool.InputSchema, wantSchema)
@@ -586,10 +593,10 @@ func mcpDirectoryLink(t *testing.T, target, link string) {
 }
 
 // Before readiness every tool was local-only. This restriction still applies
-// to status/next/configuration/metrics/evaluation-status/context calls (including failures),
-// initialization and discovery. Preview adds only fixed Git reads; its and
-// readiness's/doctor's/interviews'/approval-status's external read allowlists
-// use real stdio clients.
+// to status/next/configuration/metrics/evaluation-status/context/validation calls
+// (including failures), initialization and discovery. Preview adds only fixed Git
+// reads; its and readiness's/doctor's/interviews'/approval-status's external read
+// allowlists use real stdio clients. The gate's memhub probes have separate parity tests.
 func TestMCPLocalToolsNeverRunExternalCommands(t *testing.T) {
 	env, _, stderr := testEnv(t)
 	writeConfig(t, env.RepoRoot, "invalid config is not loaded")
@@ -627,11 +634,14 @@ func TestMCPLocalToolsNeverRunExternalCommands(t *testing.T) {
 	if result := mcpCall(t, ctx, session, env.RepoRoot, "orch_config_effective", map[string]any{}); !result.IsError || result.StructuredContent != nil {
 		t.Fatalf("invalid configuration result = %+v", result)
 	}
+	mcpPlanValidationParity(t, ctx, env.RepoRoot, session, minimalPlanJSON, false)
 	for _, tool := range []string{"orch_metrics", "orch_metrics_report"} {
 		if result := mcpCall(t, ctx, session, env.RepoRoot, tool, map[string]any{}); !result.IsError {
 			t.Fatalf("invalid metrics configuration result = %+v", result)
 		}
 	}
+	mcpWrite(t, filepath.Join(env.RepoRoot, ".orchestrator", "config.toml"), []byte(strings.Replace(validTOML, `mode = "off"`, `mode = "required"`, 1)+"\n[metrics]\nenabled = true\n"))
+	mcpPlanValidationChecks(t, ctx, env.RepoRoot, session)
 	mcpWrite(t, filepath.Join(env.RepoRoot, ".orchestrator", "config.toml"), []byte(validTOML))
 	for _, tool := range []string{"orch_metrics", "orch_metrics_report"} {
 		if result := mcpCall(t, ctx, session, env.RepoRoot, tool, map[string]any{}); result.IsError {
@@ -670,6 +680,7 @@ func TestMCPLocalToolsNeverRunExternalCommands(t *testing.T) {
 	mcpCall(t, ctx, session, env.RepoRoot, "orch_run_next", map[string]any{})
 	mcpIssueContextError(t, ctx, env.RepoRoot, session, 1)
 	mcpConfigParity(t, ctx, env.RepoRoot, session)
+	mcpPlanValidationParity(t, ctx, env.RepoRoot, session, minimalPlanJSON, true)
 	before = mcpTree(t, env.RepoRoot)
 	if err := session.Close(); err != nil {
 		t.Fatal(err)
