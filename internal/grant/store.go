@@ -17,8 +17,9 @@ import (
 )
 
 // DirName is the directory under the git common directory holding one
-// <id>.json record per grant plus the lock file. Before ObserveActive, that
-// lock serialized every access; lifecycle access still locks, observation does not.
+// <id>.json record per grant plus the lock file. Before ObserveActive this was
+// described as "serializes every access"; lifecycle access still locks (except
+// missing-store fast paths), but observation does not.
 const DirName = "orch-grants"
 
 const lockName = "lock"

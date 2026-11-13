@@ -588,7 +588,8 @@ func mcpDirectoryLink(t *testing.T, target, link string) {
 // Before readiness every tool was local-only. This restriction still applies
 // to status/next/configuration/metrics/evaluation-status/context calls (including failures),
 // initialization and discovery. Preview adds only fixed Git reads; its and
-// readiness's/doctor's/interviews' external read allowlists use real stdio clients.
+// readiness's/doctor's/interviews'/approval-status's external read allowlists
+// use real stdio clients.
 func TestMCPLocalToolsNeverRunExternalCommands(t *testing.T) {
 	env, _, stderr := testEnv(t)
 	writeConfig(t, env.RepoRoot, "invalid config is not loaded")
