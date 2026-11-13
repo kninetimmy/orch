@@ -29,6 +29,11 @@ thirteen read-only inspections/interviews, adding in-memory plan validation, plu
 bounded preview and the separate effective-contract plan gate. All fourteen
 preceding contracts hold.
 
+**Before item 14:** the fifteen-tool source surface offered no reusable MCP
+resources. **After separately approved item 14:** all fifteen tools retain their
+contracts, alongside four fixed JSON resources and one issue-context template.
+This describes source, independently of any installed server's capabilities.
+
 ## Launch and repository binding
 
 Point an MCP client at an absolute path to your built binary with these arguments:
@@ -963,6 +968,96 @@ receipt). The same success/failure matrix runs under
 reject every command. These are source checks, not a claim about an installed
 server or full hosted CI coverage.
 
+## Reusable local context resources (item 14)
+
+Use MCP `resources/list` and `resources/templates/list` to discover this complete
+resource surface. Discovery is static: it reads no reports/configuration/history,
+enumerates no issues or files, and runs no probes or commands. Invalid report
+inputs on disk do not prevent connection or discovery.
+
+| Exact URI or template | Same report as | JSON schema |
+| --- | --- | --- |
+| `orch://run/status` | `orch_run_status` / `run.Status` | 4 |
+| `orch://run/next` | `orch_run_next` / `run.Next` | 1 |
+| `orch://config/effective` | `orch_config_effective` / shared `inspectEffectiveConfig` using `config.Load` | 1 |
+| `orch://metrics/history` | `orch_metrics` / `inspectMetrics` (per-run recorded summaries, not the cross-run rollup) | 1 |
+| `orch://run/issues/{issue_number}` | `orch_issue_context` / `run.IssueContext` | 1 |
+
+Read a fixed URI, or replace `{issue_number}` with its canonical positive decimal
+integer, for example `orch://run/issues/468`. Issue numbers must fit the existing
+Go `int` report argument. Zero, negatives, signs, leading zeros, whitespace,
+fractions, exponents, non-ASCII digits and overflow are rejected. The literal
+template is discovery metadata, not a readable URI.
+
+Only these exact, case-sensitive spellings are accepted. The original URI is
+checked without URI normalization, percent decoding or path cleaning. Extra
+authority/userinfo/ports, query strings (including an empty `?`), fragments
+(including an empty `#`), trailing/extra slashes, dot/traversal segments, encoded
+aliases, filesystem paths and every other URI are resource-not-found errors.
+URI components never select a checkout, store, file or command. All five resource
+paths use the same fixed launch-time repository binding as tools; none accepts a
+root override or exposes an arbitrary-file reader.
+
+Each successful `resources/read` returns exactly one content entry with the
+requested `uri`, `mimeType: "application/json"` and JSON `text`, equivalent to
+the corresponding tool's entire structured content and JSON text. It adds no
+resource-specific report envelope or alternate schema. Each read invokes the
+existing report source again, observing current files on the same connection,
+including uncommitted/local changes and recovery after failures. Status warnings,
+run-level blockers, missing work/routing, metrics unknown-versus-zero and all
+existing report limitations are preserved. Reads remain unlocked, non-atomic
+observations, not a Git HEAD attestation or reservation.
+SDK cache hints are private with zero TTL; no stale read cache is requested.
+
+Report failures preserve the shared source's error text, with no partial
+contents. MCP resources use JSON-RPC errors, not tool `isError` results; invalid
+or unsupported URIs use the SDK's `ResourceNotFoundError`. A valid positive issue
+URI with no active run or an unknown/ambiguous issue retains the issue report's
+error, not a fabricated report or a URI alias. Configuration/history failures
+do not prevent status inspection; corrupt state/locks do not prevent valid
+configuration or metrics inspection, just as with their tools.
+SDK v1.8.0 Go-quotes unknown URIs into raw error data; control bytes can make
+that data invalid JSON. A resource-only middleware re-encodes such invalid data
+as JSON, retaining the SDK error code/message and original URI. This preserves
+explicit rejection instead of losing the response; it changes no report error.
+
+The no-command/no-write restriction applies to **every resource**, not only
+`orch://run/status` or the issue template. Reads never invoke readiness/doctor
+probes, grant observation, validation/gates, configuration interviews, evaluation
+preview/preparation or any approval/lifecycle operation. They create no lock,
+session, metrics, approval or other artifact, even with metrics enabled and
+memhub required. All fifteen tool schemas, annotations and distinct command/write
+boundaries remain as documented above; resources do not make preview read-only
+or remove the gate's external memhub side-effect boundary.
+
+Resource subscriptions, resource-update/list-change notifications, reusable
+prompts and remote access remain later roadmap items, not this increment.
+Resources advertise neither subscription nor list-change capability; the SDK's
+legacy subscription methods remain errors. Its newer `subscriptions/listen`
+filters unsupported resource capabilities and can acknowledge an empty allowed
+set, not create a resource subscription. Existing logging and tool
+capabilities are retained, not redesigned. Transport is still local stdio only.
+This source contract neither installs/upgrades a server nor replaces native
+host hooks, guards, enforcement or agent integration. Resource reads and tool
+calls are never human approval.
+
+`TestMCPStdio/context_resources` exercises discovery with corrupt reports, complete
+shared/tool/resource JSON and error parity, same-connection state/lock,
+configuration/local-overlay, routing and recorded-history freshness, warnings,
+unknowns, strict URI rejection, unsupported subscriptions and recovery.
+It uses the existing temporary real binary, isolated fixtures and empty PATH.
+Snapshots retain names, kinds, modes, regular-file mtimes and bytes in both bound
+and launching repositories. `TestMCPLocalToolsNeverRunExternalCommands` also
+checks resource successes, failures and rejected URIs with a rejecting executable
+lookup/runner. Cumulative discovery still checks every one of the fifteen tools,
+including approval evidence, validation/gate, both interviews, context and bounded
+preview; their existing real-stdio exercises remain registered. No live host,
+GitHub artifact or memhub database is used by the resource tests.
+
+```sh
+go test ./internal/cli -run '^(TestMCPStdio|TestMCPLocalToolsNeverRunExternalCommands)$' -v -count=1
+```
+
 ## Reproducible smoke test and trial checkpoint
 
 From the source checkout, run:
@@ -1583,3 +1678,26 @@ external-probe tools. The no-approval/no-session/no-metrics/no-lifecycle/
 no-Git-or-GitHub-mutation restrictions hold for **every MCP tool**. Preview's
 bounded preparation writes and the gate's external memhub side effects remain
 the only separately documented exceptions to a blanket no-write claim.
+
+## Item 14 blast radius
+
+The former tools-only/no-resource limit is preserved as before/after in this
+document's overview. No report engine or useful CLI/tool behavior is removed.
+The URI restrictions below belong to **all five resource paths**, not every
+report-engine caller or the tools' distinct argument schemas.
+
+| Touched element | Does its previous behavior still hold? |
+| --- | --- |
+| MCP assembly (`mcp.go`: `runMCP`, `ServerOptions.Capabilities`, `addMCPResources` hook) | Yes for launch argv, canonical repository/storage binding, fifteen existing tools, protocol-only stdout, stderr diagnostics and clean disconnect. Before: tools only. After: SDK registration adds four resources and one template. Explicit resource capabilities suppress the SDK's inferred list-change flag; logging is retained explicitly and tool capability inference is unchanged. No prompt/subscription handler or remote transport is added. |
+| Effective configuration (`effectiveConfigDoc`, `inspectEffectiveConfig`; `orch_config_effective` handler, `config.Load`, `Config`) | Yes. The anonymous schema-1 wrapper is extracted into a shared named type/function with identical JSON fields and loader errors. The tool keeps its strict explicit-empty-object check, schema/annotations and fresh command-free/no-write behavior. Both access paths use this wrapper; defaults, local overlays, revisions and approved-configuration limits are unchanged. |
+| New resource registration/dispatch (`mcp_resources.go`: `addMCPResources`, its shared handler, four `Resource` records and `ResourceTemplate`) | Additive only. Registration is static; raw fixed-URI switching and canonical positive-int parsing precede report reads. No normalization/decoded aliases, arbitrary-file API, alternate root, cache, tool invocation or policy engine is introduced. All five resources return one JSON content entry with private/zero-TTL hints or an explicit error without writes/commands. |
+| SDK facilities (`Server.AddResource`, `AddResourceTemplate`, resource/template discovery and matching, `ReadResourceRequest`/`ReadResourceResult`/`ResourceContents`, `ResourceNotFoundError`, `AddReceivingMiddleware`, `jsonrpc.Error`, `json.Marshal`/`json.Valid`) | Dependency and implementations unchanged. Existing SDK exact-resource/template lookup is reused; the handler independently validates the original issue URI rather than trusting template matching/decoded variables. Before: SDK Go-quoted control-byte error data could be invalid JSON and lose the response. After: resource-only middleware JSON-encodes only that invalid resource-not-found data, preserving code/message/URI. Other resource/tool errors are unchanged; no file-resource helper is registered. |
+| Shared reports (`run.Status`, `StatusDoc`, `RunView`; `run.Next`, `NextDoc`; `run.IssueContext`, `IssueContextDoc`; `inspectMetrics`, `metricsHistoryDoc`, `summarizeRun` and existing JSON encoders; `config.Load`) | Yes for each: implementations, schemas, snapshot/error ordering, consistency warnings, guidance/routing/prerequisites, missingness, metrics replay/calculations and unknowns are untouched. Resources directly reuse them. Issue context still shares one loaded status/next state-lock pair; separate resource requests are not an atomic combined snapshot. |
+| Seven other local-only tool entries (`orch_run_status`, `orch_run_next`, `orch_metrics`, `orch_metrics_report`, `orch_eval_status`, `orch_issue_context`, `orch_plan_validate` / `addMCPPlanValidation`) | Yes for every entry: strict schemas, local/read-only annotations, results/errors, fresh fixed bindings and no-command/no-write behavior remain. Retained evaluation identity/privacy and validation's raw strict decoder/no-digest contract are unchanged. Only the five documented reports gain resource paths; no rollup, evaluation or validation resource is exposed. |
+| External-read inspections (`orch_run_readiness`, `orch_doctor`, `orch_approval_status` / `addApprovalStatusTool`) | Yes for all three: existing probe allowlists, read-only/open-world annotations, no writes and separate readiness/diagnostic/evidence meanings hold. Resource reads never reach them; no grant lock, authorization or new live readiness claim is added. |
+| Both interviews (`orch_configure_step`, `orch_configure_local_step`, `addMCPInterviewTools`) | Yes for both: AnswerSet/Document schema 2, strict decoding, bound-root detection, setup probes, Delivery refusal, freshness/repair/proposals and no application/approval remain. Both existing stdio exercises stay registered; no interview resource is added. |
+| Preview and gate (`orch_eval_preview`, `addEvalPreviewTool`, `PreviewRepository`; `orch_plan_gate`, `addPlanGateTool`, `run.Plan`, `mcpPlanGateSchema`) | Yes for each: preview retains relative-plan confinement, explicit store opt-in, guarded immutable bounded preparation and Git read allowlist; the gate retains its typed schema, effective digest/routing/contributed criteria, conservative annotations, Assist/no-lock and external memhub boundary. Neither is reachable through resources; successful preparation/gating still grants no approval or lifecycle authority. |
+| Existing test assembly (`mcp_test.go`: `TestMCPStdio`, `mcpDiscover`, `TestMCPLocalToolsNeverRunExternalCommands`) | Yes. All fifteen prior exercises and exact schemas/annotations remain; discovery now also checks resource metadata/capabilities and snapshots. The local-only test adds success/failure/rejection resource parity without broadening its rejecting runner or weakening deadlines/assertions. Existing preview persistence, gate schema/memhub and interview/approval probe coverage remain separate and unchanged. |
+| New tests (`mcp_resources_test.go`: `mcpDiscoverResources`, `mcpResourceReports`, `mcpResourceRejectURIs`, `mcpResourcesExercise`, `mcpResourcesRawStdio`; reused `mcpConnect`, `mcpProcess`, `mcpCall`, `mcpTree`, `mcpDecoded`, `mcpWrite`, `writeConfigOnly`, `testPlanRef`, `testIssues`, `minimalPlanJSON`, `fakeRunner`, `mcpMetricsFixtures`, `writeMetricsFixture`) | Additive discovery/full-report/error, URI, freshness/security/no-write/no-command coverage only. Existing helpers/fixtures and file snapshot semantics remain; test setup alone changes synthetic files, with shared-gate metadata using fake probes only. Raw stdio checks actual legacy subscription errors rather than mistaking the newer SDK's empty capability-filtered acknowledgement/client-local unsubscribe for subscription support. Real stdio and rejecting-runner checks use no live credentials/services or installation. |
+| Source guide (`docs/mcp-status.md`: overview, resource contract and this audit) | Yes for source-only use, prior checkpoints, installation independence, CLI/tool contracts and host-owned hooks/enforcement. Before/after discovery and restriction scopes are explicit in this same document. Subscriptions/resource notifications/prompts/remote access remain future work, not implied installed capabilities. |
+| Run/routing/validation/approval/lifecycle/grant/evaluation/metrics algorithms, persistent schemas, CLI dispatch/help, configuration, dependencies, adapters/native guards/hooks, installed binaries/releases and CI workflows | Untouched. No second parser/report/policy engine, schema migration, new dependency, installation, release, broader authority or weakened required check is added. |
