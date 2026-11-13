@@ -17,7 +17,9 @@ import (
 )
 
 // DirName is the directory under the git common directory holding one
-// <id>.json record per grant plus the lock file that serializes every access.
+// <id>.json record per grant plus the lock file. Before ObserveActive this was
+// described as "serializes every access"; lifecycle access still locks (except
+// missing-store fast paths), but observation does not.
 const DirName = "orch-grants"
 
 const lockName = "lock"
@@ -37,6 +39,16 @@ func Open(ctx context.Context, r execx.Runner, repoRoot string) (*Store, error) 
 	common, err := g.CommonDir(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("resolve git common directory for autonomy grants: %w", err)
+	}
+	if !filepath.IsAbs(common) {
+		return nil, fmt.Errorf("git common directory for autonomy grants must be absolute, got %q", common)
+	}
+	info, err := os.Stat(common)
+	if err != nil {
+		return nil, fmt.Errorf("inspect git common directory for autonomy grants: %w", err)
+	}
+	if !info.IsDir() {
+		return nil, fmt.Errorf("git common directory for autonomy grants %s is not a directory", common)
 	}
 	return &Store{dir: filepath.Join(common, DirName)}, nil
 }
