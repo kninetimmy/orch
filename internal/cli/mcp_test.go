@@ -267,6 +267,9 @@ func TestMCPStdio(t *testing.T) {
 	t.Run("bounded evaluation preparation", func(t *testing.T) {
 		mcpEvalPreviewExercise(t, binary)
 	})
+	t.Run("plan gate", func(t *testing.T) {
+		mcpPlanGateExercise(t, binary)
+	})
 	t.Run("configuration interviews", func(t *testing.T) {
 		mcpInterviewExercise(t, binary)
 	})
@@ -397,7 +400,7 @@ func mcpDiscover(t *testing.T, ctx context.Context, session *mcp.ClientSession, 
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(list.Tools) != 12 || list.NextCursor != "" {
+	if len(list.Tools) != 13 || list.NextCursor != "" {
 		t.Fatalf("tool discovery = %+v", list)
 	}
 	want := mcpDecoded(t, []byte(`{"type":"object","properties":{},"additionalProperties":false}`))
@@ -410,7 +413,8 @@ func mcpDiscover(t *testing.T, ctx context.Context, session *mcp.ClientSession, 
 		preview := tool.Name == "orch_eval_preview"
 		issueContext := tool.Name == "orch_issue_context"
 		interview := tool.Name == "orch_configure_step" || tool.Name == "orch_configure_local_step"
-		if (tool.Name != "orch_run_status" && tool.Name != "orch_run_next" && tool.Name != "orch_config_effective" && !readiness && !doctor && !metrics && !evaluation && !preview && !issueContext && !interview) || seen[tool.Name] || tool.Annotations == nil || tool.Annotations.ReadOnlyHint == preview || tool.Annotations.OpenWorldHint == nil || *tool.Annotations.OpenWorldHint != (readiness || doctor || interview) {
+		planGate := tool.Name == "orch_plan_gate"
+		if (tool.Name != "orch_run_status" && tool.Name != "orch_run_next" && tool.Name != "orch_config_effective" && !readiness && !doctor && !metrics && !evaluation && !preview && !issueContext && !interview && !planGate) || seen[tool.Name] || tool.Annotations == nil || tool.Annotations.ReadOnlyHint == (preview || planGate) || tool.Annotations.OpenWorldHint == nil || *tool.Annotations.OpenWorldHint != (readiness || doctor || interview || planGate) {
 			t.Fatalf("tool = %+v", tool)
 		}
 		if preview && (tool.Annotations.DestructiveHint == nil || *tool.Annotations.DestructiveHint || !tool.Annotations.IdempotentHint) {
@@ -432,6 +436,10 @@ func mcpDiscover(t *testing.T, ctx context.Context, session *mcp.ClientSession, 
 		}
 		if interview {
 			wantSchema = mcpDecoded(t, []byte(`{"type":"object","properties":{"schema_version":{"type":"integer"},"answers":{"type":["object","null"],"additionalProperties":{"type":"string"}}},"required":["schema_version"],"additionalProperties":false}`))
+		}
+		if planGate {
+			wantSchema = mcpDecoded(t, []byte(`{"type":"object","properties":{"plan":{"type":"object"}},"required":["plan"],"additionalProperties":false}`))
+			mcpPlanGateSchema(t, tool)
 		}
 		if !reflect.DeepEqual(tool.InputSchema, wantSchema) {
 			t.Fatalf("%s input schema = %#v, want %#v", tool.Name, tool.InputSchema, wantSchema)

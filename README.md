@@ -431,7 +431,7 @@ commands:
   eval             Evaluation preview/run/status/stop/report (eval help for arguments)
   grant            Show the active autonomy grant; grant revoke ends it; grant relay hands it to a fresh Claude Code session; grant preview and grant create propose and record one (JSON stdin/stdout)
   render-agents    Render project agent definitions for every enabled host
-  mcp              Serve inspections and bounded evaluation preparation over stdio (mcp [--repo <path>] [--eval-storage-root <absolute-local-path>])
+  mcp              Serve inspections, bounded evaluation preparation and plan decision gates over stdio (mcp [--repo <path>] [--eval-storage-root <absolute-local-path>])
   run              Adapter plumbing: Delivery verbs (JSON stdin/stdout); inspection: status|next --json, readiness --issue <number> --json
   guard            Adapter plumbing: pre-write enforcement for host hooks (not a human command)
   hook             Adapter plumbing: host lifecycle-event verbs (not a human command)
@@ -484,6 +484,14 @@ execution, worker, approval, Delivery run, configuration or GitHub artifact.
 Existing inspections and CLI preview (including external plan paths) remain
 available; preparation never grants execution approval. See the guide for the
 exact write footprint, path restrictions and blast radius.
+Before item 10, the integrated issue-context/preview catalog exposed ten tools
+and no plan gate. After separately approved item 10, `orch_plan_gate` adds the
+engine's full effective-contract decision gate as an eleventh tool, taking only
+`{"plan": {...}}`. The existing ten contracts are unchanged. The gate creates no
+Orch/Git/GitHub artifacts or approvals, but its existing memhub probes may have
+memhub-owned storage/provider side effects; it is not annotated read-only or
+idempotent. Human approval of that exact gate and separate activation are still
+required. Help now advertises the gate alongside inspections and preparation.
 Source tests do not upgrade the binary an MCP client launches; separately verify
 that binary's identity and discovered tools after an explicitly approved install.
 
