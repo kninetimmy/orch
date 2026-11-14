@@ -190,21 +190,65 @@ calls still recheck engine context and Memhub revalidates its pinned roots.
 ### Qualification, not installation
 
 Policy permission, available source interfaces, isolated runtime evidence and
-installed-live qualification are separate claims. The local smoke requires
-`ORCH_SMOKE_MEMHUB` to name an explicitly selected source-built executable;
-missing qualification capability fails, never skips or substitutes a global
-server. For example, in PowerShell:
+installed-live qualification are separate claims. Before issue 497, the local
+smoke always built Orch from its checkout, loaded that checkout's adapter and
+required an explicitly selected source-built Memhub. Now that **source-build
+mode** remains the default when both artifact selectors are unset:
 
 ```powershell
+Remove-Item Env:ORCH_SMOKE_ORCH, Env:ORCH_SMOKE_ADAPTER -ErrorAction SilentlyContinue
 $env:ORCH_SMOKE_MEMHUB = 'C:\path\to\source-built\memhub.exe'
 npm run smoke --prefix adapters/opencode
 ```
+
+In **explicit-artifact mode**, supply both selectors. Orch is not rebuilt:
+every direct and native-plugin invocation resolves to a verified byte-identical
+private copy of the selected executable. The private host loads the selected
+package directory and its skills, including after unload/reload:
+
+```powershell
+$env:ORCH_SMOKE_ORCH = 'C:\path\to\prebuilt\orch.exe'
+$env:ORCH_SMOKE_ADAPTER = 'C:\path\to\installed\adapters\opencode'
+$env:ORCH_SMOKE_MEMHUB = 'C:\path\to\compatible\memhub.exe'
+npm run smoke --prefix adapters/opencode
+```
+
+`ORCH_SMOKE_MEMHUB` remains required in both modes and must support explicit-root,
+lookup-only serving. Every selector must be a nonempty absolute path of the
+correct type. An incomplete pair, empty/relative/missing/wrong-type path,
+escaping package link/export, invalid manifest/lockfile, missing runtime/skills
+or unimportable server module fails before selected binaries or the private host
+launch. There is no checkout, PATH Orch, global Memhub or other-adapter fallback.
+Use a compatible Orch ESM package with its manifest, lockfile, `src/`, `skills/`
+and existing dependencies already installed; qualification never installs or
+repairs them. Its server export must be a local string export, `.` or `./server`.
 
 The fixture isolates homes, user configuration, caches, registry/sync discovery
 and temporary storage, launches only owned processes, and uses synthetic memory
 and simulated model responses. The localhost provider trap must receive zero
 requests. Native MCP lifecycle owns service cancellation/shutdown. Evidence and
 fixtures are retained externally after the private process tree is stopped.
+
+`evidence.json` records the mode, harness Git revision/status and harness-file
+hashes separately from the selected canonical adapter path and SHA-256 identities
+of its manifest, lockfile, server entrypoint, `src/**` and `skills/**`. It records
+selected and actually executed Orch/Memhub paths and hashes, labels verified
+private copies as copies, checks native PATH resolution, and retains initial/reload
+plugin/skill catalogs, successful checks, provider count and post-run payload/binary
+identity verification. Memhub negative tests replace only the private fixture
+copy and must restore its qualified bytes. Version labels and source revisions
+alone are not installed-content proof. The lockfile identifies declared dependency
+resolution, **not the installed dependency tree**; dependency bytes, untracked
+package files outside these identity sets and an atomic filesystem snapshot are
+not certified.
+
+Both invocations are the same required **local-only** gate:
+`npm run smoke --prefix adapters/opencode`. Hosted CI still runs only the
+deterministic Node/Go checks, not this smoke. An explicit-artifact pass qualifies
+those artifacts in an isolated host; it neither activates them in the user's
+shared service nor constitutes a real model-driven Delivery trial. Those require
+separate approval and evidence. No shared service, installation or user configuration
+is modified by this gate.
 
 Isolated qualification tuple used on 2026-11-14:
 
@@ -226,6 +270,18 @@ the actual layer rather than calling every rejection a permission result.
 This increment does not install globally, edit host-global configuration, qualify
 Claude/Codex direct access or paid model-driven behavior, deliver guide search,
 complete wrap-up integration or close all task331 rollout work.
+
+### Artifact-smoke blast radius (issue 497)
+
+| Touched element | Does its previous behavior still hold? |
+|---|---|
+| `smoke.mjs` source roots and helper constants | Yes: harness fixtures and expectations still come from its checkout. Before, that also unconditionally selected the adapter and built Orch; now only default source-build mode does. Explicit mode never substitutes those source artifacts. |
+| `selectArtifacts`, `adapterIdentity`, `checkAdapterModule` in `smoke-artifacts.mjs` | New harness-only preflight. Both optional selectors are paired, and every selector has the same nonempty/absolute/type restrictions. Containment applies to every identity file under the selected package, not just `src/index.js` or one named skill. Module import uses isolated homes/caches and does not call plugin setup. |
+| `prepareOrch`, `copyBinary` and private PATH | Default source building remains. Explicit Orch never builds; both Memhub modes retain a private copy, now verified byte-for-byte before use. Native resolution and direct commands name the same private binaries. Only that Memhub copy is renamed/replaced in negative tests. |
+| Fixture plugin/skills configuration, active-plugin and initial/reload catalog checks | Existing real package-directory loading and unload/reload enforcement remain. Both load stages now verify the selected local plugin path and every selected `SKILL.md` path/hash, not only `orch-architect`. Fixture configuration alone is edited. |
+| `pass`, evidence creation and `verifyArtifacts` | Existing retained synthetic evidence remains; every successful check is now recorded, with separate harness/selected/executed identities and post-shutdown payload checks. Lockfile evidence does not certify installed dependencies. |
+| Host/simulation lifecycle, synthetic memory, role/root/mode/collision/guard checks | Preserved: the same isolated server, provider trap, real tools and all five roles run both modes. Shutdown targets only owned processes; no permission, approval or shared-service behavior changes. |
+| `test/smoke-artifacts.test.js`, README and existing test entrypoints | Adds deterministic selector, module, containment, source/copy and evidence checks plus both invocation contracts. Existing tests and local-only smoke entrypoint remain; CI configuration, dependency pins, runtime product code, other hosts and Delivery policy are untouched. |
 
 ### Child-memory blast radius
 
