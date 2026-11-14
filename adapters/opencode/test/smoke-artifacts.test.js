@@ -1,6 +1,6 @@
 import assert from "node:assert/strict"
 import { spawnSync } from "node:child_process"
-import { chmod, mkdir, mkdtemp, readFile, rm, symlink, writeFile } from "node:fs/promises"
+import { chmod, mkdir, mkdtemp, readFile, realpath, rm, symlink, writeFile } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import path from "node:path"
 import { fileURLToPath } from "node:url"
@@ -9,7 +9,7 @@ import test from "node:test"
 import { adapterIdentity, checkAdapterModule, copyBinary, fileIdentity, prepareOrch, selectArtifacts, verifyArtifacts } from "../smoke-artifacts.mjs"
 
 async function fixture(t) {
-  const root = await mkdtemp(path.join(tmpdir(), "orch-smoke-artifacts-"))
+  const root = await realpath(await mkdtemp(path.join(tmpdir(), "orch-smoke-artifacts-")))
   t.after(() => rm(root, { recursive: true }))
   const source = path.join(root, "source")
   const installed = path.join(root, "installed")
