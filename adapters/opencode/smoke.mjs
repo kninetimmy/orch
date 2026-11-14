@@ -256,6 +256,22 @@ try {
     }
   }
   await writeFile(configFile, JSON.stringify(configuration))
+  const unmanagedGit = path.join(temp, "unmanaged-git")
+  const unmanagedNested = path.join(unmanagedGit, "nested")
+  const unmanagedNonGit = path.join(temp, "unmanaged-non-git")
+  await mkdir(unmanagedNested, { recursive: true })
+  await mkdir(unmanagedNonGit)
+  command("git", ["init", "-b", "main"], unmanagedGit, env)
+  command(memhubBinary, ["init"], unmanagedGit, env)
+  // The same loaded adapter, but only the user's ordinary full connection.
+  // This synthetic memory is not an Orch-managed project or a child fallback.
+  const unmanagedConfiguration = {
+    ...configuration,
+    mcp: { servers: { memhub: { type: "local", command: [memhubBinary, "serve"], cwd: unmanagedGit } } },
+  }
+  for (const directory of [unmanagedGit, unmanagedNonGit]) {
+    await writeFile(path.join(directory, "opencode.json"), JSON.stringify(unmanagedConfiguration))
+  }
   const port = await availablePort()
   baseURL = "http://127.0.0.1:" + port
   server = spawn(privateOpenCode, ["serve", "--service", "--hostname", "127.0.0.1", "--port", String(port)], {
@@ -403,6 +419,46 @@ try {
     await controller.request("llm.chunk", { id: turn.id, items: [{ type: "textDelta", text: "done" }] })
     await controller.request("llm.finish", { id: turn.id, reason: "stop" })
     await eventually(async () => !(await api("/api/session/active")).data[session.id], "session idle")
+  }
+
+  let unmanagedTasks = 0
+  evidence.unmanaged = []
+  const noOrchMemoryContext = (turn) => assert.doesNotMatch(JSON.stringify(turn.body),
+    /repository is managed by Orch|Orch (?:bound|child) Memhub|Memhub child lookup unavailable|Expected memory_root=/)
+  for (const [label, directory] of [["plain Git", unmanagedGit], ["nested Git", unmanagedNested], ["non-Git", unmanagedNonGit]]) {
+    const discovery = JSON.parse(command(orchBinary, ["hook", "opencode", "lookup-context", "--json"], directory, env))
+    assert.deepEqual(discovery, { schema_version: 2, managed: false })
+    await activePlugin(directory)
+    const servers = await eventually(async () => {
+      const entries = (await api("/api/mcp?" + query(directory))).data
+      assert.deepEqual(entries.map((entry) => entry.name), ["memhub"], "unmanaged scope must not add a bound connection")
+      return entries[0].status.status === "connected" && entries
+    }, "configured unmanaged Memhub")
+    const agents = (await api("/api/agent?" + query(directory))).data
+    assert(agents.every((agent) => !agent.permissions.some((rule) => /^(orch_memhub|memhub)_/.test(rule.action))),
+      "unmanaged scope must not add Memhub permission rules to any agent")
+    const parent = await start(directory)
+    noOrchMemoryContext(parent.turn)
+    parent.turn = await tool(parent.turn, "execute", { code: "return await tools.memhub.status({})" })
+    assert.equal(JSON.parse(evidence.last_tool.content).tasks_total, unmanagedTasks)
+    parent.turn = await tool(parent.turn, "execute", { code: `return await tools.memhub.task_add({title: ${JSON.stringify("Ordinary root in " + label)}})` })
+    const rootWrite = evidence.last_tool
+    await finish(parent.session, parent.turn)
+    const ordinary = await start(directory, architect, parent.session.id, "general", fixturePermissions)
+    noOrchMemoryContext(ordinary.turn)
+    ordinary.turn = await tool(ordinary.turn, "execute", { code: "return await tools.memhub.status({})" })
+    assert.equal(JSON.parse(evidence.last_tool.content).tasks_total, ++unmanagedTasks)
+    ordinary.turn = await tool(ordinary.turn, "execute", { code: `return await tools.memhub.task_add({title: ${JSON.stringify("Ordinary child in " + label)}})` })
+    const childWrite = evidence.last_tool
+    ordinary.turn = await tool(ordinary.turn, "execute", { code: "return await tools.memhub.status({})" })
+    const status = JSON.parse(evidence.last_tool.content)
+    assert.equal(status.tasks_total, ++unmanagedTasks, "ordinary-child semantic call must reach the configured full server")
+    evidence.unmanaged.push({ label, directory, discovery, servers, agents, root_write: rootWrite, child_write: childWrite, status })
+    await finish(ordinary.session, ordinary.turn)
+    const report = await nextTurn()
+    noOrchMemoryContext(report)
+    await finish(parent.session, report)
+    pass("unmanaged " + label + ": original root/general-child full Memhub calls, no bound server, permission changes or Orch memory context")
   }
 
   const tracked = path.join(root, "tracked.txt")

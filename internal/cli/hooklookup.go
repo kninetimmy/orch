@@ -3,8 +3,10 @@ package cli
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
 
 	"github.com/kninetimmy/orch/internal/config"
@@ -18,14 +20,38 @@ import (
 // only read-only Git commands. Mode has exactly one resolver: config.Load.
 type lookupContext struct {
 	SchemaVersion int    `json:"schema_version"`
-	MemhubMode    string `json:"memhub_mode"`
-	MemoryRoot    string `json:"memory_root"`
-	CodeRoot      string `json:"code_root"`
-	GitCommonDir  string `json:"git_common_dir"`
-	Head          string `json:"head"`
+	Managed       bool   `json:"managed"`
+	MemhubMode    string `json:"memhub_mode,omitempty"`
+	MemoryRoot    string `json:"memory_root,omitempty"`
+	CodeRoot      string `json:"code_root,omitempty"`
+	GitCommonDir  string `json:"git_common_dir,omitempty"`
+	Head          string `json:"head,omitempty"`
 }
 
 func hookLookupContext(env Env) error {
+	location, err := paths.Canonical(env.RepoRoot)
+	if err != nil {
+		return err
+	}
+	if err := lookupSameDirectory(location, location); err != nil {
+		return err
+	}
+	localRoot, err := paths.FindOutermostRoot(location)
+	if err != nil && !errors.Is(err, paths.ErrNotFound) {
+		return err
+	}
+	if errors.Is(err, paths.ErrNotFound) {
+		// A linked checkout can have a managed primary outside its ancestry,
+		// even when its copied Orch marker is absent. Only skip Git discovery
+		// when there is no Git marker either; broken markers are not absence.
+		hasGit, err := lookupHasGitAncestor(location)
+		if err != nil {
+			return err
+		}
+		if !hasGit {
+			return json.NewEncoder(env.Stdout).Encode(lookupContext{SchemaVersion: 2})
+		}
+	}
 	ctx := context.Background()
 	top, err := lookupGit(ctx, env, "rev-parse", "--show-toplevel")
 	if err != nil {
@@ -45,8 +71,15 @@ func hookLookupContext(env Env) error {
 	primary := worktrees[0].Path
 	// Do not let a nested or unrelated Orch configuration replace the primary.
 	root, err := paths.FindOutermostRoot(primary)
-	if err != nil {
+	unmanaged := errors.Is(err, paths.ErrNotFound)
+	if err != nil && !unmanaged {
 		return err
+	}
+	if unmanaged {
+		if localRoot != "" {
+			return fmt.Errorf("lookup context: selected location has an Orch root but its Git primary does not")
+		}
+		root = primary
 	}
 	if err := lookupSameDirectory(root, primary); err != nil {
 		return err
@@ -77,14 +110,34 @@ func hookLookupContext(env Env) error {
 	if err := lookupSameDirectory(common, selectedCommon); err != nil {
 		return err
 	}
+	if unmanaged {
+		return json.NewEncoder(env.Stdout).Encode(lookupContext{SchemaVersion: 2})
+	}
 	cfg, err := config.Load(root)
 	if err != nil {
 		return err
 	}
 	return json.NewEncoder(env.Stdout).Encode(lookupContext{
-		SchemaVersion: 1, MemhubMode: cfg.Memhub.Mode, MemoryRoot: root,
+		SchemaVersion: 2, Managed: true, MemhubMode: cfg.Memhub.Mode, MemoryRoot: root,
 		CodeRoot: checkout.Root(), GitCommonDir: common, Head: head,
 	})
+}
+
+func lookupHasGitAncestor(dir string) (bool, error) {
+	for {
+		_, err := os.Lstat(filepath.Join(dir, ".git"))
+		if err == nil {
+			return true, nil
+		}
+		if !errors.Is(err, os.ErrNotExist) {
+			return false, err
+		}
+		parent := filepath.Dir(dir)
+		if parent == dir {
+			return false, nil
+		}
+		dir = parent
+	}
 }
 
 func lookupSameDirectory(a, b string) error {

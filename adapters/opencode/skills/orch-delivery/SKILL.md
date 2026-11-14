@@ -327,7 +327,7 @@ parent-session usage.
    memory_root, assigned code_root, Git common directory, branch and observed
    HEAD in each dispatch prompt. Obtain these via read-only
    `orch hook opencode lookup-context --json` from the assigned checkout
-   (schema_version `1`; reject others), not copied memory or guessed ancestor
+   (schema_version `2` with `managed: true`; reject others), not copied memory or guessed ancestor
    paths. Require the child to move its session to that checkout, call native
    bound status first and compare explicit binding filesystem identities with
    the prompt/context before recall, get_row or locate. A mismatch refuses

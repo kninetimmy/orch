@@ -136,13 +136,41 @@ write isolation. **After:** `orch-scout`, `orch-implementer`,
 exception, not a claim that historical Architect mediation or the shell-bypass
 warning disappeared. Claude/Codex direct access remains unclaimed and mediated.
 
-The plugin invokes read-only `orch hook opencode lookup-context --json` (schema
-1) at its native location. The engine verifies Git's selected checkout, primary
-registration/common directory and shared Orch root checks, then loads primary
-effective configuration. It reads no memory and changes no state. The existing
-fail-open textual session-start and observation-only issue context are unchanged.
-No second adapter mode resolver, memory copying, retrieval engine, MCP relay or
-new dependency is introduced.
+**Before (issue 499 regression):** the globally loaded lookup integration applied
+its child executor restrictions and Orch child-memory guidance even outside Orch
+management. A plain Git checkout received no bound server, but an ordinary
+`general` child still could not call its configured broad Memhub connection.
+**After:** an authoritative unmanaged observation makes the entire lookup
+integration inert: no server, permission transform, executor wrapper, reserved-name
+collision handling or Orch child-memory context is added. Ordinary roots and
+children keep their configured Memhub behavior in plain Git checkouts, nested
+directories and non-Git directories without a managed ancestor. This is a scope
+correction, not a relaxation for general children inside managed projects.
+
+The plugin still invokes read-only `orch hook opencode lookup-context --json`
+at its native location. Before issue 499, schema 1 returned only managed roots
+and failed outside Orch. Schema **2** adds a required boolean `managed`:
+`{"schema_version":2,"managed":false}` is the complete unmanaged result;
+`managed: true` retains mode, memory/code/common roots and HEAD. Only shared
+`FindOutermostRoot`'s `ErrNotFound` permits the unmanaged distinction. The engine
+first verifies the location and its marker ancestry. With no Orch ancestor, it
+skips Git only if no ancestor has any `.git` entry; otherwise Git's selected
+checkout, primary registration/common directory and primary Orch ancestry must
+still verify. In particular, an external registered worktree with a missing
+copied Orch marker still uses its managed primary. Invalid/unreadable markers,
+invalid configuration, failed Git discovery and unverifiable roots remain errors,
+never unmanaged observations. Managed locations still load primary effective
+configuration. The observation reads no memory and changes no state.
+
+The new adapter requires schema 2. Missing commands, schema 1, malformed or
+contradictory responses and missing host capabilities retain unavailable-lookup
+diagnostics and child fences, not an unmanaged no-op. An old adapter rejects
+schema 2 too; qualify and update the engine/adapter together through a separately
+approved installation, not a full-server or CLI fallback. Reload the native
+location after changing management scope, just as after mode/service changes.
+The existing fail-open textual session-start and observation-only issue context
+are unchanged. No second adapter mode resolver, memory copying, retrieval engine,
+MCP relay or new dependency is introduced.
 
 When enabled, native MCP launches
 `memhub serve --memory-root <primary> --code-root <checkout> --profile lookup-only`
@@ -158,7 +186,7 @@ spelling. HEAD does not identify dirty tracked content; inspect locate's SHA-256
 snippet/chunk/indexed-file/worktree-file evidence, independent index path and
 freshness limitations. No atomic-tree-snapshot or untracked-code coverage is claimed.
 
-Native role permissions deny broad Memhub and allow just the four bound actions.
+In managed projects, native role permissions deny broad Memhub and allow just the four bound actions.
 Executor checks also apply inside Code Mode and reject unsupported roles and
 full-server calls from children, even if later session permission rules allow
 them. Memhub itself supplies the lookup-only catalog and rejects excluded tools
@@ -288,17 +316,31 @@ complete wrap-up integration or close all task331 rollout work.
 | Touched element | Does its previous behavior still hold? |
 |---|---|
 | `hook` CLI dispatch/usage | Existing host verbs and fail-open session-start remain; a new strict, argv-only versioned read observation is added. |
-| `lookup-context` root/config projection | New. Reuses shared canonical/root, Git registration and effective config primitives; filesystem identity checks reject wrong, missing and unrelated roots. No Memhub/project-state read or mutation is added. |
+| `lookup-context` root/config projection | Introduced with schema 1 and managed-only output. Issue 499 replaces that wire with schema 2's explicit managed/unmanaged distinction; managed root/config verification still reuses the same primitives and rejects wrong, missing and unrelated roots. No Memhub/project-state read or mutation is added. |
 | `orch.delivery` setup and native MCP lifecycle | Existing guard/context registrations remain. Adds a separate lookup-only, non-pooled connection per verified location; native lifecycle owns startup/cancellation/shutdown, without relay or fallback. |
 | MCP names/configuration and existing Architect connections | User configuration is not overwritten. Normalized reserved-name collisions now refuse child lookup; known broad connections remain usable by the Architect, never child fallback. Other servers are unchanged. |
 | Native `Agent.Info.permissions` transforms | Existing edit/shell/subagent rules remain for every role. Adds a bound deny for unsupported agents and four exceptions for all five Orch children, plus broad-server denials; model/variant selections are untouched. |
-| Native `Tool.Info.execute` transforms and Code Mode snapshots | Previously Memhub executors had no Orch child restriction. Now every identified Memhub executor checks session/role/root capability; each bound result must carry matching binding evidence. This applies to all tools in those catalogs, not only `recall` or a server literally named `memhub`. Unrelated executors are unchanged. |
+| Native `Tool.Info.execute` transforms and Code Mode snapshots | Before issue 495, Memhub executors had no Orch child restriction. Issue 495 added checks to every identified Memhub executor, erroneously including ordinary children outside Orch. After issue 499, those checks and matching bound-result evidence still apply inside managed projects (and failed/unverified discovery), but authoritative unmanaged locations receive no wrapper. The managed restriction covers all tools in those catalogs, not only `recall` or a server literally named `memhub`. Unrelated executors are unchanged. |
 | Status-first assignment guidance and per-call evidence | New. Each child is instructed to validate status against its assignment before lookup; every executor independently verifies session/root context and each result's binding, without a transient authorization cache that could disappear on native reload. Prompt assignment/revision comparison remains instructional, not invented authorization or an atomic snapshot. |
 | Five canonical OpenCode agent files and generated outputs | Before, no explicit four-tool allowance and blanket no-write prose. After, all five get the same lookup exception and maintenance distinction. Existing scope, review independence, native read-only roles, routed models, branch/ref guidance and no-delegation rules remain. `internal/agents.Render` still substitutes routing fields only. |
 | OpenCode Architect/Delivery skills | Before, children never invoked Memhub and every Memhub process used main as cwd. After, explicit bound child reads use assigned code cwd; Architect full/CLI operations and semantic/admin writes remain primary-only. Approval gates, engine routing, issue-context observations, review independence and wrap-up obligations are unchanged. |
 | Existing isolated smoke and provider simulation | Existing guard/catalog/reload/containment checks remain; explicit parent-report handling keeps native child notifications from being mistaken for another test's turn. Adds real four-tool processes/roles and dirty implementation/pinned-review bindings. Before fixtures were deleted; after they and evidence remain outside all checkouts after owned services stop. |
 | Go/Node deterministic tests | Existing checks remain; new fixture tests exercise strict context, modes, collision preservation, permissions, per-call evidence and executor denials without project-memory access. |
 | SDK, dependency graph, shared write guard, other hosts and Delivery engine | Unchanged; no dependency/pin, scheduler, lifecycle wire, approval, shell/edit grant or Claude/Codex access expansion. Source checks do not certify an installed adapter. |
+
+### Lookup-scope blast radius (issue 499)
+
+| Touched element | Does its previous behavior still hold? |
+|---|---|
+| `hookLookupContext`, `lookupContext` and `lookupHasGitAncestor` | Managed primary/config/common-directory/registered-checkout checks remain. Before, non-Git and plain Git locations failed discovery; now verified absence yields the two-field schema-2 unmanaged result. Git-marker inspection lives only in the engine and never interprets stderr as non-management. Shared canonical/root discovery is reused, not modified. |
+| `readLookupContext` | Before, accepted schema 1 and validated mode/roots/revision. Now accepts only schema 2 with an explicit boolean scope; managed observations still require valid mode, directory roots and revision. Only the exact unmanaged shape skips those managed fields; old/invalid output remains a failure. |
+| `installLookup` native MCP, agent and tool transforms, including Code Mode executors | Before, discovery failure still registered child fences even in unrelated projects. Now only authoritative unmanaged scope skips **all** these registrations. Inside managed projects and on discovery failure, every previously identified broad Memhub catalog remains fenced for every child, including `general`; the five supported roles retain only four bound actions. This covers every matching symbol, not just `memhub_recall`, and every recognized server alias, not just `memhub`. Architect broad access, collisions and existing non-Memhub permissions/executors remain unchanged. |
+| `preflight`, result binding and returned child-context hook | Managed calls still recheck mode, assigned checkout/common-directory identity, exact four-tool catalog, service connection and each result's binding. A managed connection cannot follow a session into unmanaged scope; it fails explicitly and requires native-location reload. Authoritative unmanaged setup adds no child guidance. Off/best-effort/required and no full-server/CLI fallback remain. |
+| Delivery skill's lookup-context pin | Before, dispatch instructions required schema 1. Now they require schema 2 with `managed: true`; root/revision comparison and mediated refusal remain unchanged. No other skill, role or approval instructions change. |
+| `orch.delivery` setup, textual context and write guard | Unchanged: setup still calls lookup installation, and registers the same independent context/guard hooks. A lookup no-op is not a write-guard bypass. Native MCP still owns transport, cancellation and shutdown. |
+| `hooklookup_test.go` and `test/lookup.test.js` | Existing all-role/mode/binding/collision checks remain; add unmanaged root/general-child no-op and engine/error distinctions, including markerless external worktrees. Directory-mode permission tests skip on hosts/elevated users that cannot enforce them; invalid-marker/config and other failure checks still run there. |
+| `smoke.mjs` fixtures and retained evidence | Existing source/explicit selection, all five managed roles, roots, modes, reload, guard and provider-trap checks remain. Adds synthetic plain/nested Git and non-Git locations using the same loaded adapter and configured full Memhub: ordinary root and general-child reads and semantic calls must succeed, with no bound connection, permission changes or Orch memory context. Evidence additionally records those outcomes. Only external owned fixtures are mutated; shutdown still targets owned processes. |
+| README and qualification boundary | Records the erroneous before-state rather than erasing it. This source correction is **not** installed qualification: the local smoke must build/load this changed source with both optional artifact selectors unset. Explicit-artifact results qualify only their selected bytes in an isolated host. Neither proves activation in the shared service or real model-driven child access. No installation, host configuration, version, dependency/pin or release change is included. |
 
 Windows junctions that the Go runtime cannot resolve are refused by shared
 path checks, including existing and not-yet-created targets. The smoke checks
