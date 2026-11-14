@@ -1,4 +1,4 @@
-# Local inspections, configuration interviews, bounded evaluation preparation, plan decision gates and explicitly approved activation over MCP
+# Local inspections, configuration interviews, bounded evaluation preparation, plan decision gates, explicitly approved activation and issue dispatch over MCP
 
 `orch mcp` is an optional local stdio MCP server using the official Go SDK
 v1.8.0. This is an unreleased source feature, not part of the v0.15.2 binary.
@@ -35,12 +35,19 @@ contracts, alongside four fixed JSON resources and one issue-context template.
 This describes source, independently of any installed server's capabilities.
 
 **Before item 15:** the fifteen tools exposed no lifecycle operation.
-**After separately approved item 15:** current source contains **sixteen tools**,
+**After separately approved item 15:** source contained **sixteen tools**,
 adding only explicitly human-approved activation. The thirteen read-only
 inspections/interviews, bounded preview, non-activating gate, four fixed resources
-and one template retain their contracts. Activation is the sole lifecycle
+and one template retain their contracts. At item 15, activation is the sole lifecycle
 exception; it is not dispatch, merge, configuration application or evaluation
 execution authority.
+
+**Before item 16:** that sixteen-tool catalog exposed no dispatch endpoint.
+**After separately approved item 16:** source contains **seventeen tools**,
+adding `orch_run_dispatch` through the existing engine. All sixteen preceding
+tool contracts, four read-only resources and one template hold. Activation is
+no longer the sole lifecycle endpoint; dispatch returns an execution brief,
+not an agent launch, new approval authority or a later lifecycle operation.
 
 ## Launch and repository binding
 
@@ -184,6 +191,12 @@ Unknown outer fields and root overrides remain errors for **every tool**.
 Activation alone accepts the existing schema-2 activation request, with explicit
 human approval metadata; every preceding input schema remains unchanged.
 
+**Before item 16:** discovery had no dispatch tool. **After item 16:**
+`orch_run_dispatch` accepts only an explicit schema-4 request and positive integer
+issue number, with mutating, non-idempotent, open-world annotations. Unknown outer
+fields and root overrides remain errors for **every tool**, not just dispatch;
+the other sixteen tools retain their different schemas and annotations.
+
 | Tool | Input | CLI counterpart (from the bound checkout) | Report schema |
 | --- | --- | --- | --- |
 | `orch_run_status` | `{}` | `orch run status --json` | 4 |
@@ -202,6 +215,7 @@ human approval metadata; every preceding input schema remains unchanged.
 | `orch_approval_status` | `{}` | None; directly combines shared `run.Status` and grant observation | 1 |
 | `orch_plan_validate` | `{"plan":{...}}` | None; directly uses shared `run.DecodePlan` and `PlanDoc.Validate` with fresh `config.Load` | 1 |
 | `orch_run_activate` | `{"schema_version":2,"plan":{...},"approval":{...}}` | `orch run activate` (activation request on stdin; MCP requires explicit human metadata and excludes grants) | 2 |
+| `orch_run_dispatch` | `{"schema_version":4,"issue_number":493}` | `orch run dispatch` (same request on stdin) | 4 |
 
 Each `orch_run_status` invocation reads fresh local
 state through the same engine as `orch run status --json` and returns that
@@ -264,8 +278,13 @@ Only an explicitly submitted human-approved activation request can enter
 Delivery and perform the existing activation mutations described below.
 Initialization, discovery, disconnect and resource reads remain command-free
 and non-mutating; no connection, report or gate inspection triggers activation.
-No MCP tool gains evaluation execution, dispatch, merge or configuration
+**Before item 16:** no MCP tool gains evaluation execution, dispatch, merge or configuration
 application authority.
+**After item 16:** only the new dispatch endpoint gains the existing dispatch
+lifecycle effects. Evaluation execution, merge and configuration application
+remain unexposed; initialization, discovery, disconnect and every resource
+remain command-free and non-mutating. No inspection or activation automatically
+dispatches an issue.
 
 ## Next-action guidance and approval boundaries
 
@@ -367,6 +386,12 @@ can record the supplied approval, existing activation sessions/metrics and
 lifecycle/Git/GitHub artifacts. **A tool call is still never human approval**;
 the client must separately obtain and explicitly submit the human's evidence.
 Every resource retains the stricter no-command/no-write/no-approval contract.
+**Before item 16:** activation alone was the lifecycle exception above.
+**After item 16:** dispatch is a second explicitly invoked lifecycle endpoint.
+The original fifteen no-lifecycle contracts still hold, activation retains its
+human-only handoff, and dispatch creates no new approval authority. Its existing
+session/metrics, phase, Git and GitHub effects are described below, not attributed
+to inspections or resources.
 
 ## Review and merge readiness
 
@@ -1066,6 +1091,8 @@ or remove the gate's external memhub side-effect boundary.
 After item 15, these restrictions still apply to **every resource**, not just
 status or issue context. Resources cannot invoke the new activation capability;
 the original fifteen tool contracts remain alongside that separate mutator.
+After item 16, **every resource** still has those restrictions and cannot invoke
+dispatch either; the dispatch receipt is available only from the explicit tool.
 
 Resource subscriptions, resource-update/list-change notifications, reusable
 prompts and remote access remain later roadmap items, not this increment.
@@ -1155,7 +1182,10 @@ existing audit bodies, branches/worktrees, state and the Delivery lock, plus the
 existing enabled metrics/session records. It does not create PRs, dispatch
 agents, review/merge work, apply configuration or execute evaluations. Subsequent
 dispatch and every later lifecycle action retain separate authority and
-preconditions; none is exposed by this increment.
+preconditions; none is exposed by this increment (item 15).
+**Before item 16:** subsequent dispatch was not exposed over MCP.
+**After item 16:** `orch_run_dispatch` exposes only that separate operation;
+activation still neither dispatches an issue nor launches an agent.
 
 Annotations are deliberately conservative: `readOnlyHint: false`,
 `destructiveHint: true`, `idempotentHint: false`, `openWorldHint: true`.
@@ -1208,6 +1238,125 @@ go test ./internal/cli -run '^TestMCPStdio$/explicit_activation' -v -count=1
 go test ./internal/cli -run '^(TestMCPStdio|TestMCPLocalToolsNeverRunExternalCommands)$' -v -count=1
 ```
 
+## Approved issue dispatch (item 16)
+
+After separately approved activation has made an issue `worktree-ready`, call
+`orch_run_dispatch` with exactly:
+
+```json
+{"schema_version":4,"issue_number":493}
+```
+
+Both members are required. Omitted/null/non-object arguments, missing/null/
+wrong-type members, unsupported versions, non-positive/fractional/overflow issue
+numbers and unknown fields are explicit errors before dispatch effects or
+mutation serialization. The SDK validates the closed envelope; the handler also
+checks original integer literals before invoking the engine, so `4.0`, `4e0` or
+an issue number written with a fraction/exponent cannot be normalized into a
+valid shared-engine request. No root, model, executor/reviewer, approval or other
+override is accepted. This is not an activation request or an approval dialog.
+
+The handler calls existing `run.Dispatch` once, with original request bytes,
+the fixed launch-bound repository, the existing runner and Claude session
+attribution. It holds `withDeliveryMutation` through the complete operation,
+including final state and metrics writes, just like CLI dispatch. This is the
+shared **mutating-command** boundary, not a restriction peculiar to `Dispatch`:
+all mutating CLI `run` verbs (everything except `plan`), resume, abort and metrics
+record use it; both MCP lifecycle endpoints, activation and dispatch, reuse it.
+Inspection tools and all resources remain outside it. The serializer may wait;
+its existing acquisition is not context-interruptible. Request cancellation is
+passed to the engine/runner, not implemented as a new locking or rollback system.
+
+The engine still requires consistent Delivery state/lock, its supported state/
+approval contract, matching effective configuration, an unstopped run, the
+target's `worktree-ready` phase, recorded routing and approved work, and every
+dependency merged or cleaned. Assist, stopped runs, blocked/wrong-phase targets,
+unknown issues, missing work/routing, unmet/abandoned dependencies and contract/
+configuration drift remain errors. An abandoned dependency still requires the
+plan gate; a tool call never supplies new approval or bypasses engine refusals.
+These shared lifecycle/configuration checks are not MCP-only checks:
+`loadVerb` and `checkExecutionConfig` retain their existing callers and scope;
+`checkApprovedWork` remains shared with repair, review, readiness and guidance;
+`checkDependencies` remains shared with repair and guidance (including issue
+context's guidance). Neither restriction is unique to the symbol `Dispatch`,
+nor newly imposed on every lifecycle verb. No other lifecycle verb is tightened.
+
+Success returns the **complete existing schema-4 `run.DispatchResult`** as
+equivalent MCP `structuredContent` and JSON text, without a second result shape:
+
+- `schema_version`, `issue_number`, `branch`, repository-relative `worktree`;
+- `executor`, `reviewer` and `rationale`, retaining each approved Selection's
+  model and effort or OpenCode variant/explicit `no_variant` spelling;
+- verbatim `objective`, ordered `acceptance_criteria`, `required_tests` and, when
+  declared, `tests_ci_does_not_run`. Absence of that declaration does not assert
+  that CI runs every test.
+
+The normal effects are Git fetch, fast-forward of the recorded issue worktree
+to `origin/<default>`, GitHub `in-progress` status, the `dispatched` phase save
+and existing enabled session/metrics recording. Dispatch neither chooses a new
+model nor spawns an agent; the host must separately launch the recorded executor
+in that worktree with the approved brief. It performs no PR creation, review,
+merge, repair, evaluation, configuration application or grant authorization.
+Native host guards and routed-agent enforcement are unchanged.
+`orch_issue_context` and the issue resource remain **command-free observations**,
+not dispatch receipts, reservations, live readiness or agent-launch confirmation.
+
+Annotations are `readOnlyHint: false`, `destructiveHint: true`,
+`idempotentHint: false`, `openWorldHint: true`: this operation is mutating,
+non-idempotent and externally effectful. Engine/serializer failures are tool
+errors (`isError: true`) with the existing error text and **no successful brief**.
+A repeat after successful dispatch fails the ordinary phase check; the endpoint
+does not replay a receipt or promise idempotence.
+
+Failure or cancellation is **not a rollback guarantee**. Fetch/fast-forward and
+even a GitHub edit can have happened before an error; a metrics failure after
+the phase save can leave the issue already dispatched despite no receipt.
+Existing Claude session attribution can also precede later prerequisite errors.
+Cancellation/disconnection may leave the client without a final response and
+cannot establish which effects occurred. There is no automatic retry, recovery,
+fabricated successful brief or new atomicity claim. Inspect fresh status, issue
+context and actual Git/GitHub artifacts, then let the authorized normal engine
+workflow choose explicit recovery (`resume`/`abort` or its stated fresh-plan/
+repair path). Do not blindly re-dispatch based on a missing response or an
+apparently unchanged phase; this tool exposes no later recovery verb.
+
+### Dispatch verification and blast radius
+
+`TestMCPStdio/issue_dispatch` uses a real stdio MCP process, independent shared
+engine and CLI fixtures, and the existing compiled scripted probe. It checks
+complete brief parity, exact Unicode/whitespace/order and local-only declarations,
+Claude effort and OpenCode variant/bare selections, strict inputs (including
+genuinely omitted raw-stdio arguments), prerequisite/contract/drift refusals,
+cross-process serializer contention, repeat refusal, fetch/fast-forward/status
+failures and post-save metrics failure. Exact ordered command transcripts pin
+the bound root and recorded worktree, one attempt and no host/PR/review/merge
+commands. Git/GitHub mutations are simulated; no live host or real GitHub
+mutation is used. Fresh status/context/resource parity and unchanged launching
+checkout snapshots are checked before/after success and partial failure.
+`TestMCPDispatchCancellation` uses SDK IO transport and the existing scripted
+runner to prove cancellation reaches the shared engine after earlier commands,
+without a receipt, automatic retry, successful phase save or leaked serializer.
+The earlier discovery, inspection no-write/no-command and shutdown regressions
+remain, now with seventeen tools, four resources and one template.
+
+| Touched element | Does its previous behavior still hold? |
+| --- | --- |
+| `mcp.go`: `runMCP` registration; new `mcp_dispatch.go`: `addMCPDispatch`, schema/annotations, validation, handler and typed output | Sixteen-tool/no-dispatch discovery becomes seventeen as recorded before/after above. Existing launch/root/storage checks, sixteen tool schemas/results/annotations, resource/logging capabilities, SDK structured/text output, protocol-only stdout and clean shutdown hold. Only the added endpoint performs dispatch. |
+| Reused `run.Dispatch`, `DispatchRequest`, `DispatchResult`, `DispatchSchemaVersion`, `dispatchResult` (also used by repair), strict request decoder | Implementations and schema 4 are unchanged. Original bytes and the entire result are passed through; approved work, local test declarations and Selection fields are not re-derived or paraphrased. Constructing the brief never launches an agent, for any caller, including repair. |
+| Reused `withDeliveryMutation`, `AcquireMutation`/`Release`, OS/process serializer, Delivery state/lock | Algorithms and blocking/release/error behavior hold. Both MCP lifecycle handlers and all existing mutating CLI command classes use the complete-command serializer; read inspections/resources do not acquire it. Dispatch's phase save and all existing partial effects are retained, not made atomic or idempotent. |
+| Reused lifecycle/configuration prerequisites (`loadVerb`, `state.Load`, lock inspection/consistency, `loadExecutionConfig`, `checkExecutionConfig`, phase/issue matching, `checkApprovedWork`, `checkDependencies`) | Unchanged checks, ordering, errors and existing caller scope. MCP cannot bypass Assist/stopped/blocked-phase/dependency/work/routing/contract/drift refusals; no sibling lifecycle verb receives a new prerequisite. |
+| Reused external/recording paths (`openGitHub`, `ghops.Open`/`Repo`/`SetStatus`, `gitops.Open`/`Fetch`/`FastForwardIn`, `save`, `recordArchitectSession`, `recordMetric`) | Existing command arguments, bound directories, ordering, status/phase/session/metrics effects and errors hold. No retry or rollback is added; post-external and post-save errors remain failures with possible retained effects. |
+| `mcp_test.go`: `TestMCPStdio` dispatch subtest, `mcpDiscover`; new `mcp_dispatch_test.go`: fixtures, schema, brief/CLI/shared parity, malformed/prerequisite/repeat/partial-failure/contention/cancellation exercises | Prior sixteen-tool/resource/inspection assertions and snapshot/shutdown semantics hold; discovery adds the dispatch schema and conservative mutation annotations. New isolated transport tests exercise the real handler without live external services. |
+| `mcp_metrics_test.go`: `mcpMetricsOmittedArguments`; reused connection/call/tree/resource/context helpers and `execxtest.Script` | Prior raw omitted-input checks hold; dispatch is added to that raw-stdio rejection list. Existing helpers/runners are otherwise unchanged, including full file snapshots, strict ordered calls and rejecting-runner inspection coverage. |
+| `testdata/doctor-probe/main.go`: fixture response `Dir`, `respond` directory check and comment | Existing fixtures default to `Root` and retain exact-command/opened-directory checks and external logging. Dispatch alone supplies optional per-response exact directories for its worktree command. Before: the comment described only read probes; after: explicitly scripted activation/dispatch commands are supported too, all simulated. No arbitrary production executable is reached. |
+| `cli.go` MCP help; `mcp_activate_test.go` help assertion; `README.md`; `docs/mcp-status.md` | Existing argv/exit/activation behavior, source-only installation, human approval and native host-enforcement boundaries hold. Help advertises issue dispatch; obsolete blanket no-dispatch/sole-lifecycle statements remain historical before/after in this guide and README. The activation-only test description remains scoped to activation itself. |
+| Original sixteen tools, four fixed resources/issue template and report engines; CLI lifecycle/repair/review/merge/evaluation/configuration/grant policy; routing, persistent schemas, dependencies, adapters/guards/native agents, CI, installed binaries and release | Implementations untouched. No useful surface is removed, new approval authority/agent launcher/scheduler/relay added, or installation/release/live-child qualification claimed. Building source does not upgrade the server a client launches; discover that binary's tools separately. |
+
+```sh
+go test ./internal/cli -run '^TestMCPStdio$/issue_dispatch' -v -count=1
+go test ./internal/cli -run '^TestMCPDispatchCancellation$' -v -count=1
+```
+
 ## Reproducible smoke test and trial checkpoint
 
 From the source checkout, run:
@@ -1237,6 +1386,9 @@ The earlier ten/thirteen/fourteen-tool counts remain historical checkpoints.
 refusals/partial failures, for sixteen tools; the item-14 four resources and one
 template remain read-only. Earlier blanket unchanged-file claims describe
 inspections, not the new activation mutator's expected writes.
+**After item 16:** it also exercises issue dispatch for seventeen-tool cumulative
+coverage; the four resources and one template still never dispatch or mutate.
+Earlier unchanged-file guarantees remain scoped to inspections, not dispatch.
 Next-action fixtures additionally cover dependency waits, implementation,
 review, merge-report, human merge approval, abandonment, decision resolution
 versus recovery, stopped runs, completion and effective configuration drift.

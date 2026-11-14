@@ -431,7 +431,7 @@ commands:
   eval             Evaluation preview/run/status/stop/report (eval help for arguments)
   grant            Show the active autonomy grant; grant revoke ends it; grant relay hands it to a fresh Claude Code session; grant preview and grant create propose and record one (JSON stdin/stdout)
   render-agents    Render project agent definitions for every enabled host
-  mcp              Serve inspections, bounded evaluation preparation, plan decision gates and human-approved activation over stdio (mcp [--repo <path>] [--eval-storage-root <absolute-local-path>])
+  mcp              Serve inspections, bounded evaluation preparation, plan decision gates, human-approved activation and issue dispatch over stdio (mcp [--repo <path>] [--eval-storage-root <absolute-local-path>])
   run              Adapter plumbing: Delivery verbs (JSON stdin/stdout); inspection: status|next --json, readiness --issue <number> --json
   guard            Adapter plumbing: pre-write enforcement for host hooks (not a human command)
   hook             Adapter plumbing: host lifecycle-event verbs (not a human command)
@@ -508,6 +508,19 @@ application and evaluation execution retain separate authority. The preceding
 fifteen tool contracts and every resource's no-command/no-write contract hold.
 Grant-based activation remains excluded from MCP, not removed from the CLI.
 See the guide for the full approval handoff, mutations, recovery and blast radius.
+
+Before item 16, that sixteen-tool MCP catalog exposed no dispatch endpoint;
+activation was its sole lifecycle operation. After separately approved item 16,
+source adds `orch_run_dispatch` for seventeen tools, retaining every preceding
+tool/resource contract. It accepts only `{"schema_version":4,"issue_number":493}`
+with a positive issue number, calls existing serialized dispatch in the fixed
+launch-bound checkout and returns the complete approved execution brief.
+It is mutating, non-idempotent and externally effectful, not issue-context
+inspection, new approval or an agent launch. It does not choose a model or
+perform PR/review/merge work. Errors/cancellation can retain partial effects;
+inspect fresh state and use normal engine recovery, never automatically retry.
+Building source does not upgrade an installed MCP server or qualify a live host.
+See the guide's dispatch section for the exact effects, tests and blast radius.
 
 Previously `metrics` only accepted its read-only report form. That form still
 works; `metrics record` now accepts durable observation JSON. See the
