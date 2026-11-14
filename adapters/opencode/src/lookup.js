@@ -16,12 +16,19 @@ export function sameDirectory(left, right) {
 export function readLookupContext(run, directory) {
   if (typeof directory !== "string" || !isAbsolute(directory)) throw new Error("lookup session directory is not an absolute path")
   const value = JSON.parse(run(["hook", "opencode", "lookup-context", "--json"], directory))
-  if (value.schema_version !== 1 || !["off", "best-effort", "required"].includes(value.memhub_mode)) {
-    throw new Error("unsupported Orch lookup-context schema or mode; update Orch")
+  if (value?.schema_version !== 2 || typeof value.managed !== "boolean") {
+    throw new Error("unsupported Orch lookup-context schema or management scope; update Orch")
+  }
+  if (!value.managed) {
+    if (Object.keys(value).length !== 2) throw new Error("invalid unmanaged lookup-context")
+    return value
+  }
+  if (!["off", "best-effort", "required"].includes(value.memhub_mode)) {
+    throw new Error("unsupported Orch lookup-context mode; update Orch")
   }
   for (const key of ["memory_root", "code_root", "git_common_dir"]) {
     if (typeof value[key] !== "string" || !isAbsolute(value[key])) throw new Error(`invalid lookup-context ${key}`)
-    statSync(value[key])
+    if (!statSync(value[key]).isDirectory()) throw new Error(`invalid lookup-context ${key} directory`)
   }
   if (!/^[a-f0-9]{40,64}$/.test(value.head)) throw new Error("invalid lookup-context revision")
   return value
@@ -55,6 +62,9 @@ export async function installLookup(ctx, run) {
   } catch (error) {
     diagnostic = unavailable(error.message)
   }
+  // Only the engine's successful, versioned unmanaged observation is a no-op.
+  // Discovery/configuration/compatibility failures still install child fences.
+  if (expected?.managed === false) return async () => {}
   const capable = typeof ctx.mcp?.transform === "function" && typeof ctx.mcp?.list === "function"
     && typeof ctx.agent?.transform === "function" && typeof ctx.tool?.transform === "function" && typeof ctx.tool?.list === "function"
   if (!capable) diagnostic = unavailable("host lacks native MCP, agent or tool transforms; update OpenCode V2")
@@ -125,6 +135,7 @@ export async function installLookup(ctx, run) {
   }
   async function preflight(directory, current = readLookupContext(run, directory)) {
     if (diagnostic) throw new Error(diagnostic)
+    if (!current.managed) throw new Error(unavailable("session is outside Orch management; reload its native location"))
     if (current.memhub_mode === "off") throw new Error(unavailable("mode is off; no child lookup is permitted"))
     if (!sameDirectory(current.memory_root, expected.memory_root) || !sameDirectory(current.code_root, expected.code_root)
       || !sameDirectory(current.git_common_dir, expected.git_common_dir)) {
@@ -147,7 +158,7 @@ export async function installLookup(ctx, run) {
     let mode = expected?.memhub_mode
     try {
       const current = readLookupContext(run, session.location?.directory)
-      mode = current.memhub_mode
+      if (current.managed) mode = current.memhub_mode
       await preflight(session.location?.directory, current)
       event.system.push({ type: "text", text: `Orch child Memhub: native ${lookupServer}, lookup-only; call status first and compare binding identities with the dispatch prompt. Expected memory_root=${current.memory_root}; code_root=${current.code_root}; git_common_dir=${current.git_common_dir}; observed HEAD=${current.head} (not dirty-content identity). Service maintenance may write indexes/logs; semantic/admin writes remain Architect-only.` })
     } catch (error) {
