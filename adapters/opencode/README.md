@@ -51,7 +51,7 @@ them and are never copied into diagnostics.
 | Touched element | Does its previous behavior still hold? |
 |---|---|
 | OpenCode runtime admission and npm SDK/smoke pins | The beta 18314 and stable 2.0.0 admission floors remain, with advisory acceptance of unverified newer versions. Before, SDK and smoke were tied to beta 18314. Now the SDK/protocol dependencies are pinned to 2.2.6 and the real-host smoke checks contracts without an upper-version block. |
-| `orch.delivery` plugin ID, setup, guard hooks, and session context | The ID and thin V2 hook behavior remain. The import changes from the obsolete SDK to `@opencode/plugin`; missing/non-absolute session directories now fail before invoking Orch. The SDK scopes setup registrations to plugin unload. |
+| `orch.delivery` plugin ID, setup, guard hooks, and session context | Before issue 495, this was only thin V2 guard/context wiring. Those hooks and the ID remain; native child lookup registration and executor checks are now additive (see below). The earlier SDK import migration and absolute-session-directory validation remain. The SDK scopes setup registrations to plugin unload. |
 | File-tool target interpretation | Before, a line scanner could miss indented native patch headers and raw Windows shell aliases could identify a different destination to Go than to the host. Now native `Patch.parse` supplies every source/move target, `FSUtil.windowsPath` normalizes the host's drive aliases, and targets are resolved against the actual session directory before one all-or-nothing guard call. Invalid patches and native home-expanding forms fail before guard/tool actions. This applies to every `edit`, `write`, and parsed patch source/destination. |
 | Configured local plugin path | Before, the guide and smoke configured `src/index.js`, which current V2 skips. Now both configure the package directory, whose existing package export supplies the same server entrypoint. Existing installations replace only their old Orch entry and retain unrelated plugins and skills. |
 | Shared canonical paths and Windows junctions | Before, Go could leave a redirecting reparse ancestor unresolved and the missing-tail fallback trusted it lexically, allowing a junction to escape a Delivery worktree. Now shared `Canonical`, `Inside` and root discovery fail closed on unresolved redirecting ancestors. Nonredirecting tags remain unchanged; this is rejection, not general junction support. Native isolation retains its existing explicit alias resolver after its original syntax checks, before shared validation. No SUBST/8.3/UNC/hardlink admission rule is relaxed. |
@@ -119,11 +119,130 @@ fixture exercises both real tool sets with simulated model identities.
 
 The smoke is a required **local Windows** check. It starts its own localhost
 server with isolated configuration/database paths and OS-temp repositories,
-attaches simulation before any session action, and stops/joins that server
-before deleting its own fixtures. Its synthetic Delivery state does not
+attaches simulation before any session action, and stops/joins that server.
+Before issue 495 it deleted its own fixtures; now it retains synthetic fixtures
+and `evidence.json` outside every source checkout for inspection. Its synthetic Delivery state does not
 represent a real approved Orch run. Hosted CI runs Node and Go checks on
 Windows, Linux and macOS; it **does not run this live-host smoke**. Other
 platforms and the installed manual Delivery workflow remain separately qualified.
+
+## Bound child memory (issue 495)
+
+**Before (policy):** OpenCode children were instructed to use Architect-mediated
+memory and never invoke Memhub themselves; tool availability alone was not
+write isolation. **After:** `orch-scout`, `orch-implementer`,
+`orch-specialist`, `orch-reviewer` and `orch-reviewer-safe` may use only native
+`orch_memhub` status, recall, get_row and locate. This is the approved policy
+exception, not a claim that historical Architect mediation or the shell-bypass
+warning disappeared. Claude/Codex direct access remains unclaimed and mediated.
+
+The plugin invokes read-only `orch hook opencode lookup-context --json` (schema
+1) at its native location. The engine verifies Git's selected checkout, primary
+registration/common directory and shared Orch root checks, then loads primary
+effective configuration. It reads no memory and changes no state. The existing
+fail-open textual session-start and observation-only issue context are unchanged.
+No second adapter mode resolver, memory copying, retrieval engine, MCP relay or
+new dependency is introduced.
+
+When enabled, native MCP launches
+`memhub serve --memory-root <primary> --code-root <checkout> --profile lookup-only`
+with explicit cwd, legacy protocol and `pool: false`. Connections are per native
+location, **not automatically per child**. Native child creation can inherit the
+parent's directory: move each child session to its assigned checkout and read its
+location back before lookup. Supply expected roots/common directory and revision
+in every dispatch; reviewers get a separate registered checkout pinned to the PR's
+live head. Call status first, compare binding evidence with that assignment and
+the engine context, and refuse mismatches rather than use primary code. Equivalent
+Windows extended `\\?\` paths are compared by directory identity, not string
+spelling. HEAD does not identify dirty tracked content; inspect locate's SHA-256
+snippet/chunk/indexed-file/worktree-file evidence, independent index path and
+freshness limitations. No atomic-tree-snapshot or untracked-code coverage is claimed.
+
+Native role permissions deny broad Memhub and allow just the four bound actions.
+Executor checks also apply inside Code Mode and reject unsupported roles and
+full-server calls from children, even if later session permission rules allow
+them. Memhub itself supplies the lookup-only catalog and rejects excluded tools
+before handlers. The restriction is **not only about a server named `memhub`**:
+the plugin recognizes every configured Memhub-named server, local command with a
+`memhub[.exe]` argument basename, and renamed/remote catalog exposing the four
+Memhub lookup symbols. It preserves Architect access to existing broad servers
+and does not edit user MCP configuration. A normalized `orch_memhub` collision
+reports failure without overwriting it or dropping the write guard. Arbitrary
+external CLI/proxy access is not a sandbox claim; shell-capable children must
+still obey the no-CLI-fallback and Architect-only semantic/admin-write instructions.
+
+Code Mode can discard unknown input fields before MCP invocation. The smoke
+therefore distinguishes an ignored attempted root argument (returned binding
+must still name the assigned checkout) from direct MCP argument rejection.
+Neither is permission to select another root.
+
+Lookup-only is **not physically read-only**: project opens may migrate/upsert
+metadata, maintain registry/metrics, expire pending proposals and log queries;
+startup may initialize bundled models and locate may refresh disposable indexes.
+Task/fact/decision/doc/note/command writes, proposals, administrative actions,
+sync, installs and repairs remain Architect-only. Off launches no child service.
+Best-effort reports missing/old servers or host capabilities and retains mediated
+fallback. Required fails the affected preflight/lookup. Neither mode falls back to
+a full server, copies memory, installs software or repairs configuration. Reload
+the native location after changing Orch mode or server availability; in-flight
+calls still recheck engine context and Memhub revalidates its pinned roots.
+
+### Qualification, not installation
+
+Policy permission, available source interfaces, isolated runtime evidence and
+installed-live qualification are separate claims. The local smoke requires
+`ORCH_SMOKE_MEMHUB` to name an explicitly selected source-built executable;
+missing qualification capability fails, never skips or substitutes a global
+server. For example, in PowerShell:
+
+```powershell
+$env:ORCH_SMOKE_MEMHUB = 'C:\path\to\source-built\memhub.exe'
+npm run smoke --prefix adapters/opencode
+```
+
+The fixture isolates homes, user configuration, caches, registry/sync discovery
+and temporary storage, launches only owned processes, and uses synthetic memory
+and simulated model responses. The localhost provider trap must receive zero
+requests. Native MCP lifecycle owns service cancellation/shutdown. Evidence and
+fixtures are retained externally after the private process tree is stopped.
+
+Isolated qualification tuple used on 2026-11-14:
+
+| Element | Exact identity |
+|---|---|
+| Host | Windows `win32/x64`, OpenCode `opencode v2.3.0` (admitted with the existing unverified-version advisory, not a changed version floor) |
+| Test runtime | Node `v24.15.0`, PowerShell `7.6.10`, Go `go1.26.5 windows/amd64` |
+| Native SDK/utilities/simulation | `@opencode/plugin`, `@opencode/util`, `@opencode/protocol` all `2.2.6`; dependency pins unchanged |
+| Real Memhub source build | `eec177f5bad21e9b1a443b986d30164b710a0b4a`; supplied Architect build using stable Rust `1.95.0`, `cargo build --locked --offline --bin memhub` with isolated target (build scripts fetched declared model assets despite Cargo offline) |
+| Memhub executable SHA-256 | `c1a3a66fd6b836c838eef431e3471bc1f5ce1aa93a91ee54d50961fcd0c5f4c3` |
+
+The smoke uses real lookup-only processes for successful reads and direct profile
+fences; legacy option rejection is a synthetic CLI fixture, not qualification of
+an installed old release. It observes required-mode pre-model failure through
+the native session outcome and parent failure report. Reviewer write attempts can be rejected by
+Orch's containment hook before native permission evaluation; evidence records
+the actual layer rather than calling every rejection a permission result.
+
+This increment does not install globally, edit host-global configuration, qualify
+Claude/Codex direct access or paid model-driven behavior, deliver guide search,
+complete wrap-up integration or close all task331 rollout work.
+
+### Child-memory blast radius
+
+| Touched element | Does its previous behavior still hold? |
+|---|---|
+| `hook` CLI dispatch/usage | Existing host verbs and fail-open session-start remain; a new strict, argv-only versioned read observation is added. |
+| `lookup-context` root/config projection | New. Reuses shared canonical/root, Git registration and effective config primitives; filesystem identity checks reject wrong, missing and unrelated roots. No Memhub/project-state read or mutation is added. |
+| `orch.delivery` setup and native MCP lifecycle | Existing guard/context registrations remain. Adds a separate lookup-only, non-pooled connection per verified location; native lifecycle owns startup/cancellation/shutdown, without relay or fallback. |
+| MCP names/configuration and existing Architect connections | User configuration is not overwritten. Normalized reserved-name collisions now refuse child lookup; known broad connections remain usable by the Architect, never child fallback. Other servers are unchanged. |
+| Native `Agent.Info.permissions` transforms | Existing edit/shell/subagent rules remain for every role. Adds a bound deny for unsupported agents and four exceptions for all five Orch children, plus broad-server denials; model/variant selections are untouched. |
+| Native `Tool.Info.execute` transforms and Code Mode snapshots | Previously Memhub executors had no Orch child restriction. Now every identified Memhub executor checks session/role/root capability; each bound result must carry matching binding evidence. This applies to all tools in those catalogs, not only `recall` or a server literally named `memhub`. Unrelated executors are unchanged. |
+| Status-first assignment guidance and per-call evidence | New. Each child is instructed to validate status against its assignment before lookup; every executor independently verifies session/root context and each result's binding, without a transient authorization cache that could disappear on native reload. Prompt assignment/revision comparison remains instructional, not invented authorization or an atomic snapshot. |
+| Five canonical OpenCode agent files and generated outputs | Before, no explicit four-tool allowance and blanket no-write prose. After, all five get the same lookup exception and maintenance distinction. Existing scope, review independence, native read-only roles, routed models, branch/ref guidance and no-delegation rules remain. `internal/agents.Render` still substitutes routing fields only. |
+| OpenCode Architect/Delivery skills | Before, children never invoked Memhub and every Memhub process used main as cwd. After, explicit bound child reads use assigned code cwd; Architect full/CLI operations and semantic/admin writes remain primary-only. Approval gates, engine routing, issue-context observations, review independence and wrap-up obligations are unchanged. |
+| Existing isolated smoke and provider simulation | Existing guard/catalog/reload/containment checks remain; explicit parent-report handling keeps native child notifications from being mistaken for another test's turn. Adds real four-tool processes/roles and dirty implementation/pinned-review bindings. Before fixtures were deleted; after they and evidence remain outside all checkouts after owned services stop. |
+| Go/Node deterministic tests | Existing checks remain; new fixture tests exercise strict context, modes, collision preservation, permissions, per-call evidence and executor denials without project-memory access. |
+| SDK, dependency graph, shared write guard, other hosts and Delivery engine | Unchanged; no dependency/pin, scheduler, lifecycle wire, approval, shell/edit grant or Claude/Codex access expansion. Source checks do not certify an installed adapter. |
 
 Windows junctions that the Go runtime cannot resolve are refused by shared
 path checks, including existing and not-yet-created targets. The smoke checks

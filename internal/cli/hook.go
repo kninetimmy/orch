@@ -14,7 +14,7 @@ import (
 
 // hookUsage is the one-line usage for the adapter plumbing surface,
 // mirroring guardUsage.
-const hookUsage = "orch hook: usage: orch hook <claude|codex> session-start | orch hook claude context-check|pre-compact (JSON document on stdin) | orch hook opencode session-start [--model provider/model[#variant]] | orch hook codex subagent-usage (JSON document on stdin)"
+const hookUsage = "orch hook: usage: orch hook <claude|codex> session-start | orch hook claude context-check|pre-compact (JSON document on stdin) | orch hook opencode session-start [--model provider/model[#variant]] | orch hook opencode lookup-context --json | orch hook codex subagent-usage (JSON document on stdin)"
 
 // runHook dispatches host adapter-plumbing verbs (PRD §23). Host adapters call
 // it instead of reimplementing their host-specific behavior; it is never
@@ -35,6 +35,8 @@ func runHook(env Env, args []string) error {
 		return hookSessionStart(env, args[0], "")
 	case len(args) == 4 && args[0] == "opencode" && args[1] == "session-start" && args[2] == "--model" && args[3] != "":
 		return hookSessionStart(env, args[0], args[3])
+	case len(args) == 3 && args[0] == "opencode" && args[1] == "lookup-context" && args[2] == "--json":
+		return hookLookupContext(env)
 	}
 	return usageError(hookUsage)
 }
