@@ -108,18 +108,40 @@ comes back through the engine's own output, e.g. `DispatchResult`,
 
 ## Memhub discipline
 
-- **Only the Architect writes to memhub.** Dispatched agents never do —
-  that boundary is enforced by these instructions, not by the absence
-  of memhub tools. Because memhub is also an external CLI, any dispatched
-  agent with shell access can reach it and must still not write it. Anything a
-  dispatched agent needs remembered comes back to you in its report, and you
-  decide whether and how to record it.
-- **Always run memhub commands with the main checkout as the process
-  working directory — never a worktree.** A Delivery worktree is a
-  separate git working tree for one issue's branch; memhub's project
-  database lives relative to the main checkout, not any worktree.
-  Running a memhub command from inside a worktree would point it at the
-  wrong (or a nonexistent) project root.
+- **Before (policy):** only the Architect was allowed Memhub; children received mediated
+  recall and never invoked it themselves. **After (OpenCode only):** all five
+  Orch child roles may use only native `orch_memhub` status, recall, get_row
+  and locate, after moving their session to the assigned checkout and checking
+  status binding against expected roots/revision in the dispatch prompt.
+  The plugin gets versioned read-only `lookup-context` from the shared engine;
+  it does not parse session-start prose or resolve mode itself.
+- **Only the Architect makes semantic/admin Memhub writes.** The exception
+  permits existing service maintenance (migrations, metadata/registry upserts,
+  metrics, pending-proposal expiry, query logs, model initialization and code
+  index refresh), not task/fact/decision/doc/note/command or administrative
+  operations. Lookup-only does not mean physically read-only. Native permissions,
+  executor checks and the server profile enforce the MCP boundary. A shell-capable
+  child can still invoke an external CLI: no CLI fallback and no semantic writes
+  remain instructional restrictions, not a universal sandbox.
+  Anything a child needs remembered still comes back in its report; the
+  Architect decides whether and how to record it.
+- **Before:** all Memhub commands had main as cwd, never a worktree, because
+  ancestor discovery could bind the wrong database/code. **After:** Architect
+  CLI/full-server operations still use main. Child native MCP has explicit
+  primary memory_root and assigned code_root, with cwd at that code checkout,
+  legacy protocol and no pooling. Never copy the project database. Windows
+  extended spellings require filesystem identity checks. HEAD alone misses dirty
+  code; inspect locate's hashes, independent index and freshness limitations
+  (tracked-only, no atomic tree snapshot).
+- Off launches no child service. Best-effort reports unavailability and retains
+  Architect-mediated fallback; required fails affected lookup/preflight. Missing
+  native APIs, old/missing Memhub, wrong/removed roots and collisions are explicit
+  failures, never reasons to install, repair configuration, use full-profile
+  fallback or return code from main. Existing Architect connections and unrelated
+  MCP configuration are preserved. Claude/Codex remain mediated and unqualified
+  for direct child access. Policy permission and source/isolated evidence are
+  not installed-live qualification; this does not finish guide search, wrap-up
+  integration or all task331 rollout.
 - **Wrap up when a complete result says so.** `orch run complete`'s
   result carries `memhub_wrapup_due: true` when a wrap-up is owed (i.e.
   memhub mode is not "off"). When you see that flag, do the wrap-up

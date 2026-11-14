@@ -320,10 +320,27 @@ parent-session usage.
    executor is told which of its required checks CI will not repeat; drop
    nothing, an unstated one reads as a check CI holds.
 
-   Before dispatching, you (the Architect) perform whatever memhub recall is
-   relevant to the issue, with the main checkout as cwd — never a worktree.
-   Embed the relevant recall results directly in the dispatch prompt; the
-   executor agent never invokes memhub itself.
+   Before this increment, the Architect embedded recall and the executor
+   never invoked Memhub itself. Now the Architect still performs relevant
+   recall with main as cwd and embeds useful history, but every OpenCode Orch
+   child role has the four-tool `orch_memhub` exception. Supply expected primary
+   memory_root, assigned code_root, Git common directory, branch and observed
+   HEAD in each dispatch prompt. Obtain these via read-only
+   `orch hook opencode lookup-context --json` from the assigned checkout
+   (schema_version `1`; reject others), not copied memory or guessed ancestor
+   paths. Require the child to move its session to that checkout, call native
+   bound status first and compare explicit binding filesystem identities with
+   the prompt/context before recall, get_row or locate. A mismatch refuses
+   lookup and comes back to the Architect, never to main or a broad server/CLI.
+   HEAD is revision context, not dirty-code identity: locate's content hashes,
+   index and freshness evidence cover tracked code, not an atomic snapshot or
+   untracked files. Existing service maintenance may write storage; all
+   semantic/admin operations remain Architect-only. Off launches no service;
+   best-effort retains mediated fallback and required fails affected
+   lookup/preflight. Missing tools/capabilities do not authorize installs,
+   configuration repair or full-profile fallback. Shell bypass remains an
+   instructional restriction, not a sandbox. Claude/Codex remain mediated;
+   OpenCode source/isolated evidence is not installed-live qualification.
 
 3. **PR-open** — once the executor reports verification evidence, call
    `orch run pr-open`:
@@ -361,6 +378,14 @@ parent-session usage.
    never report the routed selection as if it ran.** `reviewed_head_oid` must be
    the PR's **live** head OID at review time (e.g. via `gh pr view`), never a
    cached value.
+
+   Assign the fresh reviewer a separate registered checkout pinned to that live
+   OID, not the executor's concurrently mutable checkout. Supply the same primary
+   memory_root but that review code_root, common directory and pinned OID.
+   Require moving the review session there and validating native bound status
+   before lookup, with the same refusal/fallback rules above. This four-tool
+   exception does not widen scout/reviewer edit or shell permissions, weaken
+   review independence, change routed-profile matching or bypass any gate.
 
 5. **Review** — the reviewer produces **one consolidated report**
    (acceptance criteria, scope, correctness, tests, CI, security,

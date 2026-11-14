@@ -3,6 +3,7 @@ import { isAbsolute, resolve } from "node:path"
 import { Plugin } from "@opencode/plugin"
 import { FSUtil } from "@opencode/util/fs-util"
 import { Patch } from "@opencode/util/patch"
+import { installLookup } from "./lookup.js"
 
 export const pluginID = "orch.delivery"
 export const mutationTools = new Set(["edit", "write", "patch"])
@@ -53,6 +54,7 @@ export function definePlugin(run = runOrch) {
   return Plugin.define({
     id: pluginID,
     setup: async (ctx) => {
+      const lookupContext = await installLookup(ctx, run)
       await ctx.tool.hook("execute.before", async (event) => {
         const paths = mutationPaths(event.tool, event.input)
         if (paths.length === 0) return
@@ -70,6 +72,7 @@ export function definePlugin(run = runOrch) {
         }
         const text = run(args, directory)
         if (text) event.system.push({ type: "text", text })
+        await lookupContext(event, session)
       })
     },
   })
