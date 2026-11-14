@@ -13,9 +13,10 @@ import { createInterface } from "node:readline"
 import { Backend } from "@opencode/protocol/simulation"
 import { pluginID } from "./src/index.js"
 import { lookupServer, lookupTools, sameDirectory } from "./src/lookup.js"
+import { checkAdapterModule, copyBinary, fileIdentity, inside, prepareOrch, selectArtifacts, verifyArtifacts } from "./smoke-artifacts.mjs"
 
-const adapter = path.dirname(fileURLToPath(import.meta.url))
-const repo = path.resolve(adapter, "../..")
+const harnessAdapter = path.dirname(fileURLToPath(import.meta.url))
+const repo = path.resolve(harnessAdapter, "../..")
 const baseline = "2.2.6"
 const agentModels = {
   "orch-scout": { providerID: "smoke-alpha", id: "scout", variant: "fast" },
@@ -68,11 +69,6 @@ function findOpenCode() {
   throw new Error("No supported OpenCode V2 executable found; minimum beta 18314 or stable 2.0.0 is required.")
 }
 
-function inside(root, target) {
-  const relative = path.relative(root, target)
-  return relative === "" || (!path.isAbsolute(relative) && relative !== ".." && !relative.startsWith(".." + path.sep))
-}
-
 function result(name, args, cwd, env = process.env) {
   const value = spawnSync(name, args, { cwd, env, encoding: "utf8", windowsHide: true })
   if (value.error) throw value.error
@@ -105,9 +101,8 @@ async function within(promise, label) {
   }
 }
 
-const opencode = findOpenCode()
-const memhub = process.env.ORCH_SMOKE_MEMHUB
-assert(memhub && path.isAbsolute(memhub) && existsSync(memhub), "qualification requires ORCH_SMOKE_MEMHUB pointing to a source-built Memhub with explicit-root lookup-only support; no skipped smoke or global fallback")
+const selection = await selectArtifacts(process.env, harnessAdapter)
+const adapter = selection.adapter.root
 const fixtureBase = existsSync(path.join(tmpdir(), "opencode")) ? path.join(tmpdir(), "opencode") : tmpdir()
 const temp = await realpath(await mkdtemp(path.join(fixtureBase, "orch-opencode-smoke-")))
 assert(!inside(await realpath(repo), temp), "smoke fixtures must be outside the source checkout")
@@ -116,7 +111,25 @@ assert(ancestry.status !== 0 && /not a git repository/i.test(ancestry.stderr), "
 for (const entry of command("git", ["worktree", "list", "--porcelain"], repo).split(/\r?\n/).filter((line) => line.startsWith("worktree "))) {
   assert(!inside(await realpath(entry.slice(9)), temp), "smoke fixtures must be outside every source checkout")
 }
-const evidence = { fixture_root: temp, runtime: command(opencode, ["--version"], repo).trim(), node: process.version, sdk: "2.2.6", memhub: { binary: memhub, sha256: createHash("sha256").update(await readFile(memhub)).digest("hex") }, lookups: {}, checks: [] }
+const evidence = {
+  fixture_root: temp, mode: selection.mode, node: process.version, sdk: "2.2.6",
+  invocation: {
+    command: "npm run smoke --prefix adapters/opencode",
+    selectors: Object.fromEntries(["ORCH_SMOKE_ORCH", "ORCH_SMOKE_ADAPTER", "ORCH_SMOKE_MEMHUB"]
+      .filter((name) => Object.hasOwn(process.env, name)).map((name) => [name, process.env[name]])),
+  },
+  harness: {
+    repository: await realpath(repo),
+    revision: command("git", ["rev-parse", "HEAD"], repo).trim(),
+    status: command("git", ["status", "--porcelain", "--", "adapters/opencode"], repo).trim(),
+    files: await Promise.all(["smoke.mjs", "smoke-artifacts.mjs"].map((file) => fileIdentity(path.join(harnessAdapter, file)))),
+  },
+  adapter: selection.adapter, lookups: {}, checks: [],
+}
+function pass(message) {
+  console.log("PASS " + message)
+  evidence.checks.push(message)
+}
 const root = path.join(temp, "repo")
 const bin = path.join(temp, "bin")
 const state = path.join(temp, "state")
@@ -152,10 +165,6 @@ try {
   const writable = path.join(root, ".orchestrator", "worktrees", "issue-1")
   const sibling = path.join(root, ".orchestrator", "worktrees", "sibling")
   const orchBinary = path.join(bin, process.platform === "win32" ? "orch.exe" : "orch")
-  command("go", ["build", "-o", orchBinary, "./cmd/orch"], repo)
-  const privateOpenCode = path.join(bin, process.platform === "win32" ? "opencode2.exe" : "opencode2")
-  if (process.platform === "win32") await copyFile(opencode, privateOpenCode)
-  else await symlink(command("which", [opencode], repo).trim(), privateOpenCode)
   const git = command(process.platform === "win32" ? "where.exe" : "which", ["git"], repo).trim().split(/\r?\n/)[0]
   const env = Object.fromEntries(Object.entries(process.env)
     .filter(([name]) => !/API_KEY|TOKEN|SECRET|CREDENTIAL|ACCESS_KEY|PASSWORD|COOKIE|^GIT_|^MEMHUB_|^HF_|^FASTEMBED_|^(HTTP|HTTPS|ALL|NO)_PROXY$/i.test(name))
@@ -194,14 +203,27 @@ try {
   delete env.OPENCODE_SERVER_PASSWORD
   delete env.OPENCODE_CLI_CONFIG_CONTENT
   for (const key of ["HOME", "APPDATA", "LOCALAPPDATA", "HF_HOME", "HF_HUB_CACHE", "FASTEMBED_CACHE_PATH"]) await mkdir(env[key], { recursive: true })
+  checkAdapterModule(selection.adapter, temp, env)
+  const opencode = findOpenCode()
+  evidence.runtime = command(opencode, ["--version"], temp, env).trim()
+  const privateOpenCode = path.join(bin, process.platform === "win32" ? "opencode2.exe" : "opencode2")
+  if (process.platform === "win32") await copyFile(opencode, privateOpenCode)
+  else await symlink(command("which", [opencode], repo).trim(), privateOpenCode)
+  evidence.orch = await prepareOrch(selection, orchBinary, (destination) => command("go", ["build", "-o", destination, "./cmd/orch"], repo))
+  const memhubBinary = path.join(bin, process.platform === "win32" ? "memhub.exe" : "memhub")
+  evidence.memhub = await copyBinary(selection.memhub, memhubBinary)
+  for (const [name, binary] of [["orch", evidence.orch], ["memhub", evidence.memhub]]) {
+    const resolved = command(process.platform === "win32" ? "where.exe" : "which", [name], root, env).trim().split(/\r?\n/)[0]
+    binary.native_path_resolution = await fileIdentity(resolved)
+    assert.deepEqual(binary.native_path_resolution, binary.executed, `native ${name} must resolve to the qualified private binary`)
+  }
+  pass(selection.mode + " artifact preflight, private binary identities and native PATH resolution")
   command("git", ["init", "-b", "main"], root, env)
   command("git", ["add", ".gitignore", "tracked.txt", "route.go"], root, env)
   command("git", ["add", "-f", ".orchestrator/config.toml"], root, env)
   command("git", ["-c", "user.name=Orch Smoke", "-c", "user.email=orch-smoke@example.invalid", "commit", "-m", "Create synthetic smoke fixture"], root, env)
   command("git", ["worktree", "add", "-b", "smoke-issue", writable], root, env)
   command("git", ["worktree", "add", "--detach", sibling, "HEAD"], root, env)
-  const memhubBinary = path.join(bin, process.platform === "win32" ? "memhub.exe" : "memhub")
-  await copyFile(memhub, memhubBinary)
   command(memhubBinary, ["init"], root, env)
   const seed = JSON.parse(command(memhubBinary, ["task", "add", "Shared synthetic smoke memory", "--notes", "Only isolated fixture data.", "--json"], root, env))
   for (const directory of [root, writable, sibling]) command(orchBinary, ["render-agents"], directory, env)
@@ -215,7 +237,7 @@ try {
     model: "smoke-alpha/architect#steady",
     permissions: fixturePermissions,
     plugins: [adapter],
-    skills: [path.join(adapter, "skills")],
+    skills: [selection.adapter.skills_root],
     snapshots: false,
     providers: {},
   }
@@ -283,11 +305,28 @@ try {
       assert.notEqual(entries[0].state?.status, "failed", "the actual adapter package failed to load")
       if (entries[0].state?.status !== "active") return undefined
       assert.equal(entries[0].features?.server, true)
+      assert.equal(entries[0].source?.type, "local", "native plugin must come from the selected package, not a registry/builtin fallback")
+      assert(sameDirectory(entries[0].source.path, adapter), "native plugin must load the selected package directory")
       return entries[0]
     }, "one active Orch server plugin")
   }
-  await activePlugin()
-  console.log("PASS real package-directory loading: one active orch.delivery server plugin")
+  async function loadedArtifacts(stage) {
+    const plugin = await activePlugin()
+    const catalog = await api("/api/skill?" + query(root))
+    assert(sameDirectory(catalog.location.directory, root))
+    const skills = []
+    for (const expected of selection.adapter.skill_files.filter((file) => path.basename(file.relative) === "SKILL.md")) {
+      const entries = catalog.data.filter((entry) => entry.path && path.resolve(entry.path) === path.resolve(expected.path))
+      assert.equal(entries.length, 1, `native skill catalog must load selected ${expected.relative} exactly once`)
+      const actual = await fileIdentity(await realpath(entries[0].path))
+      assert.deepEqual(actual, { path: expected.path, sha256: expected.sha256 })
+      assert(entries[0].content.trim(), "selected skill must have native content")
+      skills.push({ id: entries[0].id, ...actual })
+    }
+    ;(evidence.native_loads ??= []).push({ stage, plugin, skills })
+  }
+  await loadedArtifacts("initial")
+  pass("real selected package-directory and skill loading: one active orch.delivery server plugin")
   const agents = await eventually(async () => {
     const entries = (await api("/api/agent?" + query(root))).data
     return Object.keys(agentModels).every((id) => entries.some((entry) => entry.id === id)) && entries
@@ -307,10 +346,10 @@ try {
   const doctor = result(orchBinary, ["doctor", "--host", "opencode"], root, env)
   assert.match(doctor.stdout, /ok\s+opencode adapter/, doctor.stdout + doctor.stderr)
   assert.match(doctor.stdout, /ok\s+opencode agent files/, doctor.stdout + doctor.stderr)
-  console.log("PASS source doctor OpenCode checks (isolated fixture; unrelated GitHub checks may fail)")
+  pass("qualified Orch doctor OpenCode checks (isolated fixture; unrelated GitHub checks may fail)")
 
   controller = await simulation("ws://127.0.0.1:" + backendPort)
-  console.log("PASS deterministic simulation handshake and attachment; no session has run yet")
+  pass("deterministic simulation handshake and attachment; no session has run yet")
   let callID = 0
   async function nextTurn() {
     const turn = await within(controller.next("llm.request"), "simulated model request")
@@ -457,8 +496,8 @@ try {
     }
   }
   await finish(session, turn)
-  console.log("PASS Assist edit/write/patch, ignored scratch, multi-file and both move targets")
-  console.log("PASS native indented/heredoc parsing and alias/home path byte preservation")
+  pass("Assist edit/write/patch, ignored scratch, multi-file and both move targets")
+  pass("native indented/heredoc parsing and alias/home path byte preservation")
 
   const mismatch = await start(root, agentModels["orch-implementer"])
   context(mismatch.turn, true)
@@ -472,7 +511,7 @@ try {
   const childReport = await nextTurn()
   context(childReport, true)
   await finish(mismatch.session, childReport)
-  console.log("PASS root warning without switching models; child context omits false Architect comparison")
+  pass("root warning without switching models; child context omits false Architect comparison")
 
   const fixtureState = {
     schema_version: 6, mode: "delivery",
@@ -515,7 +554,7 @@ try {
     assert.equal(await readFile(path.join(writable, "tracked.txt"), "utf8"), "delivery allowed\n")
   }
   await finish(session, turn)
-  console.log("PASS Delivery session directory, registered worktree, sibling/primary, phase and Git/control containment")
+  pass("Delivery session directory, registered worktree, sibling/primary, phase and Git/control containment")
 
   fixtureState.run.issues[0].phase = "dispatched"
   await writeFile(stateFile, JSON.stringify(fixtureState))
@@ -532,14 +571,14 @@ try {
   configuration.plugins = [adapter]
   await writeFile(configFile, JSON.stringify(configuration))
   await api("/api/location/reload?" + query(root), { method: "POST" })
-  await activePlugin()
+  await loadedArtifacts("reload")
   const reloaded = await start(root)
   context(reloaded.turn)
   reloaded.turn = await tool(reloaded.turn, "write", { path: tracked, content: "denied\n" }, /orch guard:.*outside every registered worktree/)
   assert.equal(await readFile(tracked, "utf8"), before)
   await finish(reloaded.session, reloaded.turn)
   assert.equal(requests, 0, "simulation must prevent every real provider request")
-  console.log("PASS unload/reload: one active plugin, one context injection and retained enforcement")
+  pass("unload/reload: selected package/skills, one active plugin, one context injection and retained enforcement")
 
   const disconnected = await start(root)
   context(disconnected.turn)
@@ -564,7 +603,7 @@ try {
   await within(reclosed, "negative-test controller shutdown")
   controller = await simulation("ws://127.0.0.1:" + backendPort)
   assert.deepEqual((await controller.request("llm.pending")).invocations, [])
-  console.log("PASS controller loss suspends locally; provider disconnect fails closed with no HTTP fallback")
+  pass("controller loss suspends locally; provider disconnect fails closed with no HTTP fallback")
 
   const junction = await start(writable)
   context(junction.turn)
@@ -582,7 +621,7 @@ try {
     assert.equal(existsSync(direct), existed)
     if (existed) assert.deepEqual(await readFile(direct), bytes)
   }
-  console.log("PASS junction escape denial for existing primary and missing sibling targets")
+  pass("junction escape denial for existing primary and missing sibling targets")
   await finish(junction.session, junction.turn)
   // Memhub qualification uses this same real plugin/server/simulation, never a
   // parallel fake host or real model provider.
@@ -678,7 +717,7 @@ try {
       outputs.shell_denial = evidence.last_tool
     }
     evidence.lookups[role] = outputs
-    console.log("PASS native four-tool reads, binding/hash/freshness evidence and denials: " + role)
+    pass("native four-tool reads, binding/hash/freshness evidence and denials: " + role)
     await finish(child.session, child.turn)
     const reportTurn = await nextTurn()
     context(reportTurn)
@@ -722,7 +761,7 @@ try {
   assert.equal(fullStatus.tasks_total, 1, "denied semantic writes must not reach handlers")
   evidence.architect_full_preserved = fullStatus
   await finish(primary.session, primary.turn)
-  console.log("PASS Code Mode executor rejects full-server/unsupported-role/unverifiable-root paths despite permissive session rules; Architect full access preserved")
+  pass("Code Mode executor rejects full-server/unsupported-role/unverifiable-root paths despite permissive session rules; Architect full access preserved")
   // Exercise excluded direct MCP requests too: native Code Mode can strip
   // unknown input fields before sending them, so host evidence alone cannot
   // establish the server's strict argument/profile contract.
@@ -787,7 +826,7 @@ try {
     assert.match(refused.stderr, /unrelated|cannot be resolved|not exist/i)
     ;(evidence.refused_roots ??= []).push({ code_root: codeRoot, exit: refused.status, error: refused.stderr })
   }
-  console.log("PASS real Memhub exact catalog, direct semantic/root-argument rejection and missing/unrelated-root refusal")
+  pass("real Memhub exact catalog, direct semantic/root-argument rejection and missing/unrelated-root refusal")
   configuration.mcp = { servers: { docs: configuration.mcp.servers.docs } }
   await writeFile(configFile, JSON.stringify(configuration))
   await mode("off")
@@ -847,7 +886,7 @@ try {
   availableRequired.turn = await tool(availableRequired.turn, "execute", { code: `return await tools.${lookupServer}.status({})` })
   assert(sameDirectory(JSON.parse(evidence.last_tool.content).binding.code_root, writable))
   await finishChild(availableRequired)
-  console.log("PASS off/best-effort/required, missing executable and simulated legacy flag rejection; no full-profile fallback")
+  pass("off/best-effort/required, missing executable and simulated legacy flag rejection; no full-profile fallback")
   configuration.mcp.servers["orch.memhub"] = { type: "remote", url: "https://example.invalid", disabled: true }
   await writeFile(configFile, JSON.stringify(configuration))
   await mode("best-effort")
@@ -861,10 +900,13 @@ try {
   guardedCollision.turn = await tool(guardedCollision.turn, "write", { path: tracked, content: "denied" }, /orch guard:.*outside every registered worktree/)
   assert.equal(await readFile(tracked, "utf8"), before)
   await finish(guardedCollision.session, guardedCollision.turn)
-  console.log("PASS normalized MCP collision preserves user server and existing write guard")
+  pass("normalized MCP collision preserves user server and existing write guard")
   evidence.checks.push("real native children for all five roles; concurrently live dirty checkout bindings")
   assert.equal(requests, 0)
-  evidence.passed = true
+  evidence.behavior_checks_passed = true
+} catch (error) {
+  evidence.error = { message: error.message, stack: error.stack }
+  throw error
 } finally {
   controller?.socket.close()
   if (server?.pid && server.exitCode === null) {
@@ -877,9 +919,18 @@ try {
   await new Promise((resolve, reject) => provider.close((error) => error ? reject(error) : resolve()))
   assert(inside(await realpath(tmpdir()), temp) && !inside(await realpath(repo), temp), "cleanup must stay in the owned OS-temp fixture")
   evidence.provider_requests = requests
-  await writeFile(path.join(temp, "evidence.json"), JSON.stringify(evidence, null, 2))
-  await writeFile(path.join(temp, "server.log"), logs)
-  console.log("Isolated smoke evidence and synthetic fixtures: " + temp)
+  evidence.owned_server_stopped = !server || server.exitCode !== null || server.signalCode !== null
+  try {
+    if (evidence.orch && evidence.memhub) {
+      evidence.artifacts_after = await verifyArtifacts(selection, evidence.orch, evidence.memhub)
+      pass("selected adapter identity files and binaries unchanged; private Memhub restored")
+    }
+    evidence.passed = evidence.behavior_checks_passed === true && requests === 0 && evidence.owned_server_stopped && evidence.artifacts_after?.unchanged === true
+  } finally {
+    await writeFile(path.join(temp, "evidence.json"), JSON.stringify(evidence, null, 2))
+    await writeFile(path.join(temp, "server.log"), logs)
+    console.log("Isolated smoke evidence and synthetic fixtures: " + temp)
+  }
 }
 
 console.log("OpenCode V2 smoke passed; no real provider requests")
