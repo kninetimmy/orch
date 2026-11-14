@@ -285,6 +285,9 @@ func TestMCPStdio(t *testing.T) {
 	t.Run("explicit activation", func(t *testing.T) {
 		mcpActivationExercise(t, binary)
 	})
+	t.Run("issue dispatch", func(t *testing.T) {
+		mcpDispatchExercise(t, binary)
+	})
 
 	t.Run("repository binding", func(t *testing.T) {
 		root := t.TempDir()
@@ -418,7 +421,7 @@ func mcpDiscover(t *testing.T, ctx context.Context, session *mcp.ClientSession, 
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(list.Tools) != 16 || list.NextCursor != "" {
+	if len(list.Tools) != 17 || list.NextCursor != "" {
 		t.Fatalf("tool discovery = %+v", list)
 	}
 	want := mcpDecoded(t, []byte(`{"type":"object","properties":{},"additionalProperties":false}`))
@@ -435,7 +438,8 @@ func mcpDiscover(t *testing.T, ctx context.Context, session *mcp.ClientSession, 
 		approval := tool.Name == "orch_approval_status"
 		validation := tool.Name == "orch_plan_validate"
 		activation := tool.Name == "orch_run_activate"
-		if (tool.Name != "orch_run_status" && tool.Name != "orch_run_next" && tool.Name != "orch_config_effective" && !readiness && !doctor && !metrics && !evaluation && !preview && !issueContext && !interview && !planGate && !approval && !validation && !activation) || seen[tool.Name] || tool.Annotations == nil || tool.Annotations.ReadOnlyHint == (preview || planGate || activation) || tool.Annotations.OpenWorldHint == nil || *tool.Annotations.OpenWorldHint != (readiness || doctor || interview || planGate || approval || activation) {
+		dispatch := tool.Name == "orch_run_dispatch"
+		if (tool.Name != "orch_run_status" && tool.Name != "orch_run_next" && tool.Name != "orch_config_effective" && !readiness && !doctor && !metrics && !evaluation && !preview && !issueContext && !interview && !planGate && !approval && !validation && !activation && !dispatch) || seen[tool.Name] || tool.Annotations == nil || tool.Annotations.ReadOnlyHint == (preview || planGate || activation || dispatch) || tool.Annotations.OpenWorldHint == nil || *tool.Annotations.OpenWorldHint != (readiness || doctor || interview || planGate || approval || activation || dispatch) {
 			t.Fatalf("tool = %+v", tool)
 		}
 		if preview && (tool.Annotations.DestructiveHint == nil || *tool.Annotations.DestructiveHint || !tool.Annotations.IdempotentHint) {
@@ -468,6 +472,10 @@ func mcpDiscover(t *testing.T, ctx context.Context, session *mcp.ClientSession, 
 		if activation {
 			wantSchema = mcpDecoded(t, []byte(`{"type":"object","properties":{"schema_version":{"type":"integer"},"plan":{"type":"object"},"approval":{"type":"object","properties":{"plan_digest":{"type":"string","minLength":1},"approved_by":{"type":"string","minLength":1},"approved_at":{"type":"string","minLength":1},"statement":{"type":"string","minLength":1}},"required":["plan_digest","approved_by","approved_at","statement"],"additionalProperties":false}},"required":["schema_version","plan","approval"],"additionalProperties":false}`))
 			mcpActivationSchema(t, tool)
+		}
+		if dispatch {
+			wantSchema = mcpDecoded(t, []byte(`{"type":"object","properties":{"schema_version":{"type":"integer","enum":[4]},"issue_number":{"type":"integer","minimum":1}},"required":["schema_version","issue_number"],"additionalProperties":false}`))
+			mcpDispatchSchema(t, tool)
 		}
 		if !reflect.DeepEqual(tool.InputSchema, wantSchema) {
 			t.Fatalf("%s input schema = %#v, want %#v", tool.Name, tool.InputSchema, wantSchema)

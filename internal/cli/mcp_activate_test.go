@@ -30,7 +30,7 @@ const mcpActivationConfig = validTOML + "\n[metrics]\nenabled = true\n"
 func TestMCPActivationHelp(t *testing.T) {
 	env, stdout, stderr := testEnv(t)
 	if code := Run([]string{"help"}, env); code != ExitOK || stderr.Len() != 0 ||
-		!strings.Contains(stdout.String(), "plan decision gates and human-approved activation over stdio") {
+		!strings.Contains(stdout.String(), "plan decision gates, human-approved activation and issue dispatch over stdio") {
 		t.Fatalf("activation help: stdout=%s stderr=%s exit=%d", stdout, stderr, code)
 	}
 }

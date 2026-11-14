@@ -234,7 +234,7 @@ func mcpMetricsOmittedArguments(t *testing.T, ctx context.Context, binary, cwd, 
 		t.Fatalf("raw initialize: %+v", response)
 	}
 	send(map[string]any{"jsonrpc": "2.0", "method": "notifications/initialized"})
-	for i, tool := range []string{"orch_metrics", "orch_metrics_report", "orch_approval_status"} {
+	for i, tool := range []string{"orch_metrics", "orch_metrics_report", "orch_approval_status", "orch_run_dispatch"} {
 		send(map[string]any{"jsonrpc": "2.0", "id": i + 2, "method": "tools/call", "params": map[string]any{"name": tool}})
 		response := receive()
 		result, ok := response["result"].(map[string]any)

@@ -1,5 +1,6 @@
-// A scripted executable copied under doctor's tool names. It accepts only the
-// fixture's exact read probes and logs outside the repository under test.
+// A scripted executable copied under tool names. Before activation/dispatch
+// tests reused it, fixtures contained only doctor's exact read probes. It still
+// accepts only explicitly scripted commands and logs outside the tested repo.
 package main
 
 import (
@@ -27,6 +28,7 @@ func respond() (int, error) {
 	var fixture struct {
 		Root, Log string
 		Probes    map[string]struct {
+			Dir            string // Optional exact directory; defaults to Root.
 			Stdout, Stderr string
 			ExitCode       int
 		}
@@ -50,20 +52,24 @@ func respond() (int, error) {
 	if writeErr != nil {
 		return 0, writeErr
 	}
-	rootInfo, err := os.Stat(fixture.Root)
+	probe, ok := fixture.Probes[command]
+	if !ok {
+		return 0, fmt.Errorf("forbidden command: %s", command)
+	}
+	root := fixture.Root
+	if probe.Dir != "" {
+		root = probe.Dir
+	}
+	rootInfo, err := os.Stat(root)
 	if err != nil {
-		return 0, fmt.Errorf("stat fixture repository %q: %w", fixture.Root, err)
+		return 0, fmt.Errorf("stat fixture directory %q: %w", root, err)
 	}
 	dirInfo, err := os.Stat(cwd)
 	if err != nil {
 		return 0, fmt.Errorf("stat probe directory %q: %w", cwd, err)
 	}
 	if !os.SameFile(rootInfo, dirInfo) {
-		return 0, fmt.Errorf("wrong repository: %s, want %s", cwd, fixture.Root)
-	}
-	probe, ok := fixture.Probes[command]
-	if !ok {
-		return 0, fmt.Errorf("forbidden command: %s", command)
+		return 0, fmt.Errorf("wrong directory: %s, want %s", cwd, root)
 	}
 	if _, err := fmt.Fprint(os.Stdout, probe.Stdout); err != nil {
 		return 0, err
