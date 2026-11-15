@@ -1,11 +1,23 @@
 # OpenCode V2 adapter
 
 This directory is Orch's npm-native OpenCode V2 adapter. Its package ID
-is `@kninetimmy/orch-opencode` (version `0.12.0`) and its running plugin
+is `@kninetimmy/orch-opencode` (version `0.13.0`) and its running plugin
 ID is `orch.delivery`. It is not the Codex marketplace adapter: that is
 `adapters/codex/`, installed as `orch@orch` from the shared marketplace.
 
 ## Compatibility
+
+Package **0.13.0** is prepared for the **v0.16.0 engine target**, not a published
+release or npm artifact. Latest published engine remains **v0.15.2**, whose
+OpenCode package was 0.12.0. Claude/Codex plugins and marketplace stay 0.13.0:
+their packaged executable guidance has not changed in this release range.
+Use compatible engine/adapter **content**, not labels alone. Current source
+uses state schema 6, approval/execution contract 2, Gate 3, Status 4, Activation 2,
+Dispatch 4, Review 3, Escalate 2, Block 2, Resume 2, Resolve Block 1 and CLI
+Repair 1; metrics documents remain schema 2. Repair does not migrate contract-1
+runs: finish with original content or abort and obtain fresh approval.
+Native child reads require lookup-context **schema 2** and a Memhub build with
+explicit-root lookup-only serving, as detailed below.
 
 The adapter targets the OpenCode V2 server plugin API. Before the project-scoped catalog
 contract landed, the live smoke check exercised exactly `opencode2
@@ -32,8 +44,10 @@ The adapter now pins `@opencode/plugin` and its native parser/path utilities
 development dependency for deterministic simulation.
 These dependency pins do not impose an exact installed-runtime requirement:
 the smoke accepts admitted newer runtimes with an advisory and checks their
-actual contracts. Windows V2 `2.2.6` is the current live test baseline;
-older admitted runtimes and other platforms still need live qualification.
+actual contracts. Stable `2.2.6` remains the engine's verified version baseline;
+Windows V2 `2.3.0` has also been observed in isolated smoke and installed
+candidate checks with the existing unverified-version advisory. Other admitted
+runtimes and platforms still need live qualification.
 Source smoke evidence is separate from verification of an installed adapter.
 
 ## Catalog safety and blast radius
@@ -124,7 +138,7 @@ Before issue 495 it deleted its own fixtures; now it retains synthetic fixtures
 and `evidence.json` outside every source checkout for inspection. Its synthetic Delivery state does not
 represent a real approved Orch run. Hosted CI runs Node and Go checks on
 Windows, Linux and macOS; it **does not run this live-host smoke**. Other
-platforms and the installed manual Delivery workflow remain separately qualified.
+platforms and installed manual Delivery operations require separate qualification.
 
 ## Bound child memory (issue 495)
 
@@ -225,7 +239,7 @@ mode** remains the default when both artifact selectors are unset:
 
 ```powershell
 Remove-Item Env:ORCH_SMOKE_ORCH, Env:ORCH_SMOKE_ADAPTER -ErrorAction SilentlyContinue
-$env:ORCH_SMOKE_MEMHUB = 'C:\path\to\source-built\memhub.exe'
+$env:ORCH_SMOKE_MEMHUB = 'C:\path\to\compatible\memhub.exe'
 npm run smoke --prefix adapters/opencode
 ```
 
@@ -241,6 +255,8 @@ $env:ORCH_SMOKE_MEMHUB = 'C:\path\to\compatible\memhub.exe'
 npm run smoke --prefix adapters/opencode
 ```
 
+Verify selected binaries against trusted expected SHA-256 values before execution
+(downloaded release binaries against that release's published `SHA256SUMS`).
 `ORCH_SMOKE_MEMHUB` remains required in both modes and must support explicit-root,
 lookup-only serving. Every selector must be a nonempty absolute path of the
 correct type. An incomplete pair, empty/relative/missing/wrong-type path,
@@ -295,9 +311,36 @@ the native session outcome and parent failure report. Reviewer write attempts ca
 Orch's containment hook before native permission evaluation; evidence records
 the actual layer rather than calling every rejection a permission result.
 
-This increment does not install globally, edit host-global configuration, qualify
-Claude/Codex direct access or paid model-driven behavior, deliver guide search,
-complete wrap-up integration or close all task331 rollout work.
+### Installed candidate checkpoint (2026-11-14)
+
+Separate approved cutover evidence records installed engine
+**v0.16.0-prep.f57fc37**, adapter/skills from `f57fc37` still labelled **0.12.0**,
+and the Memhub build above. Engine SHA-256:
+`6f8de03a5f92916ee86dc99b487183537de89c685ea34c64096555d4ac44c922`.
+Source and explicit-artifact smoke each recorded 25 checks, zero provider
+requests and owned-host shutdown. Installed CLI/live-MCP doctor, the active
+package path, MCP discovery of 17 tools/four resources/one template, an Assist
+guard denial and an unmanaged project with no bound server were checked.
+Only scoped locations were reloaded/reconnected; the shared OpenCode service
+was not restarted and unrelated processes were retained.
+
+Those installed bytes are **not this final 0.13.0 package** and are not a
+published v0.16.0 artifact. Isolated smoke uses all five roles with simulation;
+it is not a model-driven five-role trial. This normal Delivery cycle's executor
+successfully used installed native bound status, `get_row` (decision 70) and
+locate from its assigned implementation checkout at `f57fc37`, with matching
+explicit roots/common directory and hash-verified locate hits. A fresh reviewer
+must independently move to its assigned review checkout, validate status and
+complete at least one bound recall/get_row/locate; exact returned binding,
+revision, result and retained evidence belong in the PR audit, not a prospective
+claim of reviewer success. Unavailable or mismatched native lookup stops
+qualification for an Architect decision, never CLI/full-server/wrong-root fallback.
+
+Qualification is limited to the observed Windows/OpenCode tuple and operations.
+It does not qualify Claude/Codex direct access, complete host parity, guide
+search, wrap-up integration or all tasks319/331 rollout work. Final merged
+package, published binary/checksum and installed-release verification remain
+separate gates after explicit publication/installation approval.
 
 ### Artifact-smoke blast radius (issue 497)
 
@@ -354,12 +397,16 @@ artifact. Install the checked-out `adapters/opencode/` package — the
 same directory CI installs with `npm ci --prefix adapters/opencode` —
 then load its package directory and canonical skills directory from absolute paths.
 
-1. Install the `orch` binary first, then clone the repository somewhere
+1. Install a compatible `orch` binary first, verifying downloaded release bytes
+   against the trusted release's published `SHA256SUMS` before execution. Then
+   clone the repository somewhere
    persistent (not into a project it will orchestrate):
 
    ```sh
    git clone https://github.com/kninetimmy/orch.git ~/src/orch
    cd ~/src/orch
+   # Set ORCH_ADAPTER_COMMIT to the inspected commit matching the engine.
+   git checkout --detach "$ORCH_ADAPTER_COMMIT"
    npm ci --prefix adapters/opencode
    ```
 
@@ -375,7 +422,7 @@ then load its package directory and canonical skills directory from absolute pat
    ```
 
    These are entries to add, not replacement arrays. The checkout-backed skill
-   source makes updates available after a service restart without copying skill
+   source makes updates available after a location reload without copying skill
    files into OpenCode's global skill directory.
 
    Configured local paths must be directories; current V2 skips a configured
@@ -384,7 +431,7 @@ then load its package directory and canonical skills directory from absolute pat
    @kninetimmy/orch-opencode` is not an installation path because that
    package is not published.
 
-3. Restart the OpenCode V2 service, then verify both the supported runtime
+3. Reload the affected OpenCode V2 location, then verify both the supported runtime
    and the active plugin ID before relying on enforcement:
 
    ```sh
@@ -402,12 +449,14 @@ then load its package directory and canonical skills directory from absolute pat
    also queries that repository's live skill and model catalogs, verifies their
    returned locations, and requires compatible `orch-architect`,
    `orch-delivery`, and `orch-setup` wire contracts. It cannot check an
-   OpenCode adapter version because the beta API does not expose one.
+   OpenCode adapter version because the API does not expose one; compare the
+   loaded package/skill paths, hashes and source commit separately.
 
 4. In each repository, run `orch init`, review and merge its bootstrap
    PR, then run `orch render-agents`. It writes the five OpenCode role
    definitions under `.opencode/agents/`; run it again after changing
-   `hosts.opencode.roles` or upgrading Orch.
+   `hosts.opencode.roles`, or when an upgrade changes definitions or doctor
+   reports them stale.
 
    Each OpenCode role selects an exact `provider/model` and an optional
    model-specific `variant`. Generated frontmatter uses
@@ -422,13 +471,23 @@ then load its package directory and canonical skills directory from absolute pat
 
 ## Upgrade
 
-Do not reinstall as though this were a first install. In the existing
-checkout, update the same local adapter package CI exercises, then
-restart OpenCode V2 and repeat the project-scoped health verification:
+Do not reinstall as though this were a first install. Update only **between runs
+in Assist**, with separate approval for installed changes. Preserve the old
+engine, adapter/skills, Memhub and configuration plus their paths, source commits
+and hashes. Select compatible engine/adapter content together, including
+lookup-context schema 2 and explicit-root lookup-only Memhub; an old engine or
+schema-1 adapter is not a fallback. Never replace these during an active run.
+Verify downloaded release binaries against trusted published checksums before
+execution; v0.16.0 has no published final artifact yet.
+
+In the persistent checkout, set `ORCH_ADAPTER_COMMIT` to the inspected, approved
+commit matching the selected engine, not an unreviewed moving branch:
 
 ```sh
-git -C ~/src/orch pull --ff-only
+git -C ~/src/orch fetch origin
+git -C ~/src/orch checkout --detach "$ORCH_ADAPTER_COMMIT"
 npm ci --prefix ~/src/orch/adapters/opencode
+# Reload the affected native location before the checks below.
 opencode2 api get /api/plugin
 orch doctor --host opencode
 ```
@@ -437,7 +496,25 @@ If the existing Orch plugin entry ends in `adapters/opencode/src/index.js`,
 replace only that entry with the absolute `adapters/opencode` package directory.
 Keep unrelated plugin entries and the canonical `adapters/opencode/skills`
 source. If the checkout moves, update those two absolute directory paths
-before restarting. The old file entry is not a fallback loading mechanism.
+before reloading. The old file entry is not a fallback loading mechanism.
+
+Compare actual loaded package/skills and engine identities with the selected
+commit, refresh generated agents if changed/stale, and exercise a fresh bounded
+approved workflow. Source checks and explicit-artifact smoke do not prove shared
+service activation or real model-driven child lookup. Record installed and source
+evidence separately.
+
+**Rollback:** only in Assist, restore the previously recorded compatible engine,
+adapter/skills checkout and any changed Memhub/configuration content. Restore
+their recorded plugin/skill paths, reload, compare hashes/provenance and repeat
+doctor and bounded workflow checks. Downloaded rollback binaries require that
+previous release's trusted `SHA256SUMS`. Never mix new lookup wiring with an old
+engine, migrate a live run or weaken permissions to force compatibility.
+
+**Publication:** 0.13.0 is the final content-bearing release-preparation bump.
+Any later approved v0.16.0 tag must name its merge commit. Tag/release publication
+and final published-artifact verification are separate gates; this package stays
+checkout-backed and is not published to npm.
 
 ## Limitations
 

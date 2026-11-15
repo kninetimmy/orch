@@ -1,12 +1,43 @@
 # Local inspections, configuration interviews, bounded evaluation preparation, plan decision gates, explicitly approved activation and issue dispatch over MCP
 
 `orch mcp` is an optional local stdio MCP server using the official Go SDK
-v1.8.0. This is an unreleased source feature, not part of the v0.15.2 binary.
+v1.8.0, prepared for the **v0.16.0 release target** with OpenCode adapter
+**0.13.0**; Claude/Codex manual adapters and marketplace remain **0.13.0**.
+Latest published release is still **v0.15.2**, which contains no MCP server.
+The current cumulative surface is **17 tools, four fixed resources and one
+template**. The before/after counts below are historical increments, not
+alternative current catalogs.
+
 Build `./cmd/orch` locally with Go 1.26+ to try it; no global installation or
 host configuration edits are performed automatically.
 Building source does not upgrade an installed MCP server. Verify the binary
 your client actually launches and its discovered tools; installation and host
-configuration remain separate, explicit work.
+configuration remain separate, explicit work. A separately installed Windows
+candidate, `v0.16.0-prep.f57fc37` with `f57fc37` adapter/skills still labelled
+0.12.0, was checked for live 17/4/1 discovery and healthy CLI/MCP doctor.
+It is not the final 0.13.0 package or a published v0.16.0 artifact. See the
+[release notes, qualification limits and upgrade/rollback gates](../README.md#v0160-release-target-not-published).
+
+Current engine contracts are state **6**, approval/execution **2**, Gate **3**,
+Status **4**, Activation **2**, Dispatch **4**, Review **3**, Escalate **2**,
+Block **2**, Resume **2**, Resolve Block **1**, and CLI Repair **1**; metrics
+documents remain **2**. Repair's contract-2 compatibility fence applies even
+though state and existing wire versions did not change. Finish old runs with
+their original engine or abort and seek fresh approval; never replace content
+during an active run. Repair remains CLI-only; MCP does not expose later
+review/merge lifecycle operations, configuration application or evaluation execution.
+
+Orch MCP and native **`orch_memhub`** are separate surfaces. OpenCode's five
+child roles may use only the latter's status/recall/get_row/locate, using engine
+lookup-context **schema 2** and Memhub explicit-root lookup-only serving.
+Primary memory, assigned code checkout and git-common-directory identities
+must match status before lookup; native unavailability or mismatch stops
+qualification for an Architect decision, never full-server/CLI fallback.
+Existing service/index maintenance is permitted, semantic/admin writes are not.
+Installed executor and fresh-reviewer evidence belongs in the Delivery audit;
+source/isolated checks do not prove either role's lookup. Other-host direct
+access and an all-five-role model-driven trial are not qualified. See the
+[OpenCode binding guide](../adapters/opencode/README.md#bound-child-memory-issue-495).
 
 **Before item 13:** this guide described an exclusively read-only MCP surface.
 **After separately approved item 13:** evaluation preview can persist a bounded

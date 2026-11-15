@@ -276,22 +276,34 @@ codex plugin marketplace upgrade orch
 
 For OpenCode V2, update the local checkout and run `npm ci --prefix
 adapters/opencode` again; see its README for the exact commands and
-project-scoped plugin-health check. Restart Claude Code, Codex CLI, or the OpenCode V2
-service after upgrading its adapter so the new hooks and skills are loaded.
+project-scoped plugin-health check. Restart Claude Code/Codex CLI or reload the
+affected OpenCode V2 location after upgrading so the new hooks and skills are loaded.
 
-**Engine and manual-adapter compatibility.** Engine v0.15.2 retains state
-schema 6, approval contract 1, and these
-manual wire versions: Gate 3, Status 4, Activation 2, Dispatch 4, Review 3,
-Escalate 2, Block 2, Resume 2, and Resolve Block 1. The Claude and Codex
-adapter version 0.13.0 is paired with engine v0.15.2; version 0.12.1 was
+**Engine and adapter compatibility.** The prepared **v0.16.0 target**, not a
+published release, pairs with OpenCode package **0.13.0** and Claude/Codex
+manual adapters **0.13.0**. Claude/Codex marketplace and plugin versions remain
+unchanged because their packaged executable guidance has not changed since
+v0.15.2; OpenCode's package now includes the SDK, guard and bound-lookup changes.
+SDK/util/protocol pins remain 2.2.6. Current source retains state schema 6 and
+metrics document schema 2, but approval/execution contract is now **2**, not 1.
+New contract-2 runs and old contract-1 engines are incompatible in both
+directions; inspection does not authorize continuation or migrate a run.
+Current source uses these manual wire versions: Gate 3, Status 4, Activation 2,
+Dispatch 4, Review 3,
+Escalate 2, Block 2, Resume 2, Resolve Block 1, and the new Repair 1.
+OpenCode child lookup additionally requires **lookup-context schema 2** and a
+Memhub build supporting explicit `--memory-root`, `--code-root` and
+`--profile lookup-only` serving. Old/missing interfaces are unavailable lookup,
+not permission to use a full server or CLI fallback.
+
+Historically, released engine v0.15.2 paired with Claude/Codex adapter 0.13.0
+and OpenCode package 0.12.0, with approval contract 1. Claude/Codex 0.12.1 was
 paired with engine v0.15.1, version 0.12.0 with engine v0.15.0, version 0.11.1
 with engine v0.14.1, version 0.11.0 with engine v0.14.0, and version 0.10.0
-with engine v0.13.0 and v0.13.1. Engine v0.15.2 keeps the manual wire
-versions above, state schema 6 and metrics document schema 2 unchanged from
-v0.15.1. `orch doctor` reports an installed 0.12.1 adapter as a version
-mismatch. The OpenCode package stays 0.12.0 because none of its files changed
-since v0.15.0; its exported source is unchanged, and its agent
-definitions are embedded in the engine and written by `orch render-agents`.
+with engine v0.13.0 and v0.13.1. Current `orch doctor` reports an installed
+0.12.1 Claude/Codex adapter as a version mismatch. OpenCode's API does not expose
+an adapter version; verify its loaded package/skills and source identity.
+Agent definitions are embedded in the engine and written by `orch render-agents`.
 Survey methodology is now 2. Older `[protected]` lists remain readable but
 cannot authorize grants until an actual re-survey and fresh approval through
 the agent's setup workflow (`/orch:configure` or `/orch:init` on Claude Code);
@@ -308,10 +320,11 @@ unchanged, later upgrades need no re-render; doctor and activation still refuse
 stale definitions. Release and adapter labels describe compatibility; source
 revision and build identity identify the code that was built.
 
-Update the engine and the configured manual adapter together while the
-repository is in Assist, then restart the host and run `orch doctor --host
-claude|codex`. Never replace either half during an active run. Finish an older
-run with its original engine and adapter, or explicitly run `orch abort` and
+Update compatible engine and configured adapter content together while the
+repository is in Assist; include compatible Memhub for OpenCode native child
+reads. Restart Claude/Codex or reload the affected OpenCode location, then run
+`orch doctor --host claude|codex|opencode`. Never replace these during an active
+run. Finish an older run with its original engine and adapter, or explicitly run `orch abort` and
 seek fresh plan approval; active runs are not migrated. See
 [decision-block recovery](docs/decision-block-recovery.md) for the persisted
 state and approval boundary.
@@ -369,9 +382,11 @@ go install github.com/kninetimmy/orch/cmd/orch@latest
 
 ## Codex parity
 
-Released engine **v0.15.2** pairs with Claude/Codex manual adapter **0.13.0**;
-OpenCode's package remains **0.12.0**. Codex shares the manual Delivery engine
-with Claude, but automation parity is unfinished.
+Released engine **v0.15.2** paired with Claude/Codex manual adapter **0.13.0**
+and OpenCode package **0.12.0**. The prepared **v0.16.0** target pairs with
+**0.13.0** on all three hosts; that does not qualify new Codex/Claude behavior.
+Codex shares the manual Delivery engine with Claude, but automation parity is
+unfinished.
 
 | Capability | Codex status |
 |---|---|
@@ -390,15 +405,14 @@ not admit that version merely because the manual adapter works.
 
 The comparison baseline also has gaps: installed Claude Code 2.1.314 is not
 recognized by the context reader, so its grant context-relay instruction does
-not fire. The installed v0.15.2 beta-only parser rejects stable OpenCode
-output (now observed as `opencode v2.2.6`). Source diagnostics now admit
-stable V2 versions and verify active/server/project plugin state. The updated
-source adapter and private Windows smoke cover current SDK loading and
-file-tool enforcement; these checks do not update an installed adapter or
-its configuration. Selected
-Codex/Claude doctor checks pass with advisories; installed OpenCode
-qualification remains incomplete. Full host parity and an all-host healthy
-result are not claimed.
+not fire. Historically the v0.15.2 beta-only parser rejected stable OpenCode
+output (`opencode v2.2.6`). Current diagnostics admit stable V2 versions and
+verify active/server/project plugin state. Windows OpenCode 2.3.0 has since
+been exercised with isolated smoke and a separately installed prerelease
+candidate; see [candidate qualification](#v0160-release-target-not-published).
+That is neither all-platform nor all-role model-driven qualification. Selected
+Codex/Claude doctor checks passed with advisories; full host parity and an
+all-host healthy result are not claimed.
 
 ## What you actually get
 
@@ -471,8 +485,9 @@ Without the storage binding it returns an explicit tool error. Inspection does
 not publish reports, grade, execute, stop or infer process liveness; private
 source and raw worker output remain guarded references, not returned contents.
 For optional MCP client access to those reports, see the
-[local stdio MCP guide](docs/mcp-status.md). This source-only addition does
-not install anything or replace the host plugins and their enforcement hooks.
+[local stdio MCP guide](docs/mcp-status.md). This optional surface was absent
+from v0.15.2; building it does not install anything or replace the host plugins
+and their enforcement hooks.
 Before item 13, that MCP surface and its help were exclusively read-only.
 After separately approved item 13, `orch_eval_preview` also accepts only a
 repository-relative `plan_file` and may retain an immutable preparation record
@@ -715,7 +730,8 @@ looks for it.
 
 - **`off`** — memhub is skipped entirely: no probes, no doctor checks.
 - **`best-effort`** — memhub's health and recall are probed and
-  reported, but a failure never blocks anything.
+  reported; planning probe failures are advisory. Unavailable native child
+  lookup is reported for Architect-mediated fallback, never labelled successful.
 - **`required`** — Delivery planning fails closed if either probe
   fails: the plan gate refuses to activate the run.
 
@@ -726,25 +742,119 @@ still exits 0 is caught rather than trusted. `orch doctor` is
 mode-aware: `off` prints a skip note, `best-effort` reports the result
 as a note without failing, and `required` fails the check outright.
 
-Orch's own memhub client is read-only: it probes and recalls, and
-never writes, renders, reindexes or syncs. Writes are the Architect's
-alone, and that boundary is stated in the skills rather than enforced
-mechanically — a subagent carrying a shell can reach the memhub CLI
-too. Anything a subagent wants remembered comes back in its report.
-Every memhub command runs with the primary checkout as its working
-directory, never inside a per-issue worktree, because worktrees never
-receive a copy of the memhub database.
+Orch's engine client probes and recalls; it does not request semantic writes,
+rendering, reindexing or sync. Architect CLI/full-server operations still use the
+primary checkout. Previously every Memhub process was required to use that cwd.
+Now all five OpenCode child roles may use only native `orch_memhub` **status,
+recall, get_row and locate**, with explicit primary memory and assigned code
+roots, cwd at the assigned checkout, legacy protocol and no pooling. The database
+is never copied into a worktree. Claude/Codex children remain mediated.
+
+Move the child session to its assigned checkout and verify the returned location.
+Call status first and compare explicit memory/code/common-directory identities
+with the dispatch and schema-2 engine context, including expected revision.
+Windows extended paths can identify the same directory; raw spelling and HEAD
+alone do not identify dirty code. Locate supplies per-hit SHA-256 evidence and an
+independent code index: coverage is tracked files, not untracked files or an atomic
+tree snapshot. Missing tools, unavailable service or mismatched roots stop
+qualification and go to the Architect, never a CLI, full-server or wrong-root fallback.
+
+Lookup-only is not physically read-only: existing migrations, metadata/registry
+maintenance, query logs, model initialization and disposable index refresh may
+write. Semantic/admin writes remain Architect-only. Native permissions, executor
+checks and the Memhub profile fence the four-tool surface; shell bypass remains
+an instructional boundary, not a sandbox. Anything a child wants remembered comes
+back in its report. Authoritatively unmanaged locations retain ordinary Memhub
+behavior without Orch child fences or a bound service; failed discovery is not
+unmanaged scope. See the [OpenCode binding and qualification guide](adapters/opencode/README.md#bound-child-memory-issue-495).
 
 ## Unreleased
 
+### v0.16.0 release target (not published)
+
+Latest published release remains **v0.15.2**. These notes prepare v0.16.0 from
+the merged range after that tag through `f57fc37` (PR #500), plus this final
+OpenCode 0.13.0 metadata/documentation change. They do not announce a tag,
+GitHub release or npm publication.
+
+- Local stdio MCP now exposes **17 tools, four fixed resources and one
+  issue-context template**: status/next/readiness, structured doctor,
+  effective configuration, recorded metrics, retained evaluation inspection,
+  issue context, bounded evaluation preparation, configuration interview steps,
+  approval/grant inspection, in-memory validation and effective-contract gates,
+  explicit human-approved activation and approved issue dispatch. Inspections
+  never grant approval; dispatch returns a brief, not an agent launch.
+  Remaining MCP lifecycle/review/merge automation, configuration application and
+  evaluation execution are not exposed. See [the contracts](docs/mcp-status.md).
+- OpenCode supports admitted stable V2 runtimes as well as beta 18314+,
+  package-directory loading with SDK/util/protocol 2.2.6, active project-scoped
+  plugin/catalog health, native patch/path interpretation and fail-closed
+  Windows junction containment. The opt-in DeepSeek-led mixed-provider setup
+  preset still requires every exact catalog selection; it changes no session
+  automatically and leaves existing profiles intact unless approved.
+- Native lookup-only child memory uses primary memory plus each assigned
+  implementation/review checkout. Schema 2 distinguishes verified unmanaged
+  locations, fixing the global-plugin regression without relaxing managed
+  child restrictions. All five roles are permitted the same four lookups;
+  permission is not proof of five-role model-driven qualification.
+- The required local-only OpenCode smoke can either build source or select an
+  explicit engine/adapter pair, retaining separate harness, selected and executed
+  identities. Private hosts use simulation and a zero-request provider trap;
+  explicit-artifact results do not prove shared-service activation.
+- Explicit integration repair restores a safe writable path for recovered
+  pre-PR work or a pinned conflicting PR, retaining original scope and requiring
+  renewed verification, independent review, CI and merge approval. It adds CLI
+  Repair schema 1 and approval/execution contract 2, not an MCP repair mutator
+  or active-run migration. See [recovery and compatibility](docs/decision-block-recovery.md).
 - `orch status`, the bare configure report and doctor now show protected-list
   presence, repository-specific entry count, approved/required methodology and
   survey currency. Before [#434](https://github.com/kninetimmy/orch/pull/434)
   those reports omitted this status. Missing or stale lists produce agent setup
   guidance; doctor keeps it advisory for manual Delivery. A current empty list
   has zero repository-specific entries. Survey currency proves neither Codex
-  grant support nor committed-config integrity. This source change is not in
+  grant support nor committed-config integrity. This behavior is absent from
   the released v0.15.2 binary.
+
+**Qualification and limits.** The 2026-11-14 Windows checkpoint used OpenCode
+2.3.0 (with the existing unverified-version advisory), Node 24.15.0 and Go
+1.26.5, with SDK/util/protocol 2.2.6 and Memhub source `eec177f5`.
+Source and explicit-artifact smoke each passed 25 checks with zero provider
+requests and owned-host shutdown. Separately approved installation activated
+engine **v0.16.0-prep.f57fc37** and adapter/skills from `f57fc37` (still labelled
+**0.12.0**), not this final 0.13.0 package. Installed CLI/live-MCP doctor,
+17/4/1 discovery, active plugin path, an Assist guard denial and unmanaged-scope
+observation were checked. Those observations are distinct from this issue's
+source checks and native executor/reviewer lookup evidence in the PR audit.
+All-five-role simulation is not a model-driven five-role trial; other platforms,
+Claude/Codex direct child reads and complete host parity remain unqualified.
+Guide search, wrap-up integration and broader rollout tasks 319/331 remain open.
+
+**Upgrade, rollback and publication gates.**
+
+1. Update only between runs in **Assist**. Preserve the previous verified
+   engine, adapter/package/skills content, Memhub and configuration provenance
+   (paths, source commits and hashes). Select compatible content as a unit,
+   including lookup-context schema 2 and explicit-root lookup-only Memhub.
+   Finish old runs with their original engine/content or abort and seek fresh
+   approval; state schema 6 alone does not make contracts 1 and 2 compatible.
+2. A downloaded release binary must match that trusted release's published
+   `SHA256SUMS` **before execution**. v0.16.0 has no published final artifact
+   yet. Reload the affected OpenCode location (or restart Claude/Codex), refresh
+   agents when definitions changed or are stale, run selected-host doctor and
+   verify actual loaded source/content, not just version labels. Exercise a
+   fresh bounded approved workflow; source tests alone do not verify installation.
+3. Roll back only in Assist, restoring the recorded compatible engine/adapter
+   pair and any changed Memhub/configuration content, not mixing new lookup
+   wiring with an old engine. Restore the recorded checkout/plugin and skill
+   paths, reload, compare hashes/provenance and repeat doctor and bounded checks.
+   Downloaded rollback binaries require the previous release's trusted checksums.
+   Never migrate a live run, change a methodology number or bypass a gate.
+4. The version bump is the final content-bearing release-preparation change.
+   After review/CI/merge, any tag must name this bump's **merge commit**, not a
+   later content commit. Tag/release publication requires separate explicit
+   approval. Verify the final published binary/checksums and checkout-backed
+   adapter content separately before claiming final-artifact or installed-release
+   qualification. OpenCode remains unpublished to npm.
 
 ## v0.15.2 release
 
@@ -786,10 +896,12 @@ receive a copy of the memhub database.
   records remain intact; separate engine-owned and review-summary caps retain
   their behavior — [#426](https://github.com/kninetimmy/orch/pull/426).
 
-Engine v0.15.2 pairs with shared Claude/Codex adapter 0.13.0; OpenCode remains
-0.12.0. The manual wire versions listed above, approval contract 1, state
-schema 6 and metrics document schema 2 are unchanged from v0.15.1. Release
-housekeeping changes no agent definition or hook. Methodology-1 lists stay
+At this historical release, engine v0.15.2 paired with shared Claude/Codex
+adapter 0.13.0 and OpenCode 0.12.0. Its manual wire versions (Gate 3, Status 4,
+Activation 2, Dispatch 4, Review 3, Escalate 2, Block 2, Resume 2, Resolve Block 1),
+approval contract 1, state schema 6 and metrics document schema 2 were unchanged
+from v0.15.1. That release's housekeeping changed no agent definition or hook.
+Methodology-1 lists stay
 inspectable but require a real methodology-2 re-survey and fresh approval before
 grants; changing only their stored version never re-approves them.
 
