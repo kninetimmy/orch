@@ -3,7 +3,7 @@
 # a Delivery PR.
 
 schema_version  = 1
-config_revision = "sha256:e4bd760a16ec"
+config_revision = "sha256:14785d6c4e6c"
 
 [concurrency]
 max_subagents = 3
@@ -90,7 +90,7 @@ model   = "openai/gpt-6.1-sol"
 variant = "high"
 
 [protected]
-methodology_version = 1
+methodology_version = 2
 
 [[protected.paths]]
 path   = "internal/grant"
@@ -157,16 +157,12 @@ path   = "adapters/opencode/src"
 reason = "The OpenCode plugin that routes every mutation through orch guard check."
 
 [[protected.paths]]
-path   = "internal/claudenative/launch.go"
-reason = "Launches native Claude sessions and refuses permission-bypass flags."
+path   = "internal/claudenative"
+reason = "The restricted Claude bridge binds approved tasks, checks actual tools and permission mode, filters credentials and owns process-tree containment."
 
 [[protected.paths]]
-path   = "internal/codexnative/isolation.go"
-reason = "The Codex native isolation preflight that confirms the sandbox and restricted features."
-
-[[protected.paths]]
-path   = "internal/codexnative/isolation_config.go"
-reason = "The restricted-feature set and credential discarding for Codex native isolation."
+path   = "internal/codexnative"
+reason = "The restricted Codex bridge enforces sandbox, credential, tool, instruction-source and approved-task boundaries across launch and session execution."
 
 [[protected.paths]]
 path   = "internal/execx"
@@ -199,3 +195,203 @@ reason = "The version variable the release workflow stamps through -ldflags -X."
 [[protected.paths]]
 path   = ".golangci.yml"
 reason = "The lint rules CI enforces; loosening them weakens the CI gate every grant merge relies on."
+
+[[protected.paths]]
+path   = "adapters/claude/agents"
+reason = "Canonical loaded Claude role definitions set tool permissions, task scope and independent-review duties."
+
+[[protected.paths]]
+path   = "adapters/claude/skills"
+reason = "Loaded Architect, Delivery, grant and setup instructions govern approval, delegation and protected-path policy."
+
+[[protected.paths]]
+path   = "adapters/claude/commands"
+reason = "Loaded setup command instructions require the interview approval and a separate human configuration merge."
+
+[[protected.paths]]
+path   = "adapters/codex/agents"
+reason = "Canonical loaded Codex developer instructions constrain role scope, delegation and independent review."
+
+[[protected.paths]]
+path   = "adapters/codex/skills"
+reason = "Loaded Codex Architect, Delivery and setup instructions govern approvals, delegation and protected-path policy."
+
+[[protected.paths]]
+path   = "adapters/opencode/agents"
+reason = "Canonical OpenCode role definitions set native tool permissions, checkout binding and allowed child-memory actions."
+
+[[protected.paths]]
+path   = "adapters/opencode/skills"
+reason = "Loaded OpenCode Architect, Delivery and setup instructions govern approvals, dispatch and child-memory permissions."
+
+[[protected.paths]]
+path   = "adapters/claude/doc.go"
+reason = "The embedded canonical Claude definitions are inputs to generated agent permissions and instructions."
+
+[[protected.paths]]
+path   = "adapters/codex/embed.go"
+reason = "The embedded canonical Codex definitions are inputs to generated and native-session developer instructions."
+
+[[protected.paths]]
+path   = "adapters/opencode/doc.go"
+reason = "The embedded canonical OpenCode definitions and skills are inputs to permission-bearing agent and skill validation."
+
+[[protected.paths]]
+path   = "internal/agents/agents.go"
+reason = "Renders and overwrites loaded role definitions while preserving permission-bearing prose and preventing routing-field injection."
+
+[[protected.paths]]
+path   = "internal/cli/renderagents.go"
+reason = "Checks every generated-agent destination before overwriting loaded role policy."
+
+[[protected.paths]]
+path   = "internal/instructions/block.go"
+reason = "The program-assembled AGENTS.md and CLAUDE.md block instructs Assist read-only and isolated Delivery behavior."
+
+[[protected.paths]]
+path   = "internal/cli/hook.go"
+reason = "Program-assembled session instructions require the Architect and setup approval workflows before mutations."
+
+[[protected.paths]]
+path   = "internal/cli/hooklookup.go"
+reason = "Supplies the authoritative managed scope and primary-memory/assigned-checkout binding used by native child-memory enforcement."
+
+[[protected.paths]]
+path   = "internal/run/contract.go"
+reason = "Binds approved execution settings and rejects effective-policy drift and incompatible approval contracts."
+
+[[protected.paths]]
+path   = "internal/run/derive.go"
+reason = "Derives the routed execution profile and engine-contributed acceptance criteria that the human approves."
+
+[[protected.paths]]
+path   = "internal/run/lifecycle.go"
+reason = "Shared mutation preconditions enforce Delivery ownership, approved configuration, stopped-run and phase restrictions."
+
+[[protected.paths]]
+path   = "internal/run/review.go"
+reason = "Accepts only the routed reviewer, complete criterion judgments and review of the current PR head."
+
+[[protected.paths]]
+path   = "internal/run/mergereport.go"
+reason = "Requires approving review and mergeable CI before recording the head and phase eligible for merge approval."
+
+[[protected.paths]]
+path   = "internal/run/dispatch.go"
+reason = "Restricts work dispatch to approved scope and satisfied dependencies before making the issue writable."
+
+[[protected.paths]]
+path   = "internal/run/escalate.go"
+reason = "Applies only permitted reroutes or a human hold while preserving the approved execution profiles."
+
+[[protected.paths]]
+path   = "internal/run/block.go"
+reason = "Records human holds and stops the entire run on a secret-class block."
+
+[[protected.paths]]
+path   = "internal/run/resolveblock.go"
+reason = "Requires an explicit decision for the original block without changing approved scope or criteria."
+
+[[protected.paths]]
+path   = "internal/run/repair.go"
+reason = "Authorizes only exact integration repairs and invalidates earlier review and merge approval, including unchanged-head repairs."
+
+[[protected.paths]]
+path   = "internal/run/resume.go"
+reason = "Recovery preserves human decisions and approved work instead of silently accepting changed scope or stale approval."
+
+[[protected.paths]]
+path   = "internal/run/manifestbody.go"
+reason = "Prevents caller verifications from impersonating engine-owned review, criterion, CI and merge evidence."
+
+[[protected.paths]]
+path   = "internal/routing"
+reason = "The risk and escalation rules decide when independent review may be downgraded and when execution must return to the human."
+
+[[protected.paths]]
+path   = "internal/state"
+reason = "Persisted mode, phases, approvals and block history authorize guards and lifecycle operations; consistency must fail closed."
+
+[[protected.paths]]
+path   = "internal/lockfile"
+reason = "Run ownership and cross-process mutation locks prevent concurrent lifecycle operations from escaping approved state."
+
+[[protected.paths]]
+path   = "internal/cli/run.go"
+reason = "All mutating CLI lifecycle calls must acquire and retain the shared mutation lock."
+
+[[protected.paths]]
+path   = "internal/ghops/pr.go"
+reason = "Pins merges to the approved head and verifies the complete changed-file list used for protected-path matching."
+
+[[protected.paths]]
+path   = "internal/interview/protected.go"
+reason = "Only an explicitly approved path list may be stamped with the current survey methodology."
+
+[[protected.paths]]
+path   = "internal/nativehost"
+reason = "Shared native task identities, credential exclusions, canonical roots and instruction hashes define the host isolation boundary."
+
+[[protected.paths]]
+path   = "internal/evalplan/approval.go"
+reason = "Evaluation execution requires a fresh digest-bound human approval with a retained, single-use frozen-scope assertion."
+
+[[protected.paths]]
+path   = "internal/evalplan/controller.go"
+reason = "Rechecks execution approval and exclusive ownership before launching bounded native evaluation work."
+
+[[protected.paths]]
+path   = "internal/evalplan/controller_store.go"
+reason = "Retains frozen approval scope and enforces immutable progress, consumed budgets and exclusive stop records."
+
+[[protected.paths]]
+path   = "internal/evalplan/controller_native.go"
+reason = "Builds and validates native task instructions, role permissions and profile bindings from the approved evaluation."
+
+[[protected.paths]]
+path   = "internal/evalplan/controller_claude.go"
+reason = "Admits only the approved Claude evaluation task before invoking the restricted native worker."
+
+[[protected.paths]]
+path   = "internal/evalplan/plan.go"
+reason = "The canonical evaluation plan binds approved finite limits, host, instruction inputs and protected roots."
+
+[[protected.paths]]
+path   = "internal/evalplan/load.go"
+reason = "Revalidates frozen evaluation identities, canonical digests, configuration and storage location before execution."
+
+[[protected.paths]]
+path   = "internal/evalplan/guarded.go"
+reason = "Directory identity, exclusive creation and handle-relative access confine controller writes and reject replaced or linked paths."
+
+[[protected.paths]]
+path   = "internal/evalplan/storage.go"
+reason = "Validates disjoint local storage and protected roots and publishes files without replacing existing user data."
+
+[[protected.paths]]
+path   = "internal/evalplan/path_windows.go"
+reason = "Windows evaluation storage checks reject redirecting reparse points, nonlocal drive roots and aliased files."
+
+[[protected.paths]]
+path   = "internal/evalplan/path_unix.go"
+reason = "Unix evaluation storage checks identify symbolic links and multiply linked files before access."
+
+[[protected.paths]]
+path   = "internal/evalplan/path_other.go"
+reason = "Unsupported platforms must not silently admit an unverified evaluation storage boundary."
+
+[[protected.paths]]
+path   = "internal/evalplan/controller_artifacts.go"
+reason = "Protects main, credentials and sibling roots and removes only exact controller-owned unchanged disposable bytes."
+
+[[protected.paths]]
+path   = "internal/bootstrap/stage1.go"
+reason = "Setup owns fresh disposable worktree paths and limits recursive removal and forced branch deletion to those resources."
+
+[[protected.paths]]
+path   = "internal/bootstrap/write.go"
+reason = "Materializes approved permission-bearing configuration and root instruction files into the intended setup worktree."
+
+[[protected.paths]]
+path   = "internal/opencode/catalog.go"
+reason = "Model catalog decoding must preserve project identity and exclude raw provider settings, credentials and request payloads from output."
