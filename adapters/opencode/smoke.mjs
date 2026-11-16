@@ -1,7 +1,7 @@
 import assert from "node:assert/strict"
 import { createHash } from "node:crypto"
 import { existsSync } from "node:fs"
-import { copyFile, cp, mkdir, mkdtemp, readFile, realpath, rename, rm, symlink, writeFile } from "node:fs/promises"
+import { copyFile, cp, lstat, mkdir, mkdtemp, readFile, readlink, realpath, rename, rm, symlink, unlink, writeFile } from "node:fs/promises"
 import { spawn, spawnSync } from "node:child_process"
 import { createServer as createSocket } from "node:net"
 import { createServer } from "node:http"
@@ -69,14 +69,14 @@ function findOpenCode() {
   throw new Error("No supported OpenCode V2 executable found; minimum beta 18314 or stable 2.0.0 is required.")
 }
 
-function result(name, args, cwd, env = process.env) {
-  const value = spawnSync(name, args, { cwd, env, encoding: "utf8", windowsHide: true })
+function result(name, args, cwd, env = process.env, input) {
+  const value = spawnSync(name, args, { cwd, env, input, encoding: "utf8", windowsHide: true })
   if (value.error) throw value.error
   return value
 }
 
-function command(name, args, cwd, env) {
-  const value = result(name, args, cwd, env)
+function command(name, args, cwd, env, input) {
+  const value = result(name, args, cwd, env, input)
   if (value.status !== 0) throw new Error(name + " exited " + value.status + ": " + (value.stderr || value.stdout).trim())
   return value.stdout
 }
@@ -140,6 +140,7 @@ let serverExit
 let controller
 let headers
 let baseURL
+let stopHost
 let requests = 0
 const provider = createServer((_, response) => {
   requests++
@@ -303,7 +304,12 @@ try {
   assert.equal(service.url, baseURL)
   headers = { authorization: "Basic " + Buffer.from("opencode:" + service.password).toString("base64"), "content-type": "application/json" }
   async function api(endpoint, options = {}) {
-    const response = await fetch(baseURL + endpoint, { ...options, headers, signal: AbortSignal.timeout(10_000) })
+    let response
+    try {
+      response = await fetch(baseURL + endpoint, { ...options, headers, signal: AbortSignal.timeout(10_000) })
+    } catch (error) {
+      throw new Error(endpoint + " transport failed: " + error.message, { cause: error })
+    }
     if (!response.ok) throw new Error(endpoint + " returned HTTP " + response.status + ": " + (await response.text()).slice(0, 2000))
     return response.status === 204 ? undefined : response.json()
   }
@@ -313,6 +319,12 @@ try {
   const info = await api("/api/info")
   assert.equal(info.pid, server.pid)
   assert(inside(temp, path.resolve(info.paths.tmp)), "runtime temporary files must stay in the isolated fixture")
+  stopHost = async () => {
+    const current = JSON.parse(await readFile(path.join(state, "opencode", "service.json"), "utf8"))
+    assert.equal(current.pid, server.pid, "shutdown must still name our owned server")
+    assert.equal(current.url, baseURL)
+    return result(privateOpenCode, ["service", "stop"], root, env)
+  }
   async function activePlugin(directory = root) {
     return eventually(async () => {
       const entries = await plugins(directory)
@@ -420,6 +432,13 @@ try {
     await controller.request("llm.finish", { id: turn.id, reason: "stop" })
     await eventually(async () => !(await api("/api/session/active")).data[session.id], "session idle")
   }
+
+  // Scoped eviction cannot infer terminal inactivity from foreground drains.
+  // Qualify persistent-terminal evidence before implementing any removal probe.
+  const terminalProbe = await start(root, architect, undefined, undefined, undefined, false)
+  evidence.lifecycle_terminal_probe = await api("/api/experimental/session/" + terminalProbe.session.id + "/terminal")
+  assert.deepEqual(evidence.lifecycle_terminal_probe.data, [], "fresh fixture session must have no persistent terminals")
+  pass("persistent-terminal activity inventory is available in the owned isolated host")
 
   let unmanagedTasks = 0
   evidence.unmanaged = []
@@ -679,6 +698,14 @@ try {
   }
   pass("junction escape denial for existing primary and missing sibling targets")
   await finish(junction.session, junction.turn)
+  // These adversarial links were created above solely to test tool denial.
+  // Windows Git removal can traverse an ignored directory junction; do not
+  // carry those artificial escape routes into the later real-Git lifecycle.
+  for (const [alias, destination] of [["escape-root", root], ["escape-sibling", sibling]]) {
+    const link = path.join(writable, ".scratch", alias)
+    assert(sameDirectory(link, destination), "only unlink the verified junction fixture created by this test")
+    await unlink(link)
+  }
   // Memhub qualification uses this same real plugin/server/simulation, never a
   // parallel fake host or real model provider.
   const orchConfig = path.join(root, ".orchestrator", "config.toml")
@@ -957,6 +984,292 @@ try {
   assert.equal(await readFile(tracked, "utf8"), before)
   await finish(guardedCollision.session, guardedCollision.turn)
   pass("normalized MCP collision preserves user server and existing write guard")
+  // Lifecycle probes use only this server and owned synthetic checkouts.
+  // Never manually evict a location or kill a process to make Git removal pass.
+  delete configuration.mcp.servers["orch.memhub"]
+  await writeFile(configFile, JSON.stringify(configuration))
+  await mode("best-effort")
+  await Promise.all([connected(root), connected(writable), connected(sibling)])
+  const releaseEvidence = evidence.checkout_release = { refusals: [], qualification: "source/selected-artifact isolated simulation only; not installed manual Delivery or atomic host quiescence" }
+  const hash = (value) => createHash("sha256").update(value).digest("hex")
+  const lockPath = path.join(root, ".orchestrator", "delivery.lock")
+  // The existing containment fixture is synthetic. Obtain execution/config
+  // fields from the real read-only gate, never weaken the engine's checks or
+  // call activation/GitHub to turn a test fixture into a claimed human approval.
+  await rm(stateFile)
+  await rm(lockPath)
+  const gate = JSON.parse(command(orchBinary, ["run", "plan"], root, env, JSON.stringify({
+    schema_version: 1, host: "opencode", title: "Synthetic lifecycle smoke; no real approval",
+    issues: [{ id: "synthetic", title: "Synthetic lifecycle", objective: "Exercise only owned fixtures",
+      acceptance_criteria: ["Fixture paths and host activity are verified"], type: "bug", facts: {},
+      wave: 1, required_tests: ["synthetic smoke"], usage_class: "heavy" }],
+  })))
+  const executionBytes = JSON.stringify(gate.execution).replace(/[<>&\u2028\u2029]/g, (value) => "\\u" + value.charCodeAt(0).toString(16).padStart(4, "0"))
+  fixtureState.run.plan = {
+    title: gate.plan_title, digest: gate.plan_digest, approved_by: "synthetic fixture, not a human",
+    approved_at: new Date().toISOString(), config_revision: gate.config_revision,
+    contract_version: gate.execution.version, execution_digest: "sha256:" + hash(executionBytes),
+  }
+  Object.assign(fixtureState.run.issues[0], { phase: "pr-open", pr_number: 1, pr_url: "https://example.invalid/synthetic/1" })
+  await writeFile(lockPath, JSON.stringify({ schema_version: 1, run_id: fixtureState.run.id, host: "opencode", hostname: hostname(), pid: process.pid, acquired_at: new Date().toISOString() }))
+  await writeFile(stateFile, JSON.stringify(fixtureState))
+  releaseEvidence.synthetic_gate = gate
+  const oldOID = command("git", ["rev-parse", "HEAD"], root, env).trim()
+  await writeFile(path.join(writable, "route.go"), 'package fixture\nfunc FixtureRoute() string { return "lifecycle_new_revision" }\n')
+  command("git", ["add", "-A"], writable, env)
+  command("git", ["-c", "user.name=Orch Smoke", "-c", "user.email=orch-smoke@example.invalid", "commit", "-m", "Create synthetic lifecycle revision"], writable, env)
+  const newOID = command("git", ["rev-parse", "HEAD"], writable, env).trim()
+  assert.notEqual(oldOID, newOID)
+  const origin = path.join(temp, "origin.git")
+  command("git", ["init", "--bare", origin], temp, env)
+  command("git", ["remote", "add", "origin", origin], root, env)
+  command("git", ["push", "origin", "main", "smoke-issue"], root, env)
+  const reviewPath = path.join(root, ".orchestrator", "worktrees", "review-issue-1")
+  const reviewRequest = (head, number = 1) => ({ schema_version: 1, issue_number: number, head_oid: head })
+  // Keep the host/simulation HTTP event loop responsive through the engine's
+  // multi-request preflight; spawnSync can leave a closed keep-alive socket
+  // unprocessed until the first post-cleanup fetch attempts to reuse it.
+  const runResult = (verb, request) => new Promise((resolve, reject) => {
+    const child = spawn(orchBinary, ["run", verb], { cwd: root, env, stdio: ["pipe", "pipe", "pipe"], windowsHide: true })
+    let stdout = "", stderr = ""
+    child.stdout.on("data", (data) => (stdout += data))
+    child.stderr.on("data", (data) => (stderr += data))
+    child.once("error", reject)
+    child.once("close", (status) => resolve({ status, stdout, stderr }))
+    child.stdin.end(JSON.stringify(request))
+  })
+  const runCommand = async (verb, request) => {
+    const value = await runResult(verb, request)
+    assert.equal(value.status, 0, value.stderr)
+    return JSON.parse(value.stdout)
+  }
+  const refuseRelease = async (verb, request, reason) => {
+    const stateBefore = await readFile(stateFile)
+    const refusal = await runResult(verb, request)
+    assert.notEqual(refusal.status, 0, "observed target activity must prevent eviction/removal")
+    assert.match(refusal.stderr, reason)
+    assert.deepEqual(await readFile(stateFile), stateBefore, "refusal must not advance phase")
+    releaseEvidence.refusals.push({ verb, request, exit: refusal.status, error: refusal.stderr })
+  }
+  const hasLocation = (locations, directory) => locations.some((entry) => sameDirectory(entry.directory, directory))
+  await runCommand("review-worktree", reviewRequest(oldOID))
+  async function nativeLookup(directory, expectedOID) {
+    const child = await start(directory, agentModels["orch-scout"], lookupParent.session.id, "orch-scout")
+    const outputs = {}
+    for (const [name, input] of [["status", {}], ["locate", { query: "FixtureRoute", limit: 3 }]]) {
+      child.turn = await tool(child.turn, "execute", { code: `return await tools.${lookupServer}.${name}(${JSON.stringify(input)})` })
+      const data = outputs[name] = JSON.parse(evidence.last_tool.content)
+      assert(sameDirectory(data.binding.memory_root, root))
+      assert(sameDirectory(data.binding.code_root, directory))
+      assert(sameDirectory(data.binding.git_common_dir, path.join(root, ".git")))
+    }
+    assert.equal(outputs.locate.head, expectedOID)
+    const hit = outputs.locate.results.find((entry) => entry.path === "route.go")
+    assert.equal(hit.content.worktree_file_sha256, hash(await readFile(path.join(directory, "route.go"))))
+    assert.equal(hit.content.indexed_file_sha256, hit.content.worktree_file_sha256)
+    assert.equal(hit.content.verification, "worktree_file_hash")
+    assert.equal(outputs.locate.index.freshness.atomic_tree_snapshot, false)
+    await finishChild(child)
+    return outputs
+  }
+  releaseEvidence.old_review = await nativeLookup(reviewPath, oldOID)
+  const activeReview = await start(reviewPath, agentModels["orch-reviewer"], lookupParent.session.id, "orch-reviewer")
+  await refuseRelease("review-worktree", reviewRequest(newOID), /active session|unfinished background job/)
+  assert.equal(command("git", ["rev-parse", "HEAD"], reviewPath, env).trim(), oldOID)
+  await finishChild(activeReview)
+  assert(hasLocation(await api("/api/debug/location"), reviewPath), "ordinary idle must not unload the review location")
+
+  // Unlike the earlier guard-only junction check, exercise the production
+  // release/removal boundary while the ignored redirections are still present.
+  // Both cleanup trees must pass before any services are released.
+  releaseEvidence.interior_links = []
+  const sentinels = [root, sibling].map((directory) => path.join(directory, ".scratch", "release-sentinel"))
+  for (const sentinel of sentinels) {
+    await mkdir(path.dirname(sentinel), { recursive: true })
+    await writeFile(sentinel, "preserve primary and sibling\n")
+  }
+  const fileID = async (file) => {
+    const info = await lstat(file, { bigint: true })
+    return { dev: String(info.dev), ino: String(info.ino) }
+  }
+  for (const directory of [writable, reviewPath]) {
+    const links = []
+    await mkdir(path.join(directory, ".scratch"), { recursive: true })
+    for (const [name, destination] of [["escape-root", root], ["escape-sibling", sibling]]) {
+      const link = path.join(directory, ".scratch", name)
+      await symlink(destination, link, process.platform === "win32" ? "junction" : "dir")
+      links.push({ path: link, id: await fileID(link), destination: await readlink(link) })
+    }
+    try {
+      for (const verb of directory === reviewPath ? ["review-worktree", "cleanup"] : ["cleanup"]) {
+        fixtureState.run.issues[0].phase = verb === "cleanup" ? "abandoned" : "pr-open"
+        await writeFile(stateFile, JSON.stringify(fixtureState))
+        const registrations = command("git", ["worktree", "list", "--porcelain"], root, env)
+        const sentinelsBefore = await Promise.all(sentinels.map(fileIdentity))
+        const gitBefore = await Promise.all([root, sibling].map((item) => fileID(path.join(item, ".git"))))
+        const loadedBefore = (await api("/api/debug/location")).map((entry) => entry.directory).sort()
+        const request = verb === "cleanup" ? { schema_version: 1, issue_number: 1, statement: "cleanup-issue" } : reviewRequest(newOID)
+        await refuseRelease(verb, request, /linked or unverifiable checkout entry/)
+        assert.equal(command("git", ["worktree", "list", "--porcelain"], root, env), registrations)
+        assert.deepEqual(await Promise.all(sentinels.map(fileIdentity)), sentinelsBefore)
+        assert.deepEqual(await Promise.all([root, sibling].map((item) => fileID(path.join(item, ".git")))), gitBefore)
+        assert.deepEqual((await api("/api/debug/location")).map((entry) => entry.directory).sort(), loadedBefore)
+        assert(command("git", ["ls-remote", "--heads", "origin", "smoke-issue"], root, env).trim())
+        assert.equal(command("git", ["rev-parse", "HEAD"], reviewPath, env).trim(), oldOID)
+        assert.equal(command("git", ["status", "--porcelain"], writable, env).trim(), "", "ignored links must pass executor cleanliness")
+        releaseEvidence.interior_links.push({ directory, verb, links, sentinels: sentinelsBefore,
+          git_identities: gitBefore, registrations_preserved: true, state_preserved: true,
+          loaded_locations_unchanged: loadedBefore, remote_branch_preserved: true,
+          boundary: "production refusal; deterministic runner test additionally asserts zero host calls or Git mutations" })
+      }
+    } finally {
+      // Fixture preparation only, after product refusal. Never unlink a changed
+      // entry, follow the link, or send an adversarial fixture to generic Git.
+      for (const link of links) {
+        assert.deepEqual(await fileID(link.path), link.id)
+        assert.equal(await readlink(link.path), link.destination)
+        assert((await lstat(link.path)).isSymbolicLink())
+        await unlink(link.path)
+      }
+      fixtureState.run.issues[0].phase = "pr-open"
+      await writeFile(stateFile, JSON.stringify(fixtureState))
+    }
+  }
+  pass("production ignored interior-link refusal for executor cleanup, review cleanup and replacement; sentinels/state/registration/loaded services preserved")
+
+  // Finite fixture commands exit cooperatively when a marker is written.
+  // Natural exit, not process killing or shell/session deletion, ends each test.
+  const nodeBinary = path.join(bin, process.platform === "win32" ? "node.exe" : "node")
+  await copyFile(process.execPath, nodeBinary)
+  await mkdir(path.join(reviewPath, ".scratch"), { recursive: true })
+  const waitForMarker = (marker) => `const fs=require('fs'); const timer=setInterval(()=>{if(fs.existsSync('.scratch/${marker}'))clearInterval(timer)},50)`
+  const shell = await api("/api/shell?" + query(reviewPath), { method: "POST", body: JSON.stringify({
+    command: `node -e "${waitForMarker("finish-shell")}"`,
+  }) })
+  assert.equal(shell.data.status, "running")
+  await refuseRelease("review-worktree", reviewRequest(newOID), /running shell or terminal/)
+  await writeFile(path.join(reviewPath, ".scratch", "finish-shell"), "finish")
+  await eventually(async () => (await api("/api/shell?" + query(reviewPath))).data.length === 0, "owned shell natural exit")
+
+  const pty = await api("/api/pty?" + query(reviewPath), { method: "POST", body: JSON.stringify({
+    command: nodeBinary, args: ["-e", waitForMarker("finish-pty")], cwd: reviewPath, title: "synthetic lifecycle PTY",
+  }) })
+  assert.equal(pty.data.status, "running")
+  await refuseRelease("review-worktree", reviewRequest(newOID), /running shell or terminal/)
+  await writeFile(path.join(reviewPath, ".scratch", "finish-pty"), "finish")
+  await eventually(async () => (await api("/api/pty?" + query(reviewPath))).data.find((entry) => entry.id === pty.data.id)?.status === "exited", "owned PTY natural exit")
+
+  // Persistent terminal belongs to a primary session but has target cwd:
+  // checking just sessions currently located in the checkout would miss it.
+  const persistent = await api("/api/experimental/session/" + terminalProbe.session.id + "/terminal", { method: "POST", body: JSON.stringify({
+    command: nodeBinary, args: ["-e", waitForMarker("finish-persistent")], cwd: reviewPath, title: "synthetic lifecycle persistent PTY", env: {},
+  }) })
+  assert.equal(persistent.data.status, "running")
+  await refuseRelease("review-worktree", reviewRequest(newOID), /running persistent terminal/)
+  await writeFile(path.join(reviewPath, ".scratch", "finish-persistent"), "finish")
+  await eventually(async () => (await api("/api/experimental/session/" + terminalProbe.session.id + "/terminal")).data.find((entry) => entry.id === persistent.data.id)?.status === "exited", "owned persistent PTY natural exit")
+  releaseEvidence.process_probes = { shell, pty, persistent, exit: "cooperative natural exit; no process termination" }
+
+  // Both ordinary APIs allow a cwd independent of their owning location.
+  // Separate disposable targets retain useful evidence even on a regressed
+  // engine that reaches Git. Markers live outside those targets so every
+  // process can still exit cooperatively after a partial removal.
+  releaseEvidence.cross_location = []
+  for (const [index, kind] of ["pty", "shell"].entries()) {
+    const number = index + 3
+    const directory = path.join(root, ".orchestrator", "worktrees", "review-issue-" + number)
+    fixtureState.run.issues.push({ ...fixtureState.run.issues[0], number, plan_id: "synthetic-cross-" + kind,
+      branch: "unused-cross-" + kind, worktree: ".orchestrator/worktrees/issue-" + number, pr_number: number })
+    await writeFile(stateFile, JSON.stringify(fixtureState))
+    await runCommand("review-worktree", reviewRequest(oldOID, number))
+    await activePlugin(directory)
+    await mkdir(path.join(directory, ".scratch"), { recursive: true })
+    const marker = path.join(temp, "finish-cross-" + kind)
+    const relativeMarker = path.relative(path.join(directory, ".scratch"), marker).split(path.sep).join("/")
+    assert.match(relativeMarker, /^[.a-z/-]+$/)
+    const script = waitForMarker(relativeMarker)
+    const processProbe = await api("/api/" + kind + "?" + query(root), { method: "POST", body: JSON.stringify(kind === "pty"
+      ? { command: nodeBinary, args: ["-e", script], cwd: directory, title: "cross-location fixture" }
+      : { command: `node -e "${script}"`, cwd: directory }) })
+    assert(sameDirectory(processProbe.location.directory, root), "ordinary process owner must remain primary")
+    assert(sameDirectory(processProbe.data.cwd, directory), "host must accept an independent target cwd")
+    assert.equal(processProbe.data.status, "running")
+    const stateBefore = await readFile(stateFile)
+    const registrationBefore = command("git", ["worktree", "list", "--porcelain"], root, env)
+    const observed = { kind, directory, process: processProbe }
+    releaseEvidence.cross_location.push(observed)
+    try {
+      observed.result = await runResult("review-worktree", reviewRequest(newOID, number))
+      observed.refused_before_removal = observed.result.status !== 0 && /running shell or terminal/.test(observed.result.stderr)
+      observed.registration_preserved = command("git", ["worktree", "list", "--porcelain"], root, env) === registrationBefore
+      observed.state_preserved = (await readFile(stateFile)).equals(stateBefore)
+      observed.target_still_loaded = hasLocation(await api("/api/debug/location"), directory)
+      observed.primary_still_loaded = hasLocation(await api("/api/debug/location"), root)
+      observed.target_listing = result("git", ["rev-parse", "HEAD"], directory, env).stdout.trim()
+    } finally {
+      await writeFile(marker, "finish")
+      await eventually(async () => {
+        const entries = (await api("/api/" + kind + "?" + query(root))).data
+        return kind === "shell" ? !entries.some((entry) => entry.id === processProbe.data.id)
+          : entries.find((entry) => entry.id === processProbe.data.id)?.status === "exited"
+      }, "cross-location " + kind + " cooperative exit")
+    }
+  }
+  for (const observed of releaseEvidence.cross_location) {
+    assert(observed.refused_before_removal && observed.registration_preserved && observed.state_preserved &&
+      observed.target_still_loaded && observed.primary_still_loaded && observed.target_listing === oldOID,
+    "cross-location " + observed.kind + " must refuse before disposal/Git: " + JSON.stringify(observed))
+  }
+  pass("primary-owned ordinary PTY and shell with independent target cwd refuse before disposal/Git; cooperative exits")
+
+  releaseEvidence.replacement = await runCommand("review-worktree", reviewRequest(newOID))
+  assert.equal(releaseEvidence.replacement.head_oid, newOID)
+  assert.equal(result("git", ["symbolic-ref", "-q", "HEAD"], reviewPath, env).status, 1)
+  releaseEvidence.new_review = await nativeLookup(reviewPath, newOID)
+  assert.notEqual(releaseEvidence.old_review.locate.results.find((entry) => entry.path === "route.go").content.worktree_file_sha256,
+    releaseEvidence.new_review.locate.results.find((entry) => entry.path === "route.go").content.worktree_file_sha256)
+  pass("native lookup, active/shell/PTY/persistent-terminal refusals and engine review replacement at a different full OID with fresh root/revision/hash evidence")
+
+  // Unexpected descendants are preserved in a separate disposable fixture;
+  // intentionally leave it for owned-host shutdown, not manual eviction.
+  const descendantReview = path.join(root, ".orchestrator", "worktrees", "review-issue-2")
+  fixtureState.run.issues.push({ ...fixtureState.run.issues[0], number: 2, plan_id: "synthetic-descendant", branch: "unused-smoke-2", worktree: ".orchestrator/worktrees/issue-2", pr_number: 2 })
+  await writeFile(stateFile, JSON.stringify(fixtureState))
+  await runCommand("review-worktree", reviewRequest(oldOID, 2))
+  const descendant = path.join(descendantReview, ".scratch", "loaded-descendant")
+  await mkdir(descendant, { recursive: true })
+  await activePlugin(descendant)
+  await refuseRelease("review-worktree", reviewRequest(newOID, 2), /unexpected loaded descendant/)
+  assert(existsSync(descendant), "refused descendant must remain intact")
+
+  fixtureState.run.issues[0].phase = "abandoned"
+  await writeFile(stateFile, JSON.stringify(fixtureState))
+  const cleanupRequest = { schema_version: 1, issue_number: 1, statement: "cleanup-issue" }
+  const activeExecutor = await start(writable, agentModels["orch-implementer"], lookupParent.session.id, "orch-implementer")
+  await refuseRelease("cleanup", cleanupRequest, /active session|unfinished background job/)
+  assert(existsSync(writable) && existsSync(reviewPath))
+  assert(command("git", ["ls-remote", "--heads", "origin", "smoke-issue"], root, env).trim(), "activity refusal must precede even remote-branch deletion")
+  await finishChild(activeExecutor)
+  releaseEvidence.before_cleanup = await api("/api/debug/location")
+  assert(hasLocation(releaseEvidence.before_cleanup, writable) && hasLocation(releaseEvidence.before_cleanup, reviewPath))
+  releaseEvidence.cleanup = await runCommand("cleanup", cleanupRequest)
+  assert.equal(releaseEvidence.cleanup.phase, "cleaned")
+  assert.equal(existsSync(writable), false)
+  assert.equal(existsSync(reviewPath), false)
+  releaseEvidence.after_cleanup = await api("/api/debug/location")
+  assert(!releaseEvidence.after_cleanup.some((entry) => [writable, reviewPath].some((directory) => path.resolve(entry.directory) === path.resolve(directory))))
+  assert(hasLocation(releaseEvidence.after_cleanup, root) && hasLocation(releaseEvidence.after_cleanup, sibling))
+  releaseEvidence.primary_after = await nativeLookup(root, oldOID)
+  releaseEvidence.unrelated_after = await nativeLookup(sibling, oldOID)
+  const unrelatedAfter = await start(unmanagedGit)
+  noOrchMemoryContext(unrelatedAfter.turn)
+  unrelatedAfter.turn = await tool(unrelatedAfter.turn, "execute", { code: "return await tools.memhub.status({})" })
+  releaseEvidence.unmanaged_after = JSON.parse(evidence.last_tool.content)
+  assert.equal(releaseEvidence.unmanaged_after.tasks_total, unmanagedTasks, "unrelated full-profile lookup must remain usable without losing its synthetic memory")
+  await finish(unrelatedAfter.session, unrelatedAfter.turn)
+  assert.equal(command("git", ["ls-remote", "--heads", "origin", "smoke-issue"], root, env).trim(), "")
+  assert.notEqual(result("git", ["show-ref", "--verify", "refs/heads/smoke-issue"], root, env).status, 0)
+  pass("engine executor/review cleanup after completed native lookups; descendant/activity refusals preserve fixtures; primary and unrelated lookup services still usable")
   evidence.checks.push("real native children for all five roles; concurrently live dirty checkout bindings")
   assert.equal(requests, 0)
   evidence.behavior_checks_passed = true
@@ -965,13 +1278,26 @@ try {
   throw error
 } finally {
   controller?.socket.close()
-  if (server?.pid && server.exitCode === null) {
-    if (process.platform === "win32") {
-      const stopped = spawnSync("taskkill", ["/pid", String(server.pid), "/t", "/f"], { encoding: "utf8", windowsHide: true })
-      if (stopped.status !== 0 && server.exitCode === null) throw new Error("could not stop owned private server: " + stopped.stderr)
-    } else server.kill("SIGTERM")
+  let shutdownError
+  try {
+    if (server?.pid && server.exitCode === null) {
+      if (stopHost) {
+        const stopped = await stopHost()
+        evidence.owned_shutdown = { method: "native service stop with isolated record identity verified", exit: stopped.status }
+        assert.equal(stopped.status, 0, "could not stop owned private server")
+      } else if (process.platform === "win32") {
+        // Startup failed before authenticated discovery. Only our just-spawned
+        // process tree is eligible; never invoke managed discovery as fallback.
+        const stopped = spawnSync("taskkill", ["/pid", String(server.pid), "/t", "/f"], { encoding: "utf8", windowsHide: true })
+        evidence.owned_shutdown = { method: "owned startup-failure process tree", exit: stopped.status }
+        assert.equal(stopped.status, 0, "could not stop owned startup-failure process tree")
+      } else server.kill("SIGTERM")
+    }
+    if (serverExit) await within(serverExit, "owned server shutdown")
+  } catch (error) {
+    shutdownError = error
+    evidence.shutdown_error = { message: error.message, stack: error.stack }
   }
-  if (serverExit) await within(serverExit, "owned server shutdown")
   await new Promise((resolve, reject) => provider.close((error) => error ? reject(error) : resolve()))
   assert(inside(await realpath(tmpdir()), temp) && !inside(await realpath(repo), temp), "cleanup must stay in the owned OS-temp fixture")
   evidence.provider_requests = requests
@@ -981,12 +1307,13 @@ try {
       evidence.artifacts_after = await verifyArtifacts(selection, evidence.orch, evidence.memhub)
       pass("selected adapter identity files and binaries unchanged; private Memhub restored")
     }
-    evidence.passed = evidence.behavior_checks_passed === true && requests === 0 && evidence.owned_server_stopped && evidence.artifacts_after?.unchanged === true
+    evidence.passed = evidence.behavior_checks_passed === true && requests === 0 && evidence.owned_server_stopped && !shutdownError && evidence.artifacts_after?.unchanged === true
   } finally {
     await writeFile(path.join(temp, "evidence.json"), JSON.stringify(evidence, null, 2))
     await writeFile(path.join(temp, "server.log"), logs)
     console.log("Isolated smoke evidence and synthetic fixtures: " + temp)
   }
+  if (shutdownError && !evidence.error) throw shutdownError
 }
 
 console.log("OpenCode V2 smoke passed; no real provider requests")
