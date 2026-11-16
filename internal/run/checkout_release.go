@@ -2,9 +2,7 @@ package run
 
 import (
 	"context"
-	"errors"
 	"fmt"
-	"io"
 	"os"
 	"path/filepath"
 
@@ -17,7 +15,18 @@ import (
 // Only explicit review replacement and confirmed cleanup call it. Other hosts,
 // unknown/unregistered paths and truly absent paths keep their Git-only path;
 // gitops still refuses residue and verifies absence independently.
+// Before #510 other hosts bypassed all interior preflight. Now Windows checks
+// every requested checkout before host release or the first branch deletion.
 func (c *verbCtx) releaseCheckouts(ctx context.Context, git *gitops.Git, reviews ...bool) error {
+	for _, review := range reviews {
+		target := c.worktreeAbs()
+		if review {
+			target = reviewWorktreeAbs(c.env.RepoRoot, c.issue().Number)
+		}
+		if err := gitops.CheckWorktreeRemoval(ctx, target); err != nil {
+			return err
+		}
+	}
 	if c.st.Run.Host != "opencode" {
 		return nil
 	}
@@ -41,7 +50,7 @@ func (c *verbCtx) releaseCheckouts(ctx context.Context, git *gitops.Git, reviews
 	// Releasing locks makes Git traversal more reachable. Refuse newly observed
 	// hazards too; this is still not atomic exclusion of filesystem re-entry.
 	for _, target := range targets {
-		if err := inspectCheckout(ctx, target); err != nil {
+		if err := gitops.InspectWorktree(ctx, target); err != nil {
 			return err
 		}
 	}
@@ -141,85 +150,8 @@ func (c *verbCtx) checkoutReleaseTarget(ctx context.Context, git *gitops.Git, re
 			return "", err
 		}
 	}
-	if err := inspectCheckout(ctx, target); err != nil {
+	if err := gitops.InspectWorktree(ctx, target); err != nil {
 		return "", err
 	}
 	return canon, nil
-}
-
-// inspectCheckout reads metadata, including ignored entries, never link
-// destinations or file contents. Go's Lstat marks Windows junctions and unknown
-// name-surrogate reparse points as symlink/irregular, not ordinary directories.
-// Root confines child opens even if a directory is replaced during inspection;
-// handle/path identity checks precede enumeration. This is not a tree snapshot
-// or a link-safe replacement for generic Git teardown.
-func inspectCheckout(ctx context.Context, target string) (resultErr error) {
-	original, err := os.Lstat(target)
-	if err != nil || original.Mode().Type() != os.ModeDir {
-		return fmt.Errorf("checkout release: linked or unverifiable checkout entry; preserve and inspect it")
-	}
-	root, err := os.OpenRoot(target)
-	if err != nil {
-		return fmt.Errorf("checkout release: cannot inspect checkout interior: %w", err)
-	}
-	defer func() { resultErr = errors.Join(resultErr, root.Close()) }()
-	opened, err := root.Lstat(".")
-	if err != nil || !os.SameFile(original, opened) {
-		return fmt.Errorf("checkout release: checkout identity changed during inspection")
-	}
-	// ponytail: bound metadata work, refuse larger/deeper trees rather than
-	// silently skipping ignored paths or treating incomplete evidence as safe.
-	remaining := 100_000
-	var walk func(*os.Root, int) error
-	walk = func(dir *os.Root, depth int) error {
-		if err := ctx.Err(); err != nil {
-			return err
-		}
-		if depth > 64 {
-			return fmt.Errorf("checkout release: checkout exceeds interior inspection bounds")
-		}
-		f, err := dir.Open(".")
-		if err != nil {
-			return fmt.Errorf("checkout release: cannot inspect checkout interior: %w", err)
-		}
-		entries, readErr := f.ReadDir(remaining + 1)
-		closeErr := f.Close()
-		if readErr != nil && !errors.Is(readErr, io.EOF) {
-			return errors.Join(readErr, closeErr)
-		}
-		if closeErr != nil {
-			return closeErr
-		}
-		if len(entries) > remaining {
-			return fmt.Errorf("checkout release: checkout exceeds interior inspection bounds")
-		}
-		remaining -= len(entries)
-		for _, entry := range entries {
-			if err := ctx.Err(); err != nil {
-				return err
-			}
-			info, err := dir.Lstat(entry.Name())
-			if err != nil || (info.Mode().Type() != 0 && info.Mode().Type() != os.ModeDir) {
-				return fmt.Errorf("checkout release: linked or unverifiable checkout entry; preserve and inspect it")
-			}
-			if !info.IsDir() {
-				continue
-			}
-			child, err := dir.OpenRoot(entry.Name())
-			if err != nil {
-				return fmt.Errorf("checkout release: cannot inspect checkout interior: %w", err)
-			}
-			opened, openErr := child.Lstat(".")
-			current, currentErr := dir.Lstat(entry.Name())
-			if openErr != nil || currentErr != nil || current.Mode().Type() != os.ModeDir ||
-				!os.SameFile(info, current) || !os.SameFile(info, opened) {
-				return errors.Join(fmt.Errorf("checkout release: checkout interior identity changed"), child.Close())
-			}
-			if err := errors.Join(walk(child, depth+1), child.Close()); err != nil {
-				return err
-			}
-		}
-		return nil
-	}
-	return walk(root, 0)
 }

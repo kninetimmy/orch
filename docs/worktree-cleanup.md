@@ -5,6 +5,12 @@ in PR #12 and extended to disposable review cleanup/replacement in PR #97.
 It is a fail-closed safety change, not complete partial-removal recovery.
 No historical residue is repaired or deleted automatically.
 
+The #505 and #506 sections below retain their historical contracts. They are
+the **before #510** record where they say generic Git, base reproduction,
+bootstrap or other hosts are unchanged/outside the repair. The explicit
+**after #510** contract and per-element inventory follow at the end; neither
+historical wording nor source qualification implies installed protection.
+
 ## Before and after
 
 **Before:** cleanup tolerated `ErrUnknownWorktree` for both checkout paths
@@ -237,3 +243,114 @@ Even a successful bounded inspection is not atomic with later Git traversal.
 Keep targets unused; an inability to establish the required safe observations
 means refusal/human handling, never a process kill or recursive fallback.
 Broader link-safe teardown needs separate approval.
+
+## Windows teardown refusal (issue #510 / task 348)
+
+### Before and after, by teardown class
+
+**Before #510:** the generic Git implementation was unchanged by #506 and
+was not independently link-safe. The earlier task 348 note demonstrated
+direct native Git traversal only. The Architect subsequently reproduced the
+deletion **through baseline Gitops**: an ignored executor junction passed
+`RequireClean`, then confirmed, non-forced `RemoveWorktree` deleted a synthetic
+primary sentinel and `.git` before prune failed. All affected bytes belonged
+to isolated OS-temp fixtures, not the real primary checkout or user data.
+**After #510:** product regression tests require refusal before Git removal,
+not merely test-harness unlinking of a junction.
+
+| Teardown class | Before → after; retained behavior |
+| --- | --- |
+| Registered executor (`Git.RemoveWorktree`) | Before, confirmation + registration/non-primary + cleanliness permitted ignored Windows junction traversal. After, Windows inspects the requested root/parents/interior before canonicalization and again after Git preconditions, before removal. Confirmation still precedes access; registration, primary refusal, tracked/untracked cleanliness, non-forced Git removal, verified absence and prune remain. |
+| Registered detached (`Git.RemoveDetachedWorktree`) | Before, registration/non-primary/detached allowed forced Git traversal without interior evidence. After, it uses the same two Windows checks. Detached-only, refusal of branch checkouts, disposable modified/untracked scratch, no extra confirmation, absence and prune remain. These restrictions cover **both** registered removers except the deliberately per-kind confirmation/cleanliness and detached gates. |
+| Base reproduction (`Git.WithBaseWorktree`) | Before, this separate direct forced-Git teardown did not inherit registered-remover checks; generated detached ownership was treated as sufficient. After, Windows checks the fresh path before canonicalization and the original path before teardown; successful Git removal must leave it absent. It still creates its own unique detached path, performs direct forced Git cleanup without a branch-removal API, and does not prune here. Callback and cleanup errors are joined. Cleanup still attempts inspection/removal under `context.WithoutCancel`; cancellation does not bypass the safety check. Refused/failed cleanup names the preserved callback directory for human inspection. Initial-add/canonicalization failure cleanup remains non-recursive `os.Remove` of the generated empty path, now guarded too. |
+| Bootstrap/configure scratch (`bootstrap.removeWorktree`) | Before, its separate primitive was `os.RemoveAll` then prune, not either registered Git remover. The owned Windows characterization fixture shows Go's old primitive preserving the junction destination; the baseline native-Git exploit is **not** attributed to Go `RemoveAll`. After, bootstrap nevertheless refuses observed Windows root/parent/interior hazards before its existing primitive. No recursive fallback is added. Only stage 1's freshly generated scratch paths reach this unexported helper. Init-bootstrap and configure share it; neither arbitrary-directory deletion nor a new public remover is introduced. |
+| Bootstrap fresh empty path (`newWorktreeDir`) | Before, `MkdirTemp` → canonicalization → `RemoveAll` freed the generated name for `AddWorktree`. After, Windows inspects the requested path before canonicalization/removal, and only non-recursive `os.Remove` removes the fresh empty directory. Nonempty/replaced/unverifiable paths refuse. Existing unique-name, no-clobber/placement and generated-path boundaries remain. Unix canonicalization through legitimate symlinked ancestors remains. |
+| Lifecycle cleanup (`run.Cleanup` / `releaseCheckouts`) | Before, only OpenCode inspected both interiors before any host mutation; other hosts bypassed the boundary and could delete the remote branch first. After, **every Windows host path** checks both executor and review hazards before remote/local branch deletion or any OpenCode release. The same remote → executor → review → local order follows successful preflight. Confirmation, phase/schema/configuration gates, final state save and metrics remain. A preflight refusal preserves branches, registrations, protected bytes, host locations and lifecycle state. A later failure can still follow earlier successful mutations. |
+| Review replacement (`run.ReviewWorktree`) | Before, only OpenCode had the stronger pre-disposal interior boundary. After, every Windows host also refuses hazardous existing review paths before removal or reprovisioning. Full OID, phase/configuration gates, derived detached path, no-clobber, no run-state registration and no state/metrics write remain. |
+
+The statement above that the remote branch **may already have been deleted**
+is retained for late failures. **Before #510**, a non-OpenCode interior hazard
+could be such a late failure; **after**, an observed Windows hazard in either
+checkout is refused before that deletion. This is not a transactional rollback
+promise for later filesystem or host changes.
+
+### Shared inspection and exact scope
+
+The old `run.inspectCheckout` implementation is moved into
+`gitops.InspectWorktree`/`inspectWorktree`, not replaced by another remover.
+OpenCode's stronger check still applies on **every platform** before disposal
+and after handoffs. Windows generic Git, base and bootstrap use
+`gitops.CheckWorktreeRemoval`; elsewhere that wrapper is a no-op, so legitimate
+generic Unix symlink removal is **not** newly prohibited. A successful check
+does not establish ownership, registration, cleanliness or authority to delete.
+An absent path is allowed by the Windows wrapper solely so existing absence
+and retry gates can decide its meaning; strict `InspectWorktree` requires a tree.
+
+Inspection remains metadata-only, handle-rooted, cancellation-aware, inclusive
+of ignored entries and bounded at 100,000 entries / 64 interior levels per
+tree. Windows requested-parent inspection is bounded at 64 components. It
+checks the original spelling before canonicalization can hide a redirected
+root/parent; Windows `..` components refuse instead of being silently cleaned.
+All observed links, junctions, non-regular entries, **all unqualified Windows
+reparse attributes** (including tags that look ordinary to Go's type bits),
+unavailable metadata and changed directory identities refuse. No reparse tag
+is qualified for deletion here. Directory handle/path identities are checked
+before traversal and again afterward; root and parent identities are rechecked
+too. Observed redirections are not enumerated. Errors/bounds/cancellation are
+not partial evidence of safety, and production never unlinks the hazard.
+
+This is a refusal policy, **not atomic exclusion** of concurrent changes.
+Ordinary type/identity metadata cannot establish the absence of every mount
+alias on every filesystem. A tree can change after a successful observation,
+between canonicalization/Git preconditions/reinspection/removal, or during a
+host handoff. No new filesystem/host lock, safe recursive Git implementation
+or host-wide quiescence is claimed. Keep targets unused during teardown.
+Preserve refused paths and inspect ownership/links before any manual handling;
+do not blindly run a force-removal command on the reported hazard.
+
+### Complete touched-element inventory
+
+| Element | Does its pre-#510 behavior still hold? |
+| --- | --- |
+| `gitops.CheckWorktreeRemoval` | New Windows-only refusal wrapper, including absent-path handling; no deletion/ownership authority. Non-Windows generic callers retain prior symlink behavior. |
+| `gitops.InspectWorktree`, `inspectWorktree`, recursive walk and parent/root/child identity closures | Reuse the former `run.inspectCheckout` bounds, cancellation, ignored-entry metadata walk and handle-rooted opens. Add raw Windows parent evidence, before/after identity rechecks and actionable paths; incomplete inspection still refuses. No content reads or remover are added. |
+| Windows and non-Windows `ordinaryWorktreeEntry` | New factored entry check. Type-bit rejection remains everywhere for strict inspection; Windows also refuses missing attributes and every unqualified reparse attribute. This is not just a junction-specific or review-only rule. |
+| `Git.RemoveWorktree` / `Git.RemoveDetachedWorktree` | Earlier per-kind authority gates and #505 absence/residue behavior remain; both acquire Windows pre-canonicalization and pre-deletion inspection. Their deletion argv and prune sequencing remain. |
+| `Git.WithBaseWorktree` / generated-empty-path cleanup closure | Unique detached ownership, direct forced removal and joined callback/cleanup errors remain; add Windows checks and post-removal absence. Cancellation still cannot skip cleanup, but a safety refusal now intentionally preserves and names the generated path. |
+| `gitops` package/removal/base comments | Retain and correct the old assumption that detached/generated ownership prevented filesystem reachability into other work; executable Git setup/registration/path-comparison implementations remain unchanged. |
+| `bootstrap.stage1AfterIssue` | Mutation order and successful-run versus failure reporting remain. Pass context to the fresh-path helper; successful-PR cleanup errors now say preserve/inspect rather than blindly remove. No real issue/PR policy changes. |
+| `bootstrap.newWorktreeDir` | Fresh generated name and canonical placement remain. Add cancellation/Windows checks; replace fresh-empty `RemoveAll` with `Remove`, never recursive deletion of unexpected contents. |
+| `bootstrap.removeWorktree` | Existing scratch `RemoveAll` → prune remains after the new Windows refusal. It is still private and reached only with stage 1's generated disposable path, not arbitrary user input. |
+| `bootstrap.failClosed` | Still uses `WithoutCancel`, retains original/cleanup errors, attempts needs-human status, deletes only the pre-commit branch when Git permits and preserves committed branches. Leftover-path guidance now requires preservation/inspection before manual removal rather than recommending unguarded `git worktree remove --force`. |
+| `run.releaseCheckouts` / `checkoutReleaseTarget` | Existing all-target-before-host ordering, OpenCode ownership/common-dir/container/branch/clean-or-detached checks, scoped release and post-release inspection remain. Add raw Windows preflight for all hosts; strict inspection calls the shared implementation. Non-Windows non-OpenCode hosts retain their Git-only behavior. |
+| `run.Cleanup` / `run.ReviewWorktree` | Existing verb schemas/approval, phases, ownership, Git ordering and state semantics remain as detailed above; comments identify the expanded Windows boundary. No guard, role, run-state or approval schema changes. |
+| `internal/gitops/inspect*_test.go`, `base_test.go` | Real-Git ignored-junction refusal and safe retry for both registered kinds; root/parent refusal; reinspection after read-only Git probes; base cancellation with joined errors and named residue; unsupported/missing attribute, absence/invalid-path and cancellation evidence. Deterministic child replacement refuses; Unix also exercises root replacement, while Windows proves Go's open root handle prevents that rename during inspection, not later exclusion. Unix executor/detached/base symlink compatibility is covered. Existing removal/absence/confirmation/dirty/branch tests remain. `recordingRunner.Run` now honors cancellation; its refused empty fixture is cleaned. New fixture-only `ownedJunction`, `removalRecorder`, `reparseInfo`, `inspectionStepContext` and `fmtRemovalKind` create/observe only synthetic cases, never a production fallback. |
+| `internal/bootstrap/teardown*_test.go` / `bootstrapJunction` | New owned real registered scratch hazard refusal before deletion, canceled pre-commit/post-commit failure evidence, preserved branch/registration/primary bytes, safe retry, redirected temp-parent refusal, separately characterized baseline Go `RemoveAll`, and Unix scratch symlink compatibility. Existing stage 1 success/failure coverage remains. |
+| `internal/run/checkout_release_test.go` / `openCodeCheckoutFixture` / `checkoutFixture` | Reuse real-Git/scripted-host assertions for replacement, executor cleanup and review cleanup; extend Windows cases to Claude and Codex as well as OpenCode, including link-free lifecycle retries. Existing no-host/no-Git-mutation, sentinel, metadata, registration and state assertions remain. Bounds/cancellation checks exercise the moved inspector. Fixture unlinking is explicit after refusal, not a product operation. |
+| This guide | Prior #505/#506 statements remain explicitly historical before/after; add each teardown class, the shared rule's scope, evidence and remaining limits. |
+
+`ListWorktrees`, `findWorktree`, `requireWorktreeAbsent`, `PruneWorktrees`,
+branch-deletion primitives, creation/guard consumers, path canonicalization,
+configuration, permissions and state/approval schemas are not redesigned.
+Primary/unregistered-residue protection still applies to **both registered
+removal APIs**; `WithBaseWorktree` and bootstrap instead retain their own
+generated-path ownership boundary. The Windows hazard rule covers all these
+known teardown classes, not just the symbol `RemoveDetachedWorktree`. It does
+not make every filesystem deletion elsewhere in Orch a newly guarded operation.
+
+### Verification and limits
+
+Run the four Go gates and both adapter commands listed above; require empty
+`gofmt -l .` output and format only changed files. The unchanged smoke is a
+**required local Windows** gate, not a hosted-CI command. Its private simulated
+host must report zero provider requests and normal owned-service shutdown.
+Fixture unlinking occurs only after product refusal, for separate success tests;
+it is not production mitigation. The characterization test's synthetic
+`RemoveAll` is evidence about the old bootstrap primitive, not a new fallback.
+
+The OpenCode release implementation/tests, smoke harness, adapter README,
+configuration and host/role permissions are outside #510's edits. Source and
+isolated fixture results do not qualify the installed engine, manual/live
+Delivery, alias handling owned by task 346, or a runtime-version advisory change.
+No installation, service restart, process killing, historical-residue recovery
+or deletion, recursive fallback, or Memhub semantic/admin change is introduced.

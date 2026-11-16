@@ -75,6 +75,8 @@ func Cleanup(ctx context.Context, env Env, reqJSON []byte) (*CleanupResult, erro
 	// executor/review locations before any Git deletion. Both interiors must
 	// pass inspection before either release. Failure preserves phase;
 	// an earlier successful release may already have unloaded an idle cache.
+	// Before #510 other hosts skipped this boundary; now Windows checks both
+	// raw checkout paths/interiors before any branch deletion on every host.
 	if err := c.releaseCheckouts(ctx, git, false, true); err != nil {
 		return nil, err
 	}

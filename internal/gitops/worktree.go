@@ -221,9 +221,15 @@ func requireWorktreeAbsent(path string) error {
 // blocked work is preserved, PRD §15). Never uses --force.
 // Before #505, a successful Git removal was trusted; now the requested
 // path must also be absent on disk before pruning and reporting success.
+// Before #510, ignored Windows junctions could pass cleanliness and redirect
+// Git deletion. Both registered removers now inspect Windows roots/parents and
+// interiors before canonicalization; generic Unix symlink behavior is unchanged.
 func (g *Git) RemoveWorktree(ctx context.Context, path string, c Confirmation) error {
 	if !c.ok {
 		return fmt.Errorf("%w: remove worktree %s", ErrNotConfirmed, path)
+	}
+	if err := CheckWorktreeRemoval(ctx, path); err != nil {
+		return err
 	}
 	canon, err := paths.Canonical(path)
 	if err != nil {
@@ -237,6 +243,9 @@ func (g *Git) RemoveWorktree(ctx context.Context, path string, c Confirmation) e
 		return fmt.Errorf("%s is the primary checkout; refusing to remove it", canon)
 	}
 	if err := g.RequireClean(ctx, canon); err != nil {
+		return err
+	}
+	if err := CheckWorktreeRemoval(ctx, path); err != nil {
 		return err
 	}
 	if _, err := g.git(ctx, g.root, "worktree", "remove", canon); err != nil {
@@ -268,6 +277,9 @@ func (g *Git) RemoveWorktree(ctx context.Context, path string, c Confirmation) e
 // disposable means. A caller removing a worktree that may hold work
 // must use RemoveWorktree, which is confirmed and refuses a dirty tree.
 func (g *Git) RemoveDetachedWorktree(ctx context.Context, path string) error {
+	if err := CheckWorktreeRemoval(ctx, path); err != nil {
+		return err
+	}
 	canon, err := paths.Canonical(path)
 	if err != nil {
 		return err
@@ -281,6 +293,9 @@ func (g *Git) RemoveDetachedWorktree(ctx context.Context, path string) error {
 	}
 	if !wt.Detached {
 		return fmt.Errorf("%s is checked out on branch %s, not detached; refusing to force-remove a worktree holding a branch", canon, wt.Branch)
+	}
+	if err := CheckWorktreeRemoval(ctx, path); err != nil {
+		return err
 	}
 	if _, err := g.git(ctx, g.root, "worktree", "remove", "--force", canon); err != nil {
 		return err

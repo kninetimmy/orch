@@ -13,6 +13,10 @@
 // detached checkout it created itself, and RemoveDetachedWorktree
 // refuses any worktree that is not detached, so neither can reach a
 // branch or the commits on it.
+// Before #510 this also implied safe filesystem reachability; ignored Windows
+// junctions disproved that assumption. Both forced paths and confirmed executor
+// removal now refuse observed Windows root/parent/interior hazards before Git.
+// Unix generic symlink behavior and the non-atomic observation limit remain.
 //
 // Operations that pre-check and then act (for example AddWorktree) are not
 // atomic, and this package adds no locking. For Delivery commands,
