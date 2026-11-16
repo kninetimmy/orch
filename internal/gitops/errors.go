@@ -24,8 +24,9 @@ var (
 	// ErrBranchNotMerged reports git refusing to delete an unmerged
 	// branch; the work it holds is preserved (PRD §15).
 	ErrBranchNotMerged = errors.New("branch is not fully merged")
-	// ErrUnknownWorktree reports a removal target that is not a
-	// registered worktree; gitops never deletes arbitrary paths.
+	// ErrUnknownWorktree reports an absent, unregistered removal target.
+	// Before #505, it also covered existing unregistered paths; those now
+	// return a residue error instead. gitops never deletes arbitrary paths.
 	ErrUnknownWorktree = errors.New("path is not a registered worktree")
 	// ErrNotFastForward reports diverged history where only a
 	// fast-forward is allowed (PRD §12 step 20); nothing changed.

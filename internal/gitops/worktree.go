@@ -172,10 +172,11 @@ func ExplicitConfirmation() Confirmation { return Confirmation{ok: true} }
 
 // findWorktree returns the registered worktree whose path is the
 // canonical path canon, or ErrUnknownWorktree when git knows no
-// worktree there — the check that keeps every removal path from
-// deleting an arbitrary directory. The primary checkout matches like
-// any other entry; refusing it belongs to the caller, and every
-// removal path does refuse it.
+// worktree there and the path is absent. Before #505, missing registration
+// alone returned ErrUnknownWorktree; now existing unregistered residue
+// returns a non-tolerable error. Both registered-worktree removal methods
+// use this check and never delete arbitrary directories. The primary
+// checkout matches like any other entry; both callers refuse it.
 func (g *Git) findWorktree(ctx context.Context, canon string) (*Worktree, error) {
 	worktrees, err := g.ListWorktrees(ctx)
 	if err != nil {
@@ -190,7 +191,25 @@ func (g *Git) findWorktree(ctx context.Context, canon string) (*Worktree, error)
 			return &worktrees[i], nil
 		}
 	}
+	if err := requireWorktreeAbsent(canon); err != nil {
+		return nil, fmt.Errorf("refusing unregistered worktree path: %w", err)
+	}
 	return nil, fmt.Errorf("%w: %s", ErrUnknownWorktree, canon)
+}
+
+// requireWorktreeAbsent checks the filesystem, not Git registration.
+// Lstat also refuses dangling symlinks; inspection errors fail closed.
+// It never removes residue, even an empty directory.
+func requireWorktreeAbsent(path string) error {
+	_, err := os.Lstat(path)
+	switch {
+	case errors.Is(err, fs.ErrNotExist):
+		return nil
+	case err != nil:
+		return fmt.Errorf("inspect worktree path %s to verify absence: %w", path, err)
+	default:
+		return fmt.Errorf("worktree path %s still exists; preserve and inspect the residue, then safely remove it before retrying", path)
+	}
 }
 
 // RemoveWorktree removes the registered worktree at path and prunes
@@ -200,6 +219,8 @@ func (g *Git) findWorktree(ctx context.Context, canon string) (*Worktree, error)
 // (ErrUnknownWorktree — never delete an arbitrary directory); and the
 // worktree must be clean including untracked files (ErrNotClean —
 // blocked work is preserved, PRD §15). Never uses --force.
+// Before #505, a successful Git removal was trusted; now the requested
+// path must also be absent on disk before pruning and reporting success.
 func (g *Git) RemoveWorktree(ctx context.Context, path string, c Confirmation) error {
 	if !c.ok {
 		return fmt.Errorf("%w: remove worktree %s", ErrNotConfirmed, path)
@@ -221,6 +242,9 @@ func (g *Git) RemoveWorktree(ctx context.Context, path string, c Confirmation) e
 	if _, err := g.git(ctx, g.root, "worktree", "remove", canon); err != nil {
 		return err
 	}
+	if err := requireWorktreeAbsent(path); err != nil {
+		return err
+	}
 	return g.PruneWorktrees(ctx)
 }
 
@@ -232,6 +256,8 @@ func (g *Git) RemoveWorktree(ctx context.Context, path string, c Confirmation) e
 // must not be the primary checkout, which is refused even when its own
 // HEAD happens to be detached; and it must be detached, so a worktree
 // holding a branch is refused by name.
+// Like RemoveWorktree, it now verifies filesystem absence after Git
+// reports success; before #505, the successful Git response sufficed.
 //
 // It takes no Confirmation, for the reason WithBaseWorktree's forced
 // removal takes none: what PRD §15 protects from a forced removal is
@@ -257,6 +283,9 @@ func (g *Git) RemoveDetachedWorktree(ctx context.Context, path string) error {
 		return fmt.Errorf("%s is checked out on branch %s, not detached; refusing to force-remove a worktree holding a branch", canon, wt.Branch)
 	}
 	if _, err := g.git(ctx, g.root, "worktree", "remove", "--force", canon); err != nil {
+		return err
+	}
+	if err := requireWorktreeAbsent(path); err != nil {
 		return err
 	}
 	return g.PruneWorktrees(ctx)

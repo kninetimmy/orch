@@ -151,6 +151,55 @@ func TestReviewWorktreeReplacesPreviousCycle(t *testing.T) {
 	}
 }
 
+func TestReviewWorktreePreservesUnregisteredResidue(t *testing.T) {
+	for _, nonempty := range []bool{false, true} {
+		t.Run(fmt.Sprintf("nonempty=%t", nonempty), func(t *testing.T) {
+			root := newActivateRepo(t)
+			_, second := seedReviewRun(t, root, state.PhaseInReview)
+			abs := reviewWorktreeAbs(root, 1)
+			if err := os.MkdirAll(abs, 0o755); err != nil {
+				t.Fatal(err)
+			}
+			marker := filepath.Join(abs, "preserve.txt")
+			if nonempty {
+				if err := os.WriteFile(marker, []byte("review residue\n"), 0o644); err != nil {
+					t.Fatal(err)
+				}
+			}
+			before := stateBytes(t, root)
+			env, script := reviewEnv(t, root)
+			res, err := ReviewWorktree(context.Background(), env, []byte(reviewWorktreeJSON(1, second)))
+			script.AssertExhausted()
+			if res != nil || err == nil {
+				t.Fatalf("ReviewWorktree = %+v, %v; want residue refusal", res, err)
+			}
+			for _, want := range []string{abs, "unregistered", "preserve", "retry"} {
+				if !strings.Contains(err.Error(), want) {
+					t.Errorf("error %q does not contain %q", err, want)
+				}
+			}
+			if !bytes.Equal(before, stateBytes(t, root)) {
+				t.Fatal("refused replacement changed run state")
+			}
+			entries, err := os.ReadDir(abs)
+			if err != nil {
+				t.Fatalf("residue was not preserved: %v", err)
+			}
+			if nonempty {
+				content, err := os.ReadFile(marker)
+				if err != nil || string(content) != "review residue\n" || len(entries) != 1 {
+					t.Fatalf("residue changed: entries=%v, content=%q, err=%v", entries, content, err)
+				}
+			} else if len(entries) != 0 {
+				t.Fatalf("empty residue changed: %v", entries)
+			}
+			if strings.Contains(rawGit(t, root, "worktree", "list", "--porcelain"), "review-issue-1") {
+				t.Fatal("refused replacement registered the residue with Git")
+			}
+		})
+	}
+}
+
 // TestReviewWorktreeBadRequestBeforeMutation pins the pre-mutation
 // rejections. The head_oid cases matter beyond schema hygiene: a ref
 // name resolves when git reads it, so accepting one would reintroduce

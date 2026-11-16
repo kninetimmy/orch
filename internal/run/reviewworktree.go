@@ -116,9 +116,10 @@ func ReviewWorktree(ctx context.Context, env Env, reqJSON []byte) (*ReviewWorktr
 		return nil, err
 	}
 
-	// Replace an earlier cycle's checkout (idempotent the way cleanup's
-	// deletions are: nothing left behind is not registered, so
-	// ErrUnknownWorktree is the expected answer, not a failure). The
+	// Replace an earlier cycle's checkout. Before #505, missing Git
+	// registration was treated as absence; now ErrUnknownWorktree is
+	// tolerated only after gitops verifies the path is absent. Existing
+	// unregistered residue is preserved and refused before creation. The
 	// removal is forced because a reviewer legitimately leaves untracked
 	// files — test output, build artifacts — in a checkout that exists to
 	// be thrown away; gitops refuses to force-remove anything holding a

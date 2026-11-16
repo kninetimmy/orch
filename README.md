@@ -2023,6 +2023,12 @@ routing ladder), `block` (closed failure classes; a secret found stops
 the whole run) or `abandon`. Errors never mutate state; state advances
 only on success.
 
+Before #505, cleanup treated missing Git registration as checkout absence.
+Now executor and review paths must be absent on disk; unregistered residue
+is preserved and blocks `cleaned`. Review replacement refuses it too.
+See [truthful checkout removal](docs/worktree-cleanup.md) for retry guidance,
+the before/after contract and retained safety boundaries.
+
 `orch resume` reconciles an interrupted run against GitHub reality in
 three strict stages — observe (all reads up front), classify (a pure
 30-row decision table), apply (one state write, skipped when the run
