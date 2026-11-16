@@ -186,6 +186,48 @@ provider requests and is **not run by hosted CI**. Source/isolated evidence
 does not qualify installed/manual cleanup, complete orphan recovery or atomic
 host quiescence; no installation or global configuration change is included.
 
+### Distinct location cache aliases (issue 509)
+
+**Before:** `ReleaseLocation` refused any repeated filesystem identity in the
+loaded inventory, including unrelated primary casing aliases. Its shell/PTY
+response attribution and preservation checks compared physical identity alone;
+simply removing the duplicate-identity refusal would have let one cache answer
+for, or conceal the loss of, another. **After:** distinct non-target host cache
+keys may share a verified physical directory, but every key remains separately
+inventoried, queried and preserved. There is no lowercase, canonical-path or
+physical-identity deduplication.
+
+The V2 [API reference](https://opencode.ai/docs/api) and
+[OpenAPI](https://opencode.ai/docs/openapi.json) describe
+`debug.location.list` as the loaded-location inventory and
+`debug.location.evict` as disposal of the requested location's cached services.
+The disposal parameter is explicit deep-object/exploded `location[directory]`.
+The isolated Windows exercise establishes the additional runtime observation:
+casing-different returned `directory` strings can own independent caches even
+when native device/file IDs are equal. Use those **returned keys**, not a
+filesystem-normalized guess. This is a verified contract/observation boundary,
+not a promise that every V2 version accepts every possible path alias.
+
+| Touched element | Before → after / retained behavior |
+| --- | --- |
+| `releaseLocation.Directory` / `info` | Directory spelling was carried alongside filesystem identity but duplicate physical identities were refused. Now the exact host string identifies a cache; `info` independently verifies its physical directory. Neither substitutes for the other. |
+| `ReleaseLocation` inventory | Before, any physical alias blocked release. Now independently attributable **non-target** aliases are admitted, including primary aliases. Exact repeated keys, malformed/null/oversized inventories, unverifiable directories and loaded target descendants still refuse. Multiple keys for the target's physical directory refuse as ambiguous before scoped reads or disposal. |
+| Target location/root verification and scoped disposal | Only one physically verified loaded target key can be queried/disposed, using that returned key unchanged; the location response must echo it exactly and project/primary roots must still match physically. A single alias key is eligible only with this evidence. A newly loaded or changed target key refuses. An unloaded target still receives no scoped read or disposal; primary disposal is still prohibited. No broad eviction, session deletion, restart or process-kill fallback is introduced. |
+| `releaseOrdinaryProcesses` | Every loaded key, not one representative per physical directory, is queried for **both** `/api/shell` and `/api/pty`. Before, a physically equivalent response root sufficed. Now every response must echo the particular queried key **and** retain its verified physical identity. The rule covers every shell/PTY owner, not one named alias, and both endpoints, not shell alone. Running activity in target by either owner or independent cwd still blocks disposal. |
+| Non-target preservation in `ReleaseLocation` | Before, another alias with equal physical identity could conceal a missing cache. Now each prior exact key **and** its physical identity must survive the pre-disposal re-read and post-disposal inventory. New keys observed before disposal are also protected afterward. Missing/replaced keys, rebound directories or incomplete evidence refuse Git removal. Only the proven target is exempt. |
+| Activity/directory helpers | `releaseActiveJobs`, `releaseActivity`, `releaseBelongs` and `releaseDirectory` retain foreground, job owner/child, paginated persistent-terminal owner/cwd, filesystem and bound/refusal checks. Physical identity remains appropriate for attributing activity to the target, but never for merging cache owners. |
+| Deterministic release fixtures/tests | Existing release/refusal cases remain; distinct aliases now discriminate independent success, per-alias activity, wrong-cache responses despite equal physical identity, key loss/replacement, physical replacement, exact duplicate keys and ambiguous/unsupported target attribution. Windows uses casing aliases; Unix CI uses filesystem-equivalent symlink keys. |
+| Isolated `smoke.mjs` lifecycle exercise | Existing source/selected-artifact, containment, native lookup, lifecycle refusal and shutdown probes remain. Windows additionally loads owned casing aliases, retains returned keys and native IDs, proves independent live PTY ownership across single-target retirement, checks exact-key/identity preservation and native lookups, and refuses real ambiguous target aliases without disposing them. Runtime/OpenAPI/source/binary identities and observations are retained in `evidence.json` plus the OpenAPI artifact. |
+| Callers, adapter runtime and qualification | Explicit executor/review engine entry points, generic teardown and `docs/worktree-cleanup.md` are not changed here. No adapter runtime code, version admission/advisory, model routing, dependencies or host/role configuration changes. Required local smoke is still absent from hosted CI. Source/isolated results are **not installed/manual qualification**; no real shared-host cache is created, evicted or restarted. |
+
+The existing two-minute/inventory limits and observation races remain. These
+checks cannot atomically exclude cache eviction/recreation, process cwd changes,
+filesystem replacement or host re-entry between observations and later Git
+removal; they do not prove service-instance continuity merely from a retained
+key/file ID. Keep target checkouts unused during explicit retirement. The smoke
+also retains independent running alias PTY IDs as service-preservation evidence;
+it does not turn those bounded observations into a host lock.
+
 ## Bound child memory (issue 495)
 
 **Before (policy):** OpenCode children were instructed to use Architect-mediated

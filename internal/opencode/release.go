@@ -16,6 +16,8 @@ import (
 )
 
 type releaseLocation struct {
+	// Directory is the host's cache key, not a canonical filesystem identity.
+	// Distinct keys may own independent services for the same physical directory.
 	Directory string `json:"directory"`
 	info      os.FileInfo
 }
@@ -81,38 +83,54 @@ func ReleaseLocation(ctx context.Context, runner execx.Runner, primary, target s
 		}) {
 		return fmt.Errorf("OpenCode checkout release: explicit scoped disposal contract is unsupported")
 	}
-	// Inventory reads do not activate an unloaded location. Every returned path
-	// is filesystem-verified, including Windows extended-path aliases.
-	inventory := func() ([]releaseLocation, bool, error) {
+	// Inventory reads do not activate an unloaded location. Keep every exact
+	// host key and independently verify its directory, even for physical aliases.
+	inventory := func() ([]releaseLocation, string, error) {
 		var locations []releaseLocation
 		if err := call("get", "/api/debug/location", &locations); err != nil {
-			return nil, false, err
+			return nil, "", err
 		}
 		if locations == nil || len(locations) > 1024 {
-			return nil, false, fmt.Errorf("OpenCode checkout release: malformed or oversized location inventory")
+			return nil, "", fmt.Errorf("OpenCode checkout release: malformed or oversized location inventory")
 		}
-		var seen []os.FileInfo
-		loaded := false
+		seen := make(map[string]bool)
+		loaded := ""
 		for i, location := range locations {
 			info, err := releaseDirectory(location.Directory)
 			if err != nil {
-				return nil, false, err
+				return nil, "", err
 			}
-			if slices.ContainsFunc(seen, func(previous os.FileInfo) bool { return os.SameFile(previous, info) }) {
-				return nil, false, fmt.Errorf("OpenCode checkout release: duplicate target or other location")
+			if seen[location.Directory] {
+				return nil, "", fmt.Errorf("OpenCode checkout release: duplicate location cache key")
 			}
-			seen = append(seen, info)
+			seen[location.Directory] = true
 			locations[i].info = info
 			if os.SameFile(targetInfo, info) {
-				loaded = true
+				if loaded != "" {
+					return nil, "", fmt.Errorf("OpenCode checkout release: ambiguous target cache aliases; refusing disposal")
+				}
+				loaded = location.Directory
 				continue
 			}
 			inside, err := paths.Inside(target, location.Directory)
 			if err != nil || inside {
-				return nil, false, fmt.Errorf("OpenCode checkout release: unexpected loaded descendant or unverifiable location; refusing subtree eviction")
+				return nil, "", fmt.Errorf("OpenCode checkout release: unexpected loaded descendant or unverifiable location; refusing subtree eviction")
 			}
 		}
 		return locations, loaded, nil
+	}
+	preserve := func(previous, current []releaseLocation) error {
+		for _, location := range previous {
+			if os.SameFile(targetInfo, location.info) {
+				continue
+			}
+			if !slices.ContainsFunc(current, func(other releaseLocation) bool {
+				return location.Directory == other.Directory && os.SameFile(location.info, other.info)
+			}) {
+				return fmt.Errorf("OpenCode checkout release: another loaded location disappeared or changed identity; refusing Git removal")
+			}
+		}
+		return nil
 	}
 	before, loaded, err := inventory()
 	if err != nil {
@@ -121,8 +139,8 @@ func ReleaseLocation(ctx context.Context, runner execx.Runner, primary, target s
 	if err := releaseActivity(call, target); err != nil {
 		return err
 	}
-	query := url.Values{"location[directory]": {target}}.Encode()
-	if loaded {
+	query := url.Values{"location[directory]": {loaded}}.Encode()
+	if loaded != "" {
 		var location struct {
 			Directory string `json:"directory"`
 			Project   struct {
@@ -132,6 +150,9 @@ func ReleaseLocation(ctx context.Context, runner execx.Runner, primary, target s
 		}
 		if err := call("get", "/api/location?"+query, &location); err != nil {
 			return err
+		}
+		if location.Directory != loaded {
+			return fmt.Errorf("OpenCode checkout release: host location cache key differs from the queried target")
 		}
 		for _, pair := range [][2]string{{target, location.Directory}, {target, location.Project.Directory}, {primary, location.Project.Canonical}} {
 			if same, err := sameDirectory(pair[0], pair[1]); err != nil || !same {
@@ -148,13 +169,16 @@ func ReleaseLocation(ctx context.Context, runner execx.Runner, primary, target s
 	if err != nil {
 		return err
 	}
-	if !loaded && stillLoaded {
-		return fmt.Errorf("OpenCode checkout release: target loaded during activity checks; preserve it and retry after use finishes")
+	if stillLoaded != "" && loaded != stillLoaded {
+		return fmt.Errorf("OpenCode checkout release: target cache key loaded or changed during activity checks; preserve it and retry after use finishes")
+	}
+	if err := preserve(before, currentLocations); err != nil {
+		return err
 	}
 	if err := releaseOrdinaryProcesses(call, target, currentLocations); err != nil {
 		return err
 	}
-	if stillLoaded {
+	if stillLoaded != "" {
 		if err := call("delete", "/api/debug/location?"+query, nil); err != nil {
 			return err
 		}
@@ -163,16 +187,11 @@ func ReleaseLocation(ctx context.Context, runner execx.Runner, primary, target s
 	if err != nil {
 		return err
 	}
-	if remainsLoaded {
+	if remainsLoaded != "" {
 		return fmt.Errorf("OpenCode checkout release: scoped disposal did not unload the target; refusing Git removal")
 	}
-	for _, location := range before {
-		if os.SameFile(targetInfo, location.info) {
-			continue
-		}
-		if !slices.ContainsFunc(after, func(other releaseLocation) bool { return os.SameFile(location.info, other.info) }) {
-			return fmt.Errorf("OpenCode checkout release: another loaded location disappeared; refusing Git removal")
-		}
+	if err := preserve(currentLocations, after); err != nil {
+		return err
 	}
 	current, err := os.Stat(target)
 	if err != nil || !os.SameFile(targetInfo, current) {
@@ -184,8 +203,9 @@ func ReleaseLocation(ctx context.Context, runner execx.Runner, primary, target s
 type releaseCall func(method, endpoint string, out any) error
 
 // Both ordinary creation APIs accept cwd independently of location. Inspect
-// every loaded owner, not just target, and attribute running activity by both
-// owner and cwd. Persistent terminals have a separate session-scoped inventory.
+// every loaded cache key, not just target or one key per physical directory,
+// and attribute running activity by both owner and cwd. Persistent terminals
+// have a separate session-scoped inventory.
 // Only loaded locations are queried; an unloaded target is never activated.
 func releaseOrdinaryProcesses(call releaseCall, target string, locations []releaseLocation) error {
 	for _, location := range locations {
@@ -203,7 +223,7 @@ func releaseOrdinaryProcesses(call releaseCall, target string, locations []relea
 				return err
 			}
 			info, err := releaseDirectory(response.Location.Directory)
-			if err != nil || !os.SameFile(location.info, info) || response.Data == nil {
+			if err != nil || response.Location.Directory != location.Directory || !os.SameFile(location.info, info) || response.Data == nil {
 				return fmt.Errorf("OpenCode checkout release: malformed or wrong-root shell/PTY inventory")
 			}
 			if len(response.Data) > 1000 {
