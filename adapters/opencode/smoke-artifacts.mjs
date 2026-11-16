@@ -2,7 +2,7 @@ import assert from "node:assert/strict"
 import { spawnSync } from "node:child_process"
 import { createHash } from "node:crypto"
 import { constants } from "node:fs"
-import { access, copyFile, readFile, readdir, realpath, stat } from "node:fs/promises"
+import { access, copyFile, mkdir, readFile, readdir, realpath, stat, writeFile } from "node:fs/promises"
 import path from "node:path"
 import { pathToFileURL } from "node:url"
 
@@ -125,6 +125,24 @@ export async function prepareOrch(selection, destination, build) {
   if (selection.mode === "explicit-artifact") return copyBinary(selection.orch, destination)
   await build(destination)
   return { kind: "source-build", executed: await fileIdentity(destination) }
+}
+
+export async function prepareSourceProbe(repository, directory) {
+  const sourceMod = path.join(repository, "go.mod")
+  const sourceSum = path.join(repository, "go.sum")
+  const graph = await readFile(sourceMod, "utf8")
+  assert(/^module github\.com\/kninetimmy\/orch\r?$/m.test(graph), "probe requires the existing Orch source module")
+  // Retain the complete pinned graph, not just checksums or an ad-hoc require.
+  // Only the disposable helper gets a different module name and local source link.
+  const module = graph.replace(/^module github\.com\/kninetimmy\/orch\r?$/m, "module github.com/kninetimmy/orch/smoke")
+    + `\nrequire github.com/kninetimmy/orch v0.0.0\nreplace github.com/kninetimmy/orch => ${JSON.stringify(repository.replaceAll("\\", "/"))}\n`
+  await mkdir(directory)
+  await writeFile(path.join(directory, "go.mod"), module, { flag: "wx" })
+  await copyFile(sourceSum, path.join(directory, "go.sum"), constants.COPYFILE_EXCL)
+  return {
+    source_mod: await fileIdentity(sourceMod), source_sum: await fileIdentity(sourceSum),
+    helper_mod: await fileIdentity(path.join(directory, "go.mod")), helper_sum: await fileIdentity(path.join(directory, "go.sum")),
+  }
 }
 
 export async function verifyArtifacts(selection, orch, memhub) {
