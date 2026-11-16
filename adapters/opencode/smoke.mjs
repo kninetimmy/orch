@@ -210,6 +210,7 @@ try {
   const privateOpenCode = path.join(bin, process.platform === "win32" ? "opencode2.exe" : "opencode2")
   if (process.platform === "win32") await copyFile(opencode, privateOpenCode)
   else await symlink(command("which", [opencode], repo).trim(), privateOpenCode)
+  evidence.runtime_binary = await fileIdentity(privateOpenCode)
   evidence.orch = await prepareOrch(selection, orchBinary, (destination) => command("go", ["build", "-o", destination, "./cmd/orch"], repo))
   const memhubBinary = path.join(bin, process.platform === "win32" ? "memhub.exe" : "memhub")
   evidence.memhub = await copyBinary(selection.memhub, memhubBinary)
@@ -991,6 +992,33 @@ try {
   await mode("best-effort")
   await Promise.all([connected(root), connected(writable), connected(sibling)])
   const releaseEvidence = evidence.checkout_release = { refusals: [], qualification: "source/selected-artifact isolated simulation only; not installed manual Delivery or atomic host quiescence" }
+  if (selection.mode === "source-build") {
+    releaseEvidence.source_files = await Promise.all(["release.go", "release_test.go"].map((file) => fileIdentity(path.join(repo, "internal", "opencode", file))))
+  }
+  const releaseSpec = await api("/openapi.json")
+  const locationContract = releaseSpec.paths["/api/debug/location"]
+  assert.equal(locationContract.get.operationId, "debug.location.list")
+  assert.equal(locationContract.delete.operationId, "debug.location.evict")
+  assert(locationContract.delete.parameters.some((entry) => entry.name === "location" && entry.in === "query" && entry.style === "deepObject" && entry.explode))
+  const specFile = path.join(temp, "checkout-release-openapi.json")
+  await writeFile(specFile, JSON.stringify(releaseSpec))
+  releaseEvidence.contract = { artifact: await fileIdentity(specFile), location: locationContract,
+    interpretation: "host-returned directory is an exact cache key; filesystem equivalence does not merge service owners" }
+  const fileID = async (file) => {
+    const info = await lstat(file, { bigint: true })
+    return { dev: String(info.dev), ino: String(info.ino) }
+  }
+  const cacheSnapshot = async () => Promise.all((await api("/api/debug/location")).map(async (entry) => ({
+    key: entry.directory, identity: await fileID(entry.directory),
+  })))
+  const targetKeys = (snapshot, directories) => snapshot.filter((entry) => directories.some((directory) => sameDirectory(entry.key, directory))).map((entry) => entry.key)
+  function preservedCaches(before, after, targets) {
+    for (const previous of before) {
+      const current = after.find((entry) => entry.key === previous.key)
+      if (targets.includes(previous.key)) assert(!current, "only the proven target keys may disappear")
+      else assert.deepEqual(current, previous, "each non-target cache key and its physical identity must survive independently")
+    }
+  }
   const hash = (value) => createHash("sha256").update(value).digest("hex")
   const lockPath = path.join(root, ".orchestrator", "delivery.lock")
   // The existing containment fixture is synthetic. Obtain execution/config
@@ -1072,6 +1100,29 @@ try {
     await finishChild(child)
     return outputs
   }
+  const aliasKeys = []
+  if (process.platform === "win32") {
+    // Only owned fixture paths, never the shared service or a real repository.
+    // Let the host normalize transport spelling; retain the returned keys.
+    const spelling = path.join(path.dirname(sibling), path.basename(sibling).toUpperCase())
+    assert(sameDirectory(spelling, sibling))
+    for (const directory of [sibling, spelling]) {
+      const location = await api("/api/location?" + query(directory))
+      aliasKeys.push(location.directory)
+      assert(sameDirectory(location.directory, sibling))
+      await activePlugin(location.directory)
+      await connected(location.directory)
+    }
+    assert.notEqual(aliasKeys[0], aliasKeys[1], "V2 must really load two casing cache keys, not deduplicate our fixture")
+    const before = await cacheSnapshot()
+    const identities = aliasKeys.map((key) => before.find((entry) => entry.key === key))
+    assert(identities.every(Boolean))
+    assert.deepEqual(identities[0].identity, identities[1].identity)
+    releaseEvidence.cache_aliases = { spelling, keys: aliasKeys, identities, before,
+      scope: "owned isolated Windows host only; no shared-host location creation, eviction or restart" }
+    releaseEvidence.cache_aliases.lookup_before = await nativeLookup(aliasKeys[1], oldOID)
+    pass("real Windows casing-alias caches: distinct host keys, equal filesystem identities and native alias lookup")
+  }
   releaseEvidence.old_review = await nativeLookup(reviewPath, oldOID)
   const activeReview = await start(reviewPath, agentModels["orch-reviewer"], lookupParent.session.id, "orch-reviewer")
   await refuseRelease("review-worktree", reviewRequest(newOID), /active session|unfinished background job/)
@@ -1087,10 +1138,6 @@ try {
   for (const sentinel of sentinels) {
     await mkdir(path.dirname(sentinel), { recursive: true })
     await writeFile(sentinel, "preserve primary and sibling\n")
-  }
-  const fileID = async (file) => {
-    const info = await lstat(file, { bigint: true })
-    return { dev: String(info.dev), ino: String(info.ino) }
   }
   for (const directory of [writable, reviewPath]) {
     const links = []
@@ -1222,7 +1269,43 @@ try {
   }
   pass("primary-owned ordinary PTY and shell with independent target cwd refuse before disposal/Git; cooperative exits")
 
+  // Keep a different running PTY in each unrelated alias cache across target
+  // disposal. Matching IDs only within their queried owner proves that the
+  // aliases are independent services, not just equal filesystem identities.
+  const aliasProcesses = []
+  for (const [index, key] of aliasKeys.entries()) {
+    const marker = "finish-alias-" + index
+    const created = await api("/api/pty?" + query(key), { method: "POST", body: JSON.stringify({
+      command: nodeBinary, args: ["-e", waitForMarker(marker)], cwd: sibling, title: "unrelated alias cache " + index,
+    }) })
+    assert.equal(created.location.directory, key)
+    assert.equal(created.data.status, "running")
+    aliasProcesses.push({ key, marker, created })
+  }
+  async function aliasActivity() {
+    const observations = []
+    for (const { key, created } of aliasProcesses) {
+      const shells = await api("/api/shell?" + query(key))
+      const ptys = await api("/api/pty?" + query(key))
+      assert.equal(shells.location.directory, key)
+      assert.equal(ptys.location.directory, key)
+      assert(ptys.data.some((entry) => entry.id === created.data.id && entry.status === "running"))
+      for (const other of aliasProcesses.filter((entry) => entry.key !== key)) {
+        assert(!ptys.data.some((entry) => entry.id === other.created.data.id), "one alias must not answer for the other cache")
+      }
+      observations.push({ key, shells, ptys })
+    }
+    return observations
+  }
+  const beforeReplacement = await cacheSnapshot()
+  const replacementKeys = targetKeys(beforeReplacement, [reviewPath])
+  assert.equal(replacementKeys.length, 1, "successful disposal requires one attributable target cache")
+  if (aliasKeys.length) releaseEvidence.cache_aliases.activity_before = await aliasActivity()
   releaseEvidence.replacement = await runCommand("review-worktree", reviewRequest(newOID))
+  const afterReplacement = await cacheSnapshot()
+  preservedCaches(beforeReplacement, afterReplacement, replacementKeys)
+  releaseEvidence.replacement_caches = { before: beforeReplacement, target_keys: replacementKeys, after: afterReplacement }
+  if (aliasKeys.length) releaseEvidence.cache_aliases.activity_after_replacement = await aliasActivity()
   assert.equal(releaseEvidence.replacement.head_oid, newOID)
   assert.equal(result("git", ["symbolic-ref", "-q", "HEAD"], reviewPath, env).status, 1)
   releaseEvidence.new_review = await nativeLookup(reviewPath, newOID)
@@ -1252,15 +1335,31 @@ try {
   await finishChild(activeExecutor)
   releaseEvidence.before_cleanup = await api("/api/debug/location")
   assert(hasLocation(releaseEvidence.before_cleanup, writable) && hasLocation(releaseEvidence.before_cleanup, reviewPath))
+  const beforeCleanup = await cacheSnapshot()
+  const cleanupKeys = targetKeys(beforeCleanup, [writable, reviewPath])
+  assert.equal(cleanupKeys.length, 2)
   releaseEvidence.cleanup = await runCommand("cleanup", cleanupRequest)
   assert.equal(releaseEvidence.cleanup.phase, "cleaned")
   assert.equal(existsSync(writable), false)
   assert.equal(existsSync(reviewPath), false)
   releaseEvidence.after_cleanup = await api("/api/debug/location")
+  const afterCleanup = await cacheSnapshot()
+  preservedCaches(beforeCleanup, afterCleanup, cleanupKeys)
+  releaseEvidence.cleanup_caches = { before: beforeCleanup, target_keys: cleanupKeys, after: afterCleanup }
   assert(!releaseEvidence.after_cleanup.some((entry) => [writable, reviewPath].some((directory) => path.resolve(entry.directory) === path.resolve(directory))))
   assert(hasLocation(releaseEvidence.after_cleanup, root) && hasLocation(releaseEvidence.after_cleanup, sibling))
   releaseEvidence.primary_after = await nativeLookup(root, oldOID)
   releaseEvidence.unrelated_after = await nativeLookup(sibling, oldOID)
+  if (aliasKeys.length) {
+    releaseEvidence.cache_aliases.activity_after_cleanup = await aliasActivity()
+    releaseEvidence.cache_aliases.lookup_after = await nativeLookup(aliasKeys[1], oldOID)
+    for (const { key, marker, created } of aliasProcesses) {
+      await writeFile(path.join(sibling, ".scratch", marker), "finish")
+      await eventually(async () => (await api("/api/pty?" + query(key))).data.find((entry) => entry.id === created.data.id)?.status === "exited", "unrelated alias PTY cooperative exit")
+    }
+    releaseEvidence.cache_aliases.exit = "cooperative natural exit; both alias caches and native lookups preserved"
+    pass("single-target replacement and executor/review cleanup preserve every unrelated cache key/identity and independent live alias PTYs/lookups")
+  }
   const unrelatedAfter = await start(unmanagedGit)
   noOrchMemoryContext(unrelatedAfter.turn)
   unrelatedAfter.turn = await tool(unrelatedAfter.turn, "execute", { code: "return await tools.memhub.status({})" })
@@ -1270,6 +1369,29 @@ try {
   assert.equal(command("git", ["ls-remote", "--heads", "origin", "smoke-issue"], root, env).trim(), "")
   assert.notEqual(result("git", ["show-ref", "--verify", "refs/heads/smoke-issue"], root, env).status, 0)
   pass("engine executor/review cleanup after completed native lookups; descendant/activity refusals preserve fixtures; primary and unrelated lookup services still usable")
+  if (process.platform === "win32") {
+    // Ambiguous target caches remain untouched until normal owned-host shutdown.
+    const number = 5
+    const directory = path.join(root, ".orchestrator", "worktrees", "review-issue-" + number)
+    fixtureState.run.issues.push({ ...fixtureState.run.issues[0], number, plan_id: "synthetic-target-alias",
+      phase: "pr-open", branch: "unused-target-alias", worktree: ".orchestrator/worktrees/issue-" + number, pr_number: number })
+    await writeFile(stateFile, JSON.stringify(fixtureState))
+    await runCommand("review-worktree", reviewRequest(oldOID, number))
+    for (const spelling of [directory, path.join(path.dirname(directory), path.basename(directory).toUpperCase())]) {
+      await activePlugin(spelling)
+    }
+    const before = await cacheSnapshot()
+    const targets = targetKeys(before, [directory])
+    assert.equal(targets.length, 2, "ambiguous-target probe requires two real cache keys")
+    const registrations = command("git", ["worktree", "list", "--porcelain"], root, env)
+    await refuseRelease("review-worktree", reviewRequest(newOID, number), /ambiguous target cache aliases/)
+    const after = await cacheSnapshot()
+    assert.deepEqual(after, before, "ambiguous target refusal must preserve every loaded key and identity")
+    assert.equal(command("git", ["worktree", "list", "--porcelain"], root, env), registrations)
+    assert.equal(command("git", ["rev-parse", "HEAD"], directory, env).trim(), oldOID)
+    releaseEvidence.ambiguous_target = { directory, keys: targets, before, after, registrations_preserved: true }
+    pass("real Windows target casing aliases refuse before disposal/Git; both caches retained for normal host shutdown")
+  }
   evidence.checks.push("real native children for all five roles; concurrently live dirty checkout bindings")
   assert.equal(requests, 0)
   evidence.behavior_checks_passed = true
