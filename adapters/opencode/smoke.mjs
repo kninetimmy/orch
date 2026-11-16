@@ -1,7 +1,7 @@
 import assert from "node:assert/strict"
 import { createHash } from "node:crypto"
 import { existsSync } from "node:fs"
-import { copyFile, cp, mkdir, mkdtemp, readFile, realpath, rename, rm, symlink, unlink, writeFile } from "node:fs/promises"
+import { copyFile, cp, lstat, mkdir, mkdtemp, readFile, readlink, realpath, rename, rm, symlink, unlink, writeFile } from "node:fs/promises"
 import { spawn, spawnSync } from "node:child_process"
 import { createServer as createSocket } from "node:net"
 import { createServer } from "node:http"
@@ -1079,6 +1079,64 @@ try {
   await finishChild(activeReview)
   assert(hasLocation(await api("/api/debug/location"), reviewPath), "ordinary idle must not unload the review location")
 
+  // Unlike the earlier guard-only junction check, exercise the production
+  // release/removal boundary while the ignored redirections are still present.
+  // Both cleanup trees must pass before any services are released.
+  releaseEvidence.interior_links = []
+  const sentinels = [root, sibling].map((directory) => path.join(directory, ".scratch", "release-sentinel"))
+  for (const sentinel of sentinels) {
+    await mkdir(path.dirname(sentinel), { recursive: true })
+    await writeFile(sentinel, "preserve primary and sibling\n")
+  }
+  const fileID = async (file) => {
+    const info = await lstat(file, { bigint: true })
+    return { dev: String(info.dev), ino: String(info.ino) }
+  }
+  for (const directory of [writable, reviewPath]) {
+    const links = []
+    await mkdir(path.join(directory, ".scratch"), { recursive: true })
+    for (const [name, destination] of [["escape-root", root], ["escape-sibling", sibling]]) {
+      const link = path.join(directory, ".scratch", name)
+      await symlink(destination, link, process.platform === "win32" ? "junction" : "dir")
+      links.push({ path: link, id: await fileID(link), destination: await readlink(link) })
+    }
+    try {
+      for (const verb of directory === reviewPath ? ["review-worktree", "cleanup"] : ["cleanup"]) {
+        fixtureState.run.issues[0].phase = verb === "cleanup" ? "abandoned" : "pr-open"
+        await writeFile(stateFile, JSON.stringify(fixtureState))
+        const registrations = command("git", ["worktree", "list", "--porcelain"], root, env)
+        const sentinelsBefore = await Promise.all(sentinels.map(fileIdentity))
+        const gitBefore = await Promise.all([root, sibling].map((item) => fileID(path.join(item, ".git"))))
+        const loadedBefore = (await api("/api/debug/location")).map((entry) => entry.directory).sort()
+        const request = verb === "cleanup" ? { schema_version: 1, issue_number: 1, statement: "cleanup-issue" } : reviewRequest(newOID)
+        await refuseRelease(verb, request, /linked or unverifiable checkout entry/)
+        assert.equal(command("git", ["worktree", "list", "--porcelain"], root, env), registrations)
+        assert.deepEqual(await Promise.all(sentinels.map(fileIdentity)), sentinelsBefore)
+        assert.deepEqual(await Promise.all([root, sibling].map((item) => fileID(path.join(item, ".git")))), gitBefore)
+        assert.deepEqual((await api("/api/debug/location")).map((entry) => entry.directory).sort(), loadedBefore)
+        assert(command("git", ["ls-remote", "--heads", "origin", "smoke-issue"], root, env).trim())
+        assert.equal(command("git", ["rev-parse", "HEAD"], reviewPath, env).trim(), oldOID)
+        assert.equal(command("git", ["status", "--porcelain"], writable, env).trim(), "", "ignored links must pass executor cleanliness")
+        releaseEvidence.interior_links.push({ directory, verb, links, sentinels: sentinelsBefore,
+          git_identities: gitBefore, registrations_preserved: true, state_preserved: true,
+          loaded_locations_unchanged: loadedBefore, remote_branch_preserved: true,
+          boundary: "production refusal; deterministic runner test additionally asserts zero host calls or Git mutations" })
+      }
+    } finally {
+      // Fixture preparation only, after product refusal. Never unlink a changed
+      // entry, follow the link, or send an adversarial fixture to generic Git.
+      for (const link of links) {
+        assert.deepEqual(await fileID(link.path), link.id)
+        assert.equal(await readlink(link.path), link.destination)
+        assert((await lstat(link.path)).isSymbolicLink())
+        await unlink(link.path)
+      }
+      fixtureState.run.issues[0].phase = "pr-open"
+      await writeFile(stateFile, JSON.stringify(fixtureState))
+    }
+  }
+  pass("production ignored interior-link refusal for executor cleanup, review cleanup and replacement; sentinels/state/registration/loaded services preserved")
+
   // Finite fixture commands exit cooperatively when a marker is written.
   // Natural exit, not process killing or shell/session deletion, ends each test.
   const nodeBinary = path.join(bin, process.platform === "win32" ? "node.exe" : "node")
@@ -1111,6 +1169,58 @@ try {
   await writeFile(path.join(reviewPath, ".scratch", "finish-persistent"), "finish")
   await eventually(async () => (await api("/api/experimental/session/" + terminalProbe.session.id + "/terminal")).data.find((entry) => entry.id === persistent.data.id)?.status === "exited", "owned persistent PTY natural exit")
   releaseEvidence.process_probes = { shell, pty, persistent, exit: "cooperative natural exit; no process termination" }
+
+  // Both ordinary APIs allow a cwd independent of their owning location.
+  // Separate disposable targets retain useful evidence even on a regressed
+  // engine that reaches Git. Markers live outside those targets so every
+  // process can still exit cooperatively after a partial removal.
+  releaseEvidence.cross_location = []
+  for (const [index, kind] of ["pty", "shell"].entries()) {
+    const number = index + 3
+    const directory = path.join(root, ".orchestrator", "worktrees", "review-issue-" + number)
+    fixtureState.run.issues.push({ ...fixtureState.run.issues[0], number, plan_id: "synthetic-cross-" + kind,
+      branch: "unused-cross-" + kind, worktree: ".orchestrator/worktrees/issue-" + number, pr_number: number })
+    await writeFile(stateFile, JSON.stringify(fixtureState))
+    await runCommand("review-worktree", reviewRequest(oldOID, number))
+    await activePlugin(directory)
+    await mkdir(path.join(directory, ".scratch"), { recursive: true })
+    const marker = path.join(temp, "finish-cross-" + kind)
+    const relativeMarker = path.relative(path.join(directory, ".scratch"), marker).split(path.sep).join("/")
+    assert.match(relativeMarker, /^[.a-z/-]+$/)
+    const script = waitForMarker(relativeMarker)
+    const processProbe = await api("/api/" + kind + "?" + query(root), { method: "POST", body: JSON.stringify(kind === "pty"
+      ? { command: nodeBinary, args: ["-e", script], cwd: directory, title: "cross-location fixture" }
+      : { command: `node -e "${script}"`, cwd: directory }) })
+    assert(sameDirectory(processProbe.location.directory, root), "ordinary process owner must remain primary")
+    assert(sameDirectory(processProbe.data.cwd, directory), "host must accept an independent target cwd")
+    assert.equal(processProbe.data.status, "running")
+    const stateBefore = await readFile(stateFile)
+    const registrationBefore = command("git", ["worktree", "list", "--porcelain"], root, env)
+    const observed = { kind, directory, process: processProbe }
+    releaseEvidence.cross_location.push(observed)
+    try {
+      observed.result = await runResult("review-worktree", reviewRequest(newOID, number))
+      observed.refused_before_removal = observed.result.status !== 0 && /running shell or terminal/.test(observed.result.stderr)
+      observed.registration_preserved = command("git", ["worktree", "list", "--porcelain"], root, env) === registrationBefore
+      observed.state_preserved = (await readFile(stateFile)).equals(stateBefore)
+      observed.target_still_loaded = hasLocation(await api("/api/debug/location"), directory)
+      observed.primary_still_loaded = hasLocation(await api("/api/debug/location"), root)
+      observed.target_listing = result("git", ["rev-parse", "HEAD"], directory, env).stdout.trim()
+    } finally {
+      await writeFile(marker, "finish")
+      await eventually(async () => {
+        const entries = (await api("/api/" + kind + "?" + query(root))).data
+        return kind === "shell" ? !entries.some((entry) => entry.id === processProbe.data.id)
+          : entries.find((entry) => entry.id === processProbe.data.id)?.status === "exited"
+      }, "cross-location " + kind + " cooperative exit")
+    }
+  }
+  for (const observed of releaseEvidence.cross_location) {
+    assert(observed.refused_before_removal && observed.registration_preserved && observed.state_preserved &&
+      observed.target_still_loaded && observed.primary_still_loaded && observed.target_listing === oldOID,
+    "cross-location " + observed.kind + " must refuse before disposal/Git: " + JSON.stringify(observed))
+  }
+  pass("primary-owned ordinary PTY and shell with independent target cwd refuse before disposal/Git; cooperative exits")
 
   releaseEvidence.replacement = await runCommand("review-worktree", reviewRequest(newOID))
   assert.equal(releaseEvidence.replacement.head_oid, newOID)

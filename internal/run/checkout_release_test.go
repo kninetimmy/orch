@@ -7,7 +7,9 @@ import (
 	"fmt"
 	"net/url"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"runtime"
 	"slices"
 	"strings"
 	"testing"
@@ -330,5 +332,121 @@ func TestOpenCodeAbsentCheckoutsNeedNoHost(t *testing.T) {
 	}
 	if len(host.deleted) != 0 {
 		t.Fatal(fmt.Sprint(host.deleted))
+	}
+}
+
+func TestOpenCodeInteriorLinksBeforeSideEffects(t *testing.T) {
+	for _, scenario := range []string{"replace review", "cleanup executor", "cleanup review"} {
+		t.Run(scenario, func(t *testing.T) {
+			root, first, second, host, env := openCodeCheckoutFixture(t, state.PhaseInReview)
+			executor, review := worktreeAbs(root, 1), reviewWorktreeAbs(root, 1)
+			sibling := filepath.Join(root, WorktreeContainer, "sibling")
+			rawGit(t, root, "worktree", "add", "--detach", sibling, first)
+			branch := loadRun(t, root).Run.Issues[0].Branch
+			rawGit(t, root, "push", "origin", branch)
+			target := review
+			if scenario == "cleanup executor" {
+				target = executor
+			}
+			// Ignored links pass executor cleanliness, but may redirect native
+			// Git removal into the primary or another checkout.
+			if err := os.WriteFile(filepath.Join(root, ".git", "info", "exclude"), []byte(".scratch/\n"), 0o644); err != nil {
+				t.Fatal(err)
+			}
+			scratch := filepath.Join(target, ".scratch")
+			if err := os.Mkdir(scratch, 0o755); err != nil {
+				t.Fatal(err)
+			}
+			for _, destination := range []string{root, sibling} {
+				sentinel := filepath.Join(destination, "sentinel")
+				if err := os.WriteFile(sentinel, []byte("preserve\n"), 0o644); err != nil {
+					t.Fatal(err)
+				}
+				link := filepath.Join(scratch, filepath.Base(destination))
+				if runtime.GOOS == "windows" {
+					// Match paths' junction fixtures: paths are environment
+					// values, never interpolated into a shell expression.
+					cmd := exec.CommandContext(t.Context(), "powershell.exe", "-NoProfile", "-NonInteractive", "-Command",
+						`New-Item -ItemType Junction -Path $env:ORCH_TEST_LINK -Target $env:ORCH_TEST_TARGET -ErrorAction Stop | Out-Null`)
+					cmd.Env = append(os.Environ(), "ORCH_TEST_LINK="+link, "ORCH_TEST_TARGET="+destination)
+					if out, err := cmd.CombinedOutput(); err != nil {
+						t.Fatalf("create owned junction: %v: %s", err, out)
+					}
+				} else if err := os.Symlink(destination, link); err != nil {
+					t.Fatal(err)
+				}
+				// Never send these adversarial fixtures to Git, even at test
+				// teardown. Remove only the links this test just created.
+				t.Cleanup(func() {
+					if err := os.Remove(link); err != nil {
+						t.Error(err)
+					}
+				})
+			}
+			if scenario != "replace review" {
+				st := loadRun(t, root)
+				st.Run.Issues[0].Phase = state.PhaseAbandoned
+				if err := state.Save(root, st); err != nil {
+					t.Fatal(err)
+				}
+			}
+			before := stateBytes(t, root)
+			registrations := rawGit(t, root, "worktree", "list", "--porcelain")
+			var err error
+			if scenario == "replace review" {
+				_, err = ReviewWorktree(context.Background(), env, []byte(reviewWorktreeJSON(1, second)))
+			} else {
+				_, err = Cleanup(context.Background(), env, []byte(`{"schema_version":1,"issue_number":1,"statement":"cleanup-issue"}`))
+			}
+			if err == nil || !strings.Contains(err.Error(), "linked or unverifiable checkout entry") {
+				t.Fatalf("interior link accepted or wrong refusal: %v", err)
+			}
+			if !bytes.Equal(before, stateBytes(t, root)) || rawGit(t, root, "worktree", "list", "--porcelain") != registrations {
+				t.Fatal("refusal changed issue state or registration")
+			}
+			if !strings.Contains(rawGit(t, root, "ls-remote", "--heads", "origin", branch), branch) {
+				t.Fatal("refusal deleted remote branch")
+			}
+			for _, cmd := range host.calls {
+				if cmd.Name != "git" || slices.Contains(cmd.Args, "remove") || slices.Contains(cmd.Args, "push") || slices.Contains(cmd.Args, "prune") {
+					t.Fatalf("refusal reached host or Git mutation: %+v", cmd)
+				}
+			}
+			for _, directory := range []string{root, sibling} {
+				if data, err := os.ReadFile(filepath.Join(directory, "sentinel")); err != nil || string(data) != "preserve\n" {
+					t.Fatalf("sentinel changed: %s: %v", directory, err)
+				}
+				if _, err := os.Lstat(filepath.Join(directory, ".git")); err != nil {
+					t.Fatal(err)
+				}
+			}
+			detachedHeadAt(t, review, first)
+			t.Log("no host calls or Git mutations; primary/sibling sentinels, registrations and issue state preserved")
+		})
+	}
+}
+
+func TestInspectCheckoutBoundsAndRefusals(t *testing.T) {
+	root := t.TempDir()
+	if err := inspectCheckout(context.Background(), root); err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	if err := inspectCheckout(ctx, root); err == nil {
+		t.Fatal("canceled inspection accepted")
+	}
+	if err := inspectCheckout(context.Background(), filepath.Join(root, "missing")); err == nil {
+		t.Fatal("unavailable inspection accepted")
+	}
+	directory := root
+	for range 65 {
+		directory = filepath.Join(directory, "d")
+		if err := os.Mkdir(directory, 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := inspectCheckout(context.Background(), root); err == nil || !strings.Contains(err.Error(), "inspection bounds") {
+		t.Fatalf("unbounded inspection accepted: %v", err)
 	}
 }

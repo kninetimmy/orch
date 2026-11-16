@@ -17,6 +17,7 @@ import (
 
 type releaseLocation struct {
 	Directory string `json:"directory"`
+	info      os.FileInfo
 }
 
 type releaseParameter struct {
@@ -82,7 +83,7 @@ func ReleaseLocation(ctx context.Context, runner execx.Runner, primary, target s
 	}
 	// Inventory reads do not activate an unloaded location. Every returned path
 	// is filesystem-verified, including Windows extended-path aliases.
-	inventory := func() ([]os.FileInfo, bool, error) {
+	inventory := func() ([]releaseLocation, bool, error) {
 		var locations []releaseLocation
 		if err := call("get", "/api/debug/location", &locations); err != nil {
 			return nil, false, err
@@ -90,10 +91,9 @@ func ReleaseLocation(ctx context.Context, runner execx.Runner, primary, target s
 		if locations == nil || len(locations) > 1024 {
 			return nil, false, fmt.Errorf("OpenCode checkout release: malformed or oversized location inventory")
 		}
-		var others []os.FileInfo
 		var seen []os.FileInfo
 		loaded := false
-		for _, location := range locations {
+		for i, location := range locations {
 			info, err := releaseDirectory(location.Directory)
 			if err != nil {
 				return nil, false, err
@@ -102,6 +102,7 @@ func ReleaseLocation(ctx context.Context, runner execx.Runner, primary, target s
 				return nil, false, fmt.Errorf("OpenCode checkout release: duplicate target or other location")
 			}
 			seen = append(seen, info)
+			locations[i].info = info
 			if os.SameFile(targetInfo, info) {
 				loaded = true
 				continue
@@ -110,9 +111,8 @@ func ReleaseLocation(ctx context.Context, runner execx.Runner, primary, target s
 			if err != nil || inside {
 				return nil, false, fmt.Errorf("OpenCode checkout release: unexpected loaded descendant or unverifiable location; refusing subtree eviction")
 			}
-			others = append(others, info)
 		}
-		return others, loaded, nil
+		return locations, loaded, nil
 	}
 	before, loaded, err := inventory()
 	if err != nil {
@@ -138,41 +138,21 @@ func ReleaseLocation(ctx context.Context, runner execx.Runner, primary, target s
 				return fmt.Errorf("OpenCode checkout release: host location/project roots differ from the verified checkout")
 			}
 		}
-		for _, endpoint := range []string{"/api/shell", "/api/pty"} {
-			var response struct {
-				Location releaseLocation `json:"location"`
-				Data     []struct {
-					ID     string `json:"id"`
-					Status string `json:"status"`
-				} `json:"data"`
-			}
-			if err := call("get", endpoint+"?"+query, &response); err != nil {
-				return err
-			}
-			if same, err := sameDirectory(target, response.Location.Directory); err != nil || !same || response.Data == nil {
-				return fmt.Errorf("OpenCode checkout release: malformed or wrong-root shell/PTY inventory")
-			}
-			for _, process := range response.Data {
-				if process.ID == "" || (process.Status != "running" && process.Status != "exited") || (endpoint == "/api/shell" && process.Status != "running") {
-					return fmt.Errorf("OpenCode checkout release: malformed shell/PTY activity")
-				}
-				if process.Status == "running" {
-					return fmt.Errorf("OpenCode checkout release: running shell or terminal prevents removal")
-				}
-			}
-		}
 	}
 	// Re-read global activity and locations immediately before disposal. This
 	// narrows the observation window; it still cannot lock out concurrent entry.
 	if err := releaseActiveJobs(call, target); err != nil {
 		return err
 	}
-	_, stillLoaded, err := inventory()
+	currentLocations, stillLoaded, err := inventory()
 	if err != nil {
 		return err
 	}
 	if !loaded && stillLoaded {
 		return fmt.Errorf("OpenCode checkout release: target loaded during activity checks; preserve it and retry after use finishes")
+	}
+	if err := releaseOrdinaryProcesses(call, target, currentLocations); err != nil {
+		return err
 	}
 	if stillLoaded {
 		if err := call("delete", "/api/debug/location?"+query, nil); err != nil {
@@ -186,8 +166,11 @@ func ReleaseLocation(ctx context.Context, runner execx.Runner, primary, target s
 	if remainsLoaded {
 		return fmt.Errorf("OpenCode checkout release: scoped disposal did not unload the target; refusing Git removal")
 	}
-	for _, info := range before {
-		if !slices.ContainsFunc(after, func(other os.FileInfo) bool { return os.SameFile(info, other) }) {
+	for _, location := range before {
+		if os.SameFile(targetInfo, location.info) {
+			continue
+		}
+		if !slices.ContainsFunc(after, func(other releaseLocation) bool { return os.SameFile(location.info, other.info) }) {
 			return fmt.Errorf("OpenCode checkout release: another loaded location disappeared; refusing Git removal")
 		}
 	}
@@ -199,6 +182,57 @@ func ReleaseLocation(ctx context.Context, runner execx.Runner, primary, target s
 }
 
 type releaseCall func(method, endpoint string, out any) error
+
+// Both ordinary creation APIs accept cwd independently of location. Inspect
+// every loaded owner, not just target, and attribute running activity by both
+// owner and cwd. Persistent terminals have a separate session-scoped inventory.
+// Only loaded locations are queried; an unloaded target is never activated.
+func releaseOrdinaryProcesses(call releaseCall, target string, locations []releaseLocation) error {
+	for _, location := range locations {
+		query := url.Values{"location[directory]": {location.Directory}}.Encode()
+		for _, endpoint := range []string{"/api/shell", "/api/pty"} {
+			var response struct {
+				Location releaseLocation `json:"location"`
+				Data     []struct {
+					ID     string `json:"id"`
+					Status string `json:"status"`
+					Cwd    string `json:"cwd"`
+				} `json:"data"`
+			}
+			if err := call("get", endpoint+"?"+query, &response); err != nil {
+				return err
+			}
+			info, err := releaseDirectory(response.Location.Directory)
+			if err != nil || !os.SameFile(location.info, info) || response.Data == nil {
+				return fmt.Errorf("OpenCode checkout release: malformed or wrong-root shell/PTY inventory")
+			}
+			if len(response.Data) > 1000 {
+				return fmt.Errorf("OpenCode checkout release: oversized shell/PTY inventory")
+			}
+			for _, process := range response.Data {
+				if process.ID == "" || !filepath.IsAbs(process.Cwd) ||
+					(process.Status != "running" && process.Status != "exited") || (endpoint == "/api/shell" && process.Status != "running") {
+					return fmt.Errorf("OpenCode checkout release: malformed shell/PTY activity")
+				}
+				if process.Status == "exited" {
+					continue
+				}
+				// Verify cwd even when ownership alone would prohibit removal.
+				// An unsupported/unverifiable attribution is never idle evidence.
+				for _, directory := range []string{process.Cwd, location.Directory} {
+					belongs, err := releaseBelongs(target, directory)
+					if err != nil {
+						return err
+					}
+					if belongs {
+						return fmt.Errorf("OpenCode checkout release: running shell or terminal prevents removal")
+					}
+				}
+			}
+		}
+	}
+	return nil
+}
 
 func releaseDirectory(directory string) (os.FileInfo, error) {
 	if !filepath.IsAbs(directory) {

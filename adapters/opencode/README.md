@@ -149,6 +149,11 @@ bounded host activity, then releases only the exact loaded location before
 Git removal. It uses the existing authenticated V2 CLI and explicitly encoded
 `location[directory]` on `DELETE /api/debug/location`, never a shared restart
 or process kill. Already-unloaded targets are not activated by scoped reads.
+Releasing locks increases Git removal's practical reachability: ignored
+interior junctions are not safe merely because executor status is clean.
+Both checkout trees now undergo bounded, non-following interior inspection
+before either cleanup release; links/non-regular or unverifiable entries refuse
+before host/Git side effects. This boundary never deletes the links.
 
 Foreground sessions alone are insufficient: running jobs (including the
 actual child location), shells, PTYs and persistent terminals also block
@@ -157,11 +162,17 @@ loaded descendants and failed disposal fail closed. Two-minute and inventory
 bounds refuse incomplete observations. They are **not atomic exclusion of
 concurrent OpenCode re-entry**; keep the target unused during the explicit
 operation. No ordinary child-idle/completion event tears anything down.
+Ordinary shells and PTYs are inventoried under every loaded owner, checking
+both owner location and independent cwd, just as persistent-terminal
+attribution checks both its owner and cwd. Target-only process inventory was
+the pre-repair behavior and missed primary-owned activity in a disposable cwd.
 
 Both executor and review checkout classes use this handoff, but only at the
 engine's explicit `ReviewWorktree`/confirmed `Cleanup` entry points; generic
-Git removal, scratch teardown, other hosts, all child/root fences and #505's
-unregistered-residue preservation remain unchanged. See
+Git removal implementations, scratch teardown, other hosts, all child/root
+fences and #505's unregistered-residue preservation remain unchanged.
+Generic Git is not independently link-safe; filesystem observations are not
+atomic with later removal. See
 [checkout removal, activity limits and blast radius](../../docs/worktree-cleanup.md#explicit-opencode-checkout-release-issue-506).
 
 The same private-server simulation smoke now checks successful different-OID

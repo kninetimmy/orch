@@ -55,7 +55,10 @@ func newReleaseFixture(t *testing.T) *releaseFixture {
 		"directory": target, "project": map[string]string{"directory": target, "canonical": root},
 	})
 	for _, endpoint := range []string{"/api/shell", "/api/pty"} {
-		f.bodies[endpoint+"?"+f.query()] = f.scoped(target, "[]")
+		for _, directory := range f.loaded {
+			query := url.Values{"location[directory]": {directory}}.Encode()
+			f.bodies[endpoint+"?"+query] = f.scoped(directory, "[]")
+		}
 	}
 	return f
 }
@@ -166,14 +169,55 @@ func TestReleaseLocation(t *testing.T) {
 			f.session("sesChild", f.unrelated)
 		}, "", 1},
 		{"running shell", func(f *releaseFixture) {
-			f.bodies["/api/shell?"+f.query()] = f.scoped(f.target, `[{"id":"shell","status":"running"}]`)
+			f.bodies["/api/shell?"+f.query()] = f.scoped(f.target, `[{"id":"shell","status":"running","cwd":`+releaseJSON(f.target)+`}]`)
 		}, "running shell or terminal", 0},
 		{"running PTY", func(f *releaseFixture) {
-			f.bodies["/api/pty?"+f.query()] = f.scoped(f.target, `[{"id":"pty","status":"running"}]`)
+			f.bodies["/api/pty?"+f.query()] = f.scoped(f.target, `[{"id":"pty","status":"running","cwd":`+releaseJSON(f.target)+`}]`)
 		}, "running shell or terminal", 0},
 		{"exited PTY", func(f *releaseFixture) {
-			f.bodies["/api/pty?"+f.query()] = f.scoped(f.target, `[{"id":"pty","status":"exited"}]`)
+			f.bodies["/api/pty?"+f.query()] = f.scoped(f.target, `[{"id":"pty","status":"exited","cwd":`+releaseJSON(f.target)+`}]`)
 		}, "", 1},
+		{"primary shell target cwd", func(f *releaseFixture) {
+			query := url.Values{"location[directory]": {f.root}}.Encode()
+			f.bodies["/api/shell?"+query] = f.scoped(f.root, `[{"id":"shell","status":"running","cwd":`+releaseJSON(f.target)+`}]`)
+		}, "running shell or terminal", 0},
+		{"unrelated PTY target cwd", func(f *releaseFixture) {
+			query := url.Values{"location[directory]": {f.unrelated}}.Encode()
+			f.bodies["/api/pty?"+query] = f.scoped(f.unrelated, `[{"id":"pty","status":"running","cwd":`+releaseJSON(f.target)+`}]`)
+		}, "running shell or terminal", 0},
+		{"unloaded target with primary PTY", func(f *releaseFixture) {
+			f.loaded = []string{f.root, f.unrelated}
+			query := url.Values{"location[directory]": {f.root}}.Encode()
+			f.bodies["/api/pty?"+query] = f.scoped(f.root, `[{"id":"pty","status":"running","cwd":`+releaseJSON(f.target)+`}]`)
+		}, "running shell or terminal", 0},
+		{"target owner unrelated cwd", func(f *releaseFixture) {
+			f.bodies["/api/shell?"+f.query()] = f.scoped(f.target, `[{"id":"shell","status":"running","cwd":`+releaseJSON(f.unrelated)+`}]`)
+		}, "running shell or terminal", 0},
+		{"unrelated ordinary activity", func(f *releaseFixture) {
+			query := url.Values{"location[directory]": {f.unrelated}}.Encode()
+			for _, endpoint := range []string{"/api/shell", "/api/pty"} {
+				f.bodies[endpoint+"?"+query] = f.scoped(f.unrelated, `[{"id":"process","status":"running","cwd":`+releaseJSON(f.unrelated)+`}]`)
+			}
+		}, "", 1},
+		{"missing ordinary cwd", func(f *releaseFixture) {
+			f.bodies["/api/shell?"+f.query()] = f.scoped(f.target, `[{"id":"shell","status":"running"}]`)
+		}, "malformed", 0},
+		{"relative ordinary cwd", func(f *releaseFixture) {
+			f.bodies["/api/pty?"+f.query()] = f.scoped(f.target, `[{"id":"pty","status":"running","cwd":"relative"}]`)
+		}, "malformed", 0},
+		{"unverifiable ordinary cwd", func(f *releaseFixture) {
+			f.bodies["/api/pty?"+f.query()] = f.scoped(f.target, `[{"id":"pty","status":"running","cwd":`+releaseJSON(filepath.Join(f.root, "missing"))+`}]`)
+		}, "identity is unavailable", 0},
+		{"oversized ordinary shells", func(f *releaseFixture) {
+			f.bodies["/api/shell?"+f.query()] = f.scoped(f.target, "["+strings.Repeat(`{},`, 1000)+`{}]`)
+		}, "oversized", 0},
+		{"oversized ordinary PTYs", func(f *releaseFixture) {
+			f.bodies["/api/pty?"+f.query()] = f.scoped(f.target, "["+strings.Repeat(`{},`, 1000)+`{}]`)
+		}, "oversized", 0},
+		{"unrelated process inventory unavailable", func(f *releaseFixture) {
+			query := url.Values{"location[directory]": {f.unrelated}}.Encode()
+			f.fail["/api/pty?"+query] = true
+		}, "unavailable", 0},
 		{"persistent terminal after session moved", func(f *releaseFixture) {
 			f.bodies["/api/session?limit=100"] = `{"data":[{"id":"sesIdle","location":{"directory":` + releaseJSON(f.unrelated) + `}}],"cursor":{}}`
 			f.bodies["/api/experimental/session/sesIdle/terminal"] = `{"data":[{"id":"pty","sessionID":"sesIdle","cwd":` + releaseJSON(f.target) + `,"status":"running"}]}`
@@ -253,7 +297,7 @@ func TestReleaseLocation(t *testing.T) {
 			}
 			if tc.name == "already unloaded" {
 				for _, cmd := range f.calls {
-					if len(cmd.Args) == 3 && strings.Contains(cmd.Args[2], "location%5Bdirectory%5D") {
+					if len(cmd.Args) == 3 && strings.HasSuffix(cmd.Args[2], "?"+f.query()) {
 						t.Fatalf("unloaded target was activated by a scoped read: %+v", cmd)
 					}
 				}
