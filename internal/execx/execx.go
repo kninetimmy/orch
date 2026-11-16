@@ -1,7 +1,10 @@
 // Package execx defines the injectable external-command runner the
 // orchestration core uses for git, gh, and host CLIs. Commands are
-// always argument vectors — never shell strings — so external input
-// can never be shell-interpreted. A non-zero exit is data in Result,
+// always argument vectors — never shell strings. Before the OpenCode native
+// binding repair this comment claimed that alone prevented shell interpretation;
+// launchers (notably Windows batch files) can interpret forwarded arguments.
+// Run does not make arbitrary launchers safe; OpenCode verifies its own native
+// command before passing host-derived arguments. A non-zero exit is data in Result,
 // not an error: callers that need exit codes as information (PRD §16
 // reproduce-on-base) read them directly, and callers for whom
 // non-zero means failure convert it themselves.
@@ -20,10 +23,10 @@ import (
 
 // Cmd describes one external command invocation.
 type Cmd struct {
-	// Name is the executable name; the runner resolves it on PATH.
+	// Name is an executable name or path; the runner uses LookPath.
 	Name string
-	// Args is the argument vector. It is passed verbatim to the
-	// process and never shell-interpreted.
+	// Args is passed as an argument vector, not a shell string. A selected
+	// launcher can still interpret it; callers must enforce any native-only rule.
 	Args []string
 	// Dir is the working directory. It is required: an implicit
 	// inherited cwd would make command behavior depend on ambient
@@ -64,6 +67,15 @@ type Local struct {
 // keep Wait blocked forever.
 const waitDelay = 10 * time.Second
 
+// ResolvePath exposes the same injected lookup used by Run, so a caller can
+// qualify and retain a particular executable without changing Runner's contract.
+func (l Local) ResolvePath(name string) (string, error) {
+	if l.LookPath != nil {
+		return l.LookPath(name)
+	}
+	return exec.LookPath(name)
+}
+
 // Run executes c and captures its output. The executable is resolved
 // first so a missing binary yields an actionable error instead of a
 // spawn failure.
@@ -71,11 +83,7 @@ func (l Local) Run(ctx context.Context, c Cmd) (Result, error) {
 	if c.Dir == "" {
 		return Result{}, fmt.Errorf("run %s: working directory not set", c.Name)
 	}
-	lookPath := l.LookPath
-	if lookPath == nil {
-		lookPath = exec.LookPath
-	}
-	path, err := lookPath(c.Name)
+	path, err := l.ResolvePath(c.Name)
 	if err != nil {
 		return Result{}, fmt.Errorf("%s not found on PATH; install it or adjust PATH: %w", c.Name, err)
 	}
