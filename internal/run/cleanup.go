@@ -70,6 +70,16 @@ func Cleanup(ctx context.Context, env Env, reqJSON []byte) (*CleanupResult, erro
 	}
 	confirm := gitops.ExplicitConfirmation()
 
+	// Before #506, checkout-scoped OpenCode services could keep Windows paths
+	// locked through Git removal. Explicit cleanup now releases verified idle
+	// executor/review locations before any Git deletion. Failure preserves phase;
+	// an earlier successful release may already have unloaded an idle cache.
+	for _, review := range []bool{false, true} {
+		if err := c.releaseCheckout(ctx, git, review); err != nil {
+			return nil, err
+		}
+	}
+
 	// 1. Remote branch (idempotent: only delete when present).
 	exists, err := git.RemoteBranchExists(ctx, "origin", issue.Branch)
 	if err != nil {

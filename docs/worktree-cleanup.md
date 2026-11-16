@@ -34,9 +34,10 @@ deleted before a later checkout-removal failure.
 
 These are filesystem observations, not an atomic absence guarantee against
 concurrent external recreation. Existing command serialization and path
-identity checks remain; no new locking or host-location disposal is added.
+identity checks remain. **Before #506:** no new locking or host-location disposal is added.
 OpenCode service/location release and broader orphan recovery are separate
-work.
+work. **After #506:** the scoped host handoff below adds location release;
+broader orphan recovery and atomic host exclusion remain separate work.
 
 ## Touched elements and retained boundaries
 
@@ -87,3 +88,112 @@ teardown is also unchanged; this change is not a redesign of every teardown.
 Required verification is `go build ./...`, `go vet ./...`, `go test ./...`
 and empty output from `gofmt -l .`. This list does not claim that CI runs
 every check or qualify installed host lifecycle behavior.
+
+## Explicit OpenCode checkout release (issue #506)
+
+**Before:** `ReviewWorktree` replacement and `Cleanup` called Git removal
+without releasing OpenCode's checkout-scoped MCP connections and cached
+watchers. A completed child could leave its native location loaded; Windows
+removal could then fail after Git deregistration. `pool: false` never meant
+shutdown on child completion.
+
+**After:** only those explicit engine operations add a host handoff. For an
+OpenCode run, a registered disposable target must pass filesystem ownership,
+container/common-directory identity, non-primary and executor-branch/cleanliness
+or review-detached checks **before host disposal**. Cleanup performs the handoff
+before its remote → executor → review → local Git deletions. The exact
+`cleanup-issue` confirmation and existing lifecycle/phase/configuration gates
+still apply. Other hosts and generic Git removal retain their behavior.
+
+The handoff reuses OpenCode V2 runtime resolution and authenticated `api`
+discovery. It requires the advertised `debug.location.list` and
+`debug.location.evict` deep-object contract, filesystem-verifies the loaded
+inventory, and refuses unexpected loaded descendants. A loaded target's
+`/api/location` roots and scoped shell/PTY response roots must match the
+verified checkout/primary. The only disposal request is
+`DELETE /api/debug/location?location%5Bdirectory%5D=<encoded-exact-directory>`.
+The directory is never omitted. Afterward, inventory must show no target or
+descendant and must retain every previously loaded other location; target
+filesystem identity is checked again before returning to Git.
+
+Activity observations cover foreground drains and the session locations of
+running background-job owners **and actual subagent children**, running
+location-scoped shells/PTYs, and persistent terminals. Persistent inventory
+walks all session pages, not only sessions currently in the target: a terminal
+can retain target cwd after its owner moves elsewhere. A running terminal's
+owner location or cwd in the target prevents removal. Retained exited PTYs
+are not running activity. Unloaded targets receive global activity checks but
+no location-scoped reads or eviction, so preflight does not itself activate
+them. A target loaded during that check is refused.
+
+Every release attempt has a two-minute deadline (external runner cancellation
+also retains its existing bounded pipe-wait allowance). Inventories are capped:
+1,024 loaded locations; 1,000 active sessions, running jobs or terminals per
+response; ten session pages of at most 100 entries. Malformed, repeated,
+oversized, unavailable, wrong-root or unsupported evidence fails closed, as
+does unsuccessful disposal or a failed post-disposal observation. A larger
+session history needs a future complete host inventory API, not a partial
+"idle" conclusion.
+
+**These are bounded observations, not atomic exclusion of concurrent host
+re-entry.** The engine serializer does not lock OpenCode. A prompt, shell,
+terminal, session move or external recreation can race the observation/disposal/
+Git sequence. No host-wide quiescence, atomic tree snapshot or concurrent-entry
+guarantee is claimed. Keep the disposable target unused during the explicit
+operation; do not use ordinary idle/completion as a teardown signal.
+
+Failure never advances the issue to `cleaned` or invokes Git removal for a
+target whose release failed. An earlier successful handoff may already have
+unloaded an idle cache before a later check fails. Unregistered residue is
+**never evicted or deleted** by this handoff: #505's preservation/absence rules
+still decide the Git outcome, including retries after partial deregistration.
+This does not recover historical residue or authorize manual removal.
+There is no shared-service restart, process-kill fallback, session deletion,
+Memhub relay/full-profile fallback, idle timer, installation or global-config
+change.
+
+### Touched elements and before/after scope
+
+| Element | Does its earlier behavior still hold? |
+| --- | --- |
+| `run.ReviewWorktree` replacement call site | Yes: full OID, phase/configuration gates, derived detached path, no state/metrics write and no run-state registration remain. Before it went straight to Git; now OpenCode disposal precedes that same Git removal. |
+| `run.Cleanup` | Yes: schema/confirmation, merged/abandoned phase, Git deletion order, final save and metrics remain. Before no host handoff existed; now both checkout handoffs precede Git deletions. A host refusal leaves phase unchanged. |
+| New `verbCtx.releaseCheckout` | Verifies engine-derived executor/review naming, canonical placement plus filesystem identity, Git registration/common directory, non-primary and per-kind removal prerequisites. It never disposes unregistered residue. |
+| New `opencode.ReleaseLocation`, `releaseLocation`, `releaseParameter`, `releaseCall` and its inventory/CLI closures | Add bounded authenticated scoped release, strict necessary response fields, safe projected errors, exact encoded target and post-disposal observations. No prior disposal API is replaced. Raw subprocess errors, host payloads, credentials and session identifiers are not copied into diagnostics. |
+| New `releaseDirectory` / `releaseBelongs` | Add filesystem identity/absolute-path verification and segment-aware target/descendant activity attribution; equivalent Windows extended paths remain valid, distinct directories do not become aliases through spelling. Shared path algorithms are unchanged. |
+| New `releaseActiveJobs` | Reads global active drains/jobs, verifies session identities and both owner/child locations. No session is interrupted, deleted or moved. Unknown activity states are refusal, not idle. |
+| New `releaseActivity` | Adds bounded paginated persistent-terminal evidence, including moved owners and target cwd. It does not turn inactive foreground status into a claim about background resources. |
+| Reused runtime/command boundary (`Resolve`, `Runtime`, `execx.Runner`/`Local`, URL encoding) | Implementations and version floors/advisory policy remain. Either resolved V2 executable uses its existing authenticated discovery; no raw HTTP credentials, dependency or alternate host resolver is added. The package comment in `catalog.go` now names both responsibilities; catalog behavior is unchanged. |
+| Generic `gitops` removal/absence checks, confirmation, guard/role restrictions, state/approval schemas | Unchanged. Direct callers do not acquire OpenCode policy. `WithBaseWorktree` and bootstrap scratch teardown still remain separate. |
+| New `internal/opencode/release_test.go` | Synthetic host responses test loaded/unloaded targets, exact scoping, all activity types, owner/child distinction, malformed/unavailable/unsupported evidence, descendants, disposal/postcheck failures, pagination, safe diagnostics, runtime fallback and cancellation bounds. No real providers or live locations are touched. |
+| New `internal/run/checkout_release_test.go` | Real disposable Git fixtures with a scripted host exercise replacement, cleanup, pre-host ownership/confirmation/dirty/branch refusals, absent/unloaded paths and retries after partial Git removal/lost registration. Existing lifecycle tests remain. |
+| `smoke.mjs` `result`/`command`, `api`, terminal probe and lifecycle fixture (`runResult`/`runCommand`/`refuseRelease`/`nativeLookup`) | Existing default execution remains; adds optional stdin and asynchronous lifecycle subprocesses so the HTTP/simulation loop stays responsive during multi-request preflight. Transport errors now name their endpoint. The same private server/simulation exercises native activity refusal, completed lookups → different-OID review replacement → executor/review cleanup, fresh root/revision/hash evidence and surviving primary/unrelated lookups. Its gate/state are explicitly synthetic, not human approval or GitHub artifacts. |
+| Smoke process/junction fixtures and shutdown | Existing guard/junction denial checks remain. Only the test's verified adversarial junctions are unlinked after their denial test, before real Git teardown. Activity commands exit cooperatively via fixture markers; no killing makes checkout removal pass. Normal shutdown now uses native `service stop` after verifying the isolated record still names the owned server; only pre-discovery startup failure retains the old owned-tree fallback. Shutdown errors are retained instead of masking the body error or skipping evidence. |
+| This guide and OpenCode README | Keep the historical absence/no-handoff statements as before/after, add lifecycle use, bounded-evidence limits and explicit source/installed qualification distinctions. No role instructions or managed definitions are rewritten. |
+
+The new handoff applies to **both classes** of registered engine-owned
+disposable checkout, not just `RemoveDetachedWorktree` or one review symbol.
+It applies specifically at `ReviewWorktree` and `Cleanup`, **not every caller**
+of generic worktree-removal APIs. Non-primary/identity/refusal checks cover
+both kinds; detached-only is review-specific, whereas executor removal
+requires its registered branch and clean tracked/untracked work. Native
+lookup/child-role fences still cover every supported role and matching
+Memhub executor, not just a service literally named `memhub`.
+
+### Qualification and remaining work
+
+Run all four Go gates above, plus `npm test --prefix adapters/opencode` and
+the required **local Windows** `npm run smoke --prefix adapters/opencode`.
+Hosted CI does **not** run the latter. Its retained `evidence.json` records
+source/selected artifact identities, native lookup bindings/hash evidence,
+refusals, lifecycle outcomes, provider count and owned-host shutdown.
+Source/isolated success is not installation, current installed cleanup,
+real-model Delivery qualification, full partial-cleanup recovery or proof of
+atomic host quiescence. Unverified runtime versions keep their advisory.
+
+The extended Windows fixture also exposed Git traversing an ignored directory
+junction during `git worktree remove`, potentially reaching its primary
+fixture. An isolated native-Git reproduction uses the same unchanged removal
+command as base. This issue does not repair that separate generic-Git hazard;
+the smoke unlinks only its own adversarial links and leaves production
+removal policy unchanged. Broader link-safe teardown needs separate approval.

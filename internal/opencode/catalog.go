@@ -1,4 +1,5 @@
 // Package opencode reads the project-scoped OpenCode V2 model catalog.
+// It also releases verified disposable checkout locations.
 package opencode
 
 import (
