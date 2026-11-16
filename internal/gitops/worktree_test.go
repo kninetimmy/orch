@@ -3,6 +3,7 @@ package gitops
 import (
 	"context"
 	"errors"
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -214,7 +215,9 @@ func TestAddDetachedWorktreeInsidePrimaryNotIgnoredFailsClosed(t *testing.T) {
 
 func TestRemoveDetachedWorktree(t *testing.T) {
 	root := tempRoot(t)
-	wt := tempRoot(t)
+	// The scripted Git removal has no filesystem effects; model its
+	// successful postcondition with an absent path.
+	wt := canon(t, filepath.Join(t.TempDir(), "removed"))
 	g, script := openScripted(t, root,
 		execxtest.Call{Name: "git", Args: listArgs, Stdout: porcelain(
 			"worktree "+root, "HEAD 1111", "branch refs/heads/main", "",
@@ -233,7 +236,7 @@ func TestRemoveDetachedWorktree(t *testing.T) {
 
 func TestRemoveDetachedWorktreeUnknownPath(t *testing.T) {
 	root := tempRoot(t)
-	stray := tempRoot(t)
+	stray := canon(t, filepath.Join(t.TempDir(), "absent"))
 	g, script := openScripted(t, root, execxtest.Call{
 		Name: "git", Args: listArgs,
 		Stdout: porcelain("worktree "+root, "HEAD 1111", "branch refs/heads/main"),
@@ -291,7 +294,7 @@ func TestRemoveWorktreeUnconfirmed(t *testing.T) {
 
 func TestRemoveWorktreeUnknownPath(t *testing.T) {
 	root := tempRoot(t)
-	stray := tempRoot(t)
+	stray := canon(t, filepath.Join(t.TempDir(), "absent"))
 	g, script := openScripted(t, root, execxtest.Call{
 		Name: "git", Args: listArgs,
 		Stdout: porcelain("worktree "+root, "HEAD 1111", "branch refs/heads/main"),
@@ -335,7 +338,7 @@ func TestRemoveWorktreeDirtyPreserved(t *testing.T) {
 
 func TestRemoveWorktree(t *testing.T) {
 	root := tempRoot(t)
-	wt := tempRoot(t)
+	wt := canon(t, filepath.Join(t.TempDir(), "removed"))
 	g, script := openScripted(t, root,
 		execxtest.Call{Name: "git", Args: listArgs, Stdout: porcelain(
 			"worktree "+root, "HEAD 1111", "branch refs/heads/main", "",
@@ -349,6 +352,77 @@ func TestRemoveWorktree(t *testing.T) {
 		t.Fatalf("RemoveWorktree: %v", err)
 	}
 	script.AssertExhausted()
+}
+
+func TestRemoveWorktreesRequireAbsentPathAfterGitSuccess(t *testing.T) {
+	for _, detached := range []bool{false, true} {
+		name := "executor"
+		if detached {
+			name = "review"
+		}
+		t.Run(name, func(t *testing.T) {
+			root := tempRoot(t)
+			wt := tempRoot(t)
+			entry := "branch refs/heads/orch/issue-4"
+			remove := []string{"worktree", "remove", wt}
+			if detached {
+				entry = "detached"
+				remove = []string{"worktree", "remove", "--force", wt}
+			}
+			calls := []execxtest.Call{{
+				Name: "git", Args: listArgs, Stdout: porcelain(
+					"worktree "+root, "HEAD 1111", "branch refs/heads/main", "",
+					"worktree "+wt, "HEAD 2222", entry,
+				),
+			}}
+			if !detached {
+				calls = append(calls, execxtest.Call{Name: "git", Args: statusArgs, Dir: wt})
+			}
+			calls = append(calls, execxtest.Call{Name: "git", Args: remove, Dir: root})
+			g, script := openScripted(t, root, calls...)
+			var err error
+			if detached {
+				err = g.RemoveDetachedWorktree(context.Background(), wt)
+			} else {
+				err = g.RemoveWorktree(context.Background(), wt, ExplicitConfirmation())
+			}
+			script.AssertExhausted() // no pruning or fallback deletion
+			if err == nil || errors.Is(err, ErrUnknownWorktree) {
+				t.Fatalf("err = %v, want non-tolerable residue error after Git success", err)
+			}
+			for _, want := range []string{wt, "preserve", "retry"} {
+				if !strings.Contains(err.Error(), want) {
+					t.Errorf("error %q does not contain %q", err, want)
+				}
+			}
+			if _, err := os.Lstat(wt); err != nil {
+				t.Fatalf("Git-success residue was not preserved: %v", err)
+			}
+		})
+	}
+}
+
+func TestRequireWorktreeAbsent(t *testing.T) {
+	root := tempRoot(t)
+	file := filepath.Join(root, "residue.txt")
+	if err := os.WriteFile(file, []byte("keep\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := requireWorktreeAbsent(filepath.Join(root, "absent")); err != nil {
+		t.Fatalf("absent path: %v", err)
+	}
+	for _, path := range []string{root, file} {
+		if err := requireWorktreeAbsent(path); err == nil || !strings.Contains(err.Error(), path) {
+			t.Errorf("existing path %s: %v, want named residue error", path, err)
+		}
+	}
+	// NUL is invalid on every supported OS, unlike permission fixtures
+	// which can succeed under elevated users or Windows ACLs.
+	err := requireWorktreeAbsent(filepath.Join(root, "invalid\x00path"))
+	var pathErr *os.PathError
+	if !errors.As(err, &pathErr) || !strings.Contains(err.Error(), "inspect worktree path") {
+		t.Fatalf("inspection failure = %v, want wrapped filesystem error", err)
+	}
 }
 
 func TestPruneWorktrees(t *testing.T) {

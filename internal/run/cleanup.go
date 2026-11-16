@@ -40,10 +40,12 @@ type CleanupResult struct {
 // Cleanup deletes a merged or abandoned issue's remote branch, worktree,
 // and local branch (PRD §12 steps 18-19) along with any disposable
 // review checkout a review cycle left behind, then marks the issue
-// cleaned (terminal). Each deletion is pre-checked so a crashed cleanup
-// re-runs cleanly; the only state write is the final Save. A failure
-// mid-cleanup leaves the run incomplete (PRD §16) — the phase stays put
-// and cleanup re-runs.
+// cleaned (terminal). Each deletion is pre-checked; the only state write
+// is the final Save. Before #505, missing worktree registration sufficed
+// for an idempotent retry. Now both checkout paths must be absent on disk:
+// residue or inspection failure leaves the phase unchanged (PRD §16).
+// A retry can finish after residue has been inspected and safely removed
+// outside the failed attempt; this is not automatic orphan recovery.
 func Cleanup(ctx context.Context, env Env, reqJSON []byte) (*CleanupResult, error) {
 	var req CleanupRequest
 	if err := decodeRequest(reqJSON, &req); err != nil {
@@ -79,16 +81,17 @@ func Cleanup(ctx context.Context, env Env, reqJSON []byte) (*CleanupResult, erro
 		}
 	}
 
-	// 2. Worktree (idempotent: an already-removed worktree is not
-	// registered, so RemoveWorktree reports ErrUnknownWorktree, which we
-	// tolerate). RemoveWorktree prunes stale metadata itself.
+	// 2. Worktree. Before #505 we tolerated ErrUnknownWorktree based on
+	// registration alone; now gitops returns it only for an absent path.
+	// Existing unregistered residue is preserved and fails cleanup.
+	// RemoveWorktree verifies removal and prunes stale metadata itself.
 	if err := git.RemoveWorktree(ctx, c.worktreeAbs(), confirm); err != nil && !errors.Is(err, gitops.ErrUnknownWorktree) {
 		return nil, err
 	}
 
 	// 3. Review worktree, when a review cycle provisioned one
-	// (idempotent the same way, and tolerant of the same
-	// ErrUnknownWorktree). No field of the run state names it — see
+	// (idempotent only when absent, like the executor checkout).
+	// No field of the run state names it — see
 	// ReviewWorktree for why that absence is deliberate — so cleanup
 	// derives its path exactly as the verb that created it does rather
 	// than reading state that was never written.

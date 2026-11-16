@@ -1,8 +1,10 @@
 package run
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -13,8 +15,10 @@ import (
 	"github.com/kninetimmy/orch/internal/execx"
 	"github.com/kninetimmy/orch/internal/execx/execxtest"
 	"github.com/kninetimmy/orch/internal/ghops"
+	"github.com/kninetimmy/orch/internal/gitops"
 	"github.com/kninetimmy/orch/internal/lockfile"
 	"github.com/kninetimmy/orch/internal/manifest"
+	"github.com/kninetimmy/orch/internal/paths"
 	"github.com/kninetimmy/orch/internal/state"
 )
 
@@ -424,5 +428,170 @@ func TestLifecycleWalk(t *testing.T) {
 	}
 	if owner, err := lockfile.Inspect(root); owner != nil || err != nil {
 		t.Errorf("lock present after complete: %+v, %v", owner, err)
+	}
+}
+
+func TestCleanupPreservesUnregisteredResidue(t *testing.T) {
+	for _, review := range []bool{false, true} {
+		for _, nonempty := range []bool{false, true} {
+			t.Run(fmt.Sprintf("review=%t/nonempty=%t", review, nonempty), func(t *testing.T) {
+				root := newLifecycleRepo(t)
+				enterDeliveryAt(t, root, "r1", []state.Issue{fixtureIssue("a", 1, state.PhaseMerged)})
+				abs := filepath.Join(root, filepath.FromSlash(worktreeRel(1)))
+				if review {
+					abs = reviewWorktreeAbs(root, 1)
+				}
+				if err := os.MkdirAll(abs, 0o755); err != nil {
+					t.Fatal(err)
+				}
+				marker := filepath.Join(abs, "preserve.txt")
+				if nonempty {
+					if err := os.WriteFile(marker, []byte("preserved work\n"), 0o644); err != nil {
+						t.Fatal(err)
+					}
+				}
+				before := stateBytes(t, root)
+				env, script := reviewEnv(t, root)
+				res, err := Cleanup(context.Background(), env, []byte(`{"schema_version":1,"issue_number":1,"statement":"cleanup-issue"}`))
+				script.AssertExhausted()
+				if res != nil || err == nil || errors.Is(err, gitops.ErrUnknownWorktree) {
+					t.Fatalf("Cleanup = %+v, %v; want a non-tolerable residue error", res, err)
+				}
+				for _, want := range []string{abs, "preserve", "retry"} {
+					if !strings.Contains(err.Error(), want) {
+						t.Errorf("error %q does not contain %q", err, want)
+					}
+				}
+				if !bytes.Equal(before, stateBytes(t, root)) {
+					t.Fatal("failed cleanup changed run state")
+				}
+				entries, err := os.ReadDir(abs)
+				if err != nil {
+					t.Fatalf("residue was not preserved: %v", err)
+				}
+				if nonempty {
+					content, err := os.ReadFile(marker)
+					if err != nil || string(content) != "preserved work\n" || len(entries) != 1 {
+						t.Fatalf("residue changed: entries=%v, content=%q, err=%v", entries, content, err)
+					}
+					if err := os.Remove(marker); err != nil {
+						t.Fatal(err)
+					}
+				} else if len(entries) != 0 {
+					t.Fatalf("empty residue changed: %v", entries)
+				}
+				// Only the test removes its inspected fixture, outside the
+				// failed product attempt. Cleanup itself must not delete it.
+				if err := os.Remove(abs); err != nil {
+					t.Fatal(err)
+				}
+				runVerb(t, root, Cleanup, `{"schema_version":1,"issue_number":1,"statement":"cleanup-issue"}`)
+				wantPhase(t, root, 1, state.PhaseCleaned)
+				for _, path := range []string{filepath.Join(root, filepath.FromSlash(worktreeRel(1))), reviewWorktreeAbs(root, 1)} {
+					if _, err := os.Lstat(path); !os.IsNotExist(err) {
+						t.Errorf("cleaned checkout %s is not absent: %v", path, err)
+					}
+				}
+			})
+		}
+	}
+}
+
+// Script the two Git observations separately: a removal can fail after
+// deregistering its checkout, or report success while its path remains.
+// Neither answer permits the next cleanup to mistake residue for absence.
+func TestCleanupPartialRemovalThenLostRegistration(t *testing.T) {
+	for _, review := range []bool{false, true} {
+		for _, exit := range []int{255, 0} {
+			t.Run(fmt.Sprintf("review=%t/remove-exit=%d", review, exit), func(t *testing.T) {
+				root, err := paths.Canonical(setupDeliveryRepo(t, "r1", []state.Issue{fixtureIssue("a", 1, state.PhaseAbandoned)}))
+				if err != nil {
+					t.Fatal(err)
+				}
+				abs := filepath.Join(root, filepath.FromSlash(worktreeRel(1)))
+				entry := "branch refs/heads/orch/issue-1"
+				if review {
+					abs = reviewWorktreeAbs(root, 1)
+					entry = "detached"
+				}
+				if err := os.MkdirAll(abs, 0o755); err != nil {
+					t.Fatal(err)
+				}
+				before := stateBytes(t, root)
+				primary := "worktree " + root + "\nHEAD 1111\nbranch refs/heads/main\n"
+				registered := primary + "\nworktree " + abs + "\nHEAD 2222\n" + entry + "\n"
+				prefix := func(list string) []execxtest.Call {
+					calls := []execxtest.Call{
+						{Name: "git", Args: []string{"rev-parse", "--show-toplevel"}, Stdout: root},
+						{Name: "git", Args: []string{"ls-remote", "--heads", "origin", "orch/issue-1"}},
+					}
+					if review {
+						// The executor path is genuinely absent.
+						calls = append(calls, execxtest.Call{Name: "git", Args: []string{"worktree", "list", "--porcelain"}, Stdout: list})
+					}
+					return append(calls, execxtest.Call{Name: "git", Args: []string{"worktree", "list", "--porcelain"}, Stdout: list})
+				}
+				calls := prefix(registered)
+				remove := []string{"worktree", "remove", abs}
+				if review {
+					remove = []string{"worktree", "remove", "--force", abs}
+				} else {
+					calls = append(calls, execxtest.Call{Name: "git", Args: []string{"status", "--porcelain=v1", "--untracked-files=all"}, Dir: abs})
+				}
+				calls = append(calls, execxtest.Call{Name: "git", Args: remove, Exit: exit, Stderr: "simulated partial removal of " + abs})
+				script := &execxtest.Script{T: t, Calls: calls}
+				res, err := Cleanup(context.Background(), ghEnv(root, script), []byte(`{"schema_version":1,"issue_number":1,"statement":"cleanup-issue"}`))
+				script.AssertExhausted()
+				if res != nil || err == nil {
+					t.Fatalf("first Cleanup = %+v, %v; want unfinished cleanup", res, err)
+				}
+				if exit != 0 && !strings.Contains(err.Error(), "exited 255") {
+					t.Errorf("Git failure was lost: %v", err)
+				}
+				if !bytes.Equal(before, stateBytes(t, root)) {
+					t.Fatal("first cleanup changed run state")
+				}
+
+				// Git no longer registers the checkout, but its directory
+				// is still present. No deletion or prune may follow.
+				script = &execxtest.Script{T: t, Calls: prefix(primary)}
+				res, err = Cleanup(context.Background(), ghEnv(root, script), []byte(`{"schema_version":1,"issue_number":1,"statement":"cleanup-issue"}`))
+				script.AssertExhausted()
+				if res != nil || err == nil || errors.Is(err, gitops.ErrUnknownWorktree) {
+					t.Fatalf("retry Cleanup = %+v, %v; want non-tolerable residue error", res, err)
+				}
+				for _, want := range []string{abs, "unregistered", "preserve", "retry"} {
+					if !strings.Contains(err.Error(), want) {
+						t.Errorf("error %q does not contain %q", err, want)
+					}
+				}
+				if !bytes.Equal(before, stateBytes(t, root)) {
+					t.Fatal("retry changed run state")
+				}
+				if _, err := os.Lstat(abs); err != nil {
+					t.Fatalf("retry deleted residue: %v", err)
+				}
+
+				// External, inspected fixture removal makes a subsequent
+				// retry genuinely idempotent, without a product fallback.
+				if err := os.Remove(abs); err != nil {
+					t.Fatal(err)
+				}
+				calls = []execxtest.Call{
+					{Name: "git", Args: []string{"rev-parse", "--show-toplevel"}, Stdout: root},
+					{Name: "git", Args: []string{"ls-remote", "--heads", "origin", "orch/issue-1"}},
+					{Name: "git", Args: []string{"worktree", "list", "--porcelain"}, Stdout: primary},
+					{Name: "git", Args: []string{"worktree", "list", "--porcelain"}, Stdout: primary},
+					{Name: "git", Args: []string{"rev-parse", "--verify", "orch/issue-1^{commit}"}, Exit: 128},
+				}
+				script = &execxtest.Script{T: t, Calls: calls}
+				res, err = Cleanup(context.Background(), ghEnv(root, script), []byte(`{"schema_version":1,"issue_number":1,"statement":"cleanup-issue"}`))
+				script.AssertExhausted()
+				if err != nil || res == nil || res.Phase != state.PhaseCleaned {
+					t.Fatalf("absent retry Cleanup = %+v, %v; want cleaned", res, err)
+				}
+				wantPhase(t, root, 1, state.PhaseCleaned)
+			})
+		}
 	}
 }
