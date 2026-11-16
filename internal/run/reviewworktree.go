@@ -124,6 +124,10 @@ func ReviewWorktree(ctx context.Context, env Env, reqJSON []byte) (*ReviewWorktr
 	// files — test output, build artifacts — in a checkout that exists to
 	// be thrown away; gitops refuses to force-remove anything holding a
 	// branch, so no work can be reached this way.
+	// Before #510 branchlessness was assumed sufficient for generic teardown.
+	// Now every Windows host also refuses observed raw root/parent/interior
+	// hazards before removal or reprovisioning; ignored junctions can reach
+	// other work even from a detached checkout.
 	abs := reviewWorktreeAbs(env.RepoRoot, issue.Number)
 	// Before #506, Git removal could race retained OpenCode services/watchers.
 	// Now replacement inspects the interior and releases a verified idle target.

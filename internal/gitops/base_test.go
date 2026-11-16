@@ -20,7 +20,10 @@ type recordingRunner struct {
 	removeErr error
 }
 
-func (r *recordingRunner) Run(_ context.Context, c execx.Cmd) (execx.Result, error) {
+func (r *recordingRunner) Run(ctx context.Context, c execx.Cmd) (execx.Result, error) {
+	if err := ctx.Err(); err != nil {
+		return execx.Result{}, err
+	}
 	r.calls = append(r.calls, c.Args)
 	switch {
 	case slices.Equal(c.Args, []string{"rev-parse", "--show-toplevel"}):
@@ -93,11 +96,39 @@ func TestWithBaseWorktreeFnErrorStillCleansUp(t *testing.T) {
 	}
 }
 
+func TestWithBaseWorktreeCancellationStillCleansUp(t *testing.T) {
+	g, r := openRecording(t, nil)
+	ctx, cancel := context.WithCancel(t.Context())
+	defer cancel()
+	var target string
+	err := g.WithBaseWorktree(ctx, "main", func(dir string) error {
+		target = dir
+		cancel()
+		return ctx.Err()
+	})
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("lost callback cancellation: %v", err)
+	}
+	if _, err := os.Lstat(target); !os.IsNotExist(err) {
+		t.Fatalf("cancellation skipped safe cleanup: %v", err)
+	}
+	if last := r.calls[len(r.calls)-1]; !slices.Equal(last, []string{"worktree", "remove", "--force", target}) {
+		t.Fatalf("canceled callback did not reach normal cleanup: %v", last)
+	}
+}
+
 func TestWithBaseWorktreeCleanupFailureNotSwallowed(t *testing.T) {
 	removeErr := errors.New("remove refused")
 	g, _ := openRecording(t, removeErr)
 	sentinel := errors.New("fn error")
-	err := g.WithBaseWorktree(context.Background(), "main", func(string) error { return sentinel })
+	err := g.WithBaseWorktree(context.Background(), "main", func(dir string) error {
+		t.Cleanup(func() {
+			if err := os.Remove(dir); err != nil {
+				t.Error(err)
+			}
+		})
+		return sentinel
+	})
 	if !errors.Is(err, sentinel) {
 		t.Errorf("err = %v, want fn's error preserved", err)
 	}

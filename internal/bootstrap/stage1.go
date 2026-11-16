@@ -42,7 +42,7 @@ func stage1(ctx context.Context, deps Deps, git *gitops.Git, gh *ghops.GH, repo 
 // return from here on must go through failClosed: the issue already
 // exists.
 func stage1AfterIssue(ctx context.Context, deps Deps, git *gitops.Git, gh *ghops.GH, repo ghops.Repo, complete *question.Complete, issueNumber int, issueURL string, j job) (Report, error) {
-	dir, err := newWorktreeDir()
+	dir, err := newWorktreeDir(ctx)
 	if err != nil {
 		return Report{}, failClosed(ctx, git, gh, issueNumber, issueURL, "", false, fmt.Errorf("create worktree directory: %w", err), j)
 	}
@@ -99,7 +99,7 @@ func stage1AfterIssue(ctx context.Context, deps Deps, git *gitops.Git, gh *ghops
 	// directory (a deliberate narrower reading of "any post-mutation
 	// failure").
 	if err := removeWorktree(ctx, git, wt.Path); err != nil {
-		return Report{}, fmt.Errorf("%s succeeded (issue #%d %s, PR #%d %s) but the disposable worktree %s could not be removed: %w; remove it by hand and run `git worktree prune`", j.title, issueNumber, issueURL, prNumber, prURL, wt.Path, err)
+		return Report{}, fmt.Errorf("%s succeeded (issue #%d %s, PR #%d %s) but the disposable worktree %s could not be removed: %w; preserve and inspect it before any manual removal, then run `git worktree prune`", j.title, issueNumber, issueURL, prNumber, prURL, wt.Path, err)
 	}
 
 	return Report{
@@ -124,17 +124,31 @@ func stage1AfterIssue(ctx context.Context, deps Deps, git *gitops.Git, gh *ghops
 // already exists (never clobber), so the directory is removed again
 // immediately before AddWorktree recreates it via `git worktree add`.
 // Canonicalizing first (while the directory still exists) resolves
-// any symlinked ancestor the same way WithBaseWorktree does.
-func newWorktreeDir() (string, error) {
+// any symlinked ancestor the same way WithBaseWorktree does on Unix.
+// Before #510 it used RemoveAll; now only the fresh empty directory is removed,
+// and Windows observes its original root/parents before canonicalization.
+func newWorktreeDir(ctx context.Context) (string, error) {
+	if err := ctx.Err(); err != nil {
+		return "", err
+	}
 	tmp, err := os.MkdirTemp("", "orch-bootstrap-*")
 	if err != nil {
 		return "", err
 	}
+	if err := gitops.CheckWorktreeRemoval(ctx, tmp); err != nil {
+		return "", fmt.Errorf("preserve bootstrap directory %s for inspection: %w", tmp, err)
+	}
 	dir, err := paths.Canonical(tmp)
 	if err != nil {
-		return "", errors.Join(err, os.RemoveAll(tmp))
+		if safetyErr := gitops.CheckWorktreeRemoval(context.WithoutCancel(ctx), tmp); safetyErr != nil {
+			return "", errors.Join(err, fmt.Errorf("preserve bootstrap directory %s for inspection: %w", tmp, safetyErr))
+		}
+		return "", errors.Join(err, os.Remove(tmp))
 	}
-	if err := os.RemoveAll(dir); err != nil {
+	if err := gitops.CheckWorktreeRemoval(ctx, tmp); err != nil {
+		return "", fmt.Errorf("preserve bootstrap directory %s for inspection: %w", tmp, err)
+	}
+	if err := os.Remove(dir); err != nil {
 		return "", err
 	}
 	return dir, nil
@@ -149,7 +163,12 @@ func newWorktreeDir() (string, error) {
 // (regenerable from the same answers), so os.RemoveAll followed by a
 // prune is the "forced removal is safe" cleanup the spec calls for,
 // without adding a second gitops primitive beyond CommitAll.
+// Before #510 scratch ownership alone was trusted. Now Windows first reuses
+// the bounded root/parent/interior refusal check; Unix symlink behavior remains.
 func removeWorktree(ctx context.Context, git *gitops.Git, dir string) error {
+	if err := gitops.CheckWorktreeRemoval(ctx, dir); err != nil {
+		return err
+	}
 	if err := os.RemoveAll(dir); err != nil {
 		return fmt.Errorf("remove worktree directory %s: %w", dir, err)
 	}
@@ -172,7 +191,7 @@ func failClosed(ctx context.Context, git *gitops.Git, gh *ghops.GH, issueNumber 
 	if worktreeDir != "" {
 		if err := removeWorktree(cleanupCtx, git, worktreeDir); err != nil {
 			problems = append(problems, fmt.Errorf("remove worktree %s: %w", worktreeDir, err))
-			remediation = append(remediation, fmt.Sprintf("remove the leftover worktree by hand (`git worktree remove --force %s` or delete the directory, then `git worktree prune`)", worktreeDir))
+			remediation = append(remediation, fmt.Sprintf("preserve and inspect leftover worktree %s, including links and ownership, before any manual removal; then run `git worktree prune`", worktreeDir))
 		}
 		if deleteBranch {
 			if err := git.ForceDeleteBranch(cleanupCtx, j.branch, gitops.ExplicitConfirmation()); err != nil {
