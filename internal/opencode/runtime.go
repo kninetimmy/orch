@@ -3,6 +3,7 @@ package opencode
 import (
 	"context"
 	"fmt"
+	"runtime"
 	"strconv"
 	"strings"
 
@@ -18,7 +19,8 @@ const (
 	VerifiedStable       = "2.2.6"
 )
 
-// Runtime binds a catalog read to the V2 command whose version was checked.
+// Runtime binds all API reads/release calls to the V2 command whose version was
+// checked. On Windows Local resolves a verified absolute native path first.
 type Runtime struct {
 	Executable string
 	Warning    string
@@ -32,7 +34,25 @@ func Resolve(ctx context.Context, runner execx.Runner, directory string) (Runtim
 	}
 	var failures []string
 	for _, name := range []string{Executable, "opencode"} {
-		res, err := runner.Run(ctx, execx.Cmd{Name: name, Args: []string{"--version"}, Dir: directory})
+		if ctx.Err() != nil {
+			return Runtime{}, fmt.Errorf("OpenCode V2 version check canceled: %w", ctx.Err())
+		}
+		executable := name
+		// Local exposes its injected PATH lookup. Scripted/in-memory Runners keep
+		// control of their command namespace; non-Windows behavior is unchanged.
+		if resolver, ok := runner.(interface{ ResolvePath(string) (string, error) }); ok && runtime.GOOS == "windows" {
+			selected, err := resolver.ResolvePath(name)
+			if err != nil {
+				failures = append(failures, name+" not found")
+				continue
+			}
+			executable, err = windowsExecutable(selected, name)
+			if err != nil {
+				failures = append(failures, name+": "+err.Error())
+				continue
+			}
+		}
+		res, err := runner.Run(ctx, execx.Cmd{Name: executable, Args: []string{"--version"}, Dir: directory})
 		if ctx.Err() != nil {
 			return Runtime{}, fmt.Errorf("OpenCode V2 version check canceled: %w", ctx.Err())
 		}
@@ -49,7 +69,7 @@ func Resolve(ctx context.Context, runner execx.Runner, directory string) (Runtim
 			failures = append(failures, name+": "+err.Error())
 			continue
 		}
-		return Runtime{Executable: name, Warning: warning}, nil
+		return Runtime{Executable: executable, Warning: warning}, nil
 	}
 	return Runtime{}, fmt.Errorf("OpenCode V2 runtime unavailable: %s; install a supported V2 runtime or adjust PATH and retry", strings.Join(failures, "; "))
 }
