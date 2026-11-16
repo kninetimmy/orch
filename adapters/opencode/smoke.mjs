@@ -13,7 +13,7 @@ import { createInterface } from "node:readline"
 import { Backend } from "@opencode/protocol/simulation"
 import { pluginID } from "./src/index.js"
 import { lookupServer, lookupTools, sameDirectory } from "./src/lookup.js"
-import { checkAdapterModule, copyBinary, fileIdentity, inside, prepareOrch, selectArtifacts, verifyArtifacts } from "./smoke-artifacts.mjs"
+import { checkAdapterModule, copyBinary, fileIdentity, inside, prepareOrch, prepareSourceProbe, selectArtifacts, verifyArtifacts } from "./smoke-artifacts.mjs"
 
 const harnessAdapter = path.dirname(fileURLToPath(import.meta.url))
 const repo = path.resolve(harnessAdapter, "../..")
@@ -469,8 +469,7 @@ try {
     const older = await start(root, architect, undefined, undefined, undefined, false)
     const newest = await start(root, architect, undefined, undefined, undefined, false)
     const probeRoot = path.join(temp, "native-boundary-probe")
-    await mkdir(probeRoot)
-    await writeFile(path.join(probeRoot, "go.mod"), `module github.com/kninetimmy/orch/smoke\n\ngo 1.26.0\nrequire github.com/kninetimmy/orch v0.0.0\nreplace github.com/kninetimmy/orch => ${JSON.stringify(repo.replaceAll("\\", "/"))}\n`)
+    const graph = await prepareSourceProbe(repo, probeRoot)
     const source = path.join(probeRoot, "main.go")
     await writeFile(source, `package main
 import ("context"; "encoding/json"; "fmt"; "net/url"; "os"
@@ -496,7 +495,10 @@ func main() {
 func check(ok bool) { if !ok { fmt.Fprintln(os.Stderr, "native command-boundary probe failed (host payload omitted)"); os.Exit(1) } }
 `)
     const probe = path.join(probeRoot, "native-boundary.exe")
-    command("go", ["build", "-o", probe, "."], probeRoot, { ...process.env, GOPROXY: "off", GOWORK: "off" })
+    command("go", ["build", "-mod=readonly", "-o", probe, "."], probeRoot, {
+      ...process.env, GOPROXY: "off", GONOPROXY: "none", GOWORK: "off", GOTOOLCHAIN: "local",
+    })
+    for (const file of Object.values(graph)) assert.deepEqual(await fileIdentity(file.path), file, "offline probe must not rewrite source or helper module files")
     const transport = JSON.parse(command(probe, [root], root, env))
     assert.deepEqual(await fileIdentity(transport.executable), evidence.command_binding.selected_native)
     assert.equal(transport.pages[0].data[0].id, newest.session.id)
@@ -507,7 +509,7 @@ func check(ok bool) { if !ok { fmt.Fprintln(os.Stderr, "native command-boundary 
       assert.equal(transport.pages[index].cursor.next, direct.cursor.next)
     }
     evidence.command_binding.transport = {
-      ...transport, source: await fileIdentity(source), probe: await fileIdentity(probe),
+      ...transport, source: await fileIdentity(source), probe: await fileIdentity(probe), graph,
       source_files: await Promise.all(["internal/opencode/runtime.go", "internal/opencode/executable.go", "internal/execx/execx.go"].map((file) => fileIdentity(path.join(repo, file)))),
       scope: "actual source Resolve/Local against owned real V2; selected engine doctor/lifecycle checked separately; no raw host payload retained by probe",
     }
