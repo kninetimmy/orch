@@ -569,7 +569,38 @@ in flight at once. For each issue:
     number). Result carries `run_id`, `merged`, `abandoned`,
     `returned_to`, `memhub_wrapup_due`. When `memhub_wrapup_due` is
     `true`, wrap up memhub (orch-architect: main checkout as cwd,
-    Architect-only writes) before announcing the return to Assist.
+     Architect-only writes) before announcing the return to Assist.
+
+### Opt-in human CI exception / already-merged recovery
+
+Before #517, pending/failing required CI had no manual continuation and an
+unpinned out-of-band merge remained blocked. Those remain the defaults. Only
+after showing actual CI and the current run/issue/PR/full independently approved
+reviewed head, ask the human explicitly whether to accept that CI and why.
+Use `AskUserQuestion`; never infer consent from a stalled runner, a grant or
+an audit receipt.
+
+Follow the exact stdin requests in `docs/manual-ci-exceptions.md` (`orch run help`
+also describes them): schema-1 `merge-report` and `merge` accept `ci_exception`
+with `run_id`, `issue_number`, `pr_number`, full `head_oid`, human `approved_by`,
+actual `approved_at`, nonempty `reason`, current `repair_number` (zero if none)
+and statement `accept-incomplete-ci`. The decision must follow current review
+and repair. Show the unchanged CI and receipt, then obtain the **separate fresh
+Merge gate confirmation** above; send ordinary `approve-merge` plus the explicit
+`ci_exception` again. Neither the receipt nor an autonomy grant supplies this
+human decision or permits `grant-approve-merge` to waive CI.
+
+If the PR is already MERGED, ask instead to acknowledge that completed merge
+and authorize closure/bookkeeping. Use `merge.merged_acknowledgment` with those
+same fields, statement `acknowledge-already-merged-pr` and an actual decision
+time **after the merge**; omit `approval` and `ci_exception`. It requires the
+same independently approved reviewed head and can recover its specific
+out-of-band-merge operational block; it does not invent prior approval.
+
+New heads/reviews/repairs need new decisions. No probe/auth/transport failure,
+unresolved human/secret block, independent review, criterion, grant stop, hook or
+GitHub protection is waived. Show `ci_exception` / `manual_ci_audit` results.
+Cleanup and completion still need their separate ordinary calls.
 
 ## Escalation
 

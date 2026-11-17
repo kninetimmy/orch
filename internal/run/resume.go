@@ -616,7 +616,7 @@ func reconcilePROpen(iss state.Issue, obs issueObservations) outcome {
 	switch pr.State {
 	case "MERGED":
 		// Row 15: never adopt HeadRefOid as ApprovedHeadOID (R2/R3).
-		return blockOut(fmt.Sprintf("PR #%d merged out of band; the human merge gate (merge-report + approve-merge) was bypassed", pr.Number))
+		return blockOut(outOfBandMergeReason(pr.Number))
 	case "CLOSED":
 		// Row 16.
 		return blockOut(fmt.Sprintf("PR #%d closed without merge outside orch; run `orch run abandon` or reopen the PR, then run `orch resume`", pr.Number))
@@ -631,6 +631,12 @@ func reconcilePROpen(iss state.Issue, obs issueObservations) outcome {
 	default:
 		return blockOut(fmt.Sprintf("PR #%d reads unexpected state %q", pr.Number, pr.State))
 	}
+}
+
+// Keep the original reason stable so compatible existing operational blocks
+// can be identified by explicit post-merge acknowledgment, never by resume.
+func outOfBandMergeReason(number int) string {
+	return fmt.Sprintf("PR #%d merged out of band; the human merge gate (merge-report + approve-merge) was bypassed", number)
 }
 
 // reconcileAwaitingMerge handles rows 20-26. A missing branch or worktree

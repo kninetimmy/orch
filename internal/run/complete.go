@@ -112,9 +112,9 @@ func Complete(ctx context.Context, env Env, reqJSON []byte) (*CompleteResult, er
 }
 
 // terminalCounts splits the run's cleaned issues into those that merged
-// and those that were abandoned. An approved head OID (pinned only by
-// merge-report) marks a merged issue; every other cleaned issue was
-// abandoned.
+// and those that were abandoned. Before #517 only merge-report pinned an
+// approved head OID; explicit post-merge acknowledgment also records the
+// delivered reviewed head. Either marks merged work; no pin means abandoned.
 func terminalCounts(run *state.Run) (merged, abandoned int) {
 	for i := range run.Issues {
 		if run.Issues[i].ApprovedHeadOID != "" {

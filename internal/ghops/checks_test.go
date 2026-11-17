@@ -119,8 +119,14 @@ func TestRequiredCIInvalidCheckData(t *testing.T) {
 		{"failed whitespace", "\n \t", "network down", 1},
 		{"success without evidence", "", "", 0},
 		{"success with error notice", "", "error connecting to api.github.com", 0},
-		{"failed no-required notice", "", "no required checks reported on the 'main' branch", 1},
 		{"mixed no-required notice", "", "no required checks reported on the 'main' branch\nnetwork down", 0},
+		{"failed mixed notice", " \n", "no required checks reported on the 'main' branch\nnetwork down", 1},
+		{"pending no-required notice", "", "no required checks reported on the 'main' branch", 8},
+		{"unsupported no-required notice", "", "no required checks reported on the 'main' branch", 4},
+		{"empty branch notice", "", "no required checks reported on the '' branch", 1},
+		{"whitespace branch notice", "", "no required checks reported on the ' ' branch", 1},
+		{"mixed single line notice", "", "no required checks reported on the 'main' branch; network down on 'main' branch", 1},
+		{"malformed with notice", "{", "no required checks reported on the 'main' branch", 1},
 		{"failed empty array", "[]", "", 1},
 		{"pending empty array", "[]", "", 8},
 		{"null array", "null", "", 0},
@@ -128,6 +134,9 @@ func TestRequiredCIInvalidCheckData(t *testing.T) {
 		{"null check", "[null]", "", 0},
 		{"missing bucket", `[{}]`, "", 0},
 		{"unknown bucket", `[{"name":"build","bucket":"unknown"}]`, "", 1},
+		{"array plus transport error", `[{"name":"build","bucket":"pass"}]`, "error connecting to api.github.com", 1},
+		{"array plus authentication error", `[{"name":"build","bucket":"pass"}]`, "authentication required", 0},
+		{"empty array plus error", "[]", "network down", 0},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			root := tempRoot(t)
@@ -138,6 +147,20 @@ func TestRequiredCIInvalidCheckData(t *testing.T) {
 			script.AssertExhausted()
 			if err == nil || sum.State != "" {
 				t.Fatalf("sum = %+v, err = %v, want invalid probe error and no CI state", sum, err)
+			}
+		})
+	}
+}
+
+func TestRequiredCIInvalidRollup(t *testing.T) {
+	for _, data := range []string{"{}", "null", `{"statusCheckRollup":null}`, `{"statusCheckRollup":{}}`} {
+		t.Run(data, func(t *testing.T) {
+			root := tempRoot(t)
+			g, script := openScripted(t, root, rollupCall(root, data))
+			sum, err := g.RequiredCI(t.Context(), 43)
+			script.AssertExhausted()
+			if err == nil || sum.State != "" {
+				t.Fatalf("sum=%+v err=%v, want malformed rollup failure", sum, err)
 			}
 		})
 	}
@@ -186,20 +209,26 @@ func TestRequiredCINoneRequired(t *testing.T) {
 // and the stderr notice below, rather than the `[]` this package's
 // other no-required-checks test scripts.
 func TestRequiredCINoRequiredChecksDiscoveryEmptyStdout(t *testing.T) {
-	root := tempRoot(t)
-	call := checksCall(root, "", 0)
-	call.Stderr = "no required checks reported on the 'main' branch"
-	g, script := openScripted(t, root,
-		rollupCall(root, `{"statusCheckRollup":[{},{}]}`),
-		call,
-	)
-	sum, err := g.RequiredCI(context.Background(), 43)
-	if err != nil {
-		t.Fatalf("RequiredCI: %v", err)
-	}
-	script.AssertExhausted()
-	if sum.State != CINoChecks || sum.Total != 2 || len(sum.Required) != 0 {
-		t.Errorf("sum = %+v, want no-checks with Total 2 and no required checks", sum)
+	// #517 also reproduces exit 1 from a CI-stalled Delivery PR.
+	for _, exit := range []int{0, 1} {
+		for _, stdout := range []string{"", " \r\n\t"} {
+			t.Run(fmt.Sprintf("exit%d/stdout=%q", exit, stdout), func(t *testing.T) {
+				root := tempRoot(t)
+				call := checksCall(root, stdout, exit)
+				branch := "orch/issue-37-add-proof-model-and-source-freezes-to-th"
+				if stdout != "" {
+					branch = "feature/owner's-fix" // An apostrophe is valid in a git ref.
+				}
+				call.Stderr = "no required checks reported on the '" + branch + "' branch\n"
+				g, script := openScripted(t, root,
+					rollupCall(root, `{"statusCheckRollup":[{},{}]}`), call)
+				sum, err := g.RequiredCI(t.Context(), 43)
+				script.AssertExhausted()
+				if err != nil || sum.State != CINoChecks || sum.Total != 2 || len(sum.Required) != 0 {
+					t.Fatalf("sum = %+v, err = %v, want no-checks with Total 2", sum, err)
+				}
+			})
+		}
 	}
 }
 

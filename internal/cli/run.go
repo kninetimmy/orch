@@ -15,8 +15,14 @@ import (
 	"github.com/kninetimmy/orch/internal/run"
 )
 
-// runUsage names the adapter plumbing surface and its scoped repair guidance.
-const runUsage = "orch run: usage: orch run plan|activate|dispatch|repair|pr-open|review-worktree|review|escalate|ci|merge-report|merge|block|resolve-block|abandon|cleanup|complete (JSON document on stdin) | orch run status|next --json | orch run readiness --issue <number> --json\nrepair: explicit scoped integration authorization for recovered pre-PR work or a pinned open PR; see docs/decision-block-recovery.md for schema 1 and the renewed verification/review/merge gates"
+// runUsage names the adapter plumbing surface and explicit recovery requests.
+const runUsage = `orch run: usage: orch run plan|activate|dispatch|repair|pr-open|review-worktree|review|escalate|ci|merge-report|merge|block|resolve-block|abandon|cleanup|complete (JSON document on stdin) | orch run status|next --json | orch run readiness --issue <number> --json | orch run help
+repair: explicit scoped integration authorization for recovered pre-PR work or a pinned open PR; see docs/decision-block-recovery.md for schema 1 and the renewed verification/review/merge gates
+manual CI: after fresh human confirmation, merge-report schema 1 accepts:
+{"schema_version":1,"issue_number":123,"ci_exception":{"run_id":"<current run>","issue_number":123,"pr_number":124,"head_oid":"<full independently reviewed head>","approved_by":"<human>","approved_at":"<actual RFC3339 decision time>","reason":"<why incomplete CI is accepted>","statement":"accept-incomplete-ci","repair_number":0}}
+Then obtain separate fresh approve-merge confirmation for that PR/head and send merge schema 1 with its ordinary approval plus the explicit ci_exception again. Receipts are audit, not reusable permission; grants and probe failures cannot use this exception.
+already merged: merge schema 1 instead accepts merged_acknowledgment with the same decision fields and statement "acknowledge-already-merged-pr", dated AFTER the merge; omit approval and ci_exception. This only acknowledges an independently approved reviewed head already proven MERGED, including its specific out-of-band-merge operational block; it never merges or supplies prior approval.
+Both paths retain actual CI evidence and require separate cleanup and complete. Exact requests, retry/repair rules and limitations: docs/manual-ci-exceptions.md`
 
 // runVerbs maps each document-taking verb to its run-engine entry point.
 // Every one reads a JSON request on stdin and writes a JSON result on
@@ -58,6 +64,10 @@ func adaptRunVerb[T any](fn func(context.Context, run.Env, []byte) (T, error)) f
 // Host adapters invoke mutating verbs after their native dialogs. The
 // read-only inspections are also available directly to people and clients.
 func runRunVerb(env Env, args []string) error {
+	if len(args) == 1 && (args[0] == "help" || args[0] == "--help" || args[0] == "-h") {
+		_, err := fmt.Fprintln(env.Stdout, runUsage)
+		return err
+	}
 	// Before next, status alone bypassed stdin; item 2 added next. All three
 	// inspections now bypass stdin and mutation serialization, even on a console.
 	if len(args) == 2 && (args[0] == "status" || args[0] == "next") && args[1] == "--json" {

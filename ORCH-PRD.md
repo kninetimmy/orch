@@ -441,6 +441,16 @@ specified, and unsurprising.
 
 One issue maps to one branch/worktree and one PR.
 
+Before #517, step 13 had no explicit manual CI continuation, and a reviewed PR
+already merged without Orch's gate could not finish normally. The ordinary
+workflow remains the default. A fresh attributable human CI exception can now
+accept observed incomplete checks for one independently reviewed head, followed
+by separate merge approval. A distinct acknowledgment can reconcile that same
+reviewed head only after it is proven merged, without fabricating prior approval.
+Both retain actual CI and use separate cleanup/completion; neither waives probes,
+review, decisions, grants, hooks or GitHub protection. See
+[manual request contracts and blast radius](docs/manual-ci-exceptions.md).
+
 ## 13. GitHub model
 
 ### Labels
@@ -520,6 +530,11 @@ Orch fails closed.
 - Material dependency-driven scope changes return to the plan gate.
 - Finding a secret stops the entire Delivery run.
 - Cleanup failures keep the run incomplete.
+
+The green-CI rule remains the default. Before #517 it had no manual exception;
+after #517 only the explicit human requests described in §12 and
+`docs/manual-ci-exceptions.md` can accept observed incomplete CI for one reviewed
+head. A grant or failed probe still cannot satisfy it.
 
 ## 17. Configuration
 

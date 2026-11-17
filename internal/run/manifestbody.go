@@ -142,6 +142,8 @@ func prHeadOID(pr *ghops.PR) string {
 // (abandon.go). Before #353 that was the whole set; plan-approval
 // (activate.go) and merge-approval (merge.go), which name a grant
 // approval, joined it so a caller can neither forge nor overwrite one.
+// Numbered manual CI receipts are also reserved (manualCIAuditPattern), but
+// append history rather than replacing a singleton.
 var engineVerificationNames = map[string]bool{
 	"required-ci":     true,
 	"merge":           true,
@@ -170,12 +172,12 @@ var acceptanceCriterionNamePattern = regexp.MustCompile(`^acceptance-criterion-[
 // rejectEngineOwnedNames fails closed with ErrBadRequest naming the
 // first verification in vs whose name collides with an engine-owned
 // singleton, a review-cycle-N entry, or an acceptance-criterion-N
-// judgment, so the audit record's engine-written entries can never be
+// judgment or numbered manual CI receipt, so engine-written entries cannot be
 // quietly overwritten — or quietly duplicated — by a caller-supplied
 // verification of the same name.
 func rejectEngineOwnedNames(vs []manifest.Verification) error {
 	for _, v := range vs {
-		if engineVerificationNames[v.Name] || reviewCycleNamePattern.MatchString(v.Name) || acceptanceCriterionNamePattern.MatchString(v.Name) {
+		if engineVerificationNames[v.Name] || reviewCycleNamePattern.MatchString(v.Name) || acceptanceCriterionNamePattern.MatchString(v.Name) || manualCIAuditPattern.MatchString(v.Name) {
 			return fmt.Errorf("%w: verification name %q is engine-owned and cannot be supplied by a caller", ErrBadRequest, v.Name)
 		}
 	}
@@ -214,8 +216,10 @@ func readIssueManifest(ctx context.Context, gh *ghops.GH, number int) (ghops.Iss
 
 // upsertCapped renders m into existing (preserving prose outside the
 // managed region) under the body-cap policy: if the rendered body
-// exceeds the headroom, it drops Detail text from the oldest
-// verifications first; if it still will not fit it fails closed naming
+// exceeds the headroom, it drops Detail text from the oldest ordinary
+// verifications first. Before #517 all details were eligible; manual CI
+// receipts now retain their complete decisions and CI snapshots. If the
+// remaining body will not fit it fails closed naming
 // GitHub's hard limit and the offending size.
 func upsertCapped(existing string, m manifest.Manifest) (string, error) {
 	body, err := manifest.Upsert(existing, m)
@@ -228,7 +232,7 @@ func upsertCapped(existing string, m manifest.Manifest) (string, error) {
 	trimmed := m
 	trimmed.Verifications = append([]manifest.Verification(nil), m.Verifications...)
 	for i := range trimmed.Verifications {
-		if trimmed.Verifications[i].Detail == "" {
+		if trimmed.Verifications[i].Detail == "" || manualCIAuditPattern.MatchString(trimmed.Verifications[i].Name) {
 			continue
 		}
 		trimmed.Verifications[i].Detail = ""

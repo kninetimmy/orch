@@ -2023,6 +2023,14 @@ routing ladder), `block` (closed failure classes; a secret found stops
 the whole run) or `abandon`. Errors never mutate state; state advances
 only on success.
 
+Before #517, pending/failing required CI had no explicit manual continuation,
+and an unpinned out-of-band merge remained blocked. These remain the defaults.
+An owner can now explicitly [accept CI for one reviewed head or separately
+acknowledge an already-merged reviewed PR](docs/manual-ci-exceptions.md), with
+attributable audit evidence, separate merge confirmation for open work, and
+ordinary separate cleanup/completion. Probes, review, grants, hooks and GitHub
+branch protection are not bypassed.
+
 Before #505, cleanup treated missing Git registration as checkout absence.
 Now executor and review paths must be absent on disk; unregistered residue
 is preserved and blocks `cleaned`. Review replacement refuses it too.

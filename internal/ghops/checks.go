@@ -58,6 +58,9 @@ func (g *GH) RequiredCI(ctx context.Context, number int) (CISummary, error) {
 	if err := g.ghJSON(ctx, &rollup, "pr", "view", strconv.Itoa(number), "--json", "statusCheckRollup"); err != nil {
 		return CISummary{}, err
 	}
+	if rollup.StatusCheckRollup == nil {
+		return CISummary{}, fmt.Errorf("gh pr view in %s returned no valid statusCheckRollup array", g.root)
+	}
 	total := len(rollup.StatusCheckRollup)
 	if total == 0 {
 		return CISummary{State: CINoChecks}, nil
@@ -73,20 +76,23 @@ func (g *GH) RequiredCI(ctx context.Context, number int) (CISummary, error) {
 		// the human-output mode; with --json, gh 2.87.3 exits 0 in
 		// every state (verified live, fact 17). All three are accepted
 		// with valid check data; a bare failure exit is not CI evidence.
-		// When the repo has checks but branch protection marks none of
-		// them required, gh 2.87.3 exits 0 with empty stdout (not `[]`)
-		// and the stderr notice "no required checks reported on the
-		// '<branch>' branch" (verified live, dogfooded run #1). Treat
-		// that as zero required checks rather than a parse failure.
+		// Before #517 only exit 0's no-required-checks notice was
+		// accepted (gh 2.87.3, dogfooded run #1). Exit 1 can report the
+		// same notice without check data; neither shape claims passing CI.
 	default:
 		return CISummary{}, fmt.Errorf("gh pr checks in %s exited %d: %s", g.root, res.ExitCode, strings.TrimSpace(res.Stderr))
 	}
 	trimmed, notice := strings.TrimSpace(res.Stdout), strings.TrimSpace(res.Stderr)
 	if trimmed == "" {
-		if res.ExitCode != 0 || !strings.HasPrefix(notice, "no required checks reported on the '") || !strings.HasSuffix(notice, "' branch") || strings.ContainsAny(notice, "\r\n") {
+		branch, found := strings.CutPrefix(notice, "no required checks reported on the '")
+		branch, ended := strings.CutSuffix(branch, "' branch")
+		if (res.ExitCode != 0 && res.ExitCode != 1) || !found || !ended || branch == "" || strings.ContainsAny(branch, " \t\r\n") {
 			return CISummary{}, fmt.Errorf("gh pr checks in %s exited %d without required-check data: %s", g.root, res.ExitCode, notice)
 		}
-		trimmed = "[]" // The supported successful no-required-checks notice.
+		return CISummary{State: CINoChecks, Total: total}, nil
+	}
+	if notice != "" {
+		return CISummary{}, fmt.Errorf("gh pr checks in %s exited %d with unexpected stderr alongside required-check data: %s", g.root, res.ExitCode, notice)
 	}
 	var decoded []struct {
 		Name   string `json:"name"`

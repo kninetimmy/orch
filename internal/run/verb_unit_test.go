@@ -783,7 +783,7 @@ func TestOverlongVerificationDetailRefusedBeforeMutation(t *testing.T) {
 // name matching the review-cycle-<n> pattern Review generates, and one
 // matching the acceptance-criterion-<n> pattern Review writes for the
 // reviewer's per-criterion judgments.
-var engineOwnedVerificationNames = []string{"required-ci", "merge", "abandoned", "review-cycle-1", "acceptance-criterion-1", "plan-approval", "merge-approval"}
+var engineOwnedVerificationNames = []string{"required-ci", "merge", "abandoned", "review-cycle-1", "acceptance-criterion-1", "plan-approval", "merge-approval", "ci-exception-1", "ci-exception-27", "merged-acknowledgment-1", "merged-acknowledgment-27"}
 
 // TestReviewRejectsEngineOwnedVerificationNames proves a caller-supplied
 // verification whose name collides with an engine-owned entry is

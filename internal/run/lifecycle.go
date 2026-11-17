@@ -9,7 +9,7 @@
 //	escalate         dispatched/pr-open/in-review → reroute (same) or blocked
 //	ci               pr-open/in-review/awaiting-merge → same (manifest only)
 //	merge-report     in-review      → awaiting-merge
-//	merge            awaiting-merge → merged
+//	merge            awaiting-merge → merged; explicit acknowledgment also recovers already-merged reviewed work
 //	block            any non-terminal → blocked
 //	abandon          any non-terminal → abandoned
 //	cleanup          merged/abandoned → cleaned
