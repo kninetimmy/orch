@@ -38,19 +38,23 @@ type MergeApproval struct {
 	RepairNumber int `json:"repair_number,omitempty"`
 }
 
-// MergeRequest asks to merge an approved, awaiting-merge issue.
+// MergeRequest asks to merge an approved, awaiting-merge issue, or separately
+// acknowledge an already-merged reviewed PR without asserting prior approval.
 type MergeRequest struct {
-	SchemaVersion int           `json:"schema_version"`
-	IssueNumber   int           `json:"issue_number"`
-	Approval      MergeApproval `json:"approval"`
+	SchemaVersion        int               `json:"schema_version"`
+	IssueNumber          int               `json:"issue_number"`
+	Approval             MergeApproval     `json:"approval"`
+	CIException          *HumanCIException `json:"ci_exception,omitempty"`
+	MergedAcknowledgment *HumanCIException `json:"merged_acknowledgment,omitempty"`
 }
 
 // MergeResult reports the completed merge.
 type MergeResult struct {
-	SchemaVersion int  `json:"schema_version"`
-	IssueNumber   int  `json:"issue_number"`
-	PRNumber      int  `json:"pr_number"`
-	Merged        bool `json:"merged"`
+	SchemaVersion int                     `json:"schema_version"`
+	IssueNumber   int                     `json:"issue_number"`
+	PRNumber      int                     `json:"pr_number"`
+	Merged        bool                    `json:"merged"`
+	ManualCIAudit []manifest.Verification `json:"manual_ci_audit,omitempty"`
 }
 
 // Merge merges an approved PR at the human merge gate (PRD §12 steps
@@ -67,6 +71,8 @@ type MergeResult struct {
 // never leaves the grant past its limit and a re-run spends nothing more.
 // A PR that reads MERGED with no unit spent was not merged by the grant,
 // so the grant refuses to record it.
+// Request-local human CI exceptions never authorize a grant. Already-merged
+// acknowledgment is a separate human recovery path, not a merge approval.
 func Merge(ctx context.Context, env Env, reqJSON []byte) (*MergeResult, error) {
 	var req MergeRequest
 	if err := decodeRequest(reqJSON, &req); err != nil {
@@ -75,7 +81,16 @@ func Merge(ctx context.Context, env Env, reqJSON []byte) (*MergeResult, error) {
 	if req.SchemaVersion != MergeSchemaVersion {
 		return nil, fmt.Errorf("%w: schema_version %d is unsupported (this build supports %d)", ErrBadRequest, req.SchemaVersion, MergeSchemaVersion)
 	}
+	if req.IssueNumber <= 0 {
+		return nil, fmt.Errorf("%w: issue_number must be positive", ErrBadRequest)
+	}
+	if req.MergedAcknowledgment != nil {
+		return acknowledgeMerged(ctx, env, req)
+	}
 	byGrant := req.Approval.Statement == GrantMergeApprovalStatement
+	if byGrant && req.CIException != nil {
+		return nil, grantStop("manual CI exceptions require a separate human merge approval, never a grant")
+	}
 	if req.Approval.Statement != MergeApprovalStatement && !byGrant {
 		return nil, fmt.Errorf("%w: approval statement %q does not equal %q", ErrMergeApproval, req.Approval.Statement, MergeApprovalStatement)
 	}
@@ -100,6 +115,16 @@ func Merge(ctx context.Context, env Env, reqJSON []byte) (*MergeResult, error) {
 			return nil, err
 		}
 	}
+	if req.CIException != nil {
+		if err := checkHumanCIException(c, req.CIException, CIExceptionStatement); err != nil {
+			return nil, err
+		}
+		if strings.TrimSpace(req.Approval.ApprovedBy) == "" ||
+			strings.HasPrefix(strings.TrimSpace(req.Approval.ApprovedBy), grantApproverPrefix) ||
+			req.Approval.ApprovedAt.Before(req.CIException.ApprovedAt) || req.Approval.ApprovedAt.After(env.now()) {
+			return nil, fmt.Errorf("%w: CI acceptance is not merge approval; obtain separate fresh human approve-merge confirmation", ErrMergeApproval)
+		}
+	}
 	var grants *grant.Store
 	var g *grant.Grant
 	if byGrant {
@@ -116,19 +141,35 @@ func Merge(ctx context.Context, env Env, reqJSON []byte) (*MergeResult, error) {
 	if err != nil {
 		return nil, err
 	}
-
-	if pr.State != "MERGED" {
-		if req.Approval.HeadOID != pr.HeadRefOid {
-			return nil, fmt.Errorf("%w: the PR moved to head %q after approval of %q; re-run merge-report", ErrMergeApproval, pr.HeadRefOid, req.Approval.HeadOID)
-		}
-		summary, err := gh.RequiredCI(ctx, issue.PRNumber)
+	if req.Approval.HeadOID != pr.HeadRefOid {
+		return nil, fmt.Errorf("%w: the PR moved to head %q after approval of %q; re-run merge-report", ErrMergeApproval, pr.HeadRefOid, req.Approval.HeadOID)
+	}
+	if pr.State != "OPEN" && pr.State != "MERGED" {
+		return nil, fmt.Errorf("%w: PR #%d is %s, not OPEN or MERGED", ErrMergeApproval, pr.Number, pr.State)
+	}
+	var summary ghops.CISummary
+	if req.CIException != nil {
+		iss, m, observed, err := observeManualCI(ctx, c, gh, pr, req.CIException)
 		if err != nil {
 			return nil, err
+		}
+		summary = observed
+		if _, err := recordManualCI(ctx, c, gh, iss, pr, m, summary, req.CIException); err != nil {
+			return nil, err
+		}
+	}
+
+	if pr.State != "MERGED" {
+		if req.CIException == nil {
+			summary, err = gh.RequiredCI(ctx, issue.PRNumber)
+			if err != nil {
+				return nil, err
+			}
 		}
 		if byGrant && summary.State != ghops.CIPassing {
 			return nil, grantStop("required CI is %s, not passing", summary.State)
 		}
-		if err := requireMergeableCI(summary.State); err != nil {
+		if err := requireMergeableCI(summary.State); err != nil && req.CIException == nil {
 			return nil, err
 		}
 		if byGrant {
@@ -146,20 +187,34 @@ func Merge(ctx context.Context, env Env, reqJSON []byte) (*MergeResult, error) {
 			}
 		}
 		if err := gh.MergePR(ctx, issue.PRNumber, c.cfg.Merge.Strategy, issue.ApprovedHeadOID, ghops.ExplicitConfirmation()); err != nil {
+			if req.CIException != nil {
+				return nil, wrapAfterMutation(err) // The CI acceptance audit was already written.
+			}
 			return nil, err
 		}
 		merged, err := gh.PR(ctx, issue.PRNumber)
 		if err != nil {
 			return nil, wrapAfterMutation(err)
 		}
-		if merged.State != "MERGED" {
-			return nil, wrapAfterMutation(fmt.Errorf("PR #%d did not reach MERGED (state %s) after merge", merged.Number, merged.State))
+		if merged.State != "MERGED" || merged.HeadRefOid != issue.ApprovedHeadOID {
+			return nil, wrapAfterMutation(fmt.Errorf("PR #%d merge confirmation returned state %s at head %q; expected MERGED at approved head %q", merged.Number, merged.State, merged.HeadRefOid, issue.ApprovedHeadOID))
 		}
 		pr = merged
 	} else if byGrant && !grantMerged(g, c) {
 		return nil, grantStop("PR #%d already reads MERGED but grant %s spent no merge on it; record the merge with a human approval", pr.Number, g.Terms.ID)
 	}
 
+	grantID := ""
+	if byGrant {
+		grantID = g.Terms.ID
+	}
+	return finishMerge(ctx, c, gh, pr, req.Approval.ApprovedBy, grantID, false)
+}
+
+// finishMerge is ordinary issue closure/audit/state completion, shared with
+// explicit post-merge acknowledgment. Cleanup remains a separate confirmation.
+func finishMerge(ctx context.Context, c *verbCtx, gh *ghops.GH, pr ghops.PR, approvedBy, grantID string, acknowledged bool) (*MergeResult, error) {
+	env, issue := c.env, c.issue()
 	// Terminal status (PRD §13): the issue reads delivered from here
 	// on, not the needs-human set at merge-report.
 	if err := gh.SetStatus(ctx, issue.Number, ghops.StatusDelivered); err != nil {
@@ -183,17 +238,21 @@ func Merge(ctx context.Context, env Env, reqJSON []byte) (*MergeResult, error) {
 	// The stamped commit is the merged head — the approval pinned it, the
 	// merge matched it — which is what makes every earlier entry in the
 	// record readable as "gathered before the commit that shipped" or not.
+	detail := fmt.Sprintf("%s merge at %s", c.cfg.Merge.Strategy, pr.HeadRefOid)
+	if acknowledged {
+		detail = fmt.Sprintf("already-merged PR acknowledged at reviewed head %s; no prior Orch merge approval asserted", pr.HeadRefOid)
+	}
 	setVerification(&m, manifest.Verification{
 		Name:      "merge",
 		Result:    "merged",
-		Detail:    truncateDetail(fmt.Sprintf("%s merge at %s", c.cfg.Merge.Strategy, pr.HeadRefOid)),
+		Detail:    truncateDetail(detail),
 		CommitOID: pr.HeadRefOid,
 		At:        env.nowStamp(),
 	})
-	if byGrant {
+	if grantID != "" {
 		setVerification(&m, manifest.Verification{
 			Name:      mergeApprovalName,
-			Result:    mergeApprovedLine(g.Terms.ID),
+			Result:    mergeApprovedLine(grantID),
 			CommitOID: pr.HeadRefOid,
 			At:        env.nowStamp(),
 		})
@@ -206,24 +265,39 @@ func Merge(ctx context.Context, env Env, reqJSON []byte) (*MergeResult, error) {
 		return nil, wrapAfterMutation(err)
 	}
 
-	issue.Phase = state.PhaseMerged
+	// For acknowledgment this records the delivered reviewed head only now,
+	// not a fabricated earlier merge-report or human merge approval.
+	issue.ApprovedHeadOID = pr.HeadRefOid
+	issue.Phase, issue.BlockedReason = state.PhaseMerged, ""
 	if err := c.save(); err != nil {
 		return nil, wrapAfterMutation(err)
 	}
 
+	source, reason := approvalSource(approvedBy, grantID != ""), ""
+	if acknowledged {
+		// Observe the delivered merge without inventing prior human approval.
+		source, reason = "", MergedAcknowledgmentStatement
+	}
 	if err := c.recordMetric(metrics.Event{
 		Verb:           "merge",
 		IssueNumber:    issue.Number,
 		PRNumber:       issue.PRNumber,
-		ApprovalSource: approvalSource(req.Approval.ApprovedBy, byGrant),
+		ApprovalSource: source,
+		Reason:         reason,
 	}); err != nil {
 		return nil, err
 	}
 
-	return &MergeResult{
+	result := &MergeResult{
 		SchemaVersion: MergeSchemaVersion,
 		IssueNumber:   issue.Number,
 		PRNumber:      issue.PRNumber,
 		Merged:        true,
-	}, nil
+	}
+	for _, v := range m.Verifications {
+		if manualCIAuditPattern.MatchString(v.Name) {
+			result.ManualCIAudit = append(result.ManualCIAudit, v)
+		}
+	}
+	return result, nil
 }

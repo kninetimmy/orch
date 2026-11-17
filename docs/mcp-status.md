@@ -471,14 +471,22 @@ Authentication, PR and CI retrieval failures are explicit tool/CLI errors;
 unavailable or unparsable issue audit evidence is explicitly unverified in the
 report and prevents prerequisites-met. No failed probe becomes passing CI or
 approval. The shared `GH.RequiredCI` helper, not readiness-specific parsing,
-accepts check arrays with known buckets on exits 0, 1 or 8. A successful empty
-array, an empty rollup, or exit 0 with blank/whitespace stdout and the single
-`no required checks reported on the '<branch>' branch` stderr notice still
-reports `no-checks`. Blank output without that successful notice, nonzero exits
-without checks, JSON `null`, and missing/unknown buckets are explicit errors.
+accepts check arrays with known buckets on exits 0, 1 or 8. Before #517, a
+successful empty array, an empty rollup, or exit 0 with blank/whitespace stdout
+and the single `no required checks reported on the '<branch>' branch` stderr
+notice reported `no-checks`; nonzero exits without checks were errors. After
+#517 the exact blank-output notice also accepts exit 1, retaining the total
+check count, never claiming passing CI. Blank output without that exact notice,
+other nonzero empty output, mixed or unrelated stderr (including stderr alongside
+check arrays), malformed/missing/null rollups, JSON `null`, and missing/unknown
+buckets remain or become explicit errors.
 Passing/skipping, pending and failing/cancelled check data keep their existing
 meanings; a human merge still allows explicit no-checks while a grant merge
 still requires passing required CI.
+
+Readiness remains non-authorizing even when a durable manual receipt exists.
+The opt-in [human CI exception and distinct already-merged acknowledgment](manual-ci-exceptions.md)
+use explicit CLI requests, not this inspection or inferred approval.
 
 The snapshot is unlocked and GitHub probes are not atomic. Manifest
 parsing checks canonical JSON/markdown consistency, **not cryptographic

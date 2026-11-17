@@ -138,6 +138,15 @@ be preserved and committed/stashed before retrying. Changed scope/criteria alway
 require fresh plan approval. No direct MCP repair mutator or host auto-dispatch
 was added; clients may surface engine guidance and the Architect uses the CLI.
 
+Before #517, a reviewed PR merged outside Orch without a merge-report pin
+could only remain blocked or be abandoned/re-planned. That refusal is still
+resume's default; the separate explicit
+[already-merged acknowledgment](manual-ci-exceptions.md#already-merged-acknowledge-what-happened-do-not-invent-approval)
+can now finish that same independently approved reviewed head and its
+corresponding operational reconciliation block. It is not integration repair,
+prior merge approval, decision resolution or automatic recovery. Open-PR manual
+CI acceptance is separate too; neither path waives the repair gates above.
+
 ## Affected structure and preserved behavior
 
 | Element and consumers | Before and after |

@@ -5,6 +5,7 @@ import (
 	"fmt"
 
 	"github.com/kninetimmy/orch/internal/ghops"
+	"github.com/kninetimmy/orch/internal/manifest"
 	"github.com/kninetimmy/orch/internal/metrics"
 	"github.com/kninetimmy/orch/internal/state"
 )
@@ -15,8 +16,9 @@ const MergeReportSchemaVersion = 1
 
 // MergeReportRequest asks to pin an approved PR at the merge gate.
 type MergeReportRequest struct {
-	SchemaVersion int `json:"schema_version"`
-	IssueNumber   int `json:"issue_number"`
+	SchemaVersion int               `json:"schema_version"`
+	IssueNumber   int               `json:"issue_number"`
+	CIException   *HumanCIException `json:"ci_exception,omitempty"`
 }
 
 // MergeReportCI is the CI evidence carried in the ready-to-merge report.
@@ -29,17 +31,18 @@ type MergeReportCI struct {
 // MergeReportResult is the ready-to-merge report the adapter shows at the
 // human merge gate (PRD §8, §16).
 type MergeReportResult struct {
-	SchemaVersion  int           `json:"schema_version"`
-	IssueNumber    int           `json:"issue_number"`
-	PRNumber       int           `json:"pr_number"`
-	PRURL          string        `json:"pr_url"`
-	HeadOID        string        `json:"head_oid"`
-	MergeStrategy  string        `json:"merge_strategy"`
-	CI             MergeReportCI `json:"ci"`
-	ReviewCycles   int           `json:"review_cycles"`
-	ConfigRevision string        `json:"config_revision"`
-	NoCIStatement  string        `json:"no_ci_statement,omitempty"`
-	RepairNumber   int           `json:"repair_number,omitempty"`
+	SchemaVersion  int                    `json:"schema_version"`
+	IssueNumber    int                    `json:"issue_number"`
+	PRNumber       int                    `json:"pr_number"`
+	PRURL          string                 `json:"pr_url"`
+	HeadOID        string                 `json:"head_oid"`
+	MergeStrategy  string                 `json:"merge_strategy"`
+	CI             MergeReportCI          `json:"ci"`
+	ReviewCycles   int                    `json:"review_cycles"`
+	ConfigRevision string                 `json:"config_revision"`
+	NoCIStatement  string                 `json:"no_ci_statement,omitempty"`
+	RepairNumber   int                    `json:"repair_number,omitempty"`
+	CIException    *manifest.Verification `json:"ci_exception,omitempty"`
 }
 
 // MergeReport moves an approved, mergeable issue to awaiting-merge and
@@ -48,6 +51,9 @@ type MergeReportResult struct {
 // be open, and required CI to be passing or absent — a pending or failing
 // state fails closed. No-checks is allowed but stated explicitly in the
 // report (PRD §16).
+// Before #517 that was the only path. The default still holds; an explicit
+// request-local human CI exception additionally accepts pending/failing data,
+// never a probe error, after validating the independently reviewed live head.
 func MergeReport(ctx context.Context, env Env, reqJSON []byte) (*MergeReportResult, error) {
 	var req MergeReportRequest
 	if err := decodeRequest(reqJSON, &req); err != nil {
@@ -55,6 +61,9 @@ func MergeReport(ctx context.Context, env Env, reqJSON []byte) (*MergeReportResu
 	}
 	if req.SchemaVersion != MergeReportSchemaVersion {
 		return nil, fmt.Errorf("%w: schema_version %d is unsupported (this build supports %d)", ErrBadRequest, req.SchemaVersion, MergeReportSchemaVersion)
+	}
+	if req.IssueNumber <= 0 {
+		return nil, fmt.Errorf("%w: issue_number must be positive", ErrBadRequest)
 	}
 
 	c, err := loadVerb(env, req.IssueNumber, []state.Phase{state.PhaseInReview}, false)
@@ -64,6 +73,11 @@ func MergeReport(ctx context.Context, env Env, reqJSON []byte) (*MergeReportResu
 	issue := c.issue()
 	if err := checkApprovingReview(issue); err != nil {
 		return nil, err
+	}
+	if req.CIException != nil {
+		if err := checkHumanCIException(c, req.CIException, CIExceptionStatement); err != nil {
+			return nil, err
+		}
 	}
 
 	gh, err := openGitHub(ctx, env)
@@ -80,17 +94,35 @@ func MergeReport(ctx context.Context, env Env, reqJSON []byte) (*MergeReportResu
 	if err := checkRepairReview(issue, pr.HeadRefOid); err != nil {
 		return nil, err
 	}
-	summary, err := gh.RequiredCI(ctx, issue.PRNumber)
-	if err != nil {
-		return nil, err
-	}
-	if err := requireMergeableCI(summary.State); err != nil {
-		return nil, err
+	var summary ghops.CISummary
+	var receipt *manifest.Verification
+	if req.CIException == nil {
+		summary, err = gh.RequiredCI(ctx, issue.PRNumber)
+		if err != nil {
+			return nil, err
+		}
+		if err := requireMergeableCI(summary.State); err != nil {
+			return nil, err
+		}
+	} else {
+		var iss ghops.Issue
+		var m manifest.Manifest
+		iss, m, summary, err = observeManualCI(ctx, c, gh, pr, req.CIException)
+		if err != nil {
+			return nil, err
+		}
+		receipt, err = recordManualCI(ctx, c, gh, iss, pr, m, summary, req.CIException)
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	issue.ApprovedHeadOID = pr.HeadRefOid
 	issue.Phase = state.PhaseAwaitingMerge
 	if err := c.save(); err != nil {
+		if req.CIException != nil {
+			return nil, wrapAfterMutation(err) // The CI acceptance audit was already written.
+		}
 		return nil, err
 	}
 	if err := gh.SetStatus(ctx, issue.Number, ghops.StatusNeedsHuman); err != nil {
@@ -104,7 +136,9 @@ func MergeReport(ctx context.Context, env Env, reqJSON []byte) (*MergeReportResu
 		return nil, err
 	}
 
-	return mergeReportResult(issue, pr, summary, c.cfg.Merge.Strategy, c.cfg.ConfigRevision), nil
+	result := mergeReportResult(issue, pr, summary, c.cfg.Merge.Strategy, c.cfg.ConfigRevision)
+	result.CIException = receipt
+	return result, nil
 }
 
 // mergeReportResult formats evidence only. Calling it does not record a gate;
