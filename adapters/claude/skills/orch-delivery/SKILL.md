@@ -569,7 +569,7 @@ in flight at once. For each issue:
     number). Result carries `run_id`, `merged`, `abandoned`,
     `returned_to`, `memhub_wrapup_due`. When `memhub_wrapup_due` is
     `true`, wrap up memhub (orch-architect: main checkout as cwd,
-     Architect-only writes) before announcing the return to Assist.
+    Architect-only writes) before announcing the return to Assist.
 
 ### Opt-in human CI exception / already-merged recovery
 
