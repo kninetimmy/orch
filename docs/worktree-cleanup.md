@@ -135,9 +135,22 @@ inventory, and refuses unexpected loaded descendants. A loaded target's
 `/api/location` roots and scoped shell/PTY response roots must match the
 verified checkout/primary. The only disposal request is
 `DELETE /api/debug/location?location%5Bdirectory%5D=<encoded-exact-directory>`.
-The directory is never omitted. Afterward, inventory must show no target or
-descendant and must retain every previously loaded other location; target
-filesystem identity is checked again before returning to Git.
+The directory is never omitted. **Before #523:** afterward, inventory had to
+show no target or descendant and retain every previously loaded other location;
+even one unrelated cache disappearance during preflight refused Git removal.
+**After #523:** one missing non-target exact key permits at most one full
+read-only preflight recheck, only if its physical directory is still the same
+and no other inventory change accompanied that loss. The original target
+identity and two-minute deadline are retained. Fresh target/project roots,
+foreground/background activity, persistent terminals and both ordinary process
+inventories for every currently loaded exact key must pass; the missing key
+receives no scoped read or disposal. Its filesystem identity is checked again
+before disposal. Repeated churn (including a new/reappearing key), target
+re-entry/change, changed/unverifiable identities or incomplete evidence refuses
+before DELETE. Afterward, inventory must still show no target or descendant
+and retain the exact key and physical identity of every other location in the
+final pre-disposal inventory; the original target filesystem identity is checked
+again before returning to Git. A failed final observation never retries.
 
 Activity observations cover foreground drains and the session locations of
 running background-job owners **and actual subagent children**, ordinary
@@ -243,6 +256,20 @@ Even a successful bounded inspection is not atomic with later Git traversal.
 Keep targets unused; an inability to establish the required safe observations
 means refusal/human handling, never a process kill or recursive fallback.
 Broader link-safe teardown needs separate approval.
+
+### Issue #523 touched elements and retained behavior
+
+| Element | Before → after; does earlier behavior still hold? |
+| --- | --- |
+| `ReleaseLocation` deadline and `call` closure | One shared two-minute context, existing runtime/authenticated command binding, response validation and safe errors remain. Explicit before/after-command cancellation checks now also reject expired evidence; recheck never resets the deadline. |
+| `releaseLocation`, original `targetInfo` and `inventory` closure | Exact keys remain distinct even for one physical directory. Absolute/physical identity, duplicate/ambiguous-target and loaded-descendant refusals remain; no inventory read activates a location. The original target identity is never replaced by a fresh baseline. |
+| `preserve` closure | Before, missing and rebound keys both refused at both calls. Now only the first pre-disposal comparison can classify one missing non-target key for recheck; a present-but-rebound key still refuses. Final preservation remains strict for every non-target key in the final pre-disposal inventory; an alternate alias never substitutes for an exact key. |
+| Preflight loop and new `unchanged` closure | Before, any unrelated preflight disappearance refused. Now one verified loss repeats the existing activity/root preflight without mutation or querying the missing key. Target and missing-directory identities are verified before proceeding, including after ordinary process reads. A second observed set/identity change refuses. `releaseActivity`, `releaseActiveJobs`, `releaseOrdinaryProcesses`, `releaseDirectory`, `releaseBelongs` and their caps/owner/cwd rules are unchanged and reused, not replaced by missing-cache idle inference. |
+| Scoped DELETE and final observations | Exact encoded target-only disposal, no DELETE for unloaded targets, no disposal retry, unloaded target/descendant postcondition and original target identity remain. A failed final check still stops before Git teardown, even if an earlier handoff already unloaded a cache. |
+| `run.releaseCheckouts`, `Cleanup`, `ReviewWorktree` and generic Git boundaries | Production callers are unchanged. The single-recheck rule covers **every** shared release invocation for executor cleanup, review cleanup and review replacement, not every generic Git remover or other host. Ownership, confirmation, cleanliness/detached, interior-hazard, absence/residue, partial-removal and state safeguards remain; detached-only is review-specific. |
+| `releaseFixture.run` / `beforeCall`, alias and new eviction/identity tests | The old pre-disposal alias-refusal regression now proves stable success; post-disposal alias loss still refuses. Existing synthetic cases remain. Added scripted activity-time eviction, original-deadline equality, fresh safety evidence, repeated churn, missing/replaced identities, exact-key preservation and zero/one DELETE checks use no sleeps, live locations or providers. |
+| `checkoutHost.Run` / `beforeAPI`, inventory counter and lifecycle tests | Existing disposable real-Git/scripted-host fixtures remain. Added stable success and fresh-active/repeated-change/final-check refusal at all three lifecycle paths prove preserved branches, checkouts/registration and state on refusal, with no Git mutation or disposal retry. Earlier successful handoffs are still allowed to have unloaded their cache. |
+| This guide and adapter README preservation row | Retain the old blanket preflight-refusal statement explicitly as before/after; document the sole bounded exception and unchanged strict final check. No smoke, adapter runtime, host contract, runtime resolution, configuration, permission, installation or release behavior changes. |
 
 ## Windows teardown refusal (issue #510 / task 348)
 

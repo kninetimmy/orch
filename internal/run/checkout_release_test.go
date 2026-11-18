@@ -29,6 +29,8 @@ type checkoutHost struct {
 	calls         []execx.Cmd
 	deleted       []string
 	partial       string
+	beforeAPI     func(*url.URL)
+	inventories   int
 }
 
 func (h *checkoutHost) Run(ctx context.Context, cmd execx.Cmd) (execx.Result, error) {
@@ -62,6 +64,9 @@ func (h *checkoutHost) Run(ctx context.Context, cmd execx.Cmd) (execx.Result, er
 	if err != nil {
 		h.t.Fatal(err)
 	}
+	if h.beforeAPI != nil {
+		h.beforeAPI(endpoint)
+	}
 	target := endpoint.Query().Get("location[directory]")
 	body := func(value any) (execx.Result, error) {
 		data, err := json.Marshal(value)
@@ -85,6 +90,7 @@ func (h *checkoutHost) Run(ctx context.Context, cmd execx.Cmd) (execx.Result, er
 			delete(h.loaded, target)
 			return execx.Result{}, nil
 		}
+		h.inventories++
 		list := []map[string]string{}
 		for directory := range h.loaded {
 			list = append(list, map[string]string{"directory": directory})
@@ -266,6 +272,148 @@ func TestOpenCodeCleanupReleaseAndPartialRetry(t *testing.T) {
 				t.Fatal("primary location was evicted")
 			}
 		})
+	}
+}
+
+func TestOpenCodeCheckoutReleaseEviction(t *testing.T) {
+	for _, operation := range []string{"replace review", "cleanup executor", "cleanup review"} {
+		for _, scenario := range []string{"stable", "fresh active", "second change", "final change"} {
+			t.Run(operation+"/"+scenario, func(t *testing.T) {
+				phase := state.PhaseAbandoned
+				if operation == "replace review" {
+					phase = state.PhaseInReview
+				}
+				root, first, second, host, env := openCodeCheckoutFixture(t, phase)
+				executor, review := worktreeAbs(root, 1), reviewWorktreeAbs(root, 1)
+				target := review
+				if operation == "cleanup executor" {
+					target = executor
+				}
+				branch := loadRun(t, root).Run.Issues[0].Branch
+				rawGit(t, root, "push", "origin", branch)
+				unrelated, other := t.TempDir(), t.TempDir()
+				host.loaded[unrelated], host.loaded[other] = true, true
+				unrelatedInfo, err := os.Stat(unrelated)
+				if err != nil {
+					t.Fatal(err)
+				}
+				before := stateBytes(t, root)
+				registrations := rawGit(t, root, "worktree", "list", "--porcelain")
+				triggerInventory := 0
+				evictionCall := 0
+				host.beforeAPI = func(endpoint *url.URL) {
+					ready := operation != "cleanup review" || slices.Contains(host.deleted, executor)
+					if ready && triggerInventory == 0 && endpoint.Path == "/api/session/active" {
+						delete(host.loaded, unrelated)
+						triggerInventory = host.inventories
+						evictionCall = len(host.calls) - 1
+					}
+					if triggerInventory == 0 {
+						return
+					}
+					if scenario == "fresh active" && host.inventories == triggerInventory+1 {
+						host.active = target
+					}
+					if endpoint.Path == "/api/debug/location" && endpoint.RawQuery == "" {
+						if scenario == "second change" && host.inventories == triggerInventory+1 ||
+							scenario == "final change" && slices.Contains(host.deleted, target) {
+							delete(host.loaded, other)
+						}
+					}
+				}
+				if operation == "replace review" {
+					result, releaseErr := ReviewWorktree(t.Context(), env, []byte(reviewWorktreeJSON(1, second)))
+					err = releaseErr
+					if scenario == "stable" {
+						if err != nil || result.HeadOID != second || !slices.Equal(host.deleted, []string{review}) {
+							t.Fatalf("replacement=%+v %v deleted=%v", result, err, host.deleted)
+						}
+						detachedHeadAt(t, review, second)
+						if !bytes.Equal(before, stateBytes(t, root)) {
+							t.Fatal("replacement wrote run state")
+						}
+					} else if result != nil {
+						t.Fatalf("refused replacement returned success: %+v", result)
+					}
+				} else {
+					result, releaseErr := Cleanup(t.Context(), env, []byte(`{"schema_version":1,"issue_number":1,"statement":"cleanup-issue"}`))
+					err = releaseErr
+					if scenario == "stable" {
+						if err != nil || result.Phase != state.PhaseCleaned || !slices.Equal(host.deleted, []string{executor, review}) {
+							t.Fatalf("cleanup=%+v %v deleted=%v", result, err, host.deleted)
+						}
+						for _, directory := range []string{executor, review} {
+							if _, err := os.Lstat(directory); !os.IsNotExist(err) {
+								t.Fatalf("cleanup retained checkout: %s: %v", directory, err)
+							}
+						}
+						if strings.TrimSpace(rawGit(t, root, "ls-remote", "--heads", "origin", branch)) != "" ||
+							strings.Contains(rawGit(t, root, "branch", "--list", branch), branch) {
+							t.Fatal("successful cleanup retained a branch")
+						}
+					} else if result != nil {
+						t.Fatalf("refused cleanup returned success: %+v", result)
+					}
+				}
+				if triggerInventory == 0 {
+					t.Fatal("fixture did not evict during the requested checkout release")
+				}
+				currentInfo, statErr := os.Stat(unrelated)
+				if statErr != nil || !os.SameFile(unrelatedInfo, currentInfo) {
+					t.Fatal("cache eviction changed its physical directory")
+				}
+				for i, cmd := range host.calls {
+					if i >= evictionCall && cmd.Name == "opencode2" && len(cmd.Args) == 3 {
+						endpoint, err := url.Parse(cmd.Args[2])
+						if err != nil {
+							t.Fatal(err)
+						}
+						if endpoint.Query().Get("location[directory]") == unrelated {
+							t.Fatalf("evicted key received a scoped request: %+v", cmd)
+						}
+					}
+				}
+				if scenario == "stable" {
+					if !host.loaded[root] || !host.loaded[other] {
+						t.Fatal("stable release lost another location")
+					}
+					t.Log("stable eviction permits normal lifecycle; only exact target keys disposed")
+					return
+				}
+				want := map[string]string{"fresh active": "active session", "second change": "another loaded location disappeared", "final change": "another loaded location disappeared"}[scenario]
+				if err == nil || !strings.Contains(err.Error(), want) {
+					t.Fatalf("release=%v, want %q", err, want)
+				}
+				if !bytes.Equal(before, stateBytes(t, root)) || rawGit(t, root, "worktree", "list", "--porcelain") != registrations {
+					t.Fatal("refusal changed issue state or checkout registration")
+				}
+				detachedHeadAt(t, review, first)
+				if !strings.Contains(rawGit(t, root, "ls-remote", "--heads", "origin", branch), branch) ||
+					!strings.Contains(rawGit(t, root, "branch", "--list", branch), branch) {
+					t.Fatal("refusal deleted a branch")
+				}
+				for _, cmd := range host.calls {
+					if cmd.Name == "git" && (slices.Contains(cmd.Args, "remove") || slices.Contains(cmd.Args, "push") ||
+						slices.Contains(cmd.Args, "prune") || slices.Contains(cmd.Args, "-D")) {
+						t.Fatalf("host refusal reached Git mutation: %+v", cmd)
+					}
+				}
+				wantDeleted := []string{}
+				if operation == "cleanup review" {
+					wantDeleted = append(wantDeleted, executor)
+				}
+				if scenario == "final change" {
+					wantDeleted = append(wantDeleted, target)
+					if host.inventories != triggerInventory+3 {
+						t.Fatal("failed final observation was retried")
+					}
+				}
+				if !slices.Equal(host.deleted, wantDeleted) {
+					t.Fatalf("unexpected disposal/retry: %v, want %v", host.deleted, wantDeleted)
+				}
+				t.Log("refusal preserves branches, both checkouts/registration and state; no Git mutation or disposal retry")
+			})
+		}
 	}
 }
 

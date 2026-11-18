@@ -42,11 +42,14 @@ func ReleaseLocation(ctx context.Context, runner execx.Runner, primary, target s
 		return err
 	}
 	call := func(method, endpoint string, out any) error {
+		if ctx.Err() != nil {
+			return fmt.Errorf("OpenCode checkout release: release deadline exhausted or canceled; preserve the checkout")
+		}
 		res, err := runner.Run(ctx, execx.Cmd{
 			Name: runtime.Executable, Args: []string{"api", method, endpoint}, Dir: primary,
 		})
 		// Never project raw host output, command bodies or subprocess errors.
-		if err != nil || res.ExitCode != 0 {
+		if err != nil || res.ExitCode != 0 || ctx.Err() != nil {
 			return fmt.Errorf("OpenCode checkout release: host %s request unavailable or unsupported; preserve the checkout and inspect the host before retrying", method)
 		}
 		if out == nil {
@@ -119,16 +122,32 @@ func ReleaseLocation(ctx context.Context, runner execx.Runner, primary, target s
 		}
 		return locations, loaded, nil
 	}
-	preserve := func(previous, current []releaseLocation) error {
-		for _, location := range previous {
+	preserve := func(previous, current []releaseLocation, allowMissing bool) (*releaseLocation, error) {
+		var missing *releaseLocation
+		for i, location := range previous {
 			if os.SameFile(targetInfo, location.info) {
 				continue
 			}
-			if !slices.ContainsFunc(current, func(other releaseLocation) bool {
-				return location.Directory == other.Directory && os.SameFile(location.info, other.info)
-			}) {
-				return fmt.Errorf("OpenCode checkout release: another loaded location disappeared or changed identity; refusing Git removal")
+			index := slices.IndexFunc(current, func(other releaseLocation) bool {
+				return location.Directory == other.Directory
+			})
+			if index >= 0 && os.SameFile(location.info, current[index].info) {
+				continue
 			}
+			if !allowMissing || index >= 0 || missing != nil {
+				return nil, fmt.Errorf("OpenCode checkout release: another loaded location disappeared or changed identity; refusing Git removal")
+			}
+			missing = &previous[i]
+		}
+		if missing != nil && len(current) != len(previous)-1 {
+			return nil, fmt.Errorf("OpenCode checkout release: location inventory changed beyond one unrelated disappearance; refusing Git removal")
+		}
+		return missing, nil
+	}
+	unchanged := func(location releaseLocation) error {
+		info, err := releaseDirectory(location.Directory)
+		if err != nil || !os.SameFile(location.info, info) {
+			return fmt.Errorf("OpenCode checkout release: directory disappeared or changed identity; refusing Git removal")
 		}
 		return nil
 	}
@@ -136,52 +155,81 @@ func ReleaseLocation(ctx context.Context, runner execx.Runner, primary, target s
 	if err != nil {
 		return err
 	}
-	if err := releaseActivity(call, target); err != nil {
-		return err
-	}
-	query := url.Values{"location[directory]": {loaded}}.Encode()
-	if loaded != "" {
-		var location struct {
-			Directory string `json:"directory"`
-			Project   struct {
-				Directory string `json:"directory"`
-				Canonical string `json:"canonical"`
-			} `json:"project"`
-		}
-		if err := call("get", "/api/location?"+query, &location); err != nil {
+	var evicted *releaseLocation
+	for recheck := false; ; recheck = true {
+		if err := unchanged(releaseLocation{Directory: target, info: targetInfo}); err != nil {
 			return err
 		}
-		if location.Directory != loaded {
-			return fmt.Errorf("OpenCode checkout release: host location cache key differs from the queried target")
+		if err := releaseActivity(call, target); err != nil {
+			return err
 		}
-		for _, pair := range [][2]string{{target, location.Directory}, {target, location.Project.Directory}, {primary, location.Project.Canonical}} {
-			if same, err := sameDirectory(pair[0], pair[1]); err != nil || !same {
-				return fmt.Errorf("OpenCode checkout release: host location/project roots differ from the verified checkout")
+		query := url.Values{"location[directory]": {loaded}}.Encode()
+		if loaded != "" {
+			var location struct {
+				Directory string `json:"directory"`
+				Project   struct {
+					Directory string `json:"directory"`
+					Canonical string `json:"canonical"`
+				} `json:"project"`
+			}
+			if err := call("get", "/api/location?"+query, &location); err != nil {
+				return err
+			}
+			if location.Directory != loaded {
+				return fmt.Errorf("OpenCode checkout release: host location cache key differs from the queried target")
+			}
+			for _, pair := range [][2]string{{target, location.Directory}, {target, location.Project.Directory}, {primary, location.Project.Canonical}} {
+				if same, err := sameDirectory(pair[0], pair[1]); err != nil || !same {
+					return fmt.Errorf("OpenCode checkout release: host location/project roots differ from the verified checkout")
+				}
 			}
 		}
-	}
-	// Re-read global activity and locations immediately before disposal. This
-	// narrows the observation window; it still cannot lock out concurrent entry.
-	if err := releaseActiveJobs(call, target); err != nil {
-		return err
-	}
-	currentLocations, stillLoaded, err := inventory()
-	if err != nil {
-		return err
-	}
-	if stillLoaded != "" && loaded != stillLoaded {
-		return fmt.Errorf("OpenCode checkout release: target cache key loaded or changed during activity checks; preserve it and retry after use finishes")
-	}
-	if err := preserve(before, currentLocations); err != nil {
-		return err
-	}
-	if err := releaseOrdinaryProcesses(call, target, currentLocations); err != nil {
-		return err
-	}
-	if stillLoaded != "" {
-		if err := call("delete", "/api/debug/location?"+query, nil); err != nil {
+		// Re-read global activity and locations immediately before disposal. This
+		// narrows the observation window; it still cannot lock out concurrent entry.
+		if err := releaseActiveJobs(call, target); err != nil {
 			return err
 		}
+		currentLocations, stillLoaded, err := inventory()
+		if err != nil {
+			return err
+		}
+		if stillLoaded != "" && loaded != stillLoaded {
+			return fmt.Errorf("OpenCode checkout release: target cache key loaded or changed during activity checks; preserve it and retry after use finishes")
+		}
+		missing, err := preserve(before, currentLocations, !recheck)
+		if err != nil {
+			return err
+		}
+		if (missing != nil || recheck) && stillLoaded != loaded || recheck && len(currentLocations) != len(before) {
+			return fmt.Errorf("OpenCode checkout release: location inventory changed again or target changed; refusing Git removal")
+		}
+		if missing != nil {
+			// One unrelated idle-cache eviction permits a fresh read-only preflight,
+			// not an idle inference or a scoped read that could reload the lost key.
+			if err := unchanged(*missing); err != nil {
+				return err
+			}
+			evicted, before = missing, currentLocations
+			continue
+		}
+		if err := releaseOrdinaryProcesses(call, target, currentLocations); err != nil {
+			return err
+		}
+		if err := unchanged(releaseLocation{Directory: target, info: targetInfo}); err != nil {
+			return err
+		}
+		if evicted != nil {
+			if err := unchanged(*evicted); err != nil {
+				return err
+			}
+		}
+		before = currentLocations
+		if stillLoaded != "" {
+			if err := call("delete", "/api/debug/location?"+query, nil); err != nil {
+				return err
+			}
+		}
+		break
 	}
 	after, remainsLoaded, err := inventory()
 	if err != nil {
@@ -190,7 +238,7 @@ func ReleaseLocation(ctx context.Context, runner execx.Runner, primary, target s
 	if remainsLoaded != "" {
 		return fmt.Errorf("OpenCode checkout release: scoped disposal did not unload the target; refusing Git removal")
 	}
-	if err := preserve(currentLocations, after); err != nil {
+	if _, err := preserve(before, after, false); err != nil {
 		return err
 	}
 	current, err := os.Stat(target)
