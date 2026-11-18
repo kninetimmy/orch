@@ -6,7 +6,7 @@ import path from "node:path"
 import { fileURLToPath } from "node:url"
 import test from "node:test"
 
-import { adapterIdentity, checkAdapterModule, copyBinary, fileIdentity, prepareOrch, selectArtifacts, verifyArtifacts } from "../smoke-artifacts.mjs"
+import { adapterIdentity, checkAdapterModule, copyBinary, fileIdentity, prepareOrch, prepareSourceProbe, selectArtifacts, verifyArtifacts } from "../smoke-artifacts.mjs"
 
 async function fixture(t) {
   const root = await realpath(await mkdtemp(path.join(tmpdir(), "orch-smoke-artifacts-")))
@@ -172,6 +172,22 @@ test("byte-copy verification refuses changed candidate bytes, not just version l
   const selected = await fileIdentity(f.orch)
   await writeFile(f.orch, "different bytes, same label")
   await assert.rejects(copyBinary(selected, path.join(f.root, "private-orch")), /copy differs from selected bytes/)
+})
+
+test("source probe preserves the full existing graph and exact checksums without editing the checkout", async (t) => {
+  const f = await fixture(t)
+  const repository = path.resolve(fileURLToPath(new URL("../../..", import.meta.url)))
+  const before = await Promise.all(["go.mod", "go.sum"].map((file) => fileIdentity(path.join(repository, file))))
+  const directory = path.join(f.root, "probe")
+  const graph = await prepareSourceProbe(repository, directory)
+  assert.deepEqual([graph.source_mod, graph.source_sum], before)
+  assert.equal(graph.helper_sum.sha256, graph.source_sum.sha256)
+  const original = await readFile(graph.source_mod.path, "utf8")
+  const helper = await readFile(graph.helper_mod.path, "utf8")
+  assert.equal(helper, original.replace(/^module github\.com\/kninetimmy\/orch\r?$/m, "module github.com/kninetimmy/orch/smoke")
+    + `\nrequire github.com/kninetimmy/orch v0.0.0\nreplace github.com/kninetimmy/orch => ${JSON.stringify(repository.replaceAll("\\", "/"))}\n`)
+  assert.deepEqual(await Promise.all(before.map((file) => fileIdentity(file.path))), before)
+  await assert.rejects(prepareSourceProbe(repository, directory), /EEXIST/)
 })
 
 test("evidence verifies selected payloads and restored private copies before claiming unchanged", async (t) => {

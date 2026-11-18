@@ -13,7 +13,7 @@ import { createInterface } from "node:readline"
 import { Backend } from "@opencode/protocol/simulation"
 import { pluginID } from "./src/index.js"
 import { lookupServer, lookupTools, sameDirectory } from "./src/lookup.js"
-import { checkAdapterModule, copyBinary, fileIdentity, inside, prepareOrch, selectArtifacts, verifyArtifacts } from "./smoke-artifacts.mjs"
+import { checkAdapterModule, copyBinary, fileIdentity, inside, prepareOrch, prepareSourceProbe, selectArtifacts, verifyArtifacts } from "./smoke-artifacts.mjs"
 
 const harnessAdapter = path.dirname(fileURLToPath(import.meta.url))
 const repo = path.resolve(harnessAdapter, "../..")
@@ -130,7 +130,7 @@ function pass(message) {
   console.log("PASS " + message)
   evidence.checks.push(message)
 }
-const root = path.join(temp, "repo")
+const root = path.join(temp, process.platform === "win32" ? "repo & (native) % ! ^" : "repo")
 const bin = path.join(temp, "bin")
 const state = path.join(temp, "state")
 const configFile = path.join(root, "opencode.json")
@@ -207,10 +207,31 @@ try {
   checkAdapterModule(selection.adapter, temp, env)
   const opencode = findOpenCode()
   evidence.runtime = command(opencode, ["--version"], temp, env).trim()
-  const privateOpenCode = path.join(bin, process.platform === "win32" ? "opencode2.exe" : "opencode2")
-  if (process.platform === "win32") await copyFile(opencode, privateOpenCode)
-  else await symlink(command("which", [opencode], repo).trim(), privateOpenCode)
+  evidence.selected_runtime_binary = await fileIdentity(process.platform === "win32" ? opencode : command("which", [opencode], repo).trim())
+  const privateOpenCode = process.platform === "win32"
+    ? path.join(bin, "node_modules", "@opencode", "cli", "bin", "opencode.exe")
+    : path.join(bin, "opencode2")
+  if (process.platform === "win32") {
+    await mkdir(path.dirname(privateOpenCode), { recursive: true })
+    await copyFile(opencode, privateOpenCode)
+    const manifest = path.join(bin, "node_modules", "@opencode", "cli", "package.json")
+    await writeFile(manifest, JSON.stringify({
+      name: "@opencode/cli", bin: { opencode2: "./bin/opencode.exe", opencode: "./bin/opencode.exe" },
+    }))
+    const shim = "@ECHO off\r\nGOTO start\r\n:find_dp0\r\nSET dp0=%~dp0\r\nEXIT /b\r\n:start\r\nSETLOCAL\r\nCALL :find_dp0\r\n\"%dp0%\\node_modules\\@opencode\\cli\\bin\\opencode.exe\"   %*\r\n"
+    for (const name of ["opencode2", "opencode"]) await writeFile(path.join(bin, name + ".cmd"), shim)
+    const discoverable = command("where.exe", ["opencode2"], root, env).trim().split(/\r?\n/)
+    assert.deepEqual(discoverable, [path.join(bin, "opencode2.cmd")], "Orch must discover only the npm shim, never a masking top-level native executable")
+    assert(!existsSync(path.join(bin, "opencode2.exe")) && !existsSync(path.join(bin, "opencode.exe")))
+    evidence.command_binding = {
+      layout: "isolated npm native cmd-shim; no same-name top-level .exe",
+      discoverable, manifest: await fileIdentity(manifest), shim: await fileIdentity(discoverable[0]),
+      selected_native: await fileIdentity(privateOpenCode),
+      qualification: "source/isolated fixture only; not the installed default PATH or manual Delivery",
+    }
+  } else await symlink(command("which", [opencode], repo).trim(), privateOpenCode)
   evidence.runtime_binary = await fileIdentity(privateOpenCode)
+  assert.equal(evidence.runtime_binary.sha256, evidence.selected_runtime_binary.sha256)
   evidence.orch = await prepareOrch(selection, orchBinary, (destination) => command("go", ["build", "-o", destination, "./cmd/orch"], repo))
   const memhubBinary = path.join(bin, process.platform === "win32" ? "memhub.exe" : "memhub")
   evidence.memhub = await copyBinary(selection.memhub, memhubBinary)
@@ -440,6 +461,60 @@ try {
   evidence.lifecycle_terminal_probe = await api("/api/experimental/session/" + terminalProbe.session.id + "/terminal")
   assert.deepEqual(evidence.lifecycle_terminal_probe.data, [], "fresh fixture session must have no persistent terminals")
   pass("persistent-terminal activity inventory is available in the owned isolated host")
+
+  if (process.platform === "win32" && selection.mode === "source-build") {
+    // Build a tiny consumer of the actual source Resolve/Local boundary, not
+    // another resolver or an HTTP/credential relay. Orch doctor and all lifecycle
+    // commands independently run the qualified engine against this same shim PATH.
+    const older = await start(root, architect, undefined, undefined, undefined, false)
+    const newest = await start(root, architect, undefined, undefined, undefined, false)
+    const probeRoot = path.join(temp, "native-boundary-probe")
+    const graph = await prepareSourceProbe(repo, probeRoot)
+    const source = path.join(probeRoot, "main.go")
+    await writeFile(source, `package main
+import ("context"; "encoding/json"; "fmt"; "net/url"; "os"
+  "github.com/kninetimmy/orch/internal/execx"
+  "github.com/kninetimmy/orch/internal/opencode")
+func main() {
+  ctx := context.Background(); local := execx.Local{}; directory := os.Args[1]
+  runtime, err := opencode.Resolve(ctx, local, directory)
+  check(err == nil)
+  type page struct { Data []struct { ID string \`json:"id"\` } \`json:"data"\`; Cursor *struct { Next string \`json:"next"\` } \`json:"cursor"\` }
+  pages := []page{}; requests := []string{}; endpoint := "/api/session?limit=1&order=desc"
+  for i := 0; i < 2; i++ {
+    result, err := local.Run(ctx, execx.Cmd{Name: runtime.Executable, Args: []string{"api", "get", endpoint}, Dir: directory})
+    check(err == nil && result.ExitCode == 0)
+    var response page
+    check(json.Unmarshal([]byte(result.Stdout), &response) == nil && len(response.Data) == 1 && response.Cursor != nil)
+    pages = append(pages, response); requests = append(requests, endpoint)
+    if i == 0 { check(response.Cursor.Next != ""); endpoint = "/api/session?" + url.Values{"limit":{"1"}, "cursor":{response.Cursor.Next}}.Encode() }
+  }
+  check(pages[0].Data[0].ID != pages[1].Data[0].ID)
+  check(json.NewEncoder(os.Stdout).Encode(map[string]any{"executable":runtime.Executable, "requests":requests, "pages":pages}) == nil)
+}
+func check(ok bool) { if !ok { fmt.Fprintln(os.Stderr, "native command-boundary probe failed (host payload omitted)"); os.Exit(1) } }
+`)
+    const probe = path.join(probeRoot, "native-boundary.exe")
+    command("go", ["build", "-mod=readonly", "-o", probe, "."], probeRoot, {
+      ...process.env, GOPROXY: "off", GONOPROXY: "none", GOWORK: "off", GOTOOLCHAIN: "local",
+    })
+    for (const file of Object.values(graph)) assert.deepEqual(await fileIdentity(file.path), file, "offline probe must not rewrite source or helper module files")
+    const transport = JSON.parse(command(probe, [root], root, env))
+    assert.deepEqual(await fileIdentity(transport.executable), evidence.command_binding.selected_native)
+    assert.equal(transport.pages[0].data[0].id, newest.session.id)
+    assert.equal(transport.pages[1].data[0].id, older.session.id)
+    for (const [index, endpoint] of transport.requests.entries()) {
+      const direct = await api(endpoint)
+      assert.deepEqual(transport.pages[index].data.map((entry) => entry.id), direct.data.map((entry) => entry.id))
+      assert.equal(transport.pages[index].cursor.next, direct.cursor.next)
+    }
+    evidence.command_binding.transport = {
+      ...transport, source: await fileIdentity(source), probe: await fileIdentity(probe), graph,
+      source_files: await Promise.all(["internal/opencode/runtime.go", "internal/opencode/executable.go", "internal/execx/execx.go"].map((file) => fileIdentity(path.join(repo, file)))),
+      scope: "actual source Resolve/Local against owned real V2; selected engine doctor/lifecycle checked separately; no raw host payload retained by probe",
+    }
+    pass("npm-shim-only PATH: same native qualification/API identity, encoded metacharacter project, multi-query order/limit and opaque cursor pages through source production boundary")
+  }
 
   let unmanagedTasks = 0
   evidence.unmanaged = []

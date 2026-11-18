@@ -69,7 +69,7 @@ them and are never copied into diagnostics.
 | File-tool target interpretation | Before, a line scanner could miss indented native patch headers and raw Windows shell aliases could identify a different destination to Go than to the host. Now native `Patch.parse` supplies every source/move target, `FSUtil.windowsPath` normalizes the host's drive aliases, and targets are resolved against the actual session directory before one all-or-nothing guard call. Invalid patches and native home-expanding forms fail before guard/tool actions. This applies to every `edit`, `write`, and parsed patch source/destination. |
 | Configured local plugin path | Before, the guide and smoke configured `src/index.js`, which current V2 skips. Now both configure the package directory, whose existing package export supplies the same server entrypoint. Existing installations replace only their old Orch entry and retain unrelated plugins and skills. |
 | Shared canonical paths and Windows junctions | Before, Go could leave a redirecting reparse ancestor unresolved and the missing-tail fallback trusted it lexically, allowing a junction to escape a Delivery worktree. Now shared `Canonical`, `Inside` and root discovery fail closed on unresolved redirecting ancestors. Nonredirecting tags remain unchanged; this is rejection, not general junction support. Native isolation retains its existing explicit alias resolver after its original syntax checks, before shared validation. No SUBST/8.3/UNC/hardlink admission rule is relaxed. |
-| Catalog process invocation | Before, every read assumed `opencode2`. Now shared version probing selects V2 `opencode2` or V2 `opencode`, and all reads in a doctor invocation use that selection. Arguments and URL-encoded location remain separate from shell interpretation. |
+| Catalog process invocation | Before shared resolution, every read assumed `opencode2`. Shared probing then selected either V2 name for all doctor reads, but retained only the bare name. This row formerly claimed arguments and encoded locations remained separate from shell interpretation; Windows batch forwarding disproved that claim. After issue 513, Windows production resolution verifies and pins the same absolute native executable for qualification and every API call. Arbitrary launchers are not made safe. |
 | Response `location.directory` | New validation. The initial implementation inherited platform-wide case folding and could accept distinct case-different directories on a case-sensitive macOS or Windows volume; that behavior no longer holds. Directory identity is now compared by the filesystem, so every different directory is rejected while aliases of the same directory remain valid. |
 | Response `data[].providerID` and `data[].id` | New projection. They form the exact `provider/id`; neither value is normalized or aliased. |
 | Response `data[].enabled` and `data[].capabilities.{tools,input,output}` | New filtering. Only enabled, tool-capable, text-input/text-output models remain. |
@@ -95,6 +95,110 @@ them and are never copied into diagnostics.
 | `StatusDoc` wire | Before, it remained schema v1 while transitive state decisions gained the new Selection shape. Schema v2 versioned all three exact shapes. Schema v3 retained them and exposed state v5's approval-contract version and execution fingerprint. Now v4 retains those fields and exposes state v6 block causes and resolution history. Adapters reject other result versions before reading run state. State v4/v5 remain readable for inspection, but continuing them requires the original engine or aborting and obtaining fresh approval. |
 | Adapter protocol pins | The Claude, Codex, and OpenCode Architect/Delivery skills now state the same closed versions. Shared `adaptertest.CheckSelectionWireVersions` derives every expected literal from the engine constants, so no host keeps an unpinned hand-synced Selection schema. |
 | Legacy local `effort` validation | Before, raw `effort = ""` bypassed the named legacy-effort domain and silently cleared a committed variant into a bare-model selection. After, every OpenCode role rejects an explicitly empty legacy effort with `variant = ""` as the remediation. Named v0.8.0 efforts remain compatible; only native `variant = ""` selects no variant. Claude/Codex effort behavior is unchanged. |
+
+## Windows native command binding (issue 513)
+
+**Before:** shared `Resolve` qualified a bare command name and retained that name.
+Later calls resolved PATH again. A Windows npm `.cmd` could qualify a version
+yet corrupt API transport through its unquoted `%*` forwarding. The observed
+benign, read-only `GET /api/session?limit=1&order=desc` returned exit 1/non-JSON
+through the installed npm shim and exit 0/valid JSON through its native binary.
+This establishes transport corruption, not exploitation of arbitrary command
+injection. The old blanket argv-is-shell-safe statement above and in `execx`
+was incorrect for such launchers.
+
+**After:** the production `execx.Local` exposes its existing injected lookup to
+`Resolve`. On Windows, resolution verifies a native executable **before**
+`--version`, then keeps its absolute canonical path in `Runtime.Executable`.
+Model, plugin, skill and checkout-release calls use that same path, never a
+later bare-name lookup. Doctor already retained one Runtime for all three
+catalog checks; setup detection and activation retain their existing callers.
+Authenticated native CLI discovery is unchanged: no shell-string quoting fix,
+raw HTTP credential relay or caller-by-caller URL workaround is added.
+
+Supported Windows layouts, for **both** preferred `opencode2` and V2 installed
+only as `opencode`:
+
+- A PATH-selected native `opencode2.exe` or `opencode.exe`, verified as an
+  existing regular file at an absolute canonical executable path.
+- npm's known native `.cmd` template pointing to
+  `node_modules/@opencode/cli/bin/opencode.exe` under that selected prefix.
+  The shim contents must match the native template; the adjacent package must
+  declare `name: "@opencode/cli"` and the selected command's `bin` must be
+  `./bin/opencode.exe` (or `bin/opencode.exe`). Canonical package/manifest/native
+  containment and ancestor filesystem identity must verify. A guessed sibling
+  binary beside an arbitrary wrapper is not sufficient.
+
+PowerShell-only/custom launchers, other batch templates, missing or malformed
+package/bin metadata, escaping links and unverifiable paths refuse without
+executing the launcher. The actionable diagnostic begins
+`cannot verify a native Windows OpenCode executable` and recommends a direct
+native executable or intact supported npm layout on PATH. Correct/inspect that
+installation rather than running an arbitrary wrapper or selecting legacy V1.
+This is not a general npm wrapper parser or support for every historical package
+layout. PATH candidates must resolve to absolute filesystem paths.
+
+Beta 18314 and stable 2.0.0 floors, numeric/overflow/V1 rejection, verified
+baselines, newer-version advisories, cancellation and safe error projection
+remain. Pinning a path is **not an atomic anti-replacement guarantee** for the
+executable, package or filesystem. Existing host-activity observations also
+remain non-atomic; keep disposable targets unused during explicit retirement.
+
+### Binding evidence and complete blast radius
+
+Windows regressions use actual native subprocesses and npm batch-launcher
+files through `Local`, not only scripted Runner results. The fixed benign
+multi-query baseline fails through the old bare-name boundary and succeeds
+through the pinned native boundary. Encoded space/metacharacter directories,
+opaque cursors, successful multi-page release, and malformed/unavailable/
+repeated/nonadvancing page refusals are covered. No external API/cursor data
+is passed to a shell; the old-boundary characterization uses only the fixed
+benign request. Junction fixture creation uses fixed PowerShell code with
+generated paths supplied as environment values, not shell expressions.
+
+The isolated Windows smoke now exposes npm `.cmd` commands on its private PATH
+with **no same-name top-level `.exe` masking them**. Orch doctor and lifecycle
+operations run against that layout; server management still names its verified
+private native copy directly. Source-build mode also compiles a tiny consumer
+of the actual `Resolve`/`Local` boundary and checks two real session pages with
+`limit=1`, first-page `order=desc`, and the host's opaque next cursor. This small
+live transport probe is distinct from the deterministic production release
+test's `limit=100` multi-page inventory.
+
+The helper retains the checkout's complete pinned `go.mod` graph and exact
+`go.sum`, adding only its disposable module name/local source reference.
+Its build uses `-mod=readonly`, `GOPROXY=off`, `GONOPROXY=none`,
+`GOWORK=off` and `GOTOOLCHAIN=local`; source and helper graph identities must
+remain unchanged.
+There is no `go get`, dependency upgrade/download or tracked module-file change.
+`evidence.json` records the shim/manifest/selected native identities, source
+boundary files, helper graph/source/binary and transport observations separately
+from the qualified Orch/adapter artifacts. This helper is source-build-only;
+it is not evidence about an independently selected installed Orch binary.
+
+| Element touched by issue 513 | Before → after; retained behavior |
+| --- | --- |
+| `execx` package comment and `Cmd.Name`/`Args` comments | Before, argv alone was claimed to prevent shell interpretation. After, the same document retains and corrects that claim: launchers can interpret forwarded arguments. `Name` already accepted names or paths; argv execution, required cwd, environment/stdin, exit/error and bounded cancellation semantics remain. |
+| `Local.ResolvePath` / `Local.Run` | New method exposes the same injected/default LookPath. Run factors its existing lookup through it without changing execution policy. `Runner` is unchanged; unrelated CLIs are **not** newly native-only or universally shell-safe. |
+| `Runtime.Executable` / `Resolve` | Before, only the qualified bare name was retained. Windows Local now verifies/pins the absolute native path before qualification; every API consumer uses it. Preferred-name/fallback/version/advisory/safe-error behavior remains, with early cancellation. Non-Windows command selection is unchanged; scripted Runners without filesystem lookup retain their injected command namespace. |
+| New `windowsExecutable` | Verifies direct native or exact npm template plus selected-command manifest mapping and contained native file. Unsupported/unverifiable layouts refuse safely. The rule covers **both command names and every Windows Local consumer**, not only checkout release or a symbol named `opencode2`. |
+| New `containedFile` | Adds canonical segment containment plus actual ancestor directory identity for package, manifest and native paths; case folding alone cannot establish containment. Existing shared path algorithms are reused, not relaxed. No filesystem lock or byte-continuity promise is introduced. |
+| Model/plugin/skill callers (`ReadCatalog`, `Runtime.ReadCatalog`, `CheckPlugin`, `ReadSkillCatalog`, `Runtime.ReadSkillCatalog`), doctor, interview detection and activation | Caller implementations are unchanged. They inherit the native binding; project filesystem attribution, enabled/tool/text capability filters, exact references/variants, active-plugin and skill contracts, safe projections and routing/activation gates remain. |
+| `ReleaseLocation` / `releaseActivity` and other release helpers | Implementations are unchanged; they inherit the same native path for every request. Encoded exact cache keys, ownership/root/alias preservation, all activity domains, pagination/deadline bounds, destructive-operation gates and all refusal paths remain. No shared restart, session deletion or process-kill fallback. |
+| Windows test process/fixtures (`TestMain`, `nativeState`, `nativeCall`, `nativeFixture`, `npmNativeShim`, `fixtureWrite`, `nativeInstallation`, `fixtureState`, `fixtureCalls`, `makeRuntimeJunction`) | New fixture-only native process, state/call recording, supported layouts and owned junction construction use the production resolver/runner. No real/shared host is touched; existing scripted tests remain. |
+| Windows binding/rejection/old-boundary/cancellation/pagination tests | Add four real direct/npm × command-name combinations, later-PATH-change pinning, unsafe installation refusals without native execution, the fixed old-failure/native-success discriminator and valid/refused page sequences. Existing floors, catalog/release safety and general runner regressions remain. |
+| `smoke.mjs` fixture root, `privateOpenCode`, private PATH and runtime identity evidence | Before, a top-level private `opencode2.exe` hid the shim gap. After, Windows uses a metacharacter project path and an intact private npm layout without that mask. Source/explicit selection, byte-identical runtime copy, owned native server management, provider trap, guards, lookup/lifecycle/refusal probes and normal owned shutdown remain. Non-Windows retains its native symlink layout. |
+| Smoke source-boundary consumer / `command_binding.transport` | New source-only real-host two-page evidence uses production Resolve/Local, not a competing resolver or HTTP relay. Catalog/root evidence comes from actual Orch doctor and lifecycle calls. It does not certify installed/manual behavior or replace the retained refusal probes. |
+| `prepareSourceProbe` / deterministic graph-preservation test | New harness-only preparation copies the existing source graph/checksums into fresh external fixtures and records identities. It cannot clobber an existing fixture directory; offline read-only builds cannot silently repair/update the graph. Existing artifact selection/copy/verification helpers remain. |
+| This README and `docs/worktree-cleanup.md` | Retain historical statements with explicit corrections, supported layouts, refusal guidance, scope and qualification limits. No dependency/pin, runtime baseline, role/permission/configuration, installation, publication, shared-host or unrelated warning-channel change. |
+
+The native-only restriction belongs to the Windows OpenCode resolution boundary,
+**not every use of `execx.Local`**. It covers every shared OpenCode API consumer
+listed above, not just `ReleaseLocation`. The required local Windows smoke must
+still record zero real-provider requests and normal owned-host shutdown.
+Hosted CI does **not** run that command. Source/isolated success does not qualify
+the installed default PATH, installed adapter, manual/model-driven Delivery,
+other runtime/platform tuples or atomic host quiescence.
 
 ## Role selection and sessions
 
