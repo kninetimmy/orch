@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"slices"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -27,6 +28,7 @@ type releaseFixture struct {
 	deletes                 int
 	afterDelete             func()
 	beforeReinventory       func()
+	beforeCall              func(context.Context, execx.Cmd) error
 	inventories             int
 	targetKey               string
 	executable              string
@@ -85,13 +87,25 @@ func (f *releaseFixture) session(id, directory string) {
 
 func (f *releaseFixture) run(t *testing.T) error {
 	t.Helper()
+	var originalDeadline time.Time
 	runner := releaseContextRunner(func(ctx context.Context, ctxCmd execx.Cmd) (execx.Result, error) {
-		if deadline, ok := ctx.Deadline(); !ok || time.Until(deadline) > 2*time.Minute {
+		deadline, ok := ctx.Deadline()
+		if !ok || time.Until(deadline) > 2*time.Minute {
 			t.Fatal("host command has no bounded deadline")
+		}
+		if originalDeadline.IsZero() {
+			originalDeadline = deadline
+		} else if !originalDeadline.Equal(deadline) {
+			t.Fatal("release reset its original deadline")
 		}
 		f.calls = append(f.calls, ctxCmd)
 		if ctxCmd.Dir != f.root {
 			t.Fatalf("host command escaped primary cwd: %+v", ctxCmd)
+		}
+		if f.beforeCall != nil {
+			if err := f.beforeCall(ctx, ctxCmd); err != nil {
+				return execx.Result{}, err
+			}
 		}
 		if slices.Equal(ctxCmd.Args, []string{"--version"}) {
 			if ctxCmd.Name != f.executable {
@@ -406,7 +420,7 @@ func TestReleaseLocationAliases(t *testing.T) {
 				f.loaded = slices.DeleteFunc(f.loaded, func(key string) bool { return key == alias })
 				f.beforeReinventory = nil
 			}
-		}, "another loaded location disappeared", 0},
+		}, "", 1},
 		{"ambiguous target aliases", "target", func(*releaseFixture, string) {}, "ambiguous target cache aliases", 0},
 		{"target alias owner unrelated cwd", "target", func(f *releaseFixture, alias string) {
 			key := url.Values{"location[directory]": {alias}}.Encode()
@@ -474,6 +488,14 @@ func TestReleaseLocationAliases(t *testing.T) {
 			}
 			if tc.want == "" {
 				for _, key := range before {
+					if tc.name == "alias disappeared before disposal" && key == alias {
+						for _, cmd := range f.calls {
+							if len(cmd.Args) == 3 && strings.Contains(cmd.Args[2], "?"+url.Values{"location[directory]": {alias}}.Encode()) {
+								t.Fatalf("disappeared key received a scoped request: %+v", cmd)
+							}
+						}
+						continue
+					}
 					for _, endpoint := range []string{"/api/shell", "/api/pty"} {
 						query := endpoint + "?" + url.Values{"location[directory]": {key}}.Encode()
 						if !slices.ContainsFunc(f.calls, func(cmd execx.Cmd) bool {
@@ -526,6 +548,263 @@ func TestReleaseLocationPreservesPhysicalIdentity(t *testing.T) {
 				t.Fatalf("replaced physical directory accepted: release=%v deletes=%d", err, f.deletes)
 			}
 		})
+	}
+}
+
+func TestReleaseLocationEvictionRecheck(t *testing.T) {
+	for _, tc := range []struct {
+		name    string
+		arrange func(*testing.T, *releaseFixture, string)
+		fresh   func(*testing.T, *releaseFixture, string)
+		want    string
+		deletes int
+	}{
+		{name: "stable loaded", deletes: 1},
+		{name: "stable unloaded", arrange: func(_ *testing.T, f *releaseFixture, _ string) {
+			f.loaded = slices.DeleteFunc(f.loaded, func(key string) bool { return key == f.target })
+		}},
+		{name: "foreground", want: "active session", fresh: func(_ *testing.T, f *releaseFixture, _ string) {
+			f.bodies["/api/session/active"] = `{"data":{"sesBusy":{"type":"running"}}}`
+			f.session("sesBusy", f.target)
+		}},
+		{name: "background child", want: "unfinished background job", fresh: func(_ *testing.T, f *releaseFixture, _ string) {
+			f.bodies["/api/experimental/job?status=running"] = `{"data":[{"id":"job","kind":"subagent","status":"running","sessionID":"sesOwner","childSessionID":"sesChild"}]}`
+			f.session("sesOwner", f.root)
+			f.session("sesChild", f.target)
+		}},
+		{name: "persistent owner", want: "running persistent terminal", fresh: func(_ *testing.T, f *releaseFixture, _ string) {
+			f.bodies["/api/experimental/session/sesIdle/terminal"] = `{"data":[{"id":"pty","sessionID":"sesIdle","cwd":` + releaseJSON(f.root) + `,"status":"running"}]}`
+		}},
+		{name: "persistent cwd", want: "running persistent terminal", fresh: func(_ *testing.T, f *releaseFixture, _ string) {
+			f.bodies["/api/session?limit=100"] = `{"data":[{"id":"sesIdle","location":{"directory":` + releaseJSON(f.root) + `}}],"cursor":{}}`
+			f.bodies["/api/experimental/session/sesIdle/terminal"] = `{"data":[{"id":"pty","sessionID":"sesIdle","cwd":` + releaseJSON(f.target) + `,"status":"running"}]}`
+		}},
+		{name: "ordinary owner", want: "running shell or terminal", fresh: func(_ *testing.T, f *releaseFixture, _ string) {
+			f.bodies["/api/shell?"+f.query()] = f.scoped(f.target, `[{"id":"shell","status":"running","cwd":`+releaseJSON(f.root)+`}]`)
+		}},
+		{name: "ordinary alias cwd", want: "running shell or terminal", fresh: func(_ *testing.T, f *releaseFixture, alias string) {
+			key := url.Values{"location[directory]": {alias}}.Encode()
+			f.bodies["/api/pty?"+key] = f.scoped(alias, `[{"id":"pty","status":"running","cwd":`+releaseJSON(f.target)+`}]`)
+		}},
+		{name: "target roots", want: "roots differ", fresh: func(_ *testing.T, f *releaseFixture, _ string) {
+			f.bodies["/api/location?"+f.query()] = releaseJSON(map[string]any{
+				"directory": f.target, "project": map[string]string{"directory": f.target, "canonical": f.target},
+			})
+		}},
+		{name: "target exact key", want: "cache key differs", fresh: func(_ *testing.T, f *releaseFixture, _ string) {
+			f.bodies["/api/location?"+f.query()] = releaseJSON(map[string]string{"directory": f.target + string(filepath.Separator) + "."})
+		}},
+		{name: "ordinary exact key", want: "wrong-root", fresh: func(_ *testing.T, f *releaseFixture, alias string) {
+			key := url.Values{"location[directory]": {alias}}.Encode()
+			f.bodies["/api/pty?"+key] = f.scoped(f.root, "[]")
+		}},
+		{name: "malformed activity", want: "malformed", fresh: func(_ *testing.T, f *releaseFixture, _ string) {
+			f.bodies["/api/session/active"] = `{}`
+		}},
+		{name: "malformed jobs", want: "malformed", fresh: func(_ *testing.T, f *releaseFixture, _ string) {
+			f.bodies["/api/experimental/job?status=running"] = `{}`
+		}},
+		{name: "malformed terminals", want: "malformed", fresh: func(_ *testing.T, f *releaseFixture, _ string) {
+			f.bodies["/api/experimental/session/sesIdle/terminal"] = `{}`
+		}},
+		{name: "malformed ordinary", want: "malformed", fresh: func(_ *testing.T, f *releaseFixture, alias string) {
+			key := url.Values{"location[directory]": {alias}}.Encode()
+			f.bodies["/api/shell?"+key] = f.scoped(alias, "null")
+		}},
+		{name: "unavailable evidence", want: "unavailable", fresh: func(_ *testing.T, f *releaseFixture, _ string) {
+			f.fail["/api/session/active"] = true
+		}},
+		{name: "malformed fresh inventory", want: "malformed", fresh: func(_ *testing.T, f *releaseFixture, _ string) {
+			f.bodies["/api/debug/location"] = `null`
+		}},
+		{name: "deadline exhausted", want: "unavailable"},
+		{name: "multiple disappearances", want: "another loaded location disappeared", arrange: func(_ *testing.T, f *releaseFixture, alias string) {
+			f.beforeReinventory = func() {
+				f.loaded = slices.DeleteFunc(f.loaded, func(key string) bool { return key == alias })
+			}
+		}},
+		{name: "second disappearance", want: "another loaded location disappeared", fresh: func(_ *testing.T, f *releaseFixture, alias string) {
+			f.beforeReinventory = func() {
+				f.loaded = slices.DeleteFunc(f.loaded, func(key string) bool { return key == alias })
+			}
+		}},
+		{name: "missing key reappears", want: "inventory changed again", fresh: func(_ *testing.T, f *releaseFixture, _ string) {
+			f.loaded = append(f.loaded, f.unrelated)
+		}},
+		{name: "new key appears", want: "inventory changed again", fresh: func(_ *testing.T, f *releaseFixture, alias string) {
+			f.loaded = append(f.loaded, alias+string(filepath.Separator)+".")
+		}},
+		{name: "replacement alias is not preservation", want: "beyond one unrelated disappearance", arrange: func(_ *testing.T, f *releaseFixture, _ string) {
+			f.beforeReinventory = func() {
+				f.loaded = append(f.loaded, f.unrelated+string(filepath.Separator)+".")
+				f.beforeReinventory = nil
+			}
+		}},
+		{name: "target reentry", want: "cache key loaded or changed", arrange: func(_ *testing.T, f *releaseFixture, _ string) {
+			f.loaded = slices.DeleteFunc(f.loaded, func(key string) bool { return key == f.target })
+		}, fresh: func(_ *testing.T, f *releaseFixture, _ string) {
+			f.loaded = append(f.loaded, f.target)
+		}},
+		{name: "target key changes", want: "cache key loaded or changed", fresh: func(t *testing.T, f *releaseFixture, _ string) {
+			f.loaded[slices.Index(f.loaded, f.target)] = releaseAlias(t, f.target)
+		}},
+		{name: "target unloads on recheck", want: "inventory changed again", fresh: func(_ *testing.T, f *releaseFixture, _ string) {
+			f.loaded = slices.DeleteFunc(f.loaded, func(key string) bool { return key == f.target })
+		}},
+		{name: "final exact key lost", want: "another loaded location disappeared", deletes: 1, arrange: func(_ *testing.T, f *releaseFixture, alias string) {
+			f.afterDelete = func() {
+				f.loaded = slices.DeleteFunc(f.loaded, func(key string) bool { return key == alias })
+			}
+		}},
+		{name: "final target reentry", want: "did not unload", deletes: 1, arrange: func(_ *testing.T, f *releaseFixture, _ string) {
+			f.afterDelete = func() { f.loaded = append(f.loaded, f.target) }
+		}},
+		{name: "final descendant", want: "unexpected loaded descendant", deletes: 1, arrange: func(t *testing.T, f *releaseFixture, _ string) {
+			f.afterDelete = func() {
+				child := filepath.Join(f.target, "child")
+				if err := os.Mkdir(child, 0o755); err != nil {
+					t.Fatal(err)
+				}
+				f.loaded = append(f.loaded, child)
+			}
+		}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			f := newReleaseFixture(t)
+			alias := releaseAlias(t, f.root)
+			f.loaded = append(f.loaded, alias)
+			for _, endpoint := range []string{"/api/shell", "/api/pty"} {
+				key := url.Values{"location[directory]": {alias}}.Encode()
+				f.bodies[endpoint+"?"+key] = f.scoped(alias, "[]")
+			}
+			if tc.arrange != nil {
+				tc.arrange(t, f, alias)
+			}
+			evicted, fresh := false, false
+			f.beforeCall = func(_ context.Context, cmd execx.Cmd) error {
+				if len(cmd.Args) != 3 {
+					return nil
+				}
+				// Evict naturally during global probing, before ordinary scoped
+				// reads. Only the synthetic host cache changes, not the directory.
+				if !evicted && cmd.Args[2] == "/api/experimental/job?status=running" {
+					f.loaded = slices.DeleteFunc(f.loaded, func(key string) bool { return key == f.unrelated })
+					evicted = true
+				}
+				if f.inventories == 2 && !fresh && cmd.Args[2] == "/api/session/active" {
+					fresh = true
+					if tc.name == "deadline exhausted" {
+						return context.DeadlineExceeded
+					}
+					if tc.fresh != nil {
+						tc.fresh(t, f, alias)
+					}
+				}
+				return nil
+			}
+			err := f.run(t)
+			if (tc.want == "" && err != nil) || (tc.want != "" && (err == nil || !strings.Contains(err.Error(), tc.want))) || f.deletes != tc.deletes {
+				t.Fatalf("release=%v deletes=%d, want %q deletes=%d", err, f.deletes, tc.want, tc.deletes)
+			}
+			count := func(endpoint string) int {
+				total := 0
+				for _, cmd := range f.calls {
+					if len(cmd.Args) == 3 && cmd.Args[2] == endpoint {
+						total++
+					}
+				}
+				return total
+			}
+			for _, cmd := range f.calls {
+				if len(cmd.Args) == 3 {
+					endpoint, err := url.Parse(cmd.Args[2])
+					if err != nil {
+						t.Fatal(err)
+					}
+					key := endpoint.Query().Get("location[directory]")
+					if key == f.unrelated || tc.name == "stable unloaded" && key == f.target {
+						t.Fatalf("unloaded key received a scoped request: %+v", cmd)
+					}
+				}
+			}
+			if f.inventories > 4 || tc.want == "" && f.inventories != 4 || tc.deletes == 1 && f.inventories != 4 {
+				t.Fatalf("unexpected inventory retries: %d", f.inventories)
+			}
+			if tc.want == "" {
+				for endpoint, want := range map[string]int{
+					"/api/session/active": 4, "/api/experimental/job?status=running": 4,
+					"/api/session?limit=100": 2, "/api/experimental/session/sesIdle/terminal": 2,
+				} {
+					if got := count(endpoint); got != want {
+						t.Fatalf("fresh evidence %s reads=%d want=%d", endpoint, got, want)
+					}
+				}
+				keys := []string{f.root, alias}
+				roots := 0
+				if tc.deletes == 1 {
+					keys = append(keys, f.target)
+					roots = 2
+				}
+				if got := count("/api/location?" + f.query()); got != roots {
+					t.Fatalf("target root reads=%d want=%d", got, roots)
+				}
+				for _, key := range keys {
+					for _, endpoint := range []string{"/api/shell", "/api/pty"} {
+						if count(endpoint+"?"+url.Values{"location[directory]": {key}}.Encode()) != 1 {
+							t.Fatalf("current exact key lacks independent ordinary evidence: %s %s", endpoint, key)
+						}
+					}
+				}
+			}
+		})
+	}
+}
+
+func TestReleaseLocationEvictionIdentity(t *testing.T) {
+	for _, directory := range []string{"missing key", "unloaded target"} {
+		for _, phase := range []string{"at disappearance", "during recheck", "before DELETE"} {
+			for _, replace := range []bool{false, true} {
+				t.Run(directory+"/"+phase+"/replace="+strconv.FormatBool(replace), func(t *testing.T) {
+					f := newReleaseFixture(t)
+					f.loaded = slices.DeleteFunc(f.loaded, func(key string) bool { return key == f.target })
+					path := f.unrelated
+					if directory == "unloaded target" {
+						path = f.target
+					}
+					change := func() {
+						if err := os.Rename(path, filepath.Join(t.TempDir(), "old")); err != nil {
+							t.Fatal(err)
+						}
+						if replace {
+							if err := os.Mkdir(path, 0o755); err != nil {
+								t.Fatal(err)
+							}
+						}
+					}
+					f.beforeReinventory = func() {
+						if f.inventories == 2 {
+							f.loaded = slices.DeleteFunc(f.loaded, func(key string) bool { return key == f.unrelated })
+							if phase == "at disappearance" {
+								change()
+							}
+						}
+					}
+					changed := false
+					f.beforeCall = func(_ context.Context, cmd execx.Cmd) error {
+						if len(cmd.Args) == 3 && !changed &&
+							(phase == "during recheck" && f.inventories == 2 && cmd.Args[2] == "/api/session/active" ||
+								phase == "before DELETE" && cmd.Args[2] == "/api/pty?"+url.Values{"location[directory]": {f.root}}.Encode()) {
+							changed = true
+							change()
+						}
+						return nil
+					}
+					if err := f.run(t); err == nil || !strings.Contains(err.Error(), "changed identity") || f.deletes != 0 {
+						t.Fatalf("unverifiable/replaced %s accepted: err=%v deletes=%d", directory, err, f.deletes)
+					}
+				})
+			}
+		}
 	}
 }
 
