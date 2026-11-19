@@ -54,6 +54,8 @@ type MergeReportResult struct {
 // Before #517 that was the only path. The default still holds; an explicit
 // request-local human CI exception additionally accepts pending/failing data,
 // never a probe error, after validating the independently reviewed live head.
+// Before #528 the ordinary path could pin a newer unreviewed live head. Now
+// both paths require the durable, successfully recorded review at that head.
 func MergeReport(ctx context.Context, env Env, reqJSON []byte) (*MergeReportResult, error) {
 	var req MergeReportRequest
 	if err := decodeRequest(reqJSON, &req); err != nil {
@@ -90,6 +92,9 @@ func MergeReport(ctx context.Context, env Env, reqJSON []byte) (*MergeReportResu
 	}
 	if pr.State != "OPEN" {
 		return nil, fmt.Errorf("PR #%d is %s, not OPEN; cannot report it ready to merge", pr.Number, pr.State)
+	}
+	if issue.ReviewedHeadOID != pr.HeadRefOid {
+		return nil, fmt.Errorf("%w: recorded reviewed head %q differs from live PR head %q; obtain fresh routed review", ErrReviewStale, issue.ReviewedHeadOID, pr.HeadRefOid)
 	}
 	if err := checkRepairReview(issue, pr.HeadRefOid); err != nil {
 		return nil, err
@@ -169,6 +174,9 @@ func mergeReportResult(issue *state.Issue, pr ghops.PR, summary ghops.CISummary,
 func checkApprovingReview(issue *state.Issue) error {
 	if issue.LastReviewVerdict != VerdictApprove {
 		return fmt.Errorf("issue #%d has no approving review (last verdict %q); cannot report it ready to merge", issue.Number, issue.LastReviewVerdict)
+	}
+	if issue.ReviewedHeadOID == "" || len(issue.PendingEvidence) > 0 {
+		return fmt.Errorf("%w: issue #%d requires a fully recorded review with no pending evidence", ErrReviewStale, issue.Number)
 	}
 	if repair := latestRepair(issue); repair != nil {
 		return checkRepairReview(issue, repair.VerifiedHeadOID)

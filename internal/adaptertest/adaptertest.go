@@ -94,13 +94,14 @@ func Profile(host string) map[string]RoleSpec {
 
 // runVerbTokens is the closed set every `orch run <word>` token found in
 // a skill must belong to: the documented lifecycle commands plus read-only
-// status/help, dispatched separately by internal/cli/run.go. Moved from
+// status/help (and now next), dispatched separately by internal/cli/run.go. Moved from
 // adapters/claude/plugin_test.go so both hosts pin against the same set.
 var runVerbTokens = map[string]bool{
 	"plan": true, "activate": true, "dispatch": true, "pr-open": true,
 	"review-worktree": true, "review": true, "escalate": true, "ci": true,
 	"merge-report": true, "merge": true, "block": true, "abandon": true,
 	"cleanup": true, "complete": true, "status": true,
+	"next":          true,
 	"resolve-block": true,
 	"help":          true,
 }
@@ -385,6 +386,11 @@ func CheckSelectionWireVersions(t *testing.T, deliverySkillPath, architectSkillP
 		fmt.Sprintf("`GateDoc` (`schema_version: %d`)", run.GateSchemaVersion),
 		fmt.Sprintf("`{\"schema_version\": %d, \"issue_number\": N}`. Result (`DispatchResult`)", run.DispatchSchemaVersion),
 		fmt.Sprintf("{\"schema_version\": %d, \"issue_number\": N, \"reviewed_head_oid\": \"...\"", run.ReviewSchemaVersion),
+		fmt.Sprintf("\"verdict\": \"%s|%s|%s\"", run.VerdictApprove, run.VerdictRequestChanges, run.VerdictNeedsEvidence),
+		fmt.Sprintf("\"judgment\": \"%s|%s|%s|%s\"", run.JudgmentSatisfied, run.JudgmentUnsatisfied, run.JudgmentWrong, run.JudgmentUnverified),
+		"`execution_evidence`", "`review-evidence-<n>`", "fresh routed review",
+		"no grant code-fix cycle", "grants no new authority",
+		"approval-contract v2/v3", "docs/review-evidence.md",
 		fmt.Sprintf("{\"schema_version\": %d, \"issue_number\": N, \"trigger\": \"...\", \"detail\": \"...\"}", run.EscalateSchemaVersion),
 	}
 	for _, phrase := range phrases {
@@ -537,6 +543,13 @@ var branchScopeBasePhrases = []string{
 func CheckReviewerHeadRefGuidance(t *testing.T, paths ...string) {
 	t.Helper()
 	checkPhrases(t, "reviewer head-ref guidance phrase", reviewerHeadRefPhrases, paths)
+	// Presence only: deterministic engine tests exercise the behavior without
+	// making claims about how any model follows these instructions.
+	checkPhrases(t, "evidence-only review contract", []string{
+		"`needs-evidence`", "`unverified`", "`execution_evidence`",
+		"fresh routed reviewer", "Attribution is not authenticated proof",
+		"docs/review-evidence.md",
+	}, paths)
 }
 
 // CheckBranchScopeBaseGuidance pins each agent definition's whole text

@@ -16,7 +16,7 @@ import (
 )
 
 const readinessHead = "0123456789abcdef0123456789abcdef01234567"
-const readinessOldHead = "abcdef0123456789abcdef0123456789abcdef0123"
+const readinessOldHead = "abcdef0123456789abcdef0123456789abcdef01"
 
 func readinessManifest() manifest.Manifest {
 	m := baseManifest()
@@ -116,6 +116,7 @@ func TestReadinessEvidence(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			issue := fixtureIssue("a", 1, state.PhaseInReview)
 			issue.LastReviewVerdict, issue.ReviewCycles = VerdictApprove, 1
+			issue.ReviewedHeadOID = readinessHead
 			m := readinessManifest()
 			head, prState := readinessHead, "OPEN"
 			wantMet, wantCurrent, wantDrift := false, false, false
@@ -217,6 +218,7 @@ func TestReadinessCIAndProbeFailures(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			issue := fixtureIssue("a", 1, state.PhaseInReview)
 			issue.LastReviewVerdict, issue.ReviewCycles = VerdictApprove, 1
+			issue.ReviewedHeadOID = readinessHead
 			root := setupDeliveryRepoWithConfig(t, metricsEnabledConfigTOML, "r1", []state.Issue{issue})
 			body := readinessBody(t, readinessManifest())
 			bucket, checkState := "pass", "SUCCESS"
@@ -355,6 +357,7 @@ func TestReadinessLocalFailures(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			issue := fixtureIssue("a", 1, state.PhaseInReview)
 			issue.LastReviewVerdict, issue.ReviewCycles = VerdictApprove, 1
+			issue.ReviewedHeadOID = readinessHead
 			if name == "blocked" {
 				issue.Phase, issue.BlockedReason = state.PhaseBlocked, "human decision required"
 			}

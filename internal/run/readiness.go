@@ -264,7 +264,7 @@ func readinessReviewEvidence(issue *state.Issue, revision string, m manifest.Man
 		m.ConfigRevision != revision || issue.Decision == nil || m.Role != issue.Decision.Role || m.Executor != issue.Decision.Executor || m.Reviewer != issue.Decision.Reviewer {
 		return evidence, fmt.Errorf("audit work, routing or configuration contradicts the approved run")
 	}
-	if evidence.Result != issue.LastReviewVerdict || (evidence.Result != VerdictApprove && evidence.Result != VerdictRequestChanges) || !headOIDPattern.MatchString(evidence.CommitOID) {
+	if evidence.Result != issue.LastReviewVerdict || !reviewVerdict(evidence.Result) || !headOIDPattern.MatchString(evidence.CommitOID) || evidence.CommitOID != issue.ReviewedHeadOID {
 		return evidence, fmt.Errorf("audit review verdict/commit is missing, invalid or contradicts run state")
 	}
 	// Judgment detail can legitimately rotate out under the body cap; its
@@ -281,10 +281,14 @@ func readinessReviewEvidence(issue *state.Issue, revision string, m manifest.Man
 		}
 		n, err := strconv.Atoi(strings.TrimPrefix(v.Name, "acceptance-criterion-"))
 		if err != nil || n < 1 || n > len(issue.AcceptanceCriteria) || v.CommitOID != evidence.CommitOID ||
-			(v.Result != JudgmentSatisfied && v.Result != JudgmentUnsatisfied && v.Result != JudgmentWrong) ||
+			(v.Result != JudgmentSatisfied && v.Result != JudgmentUnsatisfied && v.Result != JudgmentWrong && v.Result != JudgmentUnverified) ||
+			(evidence.Result == VerdictNeedsEvidence && v.Result != JudgmentSatisfied && v.Result != JudgmentUnverified) ||
 			(evidence.Result == VerdictApprove && v.Result != JudgmentSatisfied) {
 			return evidence, fmt.Errorf("audit review judgment %s contradicts the latest review verdict/commit", v.Name)
 		}
+	}
+	if err := checkReviewEvidenceReceipt(issue, m, *evidence); err != nil {
+		return evidence, err
 	}
 	return evidence, nil
 }
@@ -295,10 +299,14 @@ func sameReadinessAudit(a, b manifest.Manifest) bool {
 	a.Verifications = append([]manifest.Verification(nil), a.Verifications...)
 	b.Verifications = append([]manifest.Verification(nil), b.Verifications...)
 	for i := range a.Verifications {
-		a.Verifications[i].Detail = ""
+		if !reviewEvidenceNamePattern.MatchString(a.Verifications[i].Name) {
+			a.Verifications[i].Detail = ""
+		}
 	}
 	for i := range b.Verifications {
-		b.Verifications[i].Detail = ""
+		if !reviewEvidenceNamePattern.MatchString(b.Verifications[i].Name) {
+			b.Verifications[i].Detail = ""
+		}
 	}
 	return reflect.DeepEqual(a, b)
 }

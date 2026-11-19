@@ -150,6 +150,7 @@ func TestMetricsReportBreaksOutcomesDownByHostAndRoutingFacts(t *testing.T) {
 		Events: []metrics.Event{
 			{At: "2026-07-15T00:00:00Z", Verb: "activate", IssueNumber: 1, RoutingFacts: facts(false, true)},
 			{At: "2026-07-15T00:01:00Z", Verb: "review", IssueNumber: 1, Verdict: "request-changes", ReviewCycles: 1},
+			{At: "2026-07-15T00:01:01Z", Verb: "review", IssueNumber: 1, Verdict: "needs-evidence", ReviewCycles: 2},
 			{At: "2026-07-15T00:02:00Z", Verb: "merge", IssueNumber: 1, PRNumber: 5},
 			{At: "2026-07-15T00:03:00Z", Verb: "activate", IssueNumber: 2, RoutingFacts: facts(true, false, "concurrency")},
 			{At: "2026-07-15T00:04:00Z", Verb: "review", IssueNumber: 2, Verdict: "request-changes", ReviewCycles: 1, ReviewBlockCause: metrics.BlockCauseWrongCriterion},

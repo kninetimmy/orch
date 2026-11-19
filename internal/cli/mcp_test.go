@@ -173,6 +173,7 @@ func TestMCPStdio(t *testing.T) {
 			st.Run.Issues[0].PRNumber = 10
 			if tc.phase != state.PhasePROpen {
 				st.Run.Issues[0].LastReviewVerdict = run.VerdictApprove
+				st.Run.Issues[0].ReviewedHeadOID = "fixture-reviewed-head"
 			}
 			if tc.phase == state.PhaseAwaitingMerge || tc.phase == state.PhaseMerged {
 				st.Run.Issues[0].ApprovedHeadOID = "fixture-approved-head"

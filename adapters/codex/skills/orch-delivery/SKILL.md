@@ -38,7 +38,7 @@ faithfully.
 
 `orch run status --json` never reads stdin — call it bare.
 
-Selection-bearing wire versions are closed: StatusDoc `4`, GateDoc `3`, Dispatch `4`, Escalate `2`, Review `3`.
+Selection-bearing wire versions are closed: StatusDoc `4`, GateDoc `3`, Dispatch `4`, Escalate `2`, Review `4`.
 Reject any other `schema_version` before reading or submitting a `Selection`.
 
 ## Questions and approvals
@@ -485,17 +485,17 @@ OpenCode manual usage contracts are unchanged.
    already left, so you must track whichever value is current yourself:
 
    ```json
-   {"schema_version": 3, "issue_number": N, "reviewed_head_oid": "...",
-    "verdict": "approve|request-changes", "summary": "...",
+   {"schema_version": 4, "issue_number": N, "reviewed_head_oid": "...",
+    "verdict": "approve|request-changes|needs-evidence", "summary": "...",
     "reviewer": {"model": "...", "effort": "..."},
-    "judgments": [{"criterion": 1, "judgment": "satisfied|unsatisfied|wrong", "reason": "..."}],
+    "judgments": [{"criterion": 1, "judgment": "satisfied|unsatisfied|wrong|unverified", "reason": "..."}],
     "verifications": [{"name": "...", "command": "...", "result": "...", "detail": "..."}]}
    ```
 
    `judgments` is required and carries exactly one entry per acceptance
    criterion the issue holds: `criterion` is the criterion's 1-based
    position in the issue's approved acceptance criteria, `judgment` is
-   one of `satisfied`, `unsatisfied`, `wrong`, and `reason` is the
+   one of `satisfied`, `unsatisfied`, `wrong`, `unverified`, and `reason` is the
    reviewer's own reason for that call, which the audit record keeps as
    an engine-owned `acceptance-criterion-<n>` verification you never
    supply yourself. The engine counts the criteria from its own state,
@@ -505,7 +505,10 @@ OpenCode manual usage contracts are unchanged.
    blast-radius criterion, last in the list and judged on the same terms
    as every criterion the plan document supplied.
    A `verdict` of `approve` is accepted only when every criterion is
-   judged `satisfied`; record `request-changes` otherwise. Transcribe
+   judged `satisfied`. Before review v4, record `request-changes` otherwise
+   was the only non-approving path; now use `needs-evidence` for an
+   evidence-only stall, and `request-changes` for a real finding or wrong
+   criterion, including when evidence is also missing. Transcribe
    the reviewer's per-criterion calls, never your own reading of its
    summary.
 
@@ -526,6 +529,25 @@ OpenCode manual usage contracts are unchanged.
    `executor_usage` retains its optional delta contract for legacy callers.
    This adapter omits it and records the resumed executor's cumulative sample
    under its repair attempt/cycle before recording the fresh reviewer.
+   For `needs-evidence`, identify every unverified criterion and its reason;
+   all other criteria must be satisfied. Keep execution with the executor or
+   Architect and independent judgment with a fresh routed reviewer. The engine
+   keeps `in-review`, records the full reviewed head and retained
+   `review-evidence-<n>` receipt, and `orch run next` directs evidence collection
+   plus fresh routed review, not a fix or merge. It spends no grant code-fix
+   cycle and grants no new authority. Follow `docs/review-evidence.md`: submit
+   `execution_evidence` with criterion, full `head_oid`, stable `artifact`
+   identity, `command`, `result`, `collected_by` and RFC3339 `collected_at`.
+   The reviewer independently evaluates artifact/criterion fit. Same-head
+   approval needs no fix commit; missing or other-head evidence cannot discharge
+   pending criteria, which survive real fixes. Changed heads need new evidence
+   and independent review. Attribution is not authentication; the engine never
+   executes supplied command text. Existing reviewer permissions, CI and human
+   merge gates remain unchanged. Review v3/v4 or approval-contract v2/v3
+   mismatches fail explicitly: preserve the run and use its original engine, or
+   abort and obtain fresh plan approval. Never migrate an active run or replace
+   its installed engine to continue it.
+
    `orch run pr-open` is not reachable a second time, so
    `verifications` is optional and takes pr-open's input shape — use
    it to carry evidence re-run on the fix commit (e.g. tests re-run
@@ -556,7 +578,10 @@ OpenCode manual usage contracts are unchanged.
 7. **Merge-report** — `orch run merge-report` with
    `{"schema_version": 1, "issue_number": N}` requires an approving
    last review and mergeable CI, and pins the PR's live head as the
-   approved head. Result: `pr_number`, `pr_url`, `head_oid`,
+   approved head. Before #528 the ordinary path could pin a newer head than
+   the review; now both standard and manual-CI paths require the successfully
+   recorded reviewed head to match the live head, with no pending evidence.
+   Result: `pr_number`, `pr_url`, `head_oid`,
    `merge_strategy`, `ci` (`{state, required, total}`),
    `review_cycles`, `config_revision`, and `no_ci_statement` (present
    only when no required CI checks exist — show it plainly so "no CI

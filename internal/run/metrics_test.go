@@ -92,7 +92,7 @@ func reviewApproveJSON(usage string) string {
 	if usage != "" {
 		extra = `,"usage":` + usage
 	}
-	return `{"schema_version":3,"issue_number":1,"reviewed_head_oid":"head-oid-1","verdict":"approve","summary":"looks good","reviewer":{"model":"claude-opus-4-8","effort":"high"},` + fixtureJudgments + extra + `}`
+	return `{"schema_version":4,"issue_number":1,"reviewed_head_oid":"head-oid-1","verdict":"approve","summary":"looks good","reviewer":{"model":"claude-opus-4-8","effort":"high"},` + fixtureJudgments + extra + `}`
 }
 
 // reviewApproveJSONWithExecutorUsage extends reviewApproveJSON's request
@@ -103,7 +103,7 @@ func reviewApproveJSONWithExecutorUsage(usage, executorUsage string) string {
 	if usage != "" {
 		extra = `,"usage":` + usage
 	}
-	return `{"schema_version":3,"issue_number":1,"reviewed_head_oid":"head-oid-1","verdict":"approve","summary":"looks good","reviewer":{"model":"claude-opus-4-8","effort":"high"},` + fixtureJudgments + extra + `,"executor_usage":` + executorUsage + `}`
+	return `{"schema_version":4,"issue_number":1,"reviewed_head_oid":"head-oid-1","verdict":"approve","summary":"looks good","reviewer":{"model":"claude-opus-4-8","effort":"high"},` + fixtureJudgments + extra + `,"executor_usage":` + executorUsage + `}`
 }
 
 // TestReviewRecordsMetricWhenEnabled pins internal/run/metrics.go's
