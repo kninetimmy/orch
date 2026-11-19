@@ -75,6 +75,12 @@ func runRunVerb(env Env, args []string) error {
 			if args[0] == "next" {
 				return run.Next(ctx, runEnv)
 			}
+			root, err := runStatusRoot(ctx, env)
+			if err != nil {
+				return nil, fmt.Errorf("status checkout: %w", err)
+			}
+			// This root is observation-only; all other verbs keep env.RepoRoot.
+			runEnv.RepoRoot = root
 			return run.Status(ctx, runEnv)
 		})
 	}
