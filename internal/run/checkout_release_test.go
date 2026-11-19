@@ -17,6 +17,7 @@ import (
 	"github.com/kninetimmy/orch/internal/config"
 	"github.com/kninetimmy/orch/internal/execx"
 	"github.com/kninetimmy/orch/internal/gitops"
+	"github.com/kninetimmy/orch/internal/opencode"
 	"github.com/kninetimmy/orch/internal/state"
 )
 
@@ -31,6 +32,8 @@ type checkoutHost struct {
 	partial       string
 	beforeAPI     func(*url.URL)
 	inventories   int
+	sessions      map[string]string
+	reactivated   []string
 }
 
 func (h *checkoutHost) Run(ctx context.Context, cmd execx.Cmd) (execx.Result, error) {
@@ -106,14 +109,133 @@ func (h *checkoutHost) Run(ctx context.Context, cmd execx.Cmd) (execx.Result, er
 	case "/api/experimental/job":
 		return execx.Result{Stdout: `{"data":[]}`}, nil
 	case "/api/session":
-		return execx.Result{Stdout: `{"data":[],"cursor":{}}`}, nil
+		sessions := []map[string]any{}
+		ids := make([]string, 0, len(h.sessions))
+		for id := range h.sessions {
+			ids = append(ids, id)
+		}
+		slices.Sort(ids)
+		for _, id := range ids {
+			sessions = append(sessions, map[string]any{"id": id, "location": map[string]string{"directory": h.sessions[id]}})
+		}
+		return body(map[string]any{"data": sessions, "cursor": map[string]any{}})
 	case "/api/location":
 		return body(map[string]any{"directory": target, "project": map[string]string{"directory": target, "canonical": h.root}})
 	case "/api/shell", "/api/pty":
 		return body(map[string]any{"location": map[string]string{"directory": target}, "data": []any{}})
 	}
+	if strings.HasPrefix(endpoint.Path, "/api/experimental/session/") && strings.HasSuffix(endpoint.Path, "/terminal") {
+		id := strings.TrimSuffix(strings.TrimPrefix(endpoint.Path, "/api/experimental/session/"), "/terminal")
+		directory, ok := h.sessions[id]
+		if !ok {
+			h.t.Fatalf("unknown completed fixture session: %s", id)
+		}
+		// Deterministic model of a host terminal-inventory read loading its
+		// completed session's assigned checkout. No real host is involved.
+		if !h.loaded[directory] {
+			h.loaded[directory] = true
+			h.reactivated = append(h.reactivated, directory)
+		}
+		return execx.Result{Stdout: `{"data":[]}`}, nil
+	}
 	h.t.Fatalf("unexpected host endpoint: %+v", cmd)
 	return execx.Result{}, nil
+}
+
+func TestOpenCodeCleanupDoesNotReactivateReleasedCheckouts(t *testing.T) {
+	for _, sequential := range []bool{true, false} {
+		t.Run(fmt.Sprintf("old sequential=%t", sequential), func(t *testing.T) {
+			root, _, _, host, env := openCodeCheckoutFixture(t, state.PhaseAbandoned)
+			executor, review := worktreeAbs(root, 1), reviewWorktreeAbs(root, 1)
+			host.sessions = map[string]string{"sesExecutor": executor, "sesReview": review}
+			sessions := map[string]string{"sesExecutor": executor, "sesReview": review}
+			if sequential {
+				// Characterize the old engine handoff, using the single-target API.
+				for _, target := range []string{executor, review} {
+					if err := opencode.ReleaseLocation(t.Context(), host, root, target); err != nil {
+						t.Fatal(err)
+					}
+				}
+				if !slices.Equal(host.reactivated, []string{executor}) || !host.loaded[executor] {
+					t.Fatalf("old handoff did not demonstrate re-entry: %v", host.reactivated)
+				}
+				t.Log("old second-target terminal preflight reopens the released executor")
+			} else {
+				res, err := Cleanup(t.Context(), env, []byte(`{"schema_version":1,"issue_number":1,"statement":"cleanup-issue"}`))
+				if err != nil || res.Phase != state.PhaseCleaned {
+					t.Fatalf("cleanup=%+v %v", res, err)
+				}
+				if len(host.reactivated) != 0 || host.loaded[executor] || host.loaded[review] {
+					t.Fatalf("cleanup reopened a released target: %v", host.reactivated)
+				}
+				released := false
+				for _, cmd := range host.calls {
+					if cmd.Name != "opencode2" || len(cmd.Args) != 3 {
+						continue
+					}
+					endpoint, err := url.Parse(cmd.Args[2])
+					if err != nil {
+						t.Fatal(err)
+					}
+					if cmd.Args[1] == "delete" {
+						released = true
+					} else if released && endpoint.Path != "/api/debug/location" {
+						t.Fatalf("loading host probe after release: %+v", cmd)
+					}
+				}
+				t.Log("batched cleanup has no loading host probes after the first release")
+			}
+			if len(host.sessions) != len(sessions) {
+				t.Fatal("cleanup deleted completed session history")
+			}
+			for id, directory := range sessions {
+				if host.sessions[id] != directory {
+					t.Fatal("cleanup moved a completed session")
+				}
+			}
+		})
+	}
+}
+
+func TestOpenCodeCleanupFinalReactivationRefusesBeforeGit(t *testing.T) {
+	for _, kind := range []string{"executor", "review"} {
+		t.Run(kind, func(t *testing.T) {
+			root, first, _, host, env := openCodeCheckoutFixture(t, state.PhaseAbandoned)
+			executor, review := worktreeAbs(root, 1), reviewWorktreeAbs(root, 1)
+			target := executor
+			if kind == "review" {
+				target = review
+			}
+			branch := loadRun(t, root).Run.Issues[0].Branch
+			rawGit(t, root, "push", "origin", branch)
+			before := stateBytes(t, root)
+			registrations := rawGit(t, root, "worktree", "list", "--porcelain")
+			host.beforeAPI = func(endpoint *url.URL) {
+				if len(host.deleted) == 2 && endpoint.Path == "/api/debug/location" && endpoint.RawQuery == "" {
+					host.loaded[target] = true // External client, not a cleanup probe.
+				}
+			}
+			res, err := Cleanup(t.Context(), env, []byte(`{"schema_version":1,"issue_number":1,"statement":"cleanup-issue"}`))
+			if err == nil || res != nil || !strings.Contains(err.Error(), "reactivated") || strings.Contains(err.Error(), target) {
+				t.Fatalf("reactivation accepted or wrong refusal: %+v %v", res, err)
+			}
+			if !bytes.Equal(before, stateBytes(t, root)) || registrations != rawGit(t, root, "worktree", "list", "--porcelain") {
+				t.Fatal("refusal changed state or either Git registration")
+			}
+			detachedHeadAt(t, review, first)
+			if !strings.Contains(rawGit(t, root, "ls-remote", "--heads", "origin", branch), branch) ||
+				!strings.Contains(rawGit(t, root, "branch", "--list", branch), branch) {
+				t.Fatal("refusal deleted a branch")
+			}
+			for _, cmd := range host.calls {
+				if cmd.Name == "git" && (slices.Contains(cmd.Args, "remove") || slices.Contains(cmd.Args, "push") ||
+					slices.Contains(cmd.Args, "prune") || slices.Contains(cmd.Args, "-D")) {
+					t.Fatalf("reactivation reached Git mutation: %+v", cmd)
+				}
+			}
+			t.Log("final reactivation preserves both registrations, branches and phase")
+		})
+	}
 }
 
 func openCodeCheckoutFixture(t *testing.T, phase state.Phase) (string, string, string, *checkoutHost, Env) {
@@ -198,29 +320,56 @@ func TestOpenCodeReviewCheckoutRelease(t *testing.T) {
 }
 
 func TestOpenCodeCleanupReleaseAndPartialRetry(t *testing.T) {
-	for _, scenario := range []string{"success", "unloaded", "active", "disposal", "partial"} {
+	for _, scenario := range []string{"success", "unloaded", "active", "review active", "disposal", "partial",
+		"executor descendant", "review descendant", "executor alias", "review alias"} {
 		t.Run(scenario, func(t *testing.T) {
 			root, _, _, host, env := openCodeCheckoutFixture(t, state.PhaseAbandoned)
 			executor, review := worktreeAbs(root, 1), reviewWorktreeAbs(root, 1)
 			branch := loadRun(t, root).Run.Issues[0].Branch
 			rawGit(t, root, "push", "origin", branch)
 			before := stateBytes(t, root)
+			registrations := rawGit(t, root, "worktree", "list", "--porcelain")
+			wantRefusal := ""
 			switch scenario {
-			case "active":
+			case "active", "review active":
 				host.active = executor
+				if scenario == "review active" {
+					host.active = review
+				}
+				wantRefusal = "active session"
 			case "disposal":
 				host.disposalFails = true
+				wantRefusal = "unavailable or unsupported"
 			case "unloaded":
 				delete(host.loaded, executor)
 				delete(host.loaded, review)
 			case "partial":
 				host.partial = executor
+			case "executor descendant", "review descendant", "executor alias", "review alias":
+				target := executor
+				if strings.HasPrefix(scenario, "review") {
+					target = review
+				}
+				key := target + string(filepath.Separator) + "."
+				wantRefusal = "ambiguous target cache aliases"
+				if strings.HasSuffix(scenario, "descendant") {
+					key = filepath.Join(target, "loaded-descendant")
+					if err := os.Mkdir(key, 0o755); err != nil {
+						t.Fatal(err)
+					}
+					wantRefusal = "unexpected loaded descendant"
+				}
+				host.loaded[key] = true
 			}
 			req := []byte(`{"schema_version":1,"issue_number":1,"statement":"cleanup-issue"}`)
 			res, err := Cleanup(context.Background(), env, req)
-			if scenario == "active" || scenario == "disposal" {
-				if err == nil || res != nil || len(host.deleted) != 0 || !bytes.Equal(before, stateBytes(t, root)) {
+			if wantRefusal != "" {
+				if err == nil || !strings.Contains(err.Error(), wantRefusal) || res != nil || len(host.deleted) != 0 || !bytes.Equal(before, stateBytes(t, root)) {
 					t.Fatalf("unsafe failed cleanup: %+v %v deleted=%v", res, err, host.deleted)
+				}
+				if registrations != rawGit(t, root, "worktree", "list", "--porcelain") ||
+					!strings.Contains(rawGit(t, root, "branch", "--list", branch), branch) {
+					t.Fatal("host refusal changed registration or local branch")
 				}
 				if !strings.Contains(rawGit(t, root, "ls-remote", "--heads", "origin", branch), branch) {
 					t.Fatal("host refusal deleted remote branch")
@@ -302,8 +451,7 @@ func TestOpenCodeCheckoutReleaseEviction(t *testing.T) {
 				triggerInventory := 0
 				evictionCall := 0
 				host.beforeAPI = func(endpoint *url.URL) {
-					ready := operation != "cleanup review" || slices.Contains(host.deleted, executor)
-					if ready && triggerInventory == 0 && endpoint.Path == "/api/session/active" {
+					if triggerInventory == 0 && endpoint.Path == "/api/session/active" {
 						delete(host.loaded, unrelated)
 						triggerInventory = host.inventories
 						evictionCall = len(host.calls) - 1
@@ -399,11 +547,12 @@ func TestOpenCodeCheckoutReleaseEviction(t *testing.T) {
 					}
 				}
 				wantDeleted := []string{}
-				if operation == "cleanup review" {
-					wantDeleted = append(wantDeleted, executor)
-				}
 				if scenario == "final change" {
-					wantDeleted = append(wantDeleted, target)
+					if operation == "replace review" {
+						wantDeleted = append(wantDeleted, review)
+					} else {
+						wantDeleted = append(wantDeleted, executor, review)
+					}
 					if host.inventories != triggerInventory+3 {
 						t.Fatal("failed final observation was retried")
 					}

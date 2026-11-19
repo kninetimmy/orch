@@ -459,3 +459,153 @@ exclude concurrent replacement or host re-entry before Git removal. Keep
 targets unused during explicit operations. Broader orphan recovery and
 unrelated advisory-channel work remain separate; no historical residue is
 recovered or deleted here.
+
+## Keep both OpenCode checkouts released (issue #525)
+
+### Before and after
+
+**Before #525:** the #506/#523 handoff above validated both checkout trees,
+then called `ReleaseLocation` independently for executor and review. Each call
+walked all session histories and persistent-terminal inventories, including
+completed children still assigned to the other checkout. The later preflight
+could therefore load an already released executor. Its return was not followed
+by a combined observation that **both** targets were still unloaded, or a
+Windows directory delete-access check before remote-branch deletion. Successful
+scoped DELETEs alone did not establish a usable Git handoff.
+
+**After #525:** `releaseCheckouts` submits all verified targets to one
+`ReleaseLocations` call. Global foreground/jobs, paginated persistent terminals,
+each loaded target's project roots and every loaded exact key's ordinary
+shell/PTY inventories are checked against **all** targets before either
+eviction. No cleanup-owned session, terminal, location-root or ordinary-process
+probe runs after the first eviction. Only exact scoped DELETEs and a final,
+non-loading `GET /api/debug/location` remain. That inventory must show neither
+target nor descendants and preserve every unrelated exact cache key and its
+physical identity. Both original target identities must still match.
+
+On Windows, each target must additionally open with the `DELETE` access right
+and read/write/delete sharing, `OPEN_EXISTING`, `BACKUP_SEMANTICS` and
+`OPEN_REPARSE_POINT`. The opened handle's identity must match the original
+directory, and the handle is closed immediately. This only observes access:
+it never sets delete disposition, renames, removes or retains a teardown lock.
+A directory held without delete sharing, denied permissions, identity failure
+or unavailable evidence refuses before remote-branch deletion or either Git
+deregistration. The safe diagnostic names **Windows directory delete access
+unavailable**, separately from **target reactivated**; neither includes raw host
+output, session IDs, credentials or native error payloads.
+
+One shared two-minute deadline and at most **one** unrelated-cache disappearance
+recheck now cover the entire batch, rather than a new budget/recheck per target.
+The #523 exception otherwise remains: unchanged missing-directory identity,
+fresh full read-only activity/root checks, no scoped read of that missing key,
+no second churn, no disposal retry and strict final unrelated-key preservation.
+Zero verified targets still require no host calls. Single-review replacement
+uses the same algorithm with one target; `ReleaseLocation` remains its
+single-target API wrapper.
+
+Completed children stay assigned to their worktrees. Neither their histories
+nor assignments are moved or deleted. Unregistered residue is still never
+evicted or repaired. All ownership, confirmation, phase/configuration,
+clean-executor/detached-review, interior-hazard and absence checks remain;
+post-handoff interior inspection still precedes Git. The Git deletion order
+remains remote → executor → review → local, with state saved only on success.
+An eviction or later failure can still leave an idle target unloaded; no
+rollback, shared-host restart, process kill or force-removal fallback is added.
+
+### Complete touched-element inventory
+
+| Element | Does its earlier behavior still hold? |
+| --- | --- |
+| `run.releaseCheckouts` | All-target ownership/interior verification before host mutation, Windows raw-path inspection for all hosts, post-handoff interior reinspection and absent/unregistered handling remain. **Before:** independent sequential host handoffs. **After:** one batch, with no loading host preflight between evictions. |
+| `checkoutReleaseTarget`, `Cleanup`, `ReviewWorktree` and generic Git consumers | Implementations unchanged. Engine-derived placement, Git registration/common-directory/branch authority, executor cleanliness versus review detached-only, confirmation, lifecycle gates, Git order, residue/absence, final state and metrics semantics remain. Only the shared OpenCode handoff changes; generic Git, base/bootstrap and other hosts do not acquire this access probe. |
+| `ReleaseLocation` / new `ReleaseLocations` | Single-target calls still work through the wrapper. The new batch performs all activity/root probes before disposal and refuses if either target remains/reappears afterward. Empty batches do no host work. The deadline and one-recheck allowance are now shared across targets, not renewed per checkout. |
+| Runtime resolution, `releaseCall`, `releaseParameter`, OpenAPI validation and `call` closure | Existing authenticated, pinned native executable, explicit deep-object contract, response validation, cancellation and safe projected errors remain. Resolution/contract discovery happen once per batch. No new host endpoint, credential transport or response relaxation. |
+| `releaseLocation`, `targetInfos` / `targetIndex`, `inventory` | Exact keys remain independent from filesystem identity. Original identities are retained for every target; duplicate requested physical targets refuse. Each inventory checks both targets for ambiguous aliases and unexpected descendants, retaining all prior caps/malformed/unverifiable refusals. Debug inventory never loads a location. |
+| `preserve`, `unchanged`, preflight/recheck loop and target-root validation | Original identity, exact-key preservation and the #523 bounded exception remain. Both intended targets, rather than one, may disappear through scoped release; unrelated aliases are never substitutes. Root checks use each target's corresponding exact key. A busy review now refuses before executor eviction, not during a later independent handoff. |
+| Scoped DELETE loop and final observations | Exact encoded keys, no DELETE for unloaded targets, no retry and safe failure remain. **Before:** final observation applied only to the current target. **After:** after all evictions, one non-loading observation requires every target absent and every final unrelated key preserved; Windows access and original identity checks also gate return to Git. |
+| `releaseBelongs` / unchanged `releaseDirectory` | Absolute/canonical/filesystem evidence and segment-aware owner/cwd attribution remain. Attribution now tests every target, so one shared response cannot overlook activity in the other checkout. No new path normalization or idle inference. |
+| `releaseActiveJobs`, `releaseActivity`, `releaseOrdinaryProcesses` | Foreground drains; background owners and actual subagent children; bounded, validated session pagination; persistent owner/cwd; every exact loaded shell/PTY owner/cwd; exited-PTY handling and all caps/refusals remain. The existing twice-per-pass active/job checks and once-per-pass history/ordinary scans are shared by all targets, rather than repeated after releasing a sibling. |
+| New Windows `releaseDeleteAccess` and non-Windows counterpart | New non-mutating Windows delete-access/handle-identity observation, with immediate close and safe refusal. The non-Windows implementation is a no-op; it does not impose Windows sharing semantics elsewhere. Neither implementation establishes deletion authority or excludes later clients. |
+| `checkoutHost.Run`, `sessions` / `reactivated` fixture state | Existing real-Git/scripted-host behavior remains. Sorted completed-session inventories and terminal reads deterministically model reloading an assigned but evicted checkout; no live host/provider or user session is involved. |
+| `TestOpenCodeCleanupDoesNotReactivateReleasedCheckouts`, `TestOpenCodeCleanupFinalReactivationRefusesBeforeGit` | New old-sequential characterization plus batched no-loading-probes/history-assignment assertions, and external reactivation of either target at the final observation. Refusals preserve both registrations, branches and phase with zero Git mutation. |
+| `TestOpenCodeCleanupReleaseAndPartialRetry`, `TestOpenCodeCheckoutReleaseEviction` | Existing success/unloaded/partial-retry, #523 fresh-activity/churn/final-refusal checks remain. Add busy/descendant/ambiguous-alias cases for both cleanup targets. Eviction expectations now reflect all-target preflight before any disposal and final batch checks after both evictions; no refusal is weakened. |
+| New `TestOpenCodeFinalWindowsDeleteAccessBeforeGit` | Real no-delete-share directory handles are introduced only at final preflight for executor cleanup, review cleanup and single-review replacement. Each refuses before all Git mutation; closing only the owned fixture handle permits normal retry. No process or session is moved/killed. |
+| Smoke `nativeLookup`, release source identities, `completed_children` and `cleanup_artifacts` | Existing isolated source/explicit selection, all role/lookup/guard/activity/alias/link refusals, single-review replacement, unrelated live PTYs/lookups, provider trap and verified owned-host shutdown remain. Add completed implementer/reviewer children in both targets, connected bound Memhub before release, unchanged assignment/history hashes afterward, Git-registration absence and explicit local/remote ref observations (`show-ref --verify --quiet` distinguishes absent refs from errors). No shared-host query/mutation or runtime adapter change. |
+| This guide | Earlier contracts remain as historical before/after evidence, including late-failure/race limitations. Adds the changed ordering, Windows access observation, full per-element inventory and isolated qualification; no role, permission, configuration, dependency or state schema changes. |
+
+The unloaded-target, ambiguous-target-alias, descendant, activity, exact-key
+preservation and Windows delete-access rules cover **every target in both
+entry points**, not only a symbol called `ReleaseLocation` or
+`RemoveDetachedWorktree`. Detached-only remains **review-specific**;
+confirmation/cleanliness/owned branch remain executor-specific. This is not a
+new restriction on every generic worktree remover or every Windows filesystem
+deletion in Orch.
+
+### Regression, Windows evidence and remaining race
+
+`TestOpenCodeCleanupDoesNotReactivateReleasedCheckouts` first characterizes the
+old two-call sequence: the second persistent-terminal scan reopens the released
+executor while both completed sessions retain their assignments. Against the
+old production sequence its cleanup subtest fails; the batched implementation
+passes with no loading host requests after the first DELETE. This is a
+deterministic interleaving, not a claim that every observed live review reload
+has that cause. The earlier mediated shared-host evidence also admitted
+asynchronous warming/location-scoped effects; its exact review reload cause
+remains unproven and was not replayed on user worktrees.
+
+The final-reactivation and real Windows handle regressions distinguish the two
+safe refusals and assert no branch deletion, Git-registration change or phase
+write. Existing single-target alias/activity/pagination/deadline regressions and
+the all-target #523 lifecycle recheck tests remain required.
+
+On 2026-11-19, the new regression against baseline `b74fb7e` failed on
+cleanup-owned executor reactivation and on accepting final executor re-entry.
+After the fix, the fresh focused regression passed, including both targets'
+busy/descendant/alias refusals and all three real Windows held-directory/retry
+cases. `go build ./...`, `go vet ./...`, `go test -timeout=20m ./...` (728.4s),
+empty `gofmt -l .` and all 43 adapter unit tests passed. A Linux/amd64
+cross-build also passed, and changed-package `golangci-lint` reported zero issues.
+
+Run all six required commands listed above, including the local Windows smoke
+that hosted CI does not run. The smoke's `checkout_release.completed_children`
+records bound status/locate evidence, connected Memhub before release, completed
+session assignments and before/after history hashes. Its cleanup evidence must
+show both checkout directories/registrations and local/remote branch refs
+absent, with primary/unrelated locations, exact alias keys and live unrelated
+PTYs still usable. Source-file/binary/OpenAPI hashes and zero provider requests
+belong to the retained isolated `evidence.json`, not an installed qualification
+claim.
+
+The final **2026-11-19 Windows source-build smoke passed all 35 checks** on
+OpenCode `2.3.2` (the unverified-version advisory remains), Node `v24.15.0`,
+Go `go1.26.5 windows/amd64` and the existing SDK/simulation `2.2.6` dependencies.
+Retained fixture:
+`%LOCALAPPDATA%\Temp\opencode\orch-opencode-smoke-n8TUw3\`.
+`evidence.json`, `checkout-release-openapi.json` and `server.log` identify the
+source/harness/binary bytes and host contract; `issue525-verification/` retains
+the required-command logs, baseline failure and fresh passing regressions.
+The final smoke's recorded source and harness hashes were independently
+compared with the issue worktree afterward and matched.
+
+Both actual `orch-implementer` and `orch-reviewer` children had outcome
+`succeeded`, remained assigned to their respective checkouts and retained
+identical before/after history hashes. Both checkout-bound Memhub services
+were connected immediately before release. Both checkout directories and Git
+registrations disappeared; remote heads were empty and the quiet local-ref
+probe returned absence (exit 1). Only the two intended cache keys disappeared
+(11 → 9); primary/unrelated native lookups, independent alias keys/identities
+and live alias PTYs survived. Provider requests were **zero**, artifact
+verification reported unchanged, and verified owned-service shutdown exited 0.
+An intermediate smoke reached successful cleanup but failed a harness-only
+non-quiet `show-ref` exit-code assertion (128 versus 1); the corrected quiet
+probe and complete final smoke passed. None of these runs touched the shared
+host, installed artifacts or active user worktrees.
+
+**Remaining race:** the final non-loading host inventory, Windows access probe,
+post-release interior reinspection and subsequent Git operations are bounded
+observations, not atomic exclusion. External clients or asynchronous host work
+can reactivate a target or acquire a handle after the checks; an access probe
+does not certify every descendant handle or make Git transactional. Keep both
+targets unused throughout cleanup. Late failures still preserve residue under
+#505; no session relocation, manual residue recovery, service restart or
+process-kill fallback is authorized by this change.
