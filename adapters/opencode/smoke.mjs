@@ -1068,7 +1068,10 @@ func check(ok bool) { if !ok { fmt.Fprintln(os.Stderr, "native command-boundary 
   await Promise.all([connected(root), connected(writable), connected(sibling)])
   const releaseEvidence = evidence.checkout_release = { refusals: [], qualification: "source/selected-artifact isolated simulation only; not installed manual Delivery or atomic host quiescence" }
   if (selection.mode === "source-build") {
-    releaseEvidence.source_files = await Promise.all(["release.go", "release_test.go"].map((file) => fileIdentity(path.join(repo, "internal", "opencode", file))))
+    releaseEvidence.source_files = await Promise.all([
+      "internal/opencode/release.go", "internal/opencode/release_test.go", "internal/opencode/release_access_windows.go", "internal/opencode/release_access_other.go",
+      "internal/run/checkout_release.go", "internal/run/checkout_release_test.go", "internal/run/checkout_release_windows_test.go",
+    ].map((file) => fileIdentity(path.join(repo, file))))
   }
   const releaseSpec = await api("/openapi.json")
   const locationContract = releaseSpec.paths["/api/debug/location"]
@@ -1156,8 +1159,8 @@ func check(ok bool) { if !ok { fmt.Fprintln(os.Stderr, "native command-boundary 
   }
   const hasLocation = (locations, directory) => locations.some((entry) => sameDirectory(entry.directory, directory))
   await runCommand("review-worktree", reviewRequest(oldOID))
-  async function nativeLookup(directory, expectedOID) {
-    const child = await start(directory, agentModels["orch-scout"], lookupParent.session.id, "orch-scout")
+  async function nativeLookup(directory, expectedOID, role = "orch-scout") {
+    const child = await start(directory, agentModels[role], lookupParent.session.id, role)
     const outputs = {}
     for (const [name, input] of [["status", {}], ["locate", { query: "FixtureRoute", limit: 3 }]]) {
       child.turn = await tool(child.turn, "execute", { code: `return await tools.${lookupServer}.${name}(${JSON.stringify(input)})` })
@@ -1173,6 +1176,9 @@ func check(ok bool) { if !ok { fmt.Fprintln(os.Stderr, "native command-boundary 
     assert.equal(hit.content.verification, "worktree_file_hash")
     assert.equal(outputs.locate.index.freshness.atomic_tree_snapshot, false)
     await finishChild(child)
+    outputs.session = (await api("/api/session/" + child.session.id)).data
+    assert(sameDirectory(outputs.session.location.directory, directory), "completed child must remain assigned, not be moved to release its checkout")
+    outputs.history_sha256 = hash(JSON.stringify((await api("/api/session/" + child.session.id + "/message")).data))
     return outputs
   }
   const aliasKeys = []
@@ -1408,6 +1414,15 @@ func check(ok bool) { if !ok { fmt.Fprintln(os.Stderr, "native command-boundary 
   assert(existsSync(writable) && existsSync(reviewPath))
   assert(command("git", ["ls-remote", "--heads", "origin", "smoke-issue"], root, env).trim(), "activity refusal must precede even remote-branch deletion")
   await finishChild(activeExecutor)
+  const completed = releaseEvidence.completed_children = {
+    before: [await nativeLookup(writable, newOID, "orch-implementer"), await nativeLookup(reviewPath, newOID, "orch-reviewer")],
+    connected_before: await Promise.all([connected(writable), connected(reviewPath)]),
+  }
+  const activeBeforeCleanup = (await api("/api/session/active")).data
+  for (const lookup of completed.before) {
+    assert.equal(lookup.session.outcome, "succeeded", "both assigned children must have completed successfully")
+    assert(!activeBeforeCleanup[lookup.session.id], "both assigned children must be completed before release")
+  }
   releaseEvidence.before_cleanup = await api("/api/debug/location")
   assert(hasLocation(releaseEvidence.before_cleanup, writable) && hasLocation(releaseEvidence.before_cleanup, reviewPath))
   const beforeCleanup = await cacheSnapshot()
@@ -1423,6 +1438,19 @@ func check(ok bool) { if !ok { fmt.Fprintln(os.Stderr, "native command-boundary 
   releaseEvidence.cleanup_caches = { before: beforeCleanup, target_keys: cleanupKeys, after: afterCleanup }
   assert(!releaseEvidence.after_cleanup.some((entry) => [writable, reviewPath].some((directory) => path.resolve(entry.directory) === path.resolve(directory))))
   assert(hasLocation(releaseEvidence.after_cleanup, root) && hasLocation(releaseEvidence.after_cleanup, sibling))
+  completed.after = []
+  for (const previous of completed.before) {
+    const session = (await api("/api/session/" + previous.session.id)).data
+    const history_sha256 = hash(JSON.stringify((await api("/api/session/" + session.id + "/message")).data))
+    assert.equal(session.location.directory, previous.session.location.directory, "cleanup must not move completed sessions")
+    assert.equal(session.parentID, previous.session.parentID)
+    assert.equal(session.outcome, "succeeded")
+    assert.equal(history_sha256, previous.history_sha256, "cleanup must preserve completed session history")
+    completed.after.push({ session, history_sha256 })
+  }
+  completed.git_registrations_after = command("git", ["worktree", "list", "--porcelain"], root, env)
+  for (const directory of [writable, reviewPath]) assert(!completed.git_registrations_after.includes(directory.replaceAll("\\", "/")))
+  pass("both completed child sessions remain assigned with unchanged history; checkout-bound Memhub connected before batched release; both Git checkouts removed")
   releaseEvidence.primary_after = await nativeLookup(root, oldOID)
   releaseEvidence.unrelated_after = await nativeLookup(sibling, oldOID)
   if (aliasKeys.length) {
@@ -1441,8 +1469,15 @@ func check(ok bool) { if !ok { fmt.Fprintln(os.Stderr, "native command-boundary 
   releaseEvidence.unmanaged_after = JSON.parse(evidence.last_tool.content)
   assert.equal(releaseEvidence.unmanaged_after.tasks_total, unmanagedTasks, "unrelated full-profile lookup must remain usable without losing its synthetic memory")
   await finish(unrelatedAfter.session, unrelatedAfter.turn)
-  assert.equal(command("git", ["ls-remote", "--heads", "origin", "smoke-issue"], root, env).trim(), "")
-  assert.notEqual(result("git", ["show-ref", "--verify", "refs/heads/smoke-issue"], root, env).status, 0)
+  releaseEvidence.cleanup_artifacts = {
+    executor_exists: existsSync(writable), review_exists: existsSync(reviewPath),
+    remote_heads: command("git", ["ls-remote", "--heads", "origin", "smoke-issue"], root, env).trim(),
+    local_ref_exit: result("git", ["show-ref", "--verify", "--quiet", "refs/heads/smoke-issue"], root, env).status,
+  }
+  assert.equal(releaseEvidence.cleanup_artifacts.executor_exists, false)
+  assert.equal(releaseEvidence.cleanup_artifacts.review_exists, false)
+  assert.equal(releaseEvidence.cleanup_artifacts.remote_heads, "")
+  assert.equal(releaseEvidence.cleanup_artifacts.local_ref_exit, 1)
   pass("engine executor/review cleanup after completed native lookups; descendant/activity refusals preserve fixtures; primary and unrelated lookup services still usable")
   if (process.platform === "win32") {
     // Ambiguous target caches remain untouched until normal owned-host shutdown.

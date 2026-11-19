@@ -42,10 +42,11 @@ func (c *verbCtx) releaseCheckouts(ctx context.Context, git *gitops.Git, reviews
 			targets = append(targets, target)
 		}
 	}
-	for _, target := range targets {
-		if err := opencode.ReleaseLocation(ctx, c.env.Runner, c.env.RepoRoot, target); err != nil {
-			return err
-		}
+	// Before #525 a later target's host preflight could reopen an earlier one.
+	// Batch every loading probe before either eviction; final host inventory and
+	// Windows delete-access observations must pass for both before Git mutation.
+	if err := opencode.ReleaseLocations(ctx, c.env.Runner, c.env.RepoRoot, targets...); err != nil {
+		return err
 	}
 	// Releasing locks makes Git traversal more reachable. Refuse newly observed
 	// hazards too; this is still not atomic exclusion of filesystem re-entry.
