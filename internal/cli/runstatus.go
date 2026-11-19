@@ -48,7 +48,7 @@ func runStatusRoot(ctx context.Context, env Env) (string, error) {
 			return "", err
 		}
 		if inside && lookupSameDirectory(localRoot, checkout.Root()) != nil {
-			return "", fmt.Errorf("Orch root %s is not the selected Git checkout %s", localRoot, checkout.Root())
+			return "", fmt.Errorf("orch root %s is not the selected Git checkout %s", localRoot, checkout.Root())
 		}
 	}
 	worktrees, err := checkout.ListWorktrees(ctx)
@@ -56,7 +56,7 @@ func runStatusRoot(ctx context.Context, env Env) (string, error) {
 		return "", err
 	}
 	if len(worktrees) == 0 || !worktrees[0].Primary {
-		return "", fmt.Errorf("Git did not report a primary checkout")
+		return "", fmt.Errorf("git did not report a primary checkout")
 	}
 	root := worktrees[0].Path
 	if _, _, err := verifyPrimaryCheckout(ctx, env.Runner, checkout, worktrees, root); err != nil {
