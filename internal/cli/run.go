@@ -18,6 +18,7 @@ import (
 // runUsage names the adapter plumbing surface and explicit recovery requests.
 const runUsage = `orch run: usage: orch run plan|activate|dispatch|repair|pr-open|review-worktree|review|escalate|ci|merge-report|merge|block|resolve-block|abandon|cleanup|complete (JSON document on stdin) | orch run status|next --json | orch run readiness --issue <number> --json | orch run help
 repair: explicit scoped integration authorization for recovered pre-PR work or a pinned open PR; see docs/decision-block-recovery.md for schema 1 and the renewed verification/review/merge gates
+review: schema 4 supports non-approving needs-evidence / unverified criteria and identifiable same-head execution_evidence; collect outside the OpenCode reviewer, then obtain fresh routed review (docs/review-evidence.md). This grants no execution or merge authority.
 manual CI: after fresh human confirmation, merge-report schema 1 accepts:
 {"schema_version":1,"issue_number":123,"ci_exception":{"run_id":"<current run>","issue_number":123,"pr_number":124,"head_oid":"<full independently reviewed head>","approved_by":"<human>","approved_at":"<actual RFC3339 decision time>","reason":"<why incomplete CI is accepted>","statement":"accept-incomplete-ci","repair_number":0}}
 Then obtain separate fresh approve-merge confirmation for that PR/head and send merge schema 1 with its ordinary approval plus the explicit ci_exception again. Receipts are audit, not reusable permission; grants and probe failures cannot use this exception.

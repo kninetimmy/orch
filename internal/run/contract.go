@@ -13,7 +13,10 @@ import (
 // v2 binds integration-repair enforcement: v1 engines must refuse these runs
 // before a lifecycle save can discard repair receipts. Existing v1 runs remain
 // inspectable but require their original engine or fresh plan approval.
-const ContractVersion = 2
+// v3 binds evidence-only review and pending-evidence enforcement. v2 engines
+// must not save runs whose review evidence they would silently discard. Older
+// runs remain inspectable, not executable under changed approval semantics.
+const ContractVersion = 3
 
 // ExecutionConfig is the effective configuration approved for this run.
 // All six profiles are bound, including routes available to later escalation.

@@ -66,6 +66,7 @@ func TestNextDeliveryPhases(t *testing.T) {
 		{state.PhasePROpen, "", "review", false},
 		{state.PhaseInReview, "", "review", false},
 		{state.PhaseInReview, VerdictRequestChanges, "fix-and-review", false},
+		{state.PhaseInReview, VerdictNeedsEvidence, "collect-evidence-and-review", false},
 		{state.PhaseInReview, VerdictApprove, "merge-report", false},
 		{state.PhaseAwaitingMerge, VerdictApprove, "merge", true},
 		{state.PhaseMerged, VerdictApprove, "cleanup", true},
@@ -76,6 +77,7 @@ func TestNextDeliveryPhases(t *testing.T) {
 		t.Run(string(tc.phase)+"/"+tc.verdict, func(t *testing.T) {
 			issue := fixtureIssue("a", 1, tc.phase)
 			issue.LastReviewVerdict = tc.verdict
+			issue.ReviewedHeadOID = "head-oid"
 			root := setupDeliveryRepoWithConfig(t, metricsEnabledConfigTOML, "r1", []state.Issue{issue})
 			before := string(stateBytes(t, root))
 			lockBefore, err := os.ReadFile(filepath.Join(root, lockfile.Path))

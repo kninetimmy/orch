@@ -84,14 +84,14 @@ func mcpReadinessExercise(t *testing.T, binary string) {
 		t.Fatal(err)
 	}
 	const head = "0123456789abcdef0123456789abcdef01234567"
-	const oldHead = "abcdef0123456789abcdef0123456789abcdef0123"
+	const oldHead = "abcdef0123456789abcdef0123456789abcdef01"
 	selection := manifest.Selection{Model: "claude-sonnet-5", Effort: "xhigh"}
 	issue := state.Issue{
 		PlanID: "a", Title: "Inspect evidence", Number: 1, Phase: state.PhaseInReview,
 		Branch: "orch/issue-1", Worktree: ".orchestrator/worktrees/issue-1", PRNumber: 10, PRURL: "https://github.com/o/r/pull/10",
 		Objective: "Read only", AcceptanceCriteria: []string{"no writes"}, RequiredTests: []string{"go test ./..."},
 		Decision:     &state.Decision{Role: manifest.RoleImplementer, Executor: selection, Reviewer: selection, Rationale: "fixture"},
-		ReviewCycles: 1, LastReviewVerdict: run.VerdictApprove,
+		ReviewCycles: 1, LastReviewVerdict: run.VerdictApprove, ReviewedHeadOID: head,
 	}
 	m := manifest.Manifest{
 		SchemaVersion: manifest.SchemaVersion, Objective: issue.Objective, AcceptanceCriteria: issue.AcceptanceCriteria, RequiredTests: issue.RequiredTests,

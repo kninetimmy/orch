@@ -369,6 +369,7 @@ func applyOutcome(iss *state.Issue, o outcome) bool {
 	if o.clearApproval && (iss.ApprovedHeadOID != "" || iss.LastReviewVerdict != "") {
 		iss.ApprovedHeadOID = ""
 		iss.LastReviewVerdict = ""
+		iss.ReviewedHeadOID = "" // pending evidence survives demotion
 		changed = true
 	}
 	// A blocked outcome records its reason; every other outcome clears any

@@ -172,12 +172,12 @@ var acceptanceCriterionNamePattern = regexp.MustCompile(`^acceptance-criterion-[
 // rejectEngineOwnedNames fails closed with ErrBadRequest naming the
 // first verification in vs whose name collides with an engine-owned
 // singleton, a review-cycle-N entry, or an acceptance-criterion-N
-// judgment or numbered manual CI receipt, so engine-written entries cannot be
+// judgment or numbered manual CI/evidence receipt, so engine-written entries cannot be
 // quietly overwritten — or quietly duplicated — by a caller-supplied
 // verification of the same name.
 func rejectEngineOwnedNames(vs []manifest.Verification) error {
 	for _, v := range vs {
-		if engineVerificationNames[v.Name] || reviewCycleNamePattern.MatchString(v.Name) || acceptanceCriterionNamePattern.MatchString(v.Name) || manualCIAuditPattern.MatchString(v.Name) {
+		if engineVerificationNames[v.Name] || reviewCycleNamePattern.MatchString(v.Name) || acceptanceCriterionNamePattern.MatchString(v.Name) || manualCIAuditPattern.MatchString(v.Name) || reviewEvidenceNamePattern.MatchString(v.Name) {
 			return fmt.Errorf("%w: verification name %q is engine-owned and cannot be supplied by a caller", ErrBadRequest, v.Name)
 		}
 	}
@@ -218,8 +218,10 @@ func readIssueManifest(ctx context.Context, gh *ghops.GH, number int) (ghops.Iss
 // managed region) under the body-cap policy: if the rendered body
 // exceeds the headroom, it drops Detail text from the oldest ordinary
 // verifications first. Before #517 all details were eligible; manual CI
-// receipts now retain their complete decisions and CI snapshots. If the
-// remaining body will not fit it fails closed naming
+// receipts now retain their complete decisions and CI snapshots.
+// Before #528 review details were all eligible; numbered review-evidence
+// receipts now also retain every judgment/reason and execution artifact identity.
+// If the remaining body will not fit it fails closed naming
 // GitHub's hard limit and the offending size.
 func upsertCapped(existing string, m manifest.Manifest) (string, error) {
 	body, err := manifest.Upsert(existing, m)
@@ -232,7 +234,7 @@ func upsertCapped(existing string, m manifest.Manifest) (string, error) {
 	trimmed := m
 	trimmed.Verifications = append([]manifest.Verification(nil), m.Verifications...)
 	for i := range trimmed.Verifications {
-		if trimmed.Verifications[i].Detail == "" || manualCIAuditPattern.MatchString(trimmed.Verifications[i].Name) {
+		if trimmed.Verifications[i].Detail == "" || manualCIAuditPattern.MatchString(trimmed.Verifications[i].Name) || reviewEvidenceNamePattern.MatchString(trimmed.Verifications[i].Name) {
 			continue
 		}
 		trimmed.Verifications[i].Detail = ""

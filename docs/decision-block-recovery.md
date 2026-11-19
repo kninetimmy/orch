@@ -120,11 +120,16 @@ those with their original engine, or abort and re-plan for fresh approval; no
 active run is migrated. State remains v6. Older engines do not implement the
 additional repair-specific verification/approval preflights and cannot continue
 newly approved v2 runs.
-Unrepaired review schema 3, merge schema 1 and report schema 1 retain their wire
+Before #528, unrepaired review schema 3, merge schema 1 and report schema 1 retained their wire
 contracts. Repair acknowledgements are optional extensions for ordinary runs,
 but mandatory after explicit repair: an older client dropping the new field
 gets a refusal, never silent progression. The new repair verb has its own
 schema 1; dispatch's schema-4 approved execution brief is unchanged.
+After #528, review schema 4 and approval contract 3 add the evidence-only
+handoff in `review-evidence.md`; merge/report schema 1 and all repair-specific
+approval/verification gates remain. A non-approving report without repair
+verification does not mark the repair verified; merge-report still requires
+the existing repair verification and approving-review requirements.
 
 On denial, preserve the branch/worktree and inspect the specific error:
 stale requests need fresh inspection and authorization; decision blocks need

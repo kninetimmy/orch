@@ -186,16 +186,28 @@ type Issue struct {
 	PRURL           string `json:"pr_url,omitempty"`
 	ApprovedHeadOID string `json:"approved_head_oid,omitempty"`
 	ReviewCycles    int    `json:"review_cycles,omitempty"`
-	// LastReviewVerdict is "", "approve", or "request-changes": the gate
-	// merge-report checks without parsing bodies.
-	LastReviewVerdict string    `json:"last_review_verdict,omitempty"`
-	BlockedReason     string    `json:"blocked_reason,omitempty"`
-	Attempts          []Attempt `json:"attempts,omitempty"`
-	Blocks            []Block   `json:"blocks,omitempty"`
+	// Before approval contract v3, LastReviewVerdict was "", "approve", or
+	// "request-changes". Now "needs-evidence" is a non-approving review stall,
+	// not a code-fix cycle. All remain in the existing review phase.
+	LastReviewVerdict string `json:"last_review_verdict,omitempty"`
+	// ReviewedHeadOID is committed only after both review audit writes succeed.
+	// PendingEvidence survives code fixes, repair and resume until a routed
+	// review supplies identifiable execution evidence for each pending criterion.
+	// Contract v3 fences out engines unaware of these optional v6 fields.
+	ReviewedHeadOID string `json:"reviewed_head_oid,omitempty"`
+	PendingEvidence []int  `json:"pending_evidence,omitempty"`
+	// EvidenceCriteria remembers which criteria required execution evidence, so
+	// a later head/repair cannot reuse evidence discharged at a different head.
+	EvidenceCriteria []int     `json:"evidence_criteria,omitempty"`
+	BlockedReason    string    `json:"blocked_reason,omitempty"`
+	Attempts         []Attempt `json:"attempts,omitempty"`
+	Blocks           []Block   `json:"blocks,omitempty"`
 	// Repairs are explicit integration authorizations, not plan approvals.
 	// This optional v6 history is populated only by repair, never by migration
-	// or resume. Approval contract v2 fences out receipt-unaware lifecycle
-	// engines; ordinary runs retain their existing persistence shape.
+	// or resume. Before contract v3, approval contract v2 fenced out
+	// repair-receipt-unaware engines and ordinary runs retained their persistence
+	// shape. Contract v3 also fences review-evidence-unaware engines; ordinary
+	// reviews now persist their successfully audited head.
 	Repairs []IntegrationRepair `json:"repairs,omitempty"`
 }
 
@@ -350,6 +362,13 @@ func (st *State) validate() error {
 // can be abandoned before its PR ever opened.
 func (r *Run) validateIssues() error {
 	for i, iss := range r.Issues {
+		for _, criteria := range [][]int{iss.PendingEvidence, iss.EvidenceCriteria} {
+			for j, n := range criteria {
+				if n < 1 || n > len(iss.AcceptanceCriteria) || (j > 0 && n <= criteria[j-1]) {
+					return fmt.Errorf("issue %d: invalid review evidence criterion", iss.Number)
+				}
+			}
+		}
 		for j, repair := range iss.Repairs {
 			if repair.Number != j+1 || (repair.PhaseBefore != PhaseWorktreeReady && repair.PhaseBefore != PhaseAwaitingMerge) ||
 				!fullOID.MatchString(repair.HeadOID) || strings.TrimSpace(repair.AuthorizedBy) == "" || strings.TrimSpace(repair.Reason) == "" ||

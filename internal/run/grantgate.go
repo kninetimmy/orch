@@ -219,13 +219,14 @@ func protectedFiles(files []string, cfg *config.Config) []string {
 
 // fixCycleBlocked reports whether a non-approving review on a grant run
 // takes the issue past the grant's fix-cycle limit: m is the record before
-// this cycle, whose review-cycle entries hold every earlier verdict. Every
-// non-approving review past the limit blocks, including after a human has
-// resolved an earlier such block.
+// this cycle, whose review-cycle entries hold every earlier verdict.
+// Before review v4 every non-approval counted. Now needs-evidence never counts,
+// either as the current cycle (Review) or as history here. Request-changes
+// still blocks past the limit, including after a human resolves an old block.
 func fixCycleBlocked(m manifest.Manifest, limit int) (int, bool) {
 	n := 1 // this review
 	for _, v := range m.Verifications {
-		if reviewCycleNamePattern.MatchString(v.Name) && v.Result != VerdictApprove {
+		if reviewCycleNamePattern.MatchString(v.Name) && v.Result != VerdictApprove && v.Result != VerdictNeedsEvidence {
 			n++
 		}
 	}

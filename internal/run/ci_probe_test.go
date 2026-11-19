@@ -17,6 +17,7 @@ func TestRequiredCIProbeFailureStopsLifecycle(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			issue := fixtureIssue("a", 1, state.PhaseInReview)
 			issue.LastReviewVerdict, issue.ReviewCycles = VerdictApprove, 1
+			issue.ReviewedHeadOID = "head-oid-2"
 			if name == "human merge" || name == "grant merge" {
 				issue.Phase, issue.ApprovedHeadOID = state.PhaseAwaitingMerge, "head-oid-2"
 			}

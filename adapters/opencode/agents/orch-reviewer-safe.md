@@ -116,6 +116,26 @@ right after a fetch, or the base OID GitHub reports once the PR exists.
 Never use a local base branch, which in a later-wave worktree can still
 point at the pre-run commit.
 
+## Missing execution evidence
+
+Before review v4, an unobserved criterion was reported as not satisfied or wrong
+and the verdict was limited to `approve` or `request-changes`. Now distinguish
+`unverified` (missing execution evidence) from `unsatisfied` (a real defect) and
+`wrong` (the criterion itself is invalid). Report `needs-evidence` only when
+there is at least one unverified criterion, all others are satisfied, and no
+finding warrants changes. Give a reason for every criterion and the full
+reviewed PR head. A real finding still warrants `request-changes` even with
+unverified criteria; a wrong criterion still returns to the human.
+
+Have the executor or Architect collect artifacts outside this reviewer; your
+edit/shell denials remain unchanged. A fresh routed reviewer independently
+evaluates identifiable `execution_evidence` for the same live head, including
+artifact identity, command/result and collection attribution/time
+(`docs/review-evidence.md`). Missing or other-head evidence cannot satisfy a
+pending request; a changed head needs new evidence and independent review.
+Attribution is not authenticated proof. No fix commit is required for
+same-head recovery, and no execution permission, CI or merge gate is waived.
+
 ## Report
 
 List every finding your review turns up — this stage is about coverage, not
@@ -143,8 +163,8 @@ without forcing another review cycle is a finding that is none of these — a
 nit, a preference, a low-severity observation.
 
 Produce **one consolidated report** per review cycle — do not report findings
-piecemeal across several messages. State a clear verdict (`approve` or
-`request-changes`) and the reasoning behind it, covering every area above that
+piecemeal across several messages. State a clear verdict (`approve`,
+`request-changes` or `needs-evidence`) and the reasoning behind it, covering every area above that
 is relevant to this change. Size the report to the change under review — no
 filler, no restated boilerplate.
 

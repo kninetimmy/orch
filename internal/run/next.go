@@ -177,9 +177,15 @@ func nextIssue(run *state.Run, issue *state.Issue) NextAction {
 		if issue.Phase == state.PhaseInReview && checkApprovingReview(issue) == nil {
 			a.Action, a.Reason = "merge-report", "An approving review is recorded, but no merge report has pinned the live head yet."
 			a.Prerequisites = []string{"`orch run merge-report` must verify the PR is open and required CI is passing or explicitly absent, then pin its live head and present the report to the human. This guidance has not performed those checks."}
+		} else if issue.LastReviewVerdict == VerdictNeedsEvidence {
+			a.Action, a.Reason = "collect-evidence-and-review", "The last review is non-approving because execution evidence is missing, not because a code fix was requested."
+			a.Prerequisites = []string{fmt.Sprintf("Collect identifiable execution evidence for pending criteria %v at the stable live PR head (last recorded reviewed head %s); a fresh routed reviewer must evaluate the artifacts and record new judgments via `orch run review`. A changed head needs new evidence and independent review; this grants no execution, edit or merge authority.", issue.PendingEvidence, issue.ReviewedHeadOID)}
 		} else if issue.LastReviewVerdict == VerdictRequestChanges {
 			a.Action, a.Reason = "fix-and-review", "The last recorded review requests changes."
 			a.Prerequisites = []string{"Have the routed executor fix and push, then the routed reviewer re-review the stable live head and record one reasoned judgment per approved acceptance criterion."}
+			if len(issue.PendingEvidence) > 0 {
+				a.Prerequisites = append(a.Prerequisites, fmt.Sprintf("Pending evidence for criteria %v survives the fix; collect live-head execution artifacts for the fresh routed review.", issue.PendingEvidence))
+			}
 		} else {
 			a.Action, a.Reason = "review", "The PR needs a consolidated review before a merge report."
 			a.Prerequisites = []string{"The PR must stop changing; the routed reviewer must review its live head and record a verdict plus one reasoned judgment per approved acceptance criterion with `orch run review`."}

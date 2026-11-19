@@ -175,7 +175,7 @@ func ciExceptionFixture(t *testing.T) (Env, *ciExceptionGitHub) {
 	}
 	gh := &ciExceptionGitHub{t: t, root: root, head: head, branch: issue.Branch, issueBody: body, prBody: body, issueState: "OPEN", prState: "OPEN", bucket: "cancel"}
 	env.Runner = gh
-	review := run.ReviewRequest{SchemaVersion: 3, IssueNumber: 1, ReviewedHeadOID: head, Verdict: run.VerdictApprove,
+	review := run.ReviewRequest{SchemaVersion: run.ReviewSchemaVersion, IssueNumber: 1, ReviewedHeadOID: head, Verdict: run.VerdictApprove,
 		Summary: "Independent review of the fixture", Reviewer: issue.Decision.Reviewer,
 		Judgments: []run.CriterionJudgment{{Criterion: 1, Judgment: run.JudgmentSatisfied, Reason: "exercised the fixture"}}}
 	ciExceptionInvoke(t, env, "review", review, ExitOK, "")
@@ -223,6 +223,50 @@ func ciExceptionManifest(t *testing.T, body string) manifest.Manifest {
 		t.Fatal(err)
 	}
 	return m
+}
+
+func TestEvidenceOnlyReviewCLI(t *testing.T) {
+	env, gh := ciExceptionFixture(t)
+	issue := ciExceptionState(t, env.RepoRoot).Run.Issues[0]
+	req := run.ReviewRequest{SchemaVersion: run.ReviewSchemaVersion, IssueNumber: 1,
+		ReviewedHeadOID: gh.head, Verdict: run.VerdictNeedsEvidence,
+		Summary: "Independent review lacks execution evidence", Reviewer: issue.Decision.Reviewer,
+		Judgments: []run.CriterionJudgment{{Criterion: 1, Judgment: run.JudgmentUnverified, Reason: "Need an identifiable execution log"}}}
+	out := ciExceptionInvoke(t, env, "review", req, ExitOK, "")
+	var result run.ReviewResult
+	if err := json.Unmarshal(out, &result); err != nil || result.Verdict != run.VerdictNeedsEvidence ||
+		!reflect.DeepEqual(result.UnverifiedCriteria, []int{1}) || result.Phase != state.PhaseInReview {
+		t.Fatalf("review JSON = %s, %v", out, err)
+	}
+	var stdout, stderr bytes.Buffer
+	env.Stdout, env.Stderr = &stdout, &stderr
+	if code := Run([]string{"run", "next", "--json"}, env); code != ExitOK {
+		t.Fatalf("next exit=%d: %s", code, stderr.String())
+	}
+	var next run.NextDoc
+	if err := json.Unmarshal(stdout.Bytes(), &next); err != nil || next.Actions[0].Action != "collect-evidence-and-review" {
+		t.Fatalf("next JSON = %s, %v", stdout.String(), err)
+	}
+	report := run.MergeReportRequest{SchemaVersion: 1, IssueNumber: 1}
+	ciExceptionInvoke(t, env, "merge-report", report, ExitError, "no approving review")
+	req.Verdict, req.Judgments[0].Judgment = run.VerdictApprove, run.JudgmentSatisfied
+	ciExceptionInvoke(t, env, "review", req, ExitError, "needs identifiable execution_evidence")
+	// These are explicit synthetic artifacts at the deterministic GitHub
+	// boundary. The CLI must not run their command or fetch their path.
+	req.ExecutionEvidence = []run.ExecutionEvidence{{
+		Criterion: 1, HeadOID: gh.head, Artifact: "fixture://execution-log/1",
+		Command: "synthetic-check --must-not-execute", Result: "pass",
+		CollectedBy: "fixture-executor", CollectedAt: time.Now().UTC().Format(time.RFC3339),
+	}}
+	req.Judgments[0].Reason = "The independent fixture reviewer evaluated the identified output"
+	ciExceptionInvoke(t, env, "review", req, ExitOK, "") // same head, no fix commit
+	ciExceptionInvoke(t, env, "merge-report", report, ExitError, "required CI is failing")
+	gh.head = strings.Repeat("f", 40)
+	ciExceptionInvoke(t, env, "merge-report", report, ExitError, "recorded reviewed head")
+	req.ReviewedHeadOID = gh.head
+	ciExceptionInvoke(t, env, "review", req, ExitError, "execution evidence for criterion 1 is from head")
+	req.ExecutionEvidence[0].HeadOID = gh.head
+	ciExceptionInvoke(t, env, "review", req, ExitOK, "")
 }
 
 func TestManualCIExceptionCLIThroughCompletion(t *testing.T) {

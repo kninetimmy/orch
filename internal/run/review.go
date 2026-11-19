@@ -6,6 +6,7 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/kninetimmy/orch/internal/ghops"
 	"github.com/kninetimmy/orch/internal/manifest"
@@ -26,15 +27,20 @@ import (
 // complaint about a missing field. v3 versions Selection's OpenCode
 // variant/no_variant request shape; v2 is rejected before routing comparison so
 // a stale adapter cannot submit an effort-only approximation.
-const ReviewSchemaVersion = 3
+// v4 adds needs-evidence, unverified and head-bound execution_evidence. A v3
+// adapter must fail explicitly, not turn missing evidence into a code finding.
+const ReviewSchemaVersion = 4
 
-// The two review verdicts (PRD §12 step 11).
+// Before v4 there were two verdicts. NeedsEvidence now records a non-approving
+// evidence-only stall without requesting a code fix or granting authority.
 const (
 	VerdictApprove        = "approve"
 	VerdictRequestChanges = "request-changes"
+	VerdictNeedsEvidence  = "needs-evidence"
 )
 
-// The three judgments a reviewer records for one acceptance criterion.
+// Before v4 the three judgments were satisfied, unsatisfied and wrong.
+// Unverified now distinguishes missing evidence from a defect or bad criterion.
 // satisfied and unsatisfied are calls about the work, so an unsatisfied
 // criterion routes back to the executor exactly as a request-changes
 // review always has. wrong is a call about the criterion itself, and it
@@ -45,6 +51,7 @@ const (
 	JudgmentSatisfied   = "satisfied"
 	JudgmentUnsatisfied = "unsatisfied"
 	JudgmentWrong       = "wrong"
+	JudgmentUnverified  = "unverified"
 )
 
 // CriterionJudgment is the reviewer's call on one acceptance criterion,
@@ -90,6 +97,9 @@ type ReviewRequest struct {
 	// rejected — those are never caller-suppliable, so the engine's own
 	// record can never be quietly overwritten or duplicated.
 	Verifications []VerificationInput `json:"verifications,omitempty"`
+	// ExecutionEvidence identifies artifacts the routed reviewer evaluated, not
+	// commands for the engine to run. Attribution is not authenticated proof.
+	ExecutionEvidence []ExecutionEvidence `json:"execution_evidence,omitempty"`
 	// Usage is adapter-reported model usage for this review cycle
 	// (PRD §21 "where available"); optional and best-effort. This is
 	// the reviewer's own usage — the cost of producing this review.
@@ -109,13 +119,15 @@ type ReviewRequest struct {
 // the issue for the human inside this call, so the result has to say so
 // — there is no second verb call left to report it.
 type ReviewResult struct {
-	SchemaVersion int         `json:"schema_version"`
-	IssueNumber   int         `json:"issue_number"`
-	ReviewCycles  int         `json:"review_cycles"`
-	Verdict       string      `json:"verdict"`
-	Phase         state.Phase `json:"phase"`
-	WrongCriteria []int       `json:"wrong_criteria,omitempty"`
-	BlockedReason string      `json:"blocked_reason,omitempty"`
+	SchemaVersion      int         `json:"schema_version"`
+	IssueNumber        int         `json:"issue_number"`
+	ReviewCycles       int         `json:"review_cycles"`
+	Verdict            string      `json:"verdict"`
+	Phase              state.Phase `json:"phase"`
+	WrongCriteria      []int       `json:"wrong_criteria,omitempty"`
+	UnverifiedCriteria []int       `json:"unverified_criteria,omitempty"`
+	PendingEvidence    []int       `json:"pending_evidence,omitempty"`
+	BlockedReason      string      `json:"blocked_reason,omitempty"`
 }
 
 // Review records one consolidated review cycle (PRD §12 step 11). It
@@ -139,6 +151,9 @@ type ReviewResult struct {
 //     saying an approved criterion is false and the human hearing it;
 //   - otherwise a request-changes verdict sets the status back to
 //     in-progress and the issue stays in-review, unchanged;
+//   - before v4 missing evidence also had to request changes or call the
+//     criterion wrong; now needs-evidence stays in-review and requests evidence
+//     collection plus fresh independent review, without a code-fix cycle;
 //   - an approving verdict (which checkJudgments allows only when every
 //     criterion is satisfied) leaves the issue in-review, ready for the
 //     merge report.
@@ -150,8 +165,8 @@ func Review(ctx context.Context, env Env, reqJSON []byte) (*ReviewResult, error)
 	if req.SchemaVersion != ReviewSchemaVersion {
 		return nil, fmt.Errorf("%w: schema_version %d is unsupported (this build supports %d)", ErrBadRequest, req.SchemaVersion, ReviewSchemaVersion)
 	}
-	if req.Verdict != VerdictApprove && req.Verdict != VerdictRequestChanges {
-		return nil, fmt.Errorf("%w: verdict %q is not one of %s, %s", ErrBadRequest, req.Verdict, VerdictApprove, VerdictRequestChanges)
+	if !reviewVerdict(req.Verdict) {
+		return nil, fmt.Errorf("%w: verdict %q is not one of %s, %s, %s", ErrBadRequest, req.Verdict, VerdictApprove, VerdictRequestChanges, VerdictNeedsEvidence)
 	}
 	if req.Summary == "" {
 		return nil, fmt.Errorf("%w: review summary must not be empty (PRD §12.11: one consolidated report per cycle)", ErrBadRequest)
@@ -193,6 +208,7 @@ func Review(ctx context.Context, env Env, reqJSON []byte) (*ReviewResult, error)
 	}
 	slices.SortFunc(req.Judgments, func(a, b CriterionJudgment) int { return a.Criterion - b.Criterion })
 	wrong := wrongCriteria(req.Judgments)
+	unverified := criteriaWithJudgment(req.Judgments, JudgmentUnverified)
 
 	gh, err := openGitHub(ctx, env)
 	if err != nil {
@@ -208,22 +224,34 @@ func Review(ctx context.Context, env Env, reqJSON []byte) (*ReviewResult, error)
 	if req.ReviewedHeadOID != pr.HeadRefOid {
 		return nil, fmt.Errorf("%w: reviewed head %q is not the PR's live head %q; the PR changed under the reviewer, re-review", ErrReviewStale, req.ReviewedHeadOID, pr.HeadRefOid)
 	}
+	reviewAt := env.now()
+	// Preserve review-cycle precision: GitHub mergedAt is second-precision,
+	// and manual-CI recovery compares it with that existing audit entry.
+	stamp := reviewAt.Format(time.RFC3339)
+	pending, err := checkExecutionEvidence(issue, req, pr.HeadRefOid, reviewAt)
+	if err != nil {
+		return nil, err
+	}
+	repairVerified := false
 	if repair := latestRepair(issue); repair != nil {
 		if req.RepairNumber != repair.Number {
 			return nil, fmt.Errorf("%w: review must acknowledge integration repair_number %d; obtain fresh independent review", ErrReviewStale, repair.Number)
 		}
-		if (repair.VerifiedHeadOID == "" || repair.VerifiedHeadOID != pr.HeadRefOid) && len(verifications) == 0 {
+		// Before v4 even a non-approval required repair verification. Now it
+		// can report missing evidence, without verifying the repair or
+		// weakening the unchanged verification prerequisite for approval.
+		repairVerified = repair.VerifiedHeadOID == pr.HeadRefOid || len(verifications) > 0
+		if req.Verdict == VerdictApprove && !repairVerified {
 			return nil, fmt.Errorf("%w: integration repair requires verification evidence on the reviewed head; supply verifications", ErrBadRequest)
 		}
 	} else if req.RepairNumber != 0 {
 		return nil, fmt.Errorf("%w: no integration repair matches repair_number %d", ErrBadRequest, req.RepairNumber)
 	}
 
-	// In a run a grant activated, a non-approving review past the grant's
-	// fix-cycle limit is the human's decision. Before #353 no review
-	// blocked on a cycle count; runs a human activated still never do.
+	// Before v4 every non-approving verdict spent a grant fix cycle. Now
+	// evidence-only stalls spend none; genuine request-changes still does.
 	fixCycle := ""
-	if id := runGrantID(c.st); id != "" && req.Verdict != VerdictApprove {
+	if id := runGrantID(c.st); id != "" && req.Verdict == VerdictRequestChanges {
 		if fixCycle, err = fixCycleCheck(ctx, env, gh, id, issue.Number); err != nil {
 			return nil, err
 		}
@@ -236,6 +264,11 @@ func Review(ctx context.Context, env Env, reqJSON []byte) (*ReviewResult, error)
 	}
 	issue.ReviewCycles++
 	issue.LastReviewVerdict = req.Verdict
+	issue.ReviewedHeadOID = "" // partial audit writes cannot authorize a merge
+	needsReceipt := len(issue.PendingEvidence) > 0 || len(pending) > 0 || len(unverified) > 0 || len(req.ExecutionEvidence) > 0
+	// Do not discharge anything until both durable audit writes succeed.
+	issue.PendingEvidence = unionCriteria(issue.PendingEvidence, pending)
+	issue.EvidenceCriteria = unionCriteria(issue.EvidenceCriteria, unverified)
 	issue.Phase = state.PhaseInReview
 	blocksBefore := len(issue.Blocks)
 	if len(wrong) > 0 {
@@ -272,7 +305,7 @@ func Review(ctx context.Context, env Env, reqJSON []byte) (*ReviewResult, error)
 	for _, v := range verifications {
 		setVerification(&m, v)
 	}
-	judged := criterionVerifications(req.Judgments, env.nowStamp())
+	judged := criterionVerifications(req.Judgments, stamp)
 	stampCommitOID(judged, pr.HeadRefOid)
 	for _, v := range judged {
 		setVerification(&m, v)
@@ -282,18 +315,29 @@ func Review(ctx context.Context, env Env, reqJSON []byte) (*ReviewResult, error)
 		Result:    req.Verdict,
 		Detail:    truncateReviewDetail(req.Summary),
 		CommitOID: pr.HeadRefOid,
-		At:        env.nowStamp(),
+		At:        stamp,
 	})
+	if needsReceipt {
+		receipt, err := reviewEvidenceReceipt(req, pending, issue.ReviewCycles, pr.HeadRefOid, reviewAt.Format(time.RFC3339Nano))
+		if err != nil {
+			return nil, wrapAfterMutation(err)
+		}
+		m.Verifications = append(m.Verifications, receipt)
+	}
 	if err := writeManifest(ctx, gh, iss, &pr, m); err != nil {
 		return nil, wrapAfterMutation(err)
 	}
+	issue.ReviewedHeadOID = pr.HeadRefOid
+	issue.PendingEvidence = pending
 	if repair := latestRepair(issue); repair != nil {
 		// A failed issue/PR audit write must not make repair verification
 		// usable by merge-report. Persist this only after both writes.
-		repair.VerifiedHeadOID = pr.HeadRefOid
-		if err := c.save(); err != nil {
-			return nil, wrapAfterMutation(err)
+		if repairVerified {
+			repair.VerifiedHeadOID = pr.HeadRefOid
 		}
+	}
+	if err := c.save(); err != nil {
+		return nil, wrapAfterMutation(err)
 	}
 
 	switch {
@@ -303,6 +347,10 @@ func Review(ctx context.Context, env Env, reqJSON []byte) (*ReviewResult, error)
 		}
 	case req.Verdict == VerdictRequestChanges:
 		if err := gh.SetStatus(ctx, issue.Number, ghops.StatusInProgress); err != nil {
+			return nil, wrapAfterMutation(err)
+		}
+	case req.Verdict == VerdictNeedsEvidence:
+		if err := gh.SetStatus(ctx, issue.Number, ghops.StatusAwaitingReview); err != nil {
 			return nil, wrapAfterMutation(err)
 		}
 	}
@@ -337,13 +385,15 @@ func Review(ctx context.Context, env Env, reqJSON []byte) (*ReviewResult, error)
 	}
 
 	return &ReviewResult{
-		SchemaVersion: ReviewSchemaVersion,
-		IssueNumber:   issue.Number,
-		ReviewCycles:  issue.ReviewCycles,
-		Verdict:       req.Verdict,
-		Phase:         issue.Phase,
-		WrongCriteria: wrong,
-		BlockedReason: issue.BlockedReason,
+		SchemaVersion:      ReviewSchemaVersion,
+		IssueNumber:        issue.Number,
+		ReviewCycles:       issue.ReviewCycles,
+		Verdict:            req.Verdict,
+		Phase:              issue.Phase,
+		WrongCriteria:      wrong,
+		UnverifiedCriteria: unverified,
+		PendingEvidence:    pending,
+		BlockedReason:      issue.BlockedReason,
 	}, nil
 }
 
@@ -362,11 +412,11 @@ func checkJudgments(js []CriterionJudgment, verdict string, criteria []string) e
 	seen := make(map[int]bool, len(criteria))
 	for i, j := range js {
 		switch j.Judgment {
-		case JudgmentSatisfied, JudgmentUnsatisfied, JudgmentWrong:
+		case JudgmentSatisfied, JudgmentUnsatisfied, JudgmentWrong, JudgmentUnverified:
 		default:
-			return fmt.Errorf("%w: judgments[%d] judgment %q is not one of %s, %s, %s", ErrBadRequest, i, j.Judgment, JudgmentSatisfied, JudgmentUnsatisfied, JudgmentWrong)
+			return fmt.Errorf("%w: judgments[%d] judgment %q is not one of %s, %s, %s, %s", ErrBadRequest, i, j.Judgment, JudgmentSatisfied, JudgmentUnsatisfied, JudgmentWrong, JudgmentUnverified)
 		}
-		if j.Reason == "" {
+		if strings.TrimSpace(j.Reason) == "" {
 			return fmt.Errorf("%w: judgments[%d] states no reason; the audit record carries the reviewer's reason for every judgment", ErrBadRequest, i)
 		}
 		if j.Criterion < 1 || j.Criterion > len(criteria) {
@@ -377,8 +427,14 @@ func checkJudgments(js []CriterionJudgment, verdict string, criteria []string) e
 		}
 		seen[j.Criterion] = true
 		if verdict == VerdictApprove && j.Judgment != JudgmentSatisfied {
-			return fmt.Errorf("%w: criterion %d is judged %s, so the verdict cannot be %s; record %s", ErrBadRequest, j.Criterion, j.Judgment, VerdictApprove, VerdictRequestChanges)
+			return fmt.Errorf("%w: criterion %d is judged %s, so the verdict cannot be %s; record a non-approving verdict", ErrBadRequest, j.Criterion, j.Judgment, VerdictApprove)
 		}
+		if verdict == VerdictNeedsEvidence && j.Judgment != JudgmentSatisfied && j.Judgment != JudgmentUnverified {
+			return fmt.Errorf("%w: evidence-only verdict cannot claim criterion %d is %s; record request-changes", ErrBadRequest, j.Criterion, j.Judgment)
+		}
+	}
+	if verdict == VerdictNeedsEvidence && len(criteriaWithJudgment(js, JudgmentUnverified)) == 0 {
+		return fmt.Errorf("%w: needs-evidence requires at least one unverified criterion", ErrBadRequest)
 	}
 	for i := range criteria {
 		if !seen[i+1] {
@@ -393,9 +449,13 @@ func checkJudgments(js []CriterionJudgment, verdict string, criteria []string) e
 // criterion wrong, which is what the ordinary approve and
 // request-changes paths test.
 func wrongCriteria(js []CriterionJudgment) []int {
+	return criteriaWithJudgment(js, JudgmentWrong)
+}
+
+func criteriaWithJudgment(js []CriterionJudgment, judgment string) []int {
 	var out []int
 	for _, j := range js {
-		if j.Judgment == JudgmentWrong {
+		if j.Judgment == judgment {
 			out = append(out, j.Criterion)
 		}
 	}
