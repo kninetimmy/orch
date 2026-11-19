@@ -120,6 +120,56 @@ worktrees contain committed metadata but do not share the main checkout's
 machine-local state or Delivery lock. Launching there without `--repo` can
 legitimately report Assist even while the main checkout has an active run.
 
+### CLI run-status checkout correction (#527)
+
+**Before #527:** CLI `orch run status --json` also read state and lock from
+the invocation directory. In a linked issue/review checkout (or a subdirectory),
+absent local ignored files could therefore report clean Assist while the primary
+checkout was in Delivery.
+
+**After #527:** only that CLI command resolves the current Git clone's verified
+primary checkout before passing one root to the unchanged state/lock inspection.
+It uses Git's top level and primary-first worktree registration, verifies the
+selected checkout's registration, opens the primary at its Git top level, and
+compares common-directory filesystem identities. It never infers the primary
+from the common directory's parent or an enclosing Orch marker. An Orch marker
+below the selected Git top level is an error, not a fallback to an enclosing
+clone after a linked checkout loses its Git pointer. Broken Git, absent or
+unverifiable primary/registration/common-directory evidence is an explicit error,
+not clean Assist. A different nested clone observes its own primary only.
+
+Status still emits schema 4, including the same issue phases, lock and consistency
+warnings. Absent state and lock at the actual primary still mean Assist. No
+configuration or Memhub mode is loaded; no stdin, GitHub, mutation serializer,
+state/lock write, metrics or session attribution is used. The only added commands
+are local read-only Git top-level, worktree-list and common-directory probes.
+Non-Git locations retain current-directory inspection.
+
+This correction is **CLI-status-only**, not a new command-wide root policy.
+`run next`, `run readiness`, all document-taking run verbs, `resume`, `abort`,
+guard root discovery and the MCP launch binding above retain their original
+roots. In particular, the MCP worktree Assist observation described above still
+holds; bind its primary explicitly. Observing Delivery never grants a write:
+the assigned issue branch/phase/containment checks still govern writes, and a
+detached review checkout remains unwritable.
+
+#### #527 blast radius (PR-body ready)
+
+| Element touched or reused | Does its previous behavior still hold? |
+| --- | --- |
+| `internal/cli/run.go`: `runRunVerb` status branch | Only root selection changes, with the removed false-Assist behavior preserved as before/after above. Strict `status --json` argv, JSON formatting through `emitRunResult`, exit/error handling and the no-stdin/no-serializer path hold. The latter path covers **all three argv-only inspections** (status, next, readiness), not every run verb. |
+| New `internal/cli/runstatus.go`: `runStatusRoot` | Adds observation-only canonical-location, Git-primary and nested-marker verification. It redirects **only CLI run status**, not every inspection or any mutator. Non-Git current-directory reads remain; unverifiable Git identity now fails explicitly. |
+| `internal/cli/hooklookup.go`: `hookLookupContext`, extracted `verifyPrimaryCheckout` | Lookup's schema-2 output, outermost Orch-root checks, unmanaged/error behavior, primary configuration authority and Memhub-mode loading hold, in the same order. Only the existing registration/open-primary/common-directory block is extracted. Those identity checks apply to **both consumers** (lookup and CLI status); lookup's configuration/management rules do not become status prerequisites. |
+| Reused `lookupHasGitAncestor`, `lookupSameDirectory`, `lookupGit`; `gitops.Open`, `Git.Root`, `Git.ListWorktrees`, `Git.CommonDir`, `Worktree` | Implementations and existing lookup behavior hold. Status additionally uses their Git-marker detection, real-directory/filesystem identity, top-level, primary-first registration and common-directory observations. No Git write/fetch or inferred common-directory-parent authority is added. |
+| Reused `paths.Canonical`, `paths.FindRoot`, `paths.Inside` | Existing canonicalization, real-marker, containment and fail-closed rules hold. Status uses the nearest marker only to reject an invalid nested checkout, never to choose another clone's state. `paths.FindOutermostRoot` and its guard/lookup callers are unchanged. |
+| `run.Status`, `inspectStatus`, `StatusDoc`, `RunView`, `StatusSchemaVersion`; `state.Load`, `lockfile.Inspect`, `state.CheckConsistent` | All implementations and schema 4 hold. State and lock still come from one supplied root; missing files mean Assist there, inconsistent pairs remain warnings, corrupt files remain errors, and reads remain unlocked/non-atomic observations rather than reservations or authorization. |
+| `emitRunResult`, `runVerbs`, `withDeliveryMutation`; next/readiness, plan, all lifecycle verbs, resume/abort/metrics | Production implementations and original invocation roots hold. **Every document-taking run verb except read-only plan**, plus resume/abort/metrics record, retains its existing complete-command serializer. Plan still consumes stdin; the three argv-only inspections do not. No class-wide root redirection is introduced. |
+| `guard.NewChecker`, `Checker.Check`/`resolve`, `evaluate`, `writablePhase`, `readWorktreeHead` | Unchanged outermost-marker discovery, state/lock consistency and role/issue/phase/branch/containment policy hold for **every guarded path**, not just status callers. Real-Git tests still allow the dispatched assigned-branch write and deny the equivalent detached-review write. Status supplies no guard permission. |
+| MCP `runMCP`, `orch_run_status` and status resource; configuration, Memhub and other inspection consumers | All exact launch bindings, schemas, no-command/read-only contracts and existing prerequisites hold. The CLI-only resolver is not called by MCP or the shared run engine. MCP/CLI status parity is unchanged at the primary; linked-checkout root selection now intentionally differs as documented above. |
+| New `internal/cli/runstatus_test.go`: `runStatusFixture`, `statusInspectionRunner.Run`, `statusFromCheckout`, five `TestRunStatus…` regressions | Existing lookup/status/stdin/serialization/lifecycle/MCP tests remain. New real-Git fixtures compare complete primary/issue/subdirectory/detached-review JSON with consistent and inconsistent locks, prove clone isolation and absent-primary-state Assist, retain guard/other-verb roots and snapshot all repository/Git files. Broken/missing Git pointers are real; missing/colliding primary and absent registration use explicitly injected Git-list evidence. The runner allows only the three local Git read-probe shapes and stdin fails on any read. |
+| `docs/mcp-status.md` | Existing MCP worktree binding behavior is retained, not silently rewritten. The removed CLI behavior is recorded above as before/after, counterpart parity is qualified, and this table enumerates the boundary. |
+| Dependencies, adapters, CI, persistent state/lock/status/configuration schemas | Untouched; no dependency, migration, installation, provider request, write authority or new lifecycle operation. Required Go checks remain build, vet, full tests and empty `gofmt -l .`. |
+
 The client owns the child process and its stdin/stdout pipes. Stdout contains
 only MCP protocol messages; diagnostics go to stderr. Closing the client's
 session closes stdin and lets the server exit cleanly. Running the launch
@@ -247,6 +297,9 @@ the other sixteen tools retain their different schemas and annotations.
 | `orch_plan_validate` | `{"plan":{...}}` | None; directly uses shared `run.DecodePlan` and `PlanDoc.Validate` with fresh `config.Load` | 1 |
 | `orch_run_activate` | `{"schema_version":2,"plan":{...},"approval":{...}}` | `orch run activate` (activation request on stdin; MCP requires explicit human metadata and excludes grants) | 2 |
 | `orch_run_dispatch` | `{"schema_version":4,"issue_number":493}` | `orch run dispatch` (same request on stdin) | 4 |
+
+For status, counterpart parity assumes the primary checkout: after #527 the CLI
+can observe it from a linked checkout, but MCP retains its exact launch binding.
 
 Each `orch_run_status` invocation reads fresh local
 state through the same engine as `orch run status --json` and returns that

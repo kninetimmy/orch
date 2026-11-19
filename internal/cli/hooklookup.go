@@ -84,30 +84,8 @@ func hookLookupContext(env Env) error {
 	if err := lookupSameDirectory(root, primary); err != nil {
 		return err
 	}
-	found := false
-	var head string
-	for _, wt := range worktrees {
-		if lookupSameDirectory(wt.Path, checkout.Root()) == nil {
-			found, head = true, wt.Head
-			break
-		}
-	}
-	if !found {
-		return fmt.Errorf("lookup context: selected checkout is not a registered worktree")
-	}
-	primaryGit, err := gitops.Open(ctx, env.Runner, root)
+	common, head, err := verifyPrimaryCheckout(ctx, env.Runner, checkout, worktrees, root)
 	if err != nil {
-		return err
-	}
-	common, err := primaryGit.CommonDir(ctx)
-	if err != nil {
-		return err
-	}
-	selectedCommon, err := checkout.CommonDir(ctx)
-	if err != nil {
-		return err
-	}
-	if err := lookupSameDirectory(common, selectedCommon); err != nil {
 		return err
 	}
 	if unmanaged {
@@ -121,6 +99,37 @@ func hookLookupContext(env Env) error {
 		SchemaVersion: 2, Managed: true, MemhubMode: cfg.Memhub.Mode, MemoryRoot: root,
 		CodeRoot: checkout.Root(), GitCommonDir: common, Head: head,
 	})
+}
+
+// verifyPrimaryCheckout shares only Git registration and filesystem identity
+// checks with CLI run status, not lookup's Orch-root or Memhub configuration.
+func verifyPrimaryCheckout(ctx context.Context, runner execx.Runner, checkout *gitops.Git, worktrees []gitops.Worktree, root string) (common, head string, err error) {
+	found := false
+	for _, wt := range worktrees {
+		if lookupSameDirectory(wt.Path, checkout.Root()) == nil {
+			found, head = true, wt.Head
+			break
+		}
+	}
+	if !found {
+		return "", "", fmt.Errorf("lookup context: selected checkout is not a registered worktree")
+	}
+	primaryGit, err := gitops.Open(ctx, runner, root)
+	if err != nil {
+		return "", "", err
+	}
+	common, err = primaryGit.CommonDir(ctx)
+	if err != nil {
+		return "", "", err
+	}
+	selectedCommon, err := checkout.CommonDir(ctx)
+	if err != nil {
+		return "", "", err
+	}
+	if err := lookupSameDirectory(common, selectedCommon); err != nil {
+		return "", "", err
+	}
+	return common, head, nil
 }
 
 func lookupHasGitAncestor(dir string) (bool, error) {
