@@ -124,7 +124,7 @@ func checkReviewEvidenceReceipt(issue *state.Issue, m manifest.Manifest, cycle m
 	if err := decodeRequest([]byte(receipt.Detail), &record); err != nil {
 		return fmt.Errorf("audit evidence %s is invalid: %w", name, err)
 	}
-	if receipt.Result != cycle.Result || receipt.CommitOID != cycle.CommitOID || receipt.At != cycle.At ||
+	if receipt.Result != cycle.Result || receipt.CommitOID != cycle.CommitOID ||
 		!slices.Equal(record.PendingCriteria, issue.PendingEvidence) {
 		return fmt.Errorf("audit evidence %s contradicts the latest review/state", name)
 	}
@@ -132,8 +132,9 @@ func checkReviewEvidenceReceipt(issue *state.Issue, m manifest.Manifest, cycle m
 		return err
 	}
 	at, err := time.Parse(time.RFC3339, receipt.At)
-	if err != nil {
-		return fmt.Errorf("audit evidence %s has invalid timestamp", name)
+	cycleAt, cycleErr := time.Parse(time.RFC3339, cycle.At)
+	if err != nil || cycleErr != nil || !at.Truncate(time.Second).Equal(cycleAt) {
+		return fmt.Errorf("audit evidence %s has invalid or contradictory timestamps", name)
 	}
 	req := ReviewRequest{Judgments: record.Judgments, ExecutionEvidence: record.ExecutionEvidence}
 	pending, err := checkExecutionEvidence(issue, req, receipt.CommitOID, at)

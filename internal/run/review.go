@@ -225,7 +225,9 @@ func Review(ctx context.Context, env Env, reqJSON []byte) (*ReviewResult, error)
 		return nil, fmt.Errorf("%w: reviewed head %q is not the PR's live head %q; the PR changed under the reviewer, re-review", ErrReviewStale, req.ReviewedHeadOID, pr.HeadRefOid)
 	}
 	reviewAt := env.now()
-	stamp := reviewAt.Format(time.RFC3339Nano)
+	// Preserve review-cycle precision: GitHub mergedAt is second-precision,
+	// and manual-CI recovery compares it with that existing audit entry.
+	stamp := reviewAt.Format(time.RFC3339)
 	pending, err := checkExecutionEvidence(issue, req, pr.HeadRefOid, reviewAt)
 	if err != nil {
 		return nil, err
@@ -316,7 +318,7 @@ func Review(ctx context.Context, env Env, reqJSON []byte) (*ReviewResult, error)
 		At:        stamp,
 	})
 	if needsReceipt {
-		receipt, err := reviewEvidenceReceipt(req, pending, issue.ReviewCycles, pr.HeadRefOid, stamp)
+		receipt, err := reviewEvidenceReceipt(req, pending, issue.ReviewCycles, pr.HeadRefOid, reviewAt.Format(time.RFC3339Nano))
 		if err != nil {
 			return nil, wrapAfterMutation(err)
 		}

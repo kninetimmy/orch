@@ -71,6 +71,9 @@ a partial write keeps evidence pending and cannot authorize a merge.
 Integration-repair approval still requires its repair acknowledgment and fresh
 verification; a non-approving report may describe the missing repair evidence.
 Required CI and the separate human merge gate are unchanged.
+Review-cycle timestamps retain their existing second precision for comparison
+with GitHub's `mergedAt`; evidence receipts retain the same instant at full
+precision so sub-second collection times remain verifiable after reload.
 
 **Limits:** metadata and `collected_by` are caller assertions, not authenticated
 proof. Orch validates shape, head and repair/time staleness; it does not open

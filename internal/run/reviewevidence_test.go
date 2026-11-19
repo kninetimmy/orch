@@ -222,8 +222,22 @@ func TestEvidenceReviewPreservesCollectionTimestampPrecision(t *testing.T) {
 		t.Fatal(err)
 	}
 	issue = loadRun(t, root).Run.Issues[0]
+	cycle := findVerification(t, script.StdinAt(3), "review-cycle-1")
+	receipt := findVerification(t, script.StdinAt(3), "review-evidence-1")
+	if cycle.At != fixedNow().Format(time.RFC3339) || receipt.At != env.Now().Format(time.RFC3339Nano) {
+		t.Fatalf("legacy review / precise evidence timestamps = %q / %q", cycle.At, receipt.At)
+	}
 	if _, err := readinessReviewEvidence(&issue, "r1", m); err != nil {
 		t.Fatalf("valid sub-second collection became future evidence after reload: %v", err)
+	}
+	var record reviewEvidenceRecord
+	if err := json.Unmarshal([]byte(receipt.Detail), &record); err != nil {
+		t.Fatal(err)
+	}
+	record.ExecutionEvidence[0].CollectedAt = fixedNow().Add(750 * time.Millisecond).Format(time.RFC3339Nano)
+	m.Verifications[len(m.Verifications)-1].Detail = string(requestBytes(t, record))
+	if _, err := readinessReviewEvidence(&issue, "r1", m); err == nil {
+		t.Fatal("evidence collected after the precise review instant was accepted")
 	}
 }
 
