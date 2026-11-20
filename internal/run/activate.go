@@ -227,7 +227,7 @@ func Activate(ctx context.Context, env Env, reqJSON []byte) (*ActivationResult, 
 		return nil, fmt.Errorf("%w: live GitHub target %s does not match the approved target %s (live repository ID %q, approved ID %q); re-gate and obtain fresh approval",
 			ErrBadApproval, github, approvedTarget.GitHub, github.ID, approvedTarget.GitHub.ID)
 	}
-	gh, err = gh.ForTarget(github)
+	targetRepo, err := gh.ForTarget(github)
 	if err != nil {
 		return nil, err
 	}
@@ -280,7 +280,7 @@ func Activate(ctx context.Context, env Env, reqJSON []byte) (*ActivationResult, 
 		return nil, fmt.Errorf("primary checkout is on %s, not the default branch %s; activation requires the primary checkout on the default branch", branch, repo.DefaultBranch)
 	}
 	if areas := planAreaLabels(plan); len(areas) > 0 {
-		missing, err := gh.MissingLabels(ctx, areas)
+		missing, err := targetRepo.MissingLabels(ctx, areas)
 		if err != nil {
 			return nil, err
 		}
@@ -288,7 +288,7 @@ func Activate(ctx context.Context, env Env, reqJSON []byte) (*ActivationResult, 
 			return nil, fmt.Errorf("%w: %s; create them in the repository (gh label create <name>) or remove them from the plan, then resubmit for approval", ErrAreaLabelMissing, strings.Join(missing, ", "))
 		}
 	}
-	if err := checkFixesMerged(ctx, gh, plan); err != nil {
+	if err := checkFixesMerged(ctx, targetRepo, plan); err != nil {
 		return nil, err
 	}
 	if _, err := memhubGate(ctx, cfg.Memhub.Mode, memhub.New(env.Runner, env.RepoRoot)); err != nil {
@@ -300,7 +300,7 @@ func Activate(ctx context.Context, env Env, reqJSON []byte) (*ActivationResult, 
 	}
 
 	// Phase 3: idempotent GitHub prep (the only pre-lock mutation, F6).
-	if _, err := gh.EnsureLabelTaxonomy(ctx); err != nil {
+	if err := targetRepo.EnsureLabelTaxonomy(ctx); err != nil {
 		return nil, err
 	}
 
@@ -383,7 +383,7 @@ func Activate(ctx context.Context, env Env, reqJSON []byte) (*ActivationResult, 
 			return nil, wrapAfterEnter(err)
 		}
 
-		number, url, err := gh.CreateIssue(ctx, pi.Title, body, l, denylist...)
+		number, url, err := targetRepo.CreateIssue(ctx, pi.Title, body, l, denylist...)
 		if err != nil {
 			return nil, wrapAfterEnter(err)
 		}
@@ -480,10 +480,8 @@ func planAreaLabels(p *PlanDoc) []string {
 }
 
 // checkFixesMerged requires every PR a plan issue says it fixes to exist
-// and be merged, each PR read once however many issues name it. A read
-// failure (gh reports a PR that does not exist as an error) is wrapped so
-// the error names the PR.
-func checkFixesMerged(ctx context.Context, gh *ghops.GH, p *PlanDoc) error {
+// and be merged in the verified repository, reading each number once.
+func checkFixesMerged(ctx context.Context, repo *ghops.ActivationRepo, p *PlanDoc) error {
 	checked := map[int]bool{}
 	for _, pi := range p.Issues {
 		for _, n := range pi.Fixes {
@@ -491,12 +489,12 @@ func checkFixesMerged(ctx context.Context, gh *ghops.GH, p *PlanDoc) error {
 				continue
 			}
 			checked[n] = true
-			pr, err := gh.PR(ctx, n)
+			prState, err := repo.PullRequestState(ctx, n)
 			if err != nil {
 				return fmt.Errorf("%w: issue %s fixes PR #%d: %v; correct the plan's fixes and resubmit for approval", ErrFixesPRNotMerged, pi.ID, n, err)
 			}
-			if pr.State != "MERGED" {
-				return fmt.Errorf("%w: issue %s fixes PR #%d, which is %s; correct the plan's fixes and resubmit for approval", ErrFixesPRNotMerged, pi.ID, n, strings.ToLower(pr.State))
+			if prState != "MERGED" {
+				return fmt.Errorf("%w: issue %s fixes PR #%d, which is %s; correct the plan's fixes and resubmit for approval", ErrFixesPRNotMerged, pi.ID, n, strings.ToLower(prState))
 			}
 		}
 	}

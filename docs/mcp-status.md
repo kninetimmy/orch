@@ -285,12 +285,34 @@ Every CLI or MCP gate refuses missing or malformed GitHub identity. Every
 activation, human or grant, also recomputes the digest and checks independent
 live identities before effects. It refuses a different repository ID even if
 the checkout and GitHub name are unchanged. Obtain a fresh gate and approval
-after target changes. Activation pins its area-label and merged-fixes reads and
-taxonomy/issue writes to the checked `--repo HOST/OWNER/REPO` selector rather
-than re-resolving the local default. The ID comparison is a point-in-time check,
-not an atomic reservation of that GitHub name. This is an **activation**
-binding: dispatch and other later verbs keep their existing GitHub resolution
-and do not recheck the approved ID.
+after target changes.
+
+**Before the #534 write-binding fix:** activation pinned its area-label and
+merged-fixes reads and taxonomy/issue writes to the checked
+`--repo HOST/OWNER/REPO` selector rather than re-resolving the local default.
+The ID comparison was a point-in-time check; a reassigned name could still
+redirect a write. **After:** activation uses [authenticated `gh api graphql`
+with `--hostname`](https://cli.github.com/manual/gh_api) set to the verified
+host instead of the ambient `gh` default. `gh` selects that host's GraphQL
+endpoint and credentials. Activation looks up [the typed `Repository` node by ID](https://docs.github.com/en/graphql/guides/using-global-node-ids)
+for label pages and prerequisite PRs. GitHub's documented
+[`createLabel`](https://docs.github.com/en/graphql/reference/issues#mutation-createlabel)
+and [`createIssue`](https://docs.github.com/en/graphql/reference/issues#mutation-createissue)
+mutations both take that exact `repositoryId`. Issue creation includes the
+label node IDs read from or created in that repository during taxonomy
+preparation, rather than resolving names in each issue command, and the audit
+body in one mutation. A name reassignment after preflight can change the
+returned URL but cannot redirect a mutation to the replacement repository.
+
+There is no retry or name-based fallback on API, permission or response
+failure. The read and write responses must confirm the expected data; issue
+creation checks the repository ID, issue number and URL on the verified host.
+Neither the preflight nor the label inventory reserves a selector or locks
+concurrent label edits. An error can be reported after a write in the
+approved repository; use the existing partial-failure recovery below. This
+ID binding is **activation-only**: dispatch, other later lifecycle verbs and
+bootstrap keep their existing GitHub resolution and do not recheck the
+approved ID.
 
 #### #534 blast radius (PR-body ready)
 
@@ -301,30 +323,34 @@ and do not recheck the approved ID.
 | `withDeliveryMutation`, `run.Dispatch`, status/next/readiness, and resource reads | Serializer requirements and cancellation/recovery still hold. Only the two MCP mutators check host workspace inside the serializer; `orch_plan_gate` and other inspections remain outside it. Shared `run.Dispatch` still loads lifecycle prerequisites, fetches/fast-forwards, sets status and records phase/metrics for matching callers; CLI dispatch does not acquire the MCP workspace requirement. |
 | `gitops.Open`, new `Git.RequirePrimary`, `Git.ListWorktrees`/`CommonDir`, `paths.Canonical`, new `paths.DirectoryID` (Unix/Windows), `deliveryCheckout`/`checkoutIdentity` | Existing Git/paths behavior holds. New target-sensitive use verifies the actual primary and binds directory plus Git common-directory IDs. It does not redirect a linked checkout, or treat HEAD as checkout identity. `runStatusRoot`, hook lookup, existing guard and cleanup/worktree policy stay unchanged. |
 | `ghops.Repo`, `GH.Repo`/`RepoWithID`/`viewRepo`, `RepoTarget`/`Valid`/`String`, `Repo.Target`, `deliveryGitHub` | Ordinary `GH.Repo` lookups and commands retain their arguments and behavior. Only shared gate and activation use `RepoWithID`; it reads the ID and visible name in one response. Target validation requires matching URL/slug and a valid opaque ID, with no implicit host fallback or ID normalization. `RepoTarget.String` is still the canonical host/owner/repository selector, not the ID. |
-| `GH.ForTarget`, `GH.run` | Only the explicitly pinned handle scopes **all** its `label`, `issue` and `pr` commands with `--repo` and refuses unsupported command families. Activation is its only caller. The selector does not reserve its mapping to the ID; later lifecycle handles retain their previous resolution. |
+| `GH.ForTarget`, `GH.run`, `GH.ghStdin` | Before the fix, `ForTarget` copied a `GH` that scoped all its supported `label`, `issue` and `pr` commands by mutable `--repo`. After, it returns a separate `ActivationRepo` that keeps only the verified host and ID as selectors and exposes no ordinary CLI command methods. `GH.run` and `ghStdin` retain the ordinary checkout-relative execution, environment, stdin and exit handling for all unbound users; bootstrap and later lifecycle commands are unchanged. |
+| `ActivationRepo.graphql`, `readLabelIDs`, `MissingLabels`, `PullRequestState`, `githubNodeID` | Every activation API request uses the checked hostname and JSON stdin. Every label page and fixes lookup comes from the typed repository node with the verified ID. Case-insensitive area-label existence, repository-defined labels only, and deduplicated merged-PR checks still hold; pagination rejects missing or non-advancing evidence. The node-ID syntax check remains exact and also applies to returned label IDs. GraphQL errors (including partial data) and malformed/missing results fail closed. |
+| `ActivationRepo.EnsureLabelTaxonomy` and `ActivationRepo.CreateIssue`; ordinary `GH.EnsureLabelTaxonomy`, `GH.MissingLabels`, `GH.PR` and `GH.CreateIssue` | Both activation write methods send the verified `repositoryId`; these are **all** shared activation's GitHub mutations, for CLI human/grant and MCP alike. Taxonomy still creates only missing definitions in order, never updates existing labels or invents area labels. Issue creation still validates and includes every label and the same audit body, now by typed label IDs on the same mutation. The name-based write path is removed for activation, not for other callers; the ordinary `GH` methods are unchanged. |
 | `Plan`, `GateDoc`, `GateSchemaVersion`, `DeliveryTarget`, `approvalContract`, `effectiveContract`, `contentDigest` | Before, Gate 3 was not checkout/remote-bound and could gate without resolving Git/GitHub. After, Gate 4 shows and hashes the checkout and GitHub selector and ID, and fails if they cannot be verified. For **every** plan host and CLI/MCP gate, scope, routing, contributed criteria, CI observation, Assist/no-lock, and mode-dependent memhub behavior still hold. `PlanDoc` schema/digest and `orch_plan_validate` are unchanged. |
 | `Activate`, `ActivationSchemaVersion`, `ActivationRequest`, `Approval`, `DecodeActivation`, `Approval.validate`, `ActivationResult`, `addMCPActivation` input schema | The target with its ID and exact digest are required for **every** activation path, including CLI grant approvals. Reject old/identity-free requests and compare fresh checkout, selector and exact repository ID before effects. The MCP request schema requires `approval.target.github.id`; only MCP requires explicit nonblank/dated human metadata and excludes grants, as before. Result still contains the same fields, now at v3. |
-| Activation preflights and effects (`planGrant`, `RequireClean`, `CurrentBranch`, `MissingLabels`, `checkFixesMerged`, `memhubGate`, `RequireIgnored`, `EnsureLabelTaxonomy`, `EnterDelivery`, `CreateIssue`, `AddWorktree`, state/metrics/session and error recovery) | Before, grant/catalog/agent/clean checks preceded GitHub target resolution; after, Assist/no-lock and live target validation precede them so a drift refusal incurs neither grant lock nor external maintenance. Grants, catalog/rendered agents, cleanliness/default branch, area/merged-fixes/ignore checks all still apply. Activation's GH preflights and writes are pinned; phase ordering after preflights, taxonomy/issue bodies and explicit partial-failure recovery hold. |
+| Activation preflights and effects (`planGrant`, `RequireClean`, `CurrentBranch`, `MissingLabels`, `checkFixesMerged`, `memhubGate`, `RequireIgnored`, `EnsureLabelTaxonomy`, `EnterDelivery`, `CreateIssue`, `AddWorktree`, state/metrics/session and error recovery) | Before, grant/catalog/agent/clean checks preceded GitHub target resolution; after, Assist/no-lock and live target validation precede them so a drift refusal incurs neither grant lock nor external maintenance. Grants, catalog/rendered agents, cleanliness/default branch, area/merged-fixes/ignore checks all still apply. The fix binds area/fixes reads, taxonomy and issue creation by ID, without moving a phase: taxonomy is still the only pre-Delivery-lock mutation; the grant run is spent before the first issue; confirmed issue results are stored before worktree creation. Existing explicit recovery and saved state/lock on post-entry failure hold. |
 | `ContractVersion`, `ExecutionConfig`, `checkExecutionConfig`, `loadExecutionConfig`, `PlanRef`, status/approval evidence, resume | Before, contract 3 was executable; after, **every** lifecycle verb and resume require contract 4 with the existing execution fingerprint, versions and configuration checks. No persistent schema or record is migrated. Legacy reports remain readable and explicit abort is unchanged. Use the original engine for an active older run or abort/re-plan. |
 | Claude, Codex and OpenCode `orch-delivery` skills; `CheckSelectionWireVersions`; OpenCode doctor's skill markers | All gate consumers now require Gate 4, show the checkout, GitHub selector and ID, and echo the exact target in Activation 3. Native choice/approval policy, routing, existing other wire shapes and model pins hold. Doctor still checks real skill content, now with the ID in its target presentation marker. |
 | Claude `GRANTS.md` and `TestGrantActivationExampleMatchesEngine` | Before, the grant example omitted the checkout and GitHub target. After, it uses the same schema-3 request and exact target (including ID) as human activation. The grant statement, approver, stops, issuance/budget/merge policy and CLI-only scope are unchanged. The example now runs through `DecodeActivation` in the adapter test. |
 | OpenCode `smoke.mjs` gate consumer | The synthetic fixture still obtains execution metadata from a real gate without activating. Before, it needed no `gh`; after, the gate gets its target from scripted `gh` reads and the smoke verifies the v4 target, including ID. The smoke's plugin, lookup, release and guard coverage is not replaced. |
 | `README.md`, `ORCH-PRD.md`, this guide, `adapters/opencode/README.md`, `docs/review-evidence.md` | Historical gate/activation, launch-pin and approval-contract behavior remains recorded as before/after. Current source wires are distinguished from checkpoint/released wires. Checkout-specific OpenCode instructions now use project scope, with explicit one-entry global-pin removal. No installer, host settings, plugin registration, `orch_memhub` registration, dependency, CI or release change. |
-| `mcp_workspace_test.go`, stdio/schema/fixture tests (`mcp_test.go`, `mcp_plan_gate_test.go`, `mcp_activate_test.go`, `mcp_dispatch_test.go`, `mcp_resources_test.go`, `run_test.go`) | Existing strict schema checks, complete structured/text/CLI parity, no-artifact snapshots and engine transcripts hold with the new read probes and distinct approval digests. Two real checkouts, a linked checkout, the loopback host and fake GitHub assert zero refusal effects for workspace/name/ID drift and missing or malformed ID. Same-name/different-ID gates hash differently; editing the echo does not preserve approval. Matching activation stays pinned if the fake's checkout-relative default changes after the lookup. |
-| Run and GH tests (`activate_test.go`, `gate_test.go`, `contract_test.go`, `fixes_test.go`, `grantgate_test.go`, `verb_unit_test.go`, `repo_test.go`) | Existing gate, work/manifest, fixes, grant stops, lifecycle, phase and recovery checks hold. Fixtures supply target evidence; tests pin scoped GH arguments, malformed target/ID refusal, same-path checkout replacement and contract-3 inspection without migration. No production GitHub or off-target checkout is used. |
+| `mcp_workspace_test.go`, stdio/schema/fixture tests (`mcp_test.go`, `mcp_plan_gate_test.go`, `mcp_activate_test.go`, `mcp_dispatch_test.go`, `mcp_resources_test.go`, `run_test.go`, `testdata/doctor-probe`) | Existing strict schemas, structured/text/CLI parity, zero-effect refusal snapshots and exact transcripts hold. The compiled probe keys GraphQL commands by stdin operation name; other commands are unchanged. Two real checkouts, a linked checkout, the loopback host and fake GitHub still cover preflight drift and malformed/missing IDs. Same-name/different-ID gates hash differently; editing the echo does not preserve approval. In addition to changing the checkout-relative default, the fake reassigns the checked name at the first write. Taxonomy and issue writes land only on the original ID; unsupported ID mutation produces an explicit failure with no fallback. Matching dispatch retains its existing behavior. |
+| Run and GH tests (`activate_test.go`, `gate_test.go`, `contract_test.go`, `fixes_test.go`, `grantgate_test.go`, `lifecycle_test.go`, `verb_unit_test.go`, `repo_test.go`, `ghops/activation_test.go`, `execxtest.Call.CheckStdin`) | Existing gate, work/manifest, fixes, grant stops, lifecycle, phase and recovery checks hold, including malformed target refusal, same-path checkout replacement and contract-3 inspection without migration. Scripted stdin checks pin the GraphQL variables and recover the original audit body for assertions. New checks cover Enterprise host pinning, paginated label evidence, a replacement repo's merged PR, issue receipt identity, grant spend before issue creation, and partial GraphQL data without retry or worktree creation for the unconfirmed issue. No production GitHub mutation or off-target checkout is used. |
 
 Focused regressions:
 
 ```sh
 go test -count=1 ./internal/cli -run '^TestMCPDeliveryWorkspaceAndTarget$' -v
-go test -count=1 ./internal/ghops ./internal/run ./adapters/claude -run '^(TestRepoTargetRequiresConsistentCanonicalIdentity|TestContractLegacyApprovalAndFormatting|TestGrantActivation|TestGrantActivationExampleMatchesEngine)$' -v
+go test -count=1 ./internal/cli -run '^TestMCPStdio$/^explicit_activation$' -v
+go test -count=1 ./internal/ghops ./internal/run ./adapters/claude -run '^(TestActivationRepo.*|TestActivate.*|TestGrantActivation.*|TestGrantPlanLineSurvivesPROpen|TestCIDeclarationReachesTheExecutorAndReviewer|TestRepoTargetRequiresConsistentCanonicalIdentity|TestContractLegacyApprovalAndFormatting)$' -v
 ```
 
 The first test snapshots Git metadata (including refs and worktree registrations),
 checkout contents and Orch state/locks in both disposable checkouts and the linked
 checkout, plus the fake GitHub mutation log. It checks the expected read boundary
-on each refusal, then verifies label/issue creation and Delivery state/worktree
-only on the matching target, followed by a matching dispatch.
+on each refusal, then verifies label/issue creation only on the checked
+repository ID despite name reassignment, Delivery state/worktree only in the
+approved checkout, and a matching dispatch.
 
 **Before trial item 2:** Tool discovery returns exactly one tool,
 **`orch_run_status`**, annotated read-only. **After trial item 2:** discovery
@@ -1352,9 +1378,10 @@ go test ./internal/cli -run '^(TestMCPStdio|TestMCPLocalToolsNeverRunExternalCom
 and human assertion in `approval`, and returned a schema-2 result. GitHub
 operations relied on checkout-relative `gh` resolution. **After #534:**
 schema 3 requires the exact gate target as a fifth approval member, including
-the stable GitHub repository ID. It rechecks the target live and pins
-activation's GitHub operations to the checked selector. Existing activation
-result fields and partial-failure semantics hold.
+the stable GitHub repository ID. It rechecks the target live. Before the #534
+write-binding fix, it pinned activation's GitHub operations to the checked
+selector; after, it pins them to the checked repository ID on that host.
+Existing activation result fields and partial-failure semantics hold.
 
 First submit the plan to the separate effective-contract gate (`orch_plan_gate`
 or `orch run plan`), present the **entire gate** to the human and obtain their
@@ -1442,7 +1469,7 @@ reads retry, resume, abort, roll back or dispatch automatically.
 ### Activation verification and blast radius
 
 This table and transcript describe item 15. For the current additional probes,
-scoped `gh` invocations and version changes, see [#534](#534-blast-radius-pr-body-ready).
+ID-addressed `gh` invocations and version changes, see [#534](#534-blast-radius-pr-body-ready).
 
 `TestMCPStdio/explicit_activation` compares the shared engine with a real stdio
 MCP process, using independent isolated repositories and controlled command

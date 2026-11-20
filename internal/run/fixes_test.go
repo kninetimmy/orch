@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"strings"
 	"testing"
 
@@ -97,7 +98,7 @@ func TestPlanGateShowsFixes(t *testing.T) {
 // including the fixes check, then the given tail.
 func activateWithFixes(t *testing.T, root string, prCall execxtest.Call, tail ...execxtest.Call) (*execxtest.Script, error) {
 	t.Helper()
-	calls := append(activationTargetCalls(), activationRepoCall(prCall))
+	calls := append(activationTargetCalls(), prCall)
 	calls = append(calls, tail...)
 	script := &execxtest.Script{T: t, Calls: calls}
 	env := Env{RepoRoot: root, Runner: muxRunner{git: execx.Local{}, gh: script}, Now: fixedNow}
@@ -105,17 +106,28 @@ func activateWithFixes(t *testing.T, root string, prCall execxtest.Call, tail ..
 	return script, err
 }
 
+func activationFixCall(state string) execxtest.Call {
+	pr := "null"
+	if state != "" {
+		pr = fmt.Sprintf(`{"number":12,"state":%q}`, state)
+	}
+	return activationGraphQLCall("OrchActivationFix", fmt.Sprintf(`{"data":{"node":{"id":%q,"pullRequest":%s}}}`, activationRepoID, pr),
+		func(t *testing.T, raw json.RawMessage) {
+			checkGraphQLVariables(t, raw, map[string]any{"repositoryId": activationRepoID, "number": float64(12)})
+		})
+}
+
 func TestActivateRecordsAndShowsMergedFixes(t *testing.T) {
 	root := newActivateRepoWithConfig(t, metricsEnabledConfigTOML)
 	tail := append([]execxtest.Call{ghLabelListEmptyCall()}, ghLabelCreateCalls()...)
 	tail = append(tail, ghIssueCreateCall("Fix the status lock race", []string{"ready", "bug", "implementer", "standard"}, 1))
-	script, err := activateWithFixes(t, root, ghPRViewCall(12, "MERGED", "h"), tail...)
+	script, err := activateWithFixes(t, root, activationFixCall("MERGED"), tail...)
 	if err != nil {
 		t.Fatalf("Activate: %v", err)
 	}
 	script.AssertExhausted()
 
-	body := script.StdinAt(len(script.Calls) - 1)
+	body := activationIssueBody(t, script, len(script.Calls)-1)
 	if !strings.Contains(body, "**Fixes**\n\n- #12\n") {
 		t.Errorf("issue body does not list the fixed PR:\n%s", body)
 	}
@@ -132,10 +144,13 @@ func TestActivateIssueBodyOmitsFixesWhenNoneListed(t *testing.T) {
 }
 
 func TestActivateRefusesUnmergedOrMissingFixesBeforeCreatingAnything(t *testing.T) {
+	wrongRepo := activationFixCall("MERGED")
+	wrongRepo.Stdout = strings.Replace(wrongRepo.Stdout, activationRepoID, "R_other", 1)
 	for name, call := range map[string]execxtest.Call{
-		"open":    ghPRViewCall(12, "OPEN", "h"),
-		"closed":  ghPRViewCall(12, "CLOSED", "h"),
-		"missing": {Name: "gh", Args: ghPRViewCall(12, "", "").Args, Exit: 1, Stderr: "Could not resolve to a PullRequest"},
+		"open":                    activationFixCall("OPEN"),
+		"closed":                  activationFixCall("CLOSED"),
+		"missing":                 activationFixCall(""),
+		"merged in a replacement": wrongRepo,
 	} {
 		t.Run(name, func(t *testing.T) {
 			root := newActivateRepo(t)

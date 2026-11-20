@@ -28,6 +28,8 @@ import (
 const mcpTestSession = "ses_fixture"
 const mcpGitHubTargetFields = "nameWithOwner,defaultBranchRef,url,id"
 const mcpGitHubRepoID = "R_kgDOAAAABQ"
+const mcpReplacementRepoID = "R_kgDOAAAABq"
+const mcpRelocatedRepo = "github.com/fixture/relocated"
 const mcpGitHubRepoReply = `{"nameWithOwner":"fixture/isolated","defaultBranchRef":{"name":"main"},"url":"https://github.com/fixture/isolated","id":"` + mcpGitHubRepoID + `"}`
 
 func mcpWorkspaceMeta() mcp.Meta {
@@ -212,13 +214,91 @@ func mcpInProcess(t *testing.T, env Env, args ...string) (*mcp.ClientSession, fu
 	return session, closeSession
 }
 
-// The fake GitHub backend deliberately re-resolves its default on unpinned
-// commands. All Git writes/fetches are real, against disposable local repos.
+// The fake GitHub backend keeps stable IDs and mutable selectors separate. A
+// repo can lose its old selector between a read and a mutation, even if that
+// mutation supplied an explicit --repo. Git uses disposable local repos.
 type workspaceDeliveryRunner struct {
 	stateDir, target, switchAfterView string
 	repoID                            any // nil omits the field; nonstrings simulate malformed GitHub output.
 	githubReads                       int
-	writes                            map[string][]string
+	writes                            map[string][]string // by stable repo ID
+	reassignOnWrite, reassigned       bool
+	rejectLabel                       bool
+	mutableActivationWrites           int
+}
+
+func (r *workspaceDeliveryRunner) beforeWrite() {
+	if r.reassignOnWrite {
+		r.reassignOnWrite, r.reassigned = false, true
+	}
+}
+
+func (r *workspaceDeliveryRunner) selectorID(selector string) string {
+	switch selector {
+	case mcpActivationRepo:
+		if r.reassigned {
+			return mcpReplacementRepoID
+		}
+		return mcpGitHubRepoID
+	case mcpRelocatedRepo:
+		return mcpGitHubRepoID
+	default:
+		return selector
+	}
+}
+
+func (r *workspaceDeliveryRunner) graphQL(cmd execx.Cmd) (execx.Result, error) {
+	if !slices.Equal(cmd.Args, mcpActivationGraphQLArgs()) || cmd.Stdin == nil {
+		return execx.Result{}, fmt.Errorf("unexpected activation GraphQL command %q", cmd.Args)
+	}
+	var req struct {
+		OperationName, Query string
+		Variables            struct {
+			RepositoryID string
+			Input        struct {
+				RepositoryID, Name, Color, Description, Title, Body string
+				LabelIDs                                            []string
+			}
+		}
+	}
+	if err := json.NewDecoder(cmd.Stdin).Decode(&req); err != nil {
+		return execx.Result{}, err
+	}
+	input := req.Variables.Input
+	switch req.OperationName {
+	case "OrchActivationLabels":
+		r.githubReads++
+		if req.Variables.RepositoryID != mcpGitHubRepoID || !strings.Contains(req.Query, "node(id: $repositoryId)") ||
+			!strings.Contains(req.Query, "... on Repository") {
+			break
+		}
+		return execx.Result{Stdout: mcpActivationLabelPage(req.Variables.RepositoryID)}, nil
+	case "OrchCreateLabel":
+		r.beforeWrite()
+		if input.RepositoryID != mcpGitHubRepoID || !strings.Contains(req.Query, "createLabel(input: $input)") ||
+			input.Name != "ready" || input.Color != "1D76DB" || !strings.Contains(input.Description, "PRD §13") {
+			break
+		}
+		if r.rejectLabel {
+			return execx.Result{ExitCode: 1, Stderr: "Cannot query field createLabel on type Mutation"}, nil
+		}
+		r.writes[input.RepositoryID] = append(r.writes[input.RepositoryID], "createLabel")
+		return execx.Result{Stdout: mcpActivationLabelReply}, nil
+	case "OrchCreateIssue":
+		r.beforeWrite()
+		if input.RepositoryID != mcpGitHubRepoID || !strings.Contains(req.Query, "createIssue(input: $input)") ||
+			input.Title != "Fix the status lock race" || !strings.Contains(input.Body, "**Objective**") ||
+			!slices.Equal(input.LabelIDs, []string{"LA_ready", "LA_bug", "LA_implementer", "LA_standard"}) {
+			break
+		}
+		r.writes[input.RepositoryID] = append(r.writes[input.RepositoryID], "createIssue")
+		repo := mcpActivationRepo
+		if r.reassigned {
+			repo = mcpRelocatedRepo
+		}
+		return execx.Result{Stdout: mcpActivationIssueReply(repo, input.RepositoryID)}, nil
+	}
+	return execx.Result{}, fmt.Errorf("unexpected activation GraphQL request %q", req.OperationName)
 }
 
 func (r *workspaceDeliveryRunner) Run(ctx context.Context, cmd execx.Cmd) (execx.Result, error) {
@@ -245,6 +325,9 @@ func (r *workspaceDeliveryRunner) Run(ctx context.Context, cmd execx.Cmd) (execx
 			repo := map[string]any{"nameWithOwner": slug, "defaultBranchRef": map[string]string{"name": "main"}, "url": "https://" + target}
 			if cmd.Args[3] == mcpGitHubTargetFields && r.repoID != nil {
 				repo["id"] = r.repoID
+				if r.reassigned && target == mcpActivationRepo {
+					repo["id"] = mcpReplacementRepoID
+				}
 			}
 			data, err := json.Marshal(repo)
 			return execx.Result{Stdout: string(data)}, err
@@ -253,20 +336,30 @@ func (r *workspaceDeliveryRunner) Run(ctx context.Context, cmd execx.Cmd) (execx
 		if len(args) >= 4 && args[len(args)-2] == "--repo" {
 			target, args = args[len(args)-1], args[:len(args)-2]
 		}
-		switch strings.Join(args[:2], " ") {
+		command := strings.Join(args[:2], " ")
+		switch command {
+		case "api graphql":
+			return r.graphQL(cmd)
 		case "label list":
 			r.githubReads++
 			return execx.Result{Stdout: `[{"name":"in-progress"},{"name":"blocked"},{"name":"needs-human"},{"name":"awaiting-review"},{"name":"delivered"},{"name":"feature"},{"name":"bug"},{"name":"chore"},{"name":"infra"},{"name":"docs"},{"name":"research"},{"name":"implementer"},{"name":"specialist"},{"name":"standard"},{"name":"critical"}]`}, nil
-		case "label create", "issue create", "issue edit":
-			r.writes[target] = append(r.writes[target], strings.Join(args[:2], " "))
+		case "label create", "issue create":
+			r.beforeWrite()
+			r.mutableActivationWrites++
+			id := r.selectorID(target)
+			r.writes[id] = append(r.writes[id], command)
 			return execx.Result{Stdout: "https://" + target + "/issues/71"}, nil
+		case "issue edit":
+			id := r.selectorID(target)
+			r.writes[id] = append(r.writes[id], command)
+			return execx.Result{}, nil
 		}
 	}
 	return execx.Result{}, fmt.Errorf("unexpected isolated workspace command %s %q", cmd.Name, cmd.Args)
 }
 
 func TestMCPDeliveryWorkspaceAndTarget(t *testing.T) {
-	const approvedRepo = "github.com/fixture/isolated"
+	const approvedRepo = mcpActivationRepo
 	const alternate = "github.example.invalid/other/repo"
 	parent := t.TempDir()
 	global := filepath.Join(parent, "gitconfig")
@@ -274,6 +367,8 @@ func TestMCPDeliveryWorkspaceAndTarget(t *testing.T) {
 	t.Setenv("GIT_CONFIG_GLOBAL", global)
 	t.Setenv("GIT_CONFIG_NOSYSTEM", "1")
 	t.Setenv("GIT_ALLOW_PROTOCOL", "file")
+	// Keep git status's optional index-cache refresh out of byte snapshots.
+	t.Setenv("GIT_OPTIONAL_LOCKS", "0")
 	root, other, origin := mcpCanonical(t, t.TempDir()), mcpCanonical(t, t.TempDir()), filepath.Join(parent, "origin.git")
 	lookupTestGit(t, root, "init", "-b", "main")
 	lookupTestGit(t, parent, "init", "--bare", "-b", "main", origin)
@@ -334,8 +429,10 @@ func TestMCPDeliveryWorkspaceAndTarget(t *testing.T) {
 		t.Helper()
 		before, reads := snapshot(), runner.githubReads
 		mcpEvalError(t, call(s, name, args, meta), reason)
-		if snapshot() != before || runner.githubReads-reads != githubReads {
-			t.Fatalf("%s refusal changed a checkout or GitHub state, or exceeded its GitHub read boundary", name)
+		after := snapshot()
+		if after != before || runner.githubReads-reads != githubReads {
+			t.Fatalf("%s refusal: primary changed=%t other=%t linked=%t GitHub writes=%t reads=%d want %d",
+				name, after[0] != before[0], after[1] != before[1], after[2] != before[2], after[3] != before[3], runner.githubReads-reads, githubReads)
 		}
 	}
 
@@ -412,7 +509,7 @@ func TestMCPDeliveryWorkspaceAndTarget(t *testing.T) {
 		refuse(mcpA, "orch_run_activate", request, meta, tc.reason, 2)
 		t.Logf("%s GitHub repository ID: no gate, no activation, no effects", tc.name)
 	}
-	const replacementID = "R_kgDOAAAABq"
+	const replacementID = mcpReplacementRepoID
 	runner.repoID = replacementID
 	replacement := gate(mcpA, replacementID)
 	sameTarget := replacement.Target
@@ -430,17 +527,31 @@ func TestMCPDeliveryWorkspaceAndTarget(t *testing.T) {
 		runner.target = target
 		refuse(mcpA, "orch_run_activate", request, meta, "live GitHub target "+target+" does not match the approved target", 2)
 	}
-	// A changed checkout-relative default after resolution does not retarget
-	// activation's GitHub commands. They use the checked canonical selector.
+	// Even if the host doesn't support the ID-addressed API, do not fall
+	// back to the old selector: it is reassigned at the first mutation.
 	runner.target, runner.switchAfterView = approvedRepo, alternate
+	runner.reassignOnWrite, runner.rejectLabel = true, true
+	refuse(mcpA, "orch_run_activate", request, meta, "Cannot query field createLabel", 3)
+	if !runner.reassigned || runner.mutableActivationWrites != 0 {
+		t.Fatal("missing ID write capability was not exercised or attempted a mutable fallback")
+	}
+	t.Log("ID mutation unavailable after reassignment: explicit failure, no fallback or effects")
+
+	// The default changes after resolution and the checked name is reassigned
+	// at the first write, after any preflight. Both mutations must go to the
+	// original ID, now at another name.
+	runner.target, runner.switchAfterView = approvedRepo, alternate
+	runner.reassignOnWrite, runner.reassigned, runner.rejectLabel = true, false, false
 	result := call(mcpA, "orch_run_activate", request, meta)
 	var activated run.ActivationResult
 	if result.IsError || json.Unmarshal(mcpEvalBytes(t, result.StructuredContent), &activated) != nil || activated.SchemaVersion != 3 ||
-		len(activated.Issues) != 1 || activated.Issues[0].Number != 71 || activated.Issues[0].URL != "https://"+approvedRepo+"/issues/71" ||
-		!slices.Equal(runner.writes[approvedRepo], []string{"label create", "issue create"}) || len(runner.writes) != 1 ||
+		len(activated.Issues) != 1 || activated.Issues[0].Number != 71 || activated.Issues[0].URL != "https://"+mcpRelocatedRepo+"/issues/71" ||
+		!runner.reassigned || runner.selectorID(approvedRepo) != replacementID || runner.mutableActivationWrites != 0 ||
+		!slices.Equal(runner.writes[mcpGitHubRepoID], []string{"createLabel", "createIssue"}) || len(runner.writes) != 1 ||
 		mcpTree(t, other) != before[1] || mcpTree(t, linked) != before[2] {
 		t.Fatalf("activation did not land exclusively on the checked target: %+v; GitHub=%v", result, runner.writes)
 	}
+	t.Log("checked name reassigned at write boundary: label and issue written only to the original ID")
 	st, err := state.Load(root)
 	if err != nil || st.Mode != state.ModeDelivery || st.Run.Plan.Digest != a.PlanDigest ||
 		st.Run.Issues[0].Phase != state.PhaseWorktreeReady {
@@ -451,7 +562,7 @@ func TestMCPDeliveryWorkspaceAndTarget(t *testing.T) {
 		t.Fatalf("activation did not create the approved worktree: %s", got)
 	}
 
-	runner.target = approvedRepo
+	runner.target, runner.reassigned = approvedRepo, false // Restore the matching dispatch fixture.
 	locate(other)
 	refuse(mcpA, "orch_run_dispatch", dispatch, meta, "does not match the bound checkout", 0)
 	locate(worktree)
@@ -461,7 +572,7 @@ func TestMCPDeliveryWorkspaceAndTarget(t *testing.T) {
 	result = call(mcpA, "orch_run_dispatch", dispatch, meta)
 	st, err = state.Load(root)
 	if result.IsError || err != nil || st.Run.Issues[0].Phase != state.PhaseDispatched ||
-		!slices.Equal(runner.writes[approvedRepo], []string{"label create", "issue create", "issue edit"}) ||
+		!slices.Equal(runner.writes[mcpGitHubRepoID], []string{"createLabel", "createIssue", "issue edit"}) ||
 		len(runner.writes) != 1 || mcpTree(t, other) != before[1] || mcpTree(t, linked) != before[2] {
 		t.Fatalf("matching dispatch did not preserve its lifecycle: result=%+v state=%+v err=%v GitHub=%v", result, st, err, runner.writes)
 	}

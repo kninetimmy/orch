@@ -38,18 +38,18 @@ var (
 	repoPart = regexp.MustCompile(`^[a-z0-9_.-]+$`)
 	// Accept opaque tokens in both GitHub node ID alphabets (legacy and
 	// current). Never decode, trim, or case-fold an ID to compare it.
-	repoNodeID = regexp.MustCompile(`^[A-Za-z0-9_+/-]+={0,2}$`)
+	githubNodeID = regexp.MustCompile(`^[A-Za-z0-9_+/-]+={0,2}$`)
 )
 
 func (t RepoTarget) Valid() bool {
 	validPart := func(s string) bool { return s != "." && s != ".." && repoPart.MatchString(s) }
-	return repoHost.MatchString(t.Host) && validPart(t.Owner) && validPart(t.Repository) && repoNodeID.MatchString(t.ID)
+	return repoHost.MatchString(t.Host) && validPart(t.Owner) && validPart(t.Repository) && githubNodeID.MatchString(t.ID)
 }
 
 // Target derives the approval identity from one observed repository, not a
 // configured remote URL or request parameter. The URL and slug must agree.
 func (r Repo) Target() (RepoTarget, error) {
-	if !repoNodeID.MatchString(r.ID) {
+	if !githubNodeID.MatchString(r.ID) {
 		return RepoTarget{}, fmt.Errorf("%w: gh repo view returned a missing or malformed GitHub repository ID", ErrNoGitHubRepo)
 	}
 	u, err := url.Parse(r.URL)

@@ -27,6 +27,9 @@ type Call struct {
 	// Stdin, when non-empty, is the expected full standard input;
 	// empty skips the check, matching the Dir convention.
 	Stdin string
+	// CheckStdin optionally checks a structured payload without matching
+	// dynamic content byte-for-byte.
+	CheckStdin func(*testing.T, string)
 
 	// Stdout, Stderr, and Exit form the scripted Result.
 	Stdout string
@@ -99,6 +102,9 @@ func (s *Script) Run(_ context.Context, c execx.Cmd) (execx.Result, error) {
 		if stdin != want.Stdin {
 			s.T.Fatalf("call %d: %s stdin\ngot  %q\nwant %q", s.next, c.Name, stdin, want.Stdin)
 		}
+	}
+	if want.CheckStdin != nil {
+		want.CheckStdin(s.T, stdin)
 	}
 	if want.Err != nil {
 		return execx.Result{}, want.Err

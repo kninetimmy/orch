@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -89,18 +90,49 @@ func mustMCPActivationPlan(t *testing.T) *run.PlanDoc {
 	return plan
 }
 
+const mcpActivationGHHost = "github.com"
+const mcpActivationRepo = mcpActivationGHHost + "/fixture/isolated"
+
+func mcpActivationGraphQLArgs() []string {
+	return []string{"api", "graphql", "--hostname", mcpActivationGHHost, "--method", "POST", "--header", "Content-Type: application/json", "--input", "-"}
+}
+
+func mcpActivationLabelPage(repoID string) string {
+	var nodes []string
+	for _, name := range []string{"in-progress", "blocked", "needs-human", "awaiting-review", "delivered", "feature", "bug",
+		"chore", "infra", "docs", "research", "implementer", "specialist", "standard", "critical"} {
+		nodes = append(nodes, fmt.Sprintf(`{"id":"LA_%s","name":"%s"}`, name, name))
+	}
+	return fmt.Sprintf(`{"data":{"node":{"id":%q,"labels":{"nodes":[%s],"pageInfo":{"hasNextPage":false}}}}}`, repoID, strings.Join(nodes, ","))
+}
+
+const mcpActivationLabelReply = `{"data":{"createLabel":{"label":{"id":"LA_ready","name":"ready"}}}}`
+
+func mcpActivationIssueReply(repo, repoID string) string {
+	return fmt.Sprintf(`{"data":{"createIssue":{"issue":{"number":71,"url":"https://%s/issues/71","repository":{"id":%q}}}}}`, repo, repoID)
+}
+
 // Exact activation transcript, shared by the engine's scripted runner and the
 // existing compiled doctor-probe executable. Git mutations are simulated too:
 // PATH contains only these fixture executables, never production git/gh/hosts.
-func mcpActivationCalls(root, scenario string) []execxtest.Call {
+func mcpActivationCalls(root, scenario string, probe bool) []execxtest.Call {
+	graphQL := func(operation, reply string) execxtest.Call {
+		args := mcpActivationGraphQLArgs()
+		if probe {
+			// The compiled probe keys the otherwise identical command lines
+			// on operationName in stdin, not an extra process argument.
+			args = append(args, operation)
+		}
+		return execxtest.Call{Name: "gh", Args: args, Stdout: reply}
+	}
 	tail := []execxtest.Call{
 		{Name: "git", Args: []string{"status", "--porcelain=v1", "--untracked-files=all"}},
 		{Name: "git", Args: []string{"symbolic-ref", "--short", "HEAD"}, Stdout: "main"},
 		{Name: "git", Args: []string{"check-ignore", "-q", "--", ".orchestrator/worktrees/orch-check-ignore-probe"}},
 		{Name: "git", Args: []string{"check-ignore", "-q", "--", ".orchestrator/worktrees/0"}},
-		{Name: "gh", Args: []string{"label", "list", "--json", "name", "--limit", "1000", "--repo", "github.com/fixture/isolated"}, Stdout: `[{"name":"in-progress"},{"name":"blocked"},{"name":"needs-human"},{"name":"awaiting-review"},{"name":"delivered"},{"name":"feature"},{"name":"bug"},{"name":"chore"},{"name":"infra"},{"name":"docs"},{"name":"research"},{"name":"implementer"},{"name":"specialist"},{"name":"standard"},{"name":"critical"}]`},
-		{Name: "gh", Args: []string{"label", "create", "ready", "--color", "1D76DB", "--description", "orch status label — exactly one per issue (PRD §13)", "--repo", "github.com/fixture/isolated"}},
-		{Name: "gh", Args: []string{"issue", "create", "--title", "Fix the status lock race", "--body-file", "-", "--label", "ready", "--label", "bug", "--label", "implementer", "--label", "standard", "--repo", "github.com/fixture/isolated"}, Stdout: "https://github.com/fixture/isolated/issues/71"},
+		graphQL("OrchActivationLabels", mcpActivationLabelPage(mcpGitHubRepoID)),
+		graphQL("OrchCreateLabel", mcpActivationLabelReply),
+		graphQL("OrchCreateIssue", mcpActivationIssueReply(mcpActivationRepo, mcpGitHubRepoID)),
 		{Name: "git", Args: []string{"check-ignore", "-q", "--", ".orchestrator/worktrees/issue-71/orch-check-ignore-probe"}},
 		{Name: "git", Args: []string{"check-ignore", "-q", "--", ".orchestrator/worktrees/issue-71/0"}},
 		{Name: "git", Args: []string{"rev-parse", "--verify", "--quiet", "refs/heads/orch/issue-71-fix-the-status-lock-race"}, Exit: 1},
@@ -161,7 +193,7 @@ func mcpActivationExercise(t *testing.T, binary string) {
 				t.Fatal("isolated roots reused the same approval")
 			}
 			workspace := mcpWorkspaceCalls(root, mcpMatchingHost(t, os.Getpid(), root))
-			calls := append(slices.Clone(workspace), mcpActivationCalls(root, scenario)...)
+			calls := append(slices.Clone(workspace), mcpActivationCalls(root, scenario, true)...)
 			logPath := filepath.Join(t.TempDir(), "commands.log")
 			fixture := mcpProbeFile(t, root, logPath, calls)
 			ctx, cancel := context.WithTimeout(t.Context(), 60*time.Second)
@@ -180,7 +212,7 @@ func mcpActivationExercise(t *testing.T, binary string) {
 				prior = mcpReadProbeLog(t, logPath)
 				mcpOnlyProbes(t, prior, append(slices.Clone(workspace), mcpTargetCalls(root)...))
 			}
-			script := &execxtest.Script{T: t, Calls: mcpActivationCalls(sharedRoot, scenario)}
+			script := &execxtest.Script{T: t, Calls: mcpActivationCalls(sharedRoot, scenario, false)}
 			want, wantErr := run.Activate(ctx, run.Env{RepoRoot: sharedRoot, Runner: script,
 				ClaudeSession: "aaaaaaaa-0000-4000-8000-000000000001"}, sharedRequest)
 			script.AssertExhausted()
@@ -223,7 +255,13 @@ func mcpActivationExercise(t *testing.T, binary string) {
 					!reflect.DeepEqual(mcpDecoded(t, []byte(text.Text)), expected) {
 					t.Fatalf("engine/structured/text parity: shared=%+v MCP=%+v", want, result)
 				}
-				m, err := manifest.Parse(script.StdinAt(11))
+				var request struct {
+					Variables struct{ Input struct{ Body string } }
+				}
+				if err := json.Unmarshal([]byte(script.StdinAt(11)), &request); err != nil {
+					t.Fatalf("decode issue mutation payload: %v", err)
+				}
+				m, err := manifest.Parse(request.Variables.Input.Body)
 				if err != nil || m.Objective != mustMCPActivationPlan(t).Issues[0].Objective || m.Executor.Model == "" {
 					t.Fatalf("shared engine activation audit lost approved work: %+v err=%v", m, err)
 				}
