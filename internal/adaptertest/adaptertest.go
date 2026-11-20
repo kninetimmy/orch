@@ -379,7 +379,7 @@ func CheckSelectionWireVersions(t *testing.T, deliverySkillPath, architectSkillP
 	phrases := []string{
 		versions,
 		fmt.Sprintf("(`schema_version: %d`) carrying the **identical** `PlanDoc`", run.ActivationSchemaVersion),
-		"Display `target.checkout` and the full `target.github` host/owner/repository",
+		"Display `target.checkout` and the full `target.github` host/owner/repository and `target.github.id`",
 		"Copy `GateDoc.plan_digest` and the exact `GateDoc.target` into `approval`.",
 		fmt.Sprintf("Expect `ActivationResult` schema %d.", run.ActivationSchemaVersion),
 		fmt.Sprintf("Approval-contract v%d also refuses older approvals", run.ContractVersion),

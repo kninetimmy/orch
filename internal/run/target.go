@@ -61,7 +61,7 @@ func deliveryGitHub(ctx context.Context, env Env) (*ghops.GH, ghops.Repo, ghops.
 	if err != nil {
 		return nil, ghops.Repo{}, ghops.RepoTarget{}, err
 	}
-	repo, err := gh.Repo(ctx)
+	repo, err := gh.RepoWithID(ctx)
 	if err != nil {
 		return nil, ghops.Repo{}, ghops.RepoTarget{}, err
 	}

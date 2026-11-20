@@ -18,7 +18,7 @@ import (
 // stale adapter silently drop the execution profile.
 // v3 additionally binds approval to the effective contract and exposes its
 // execution configuration. v2 bound only the submitted PlanDoc.
-// v4 adds the primary checkout and GitHub repository to that contract.
+// v4 adds the primary checkout and GitHub repository (selector and ID).
 const GateSchemaVersion = 4
 
 // GateDoc is the human decision gate for a plan (PRD §8, covering

@@ -195,7 +195,7 @@ inherit.
 
 Call `orch run plan` with the `PlanDoc` on stdin. The result is a
 `GateDoc` (`schema_version: 4`): `plan_digest`, `plan_title`, `host`, `target`
-(`{checkout, checkout_id, github: {host, owner, repository}}`),
+(`{checkout, checkout_id, github: {host, owner, repository, id}}`),
 `config_revision`, `config_overrides`, `merge_strategy`, `execution`, `memhub`
 (`{mode, probe, recall, detail}`), `ci` (`{workflows_present, statement}`), and
 `issues[]` — each with `id`, `title`, `objective`,
@@ -213,7 +213,8 @@ fields (`plan_title`, `host`, `merge_strategy`, `config_revision` +
 `config_overrides` if any, `memhub`, `ci`).
 
 Display `target.checkout` and the full `target.github` host/owner/repository
-before asking. Refuse an unsupported gate or a missing or mismatched target.
+and `target.github.id` before asking. Refuse an unsupported gate or a missing
+or mismatched target, including a missing repository ID.
 The optional OpenCode MCP plan gate, activation and dispatch also verify the
 invoking session is at the launch-bound Git primary; do not treat a report
 from a pinned server as session evidence or route around a workspace refusal.
@@ -256,7 +257,7 @@ On approval, call `orch run activate` with an `ActivationRequest`
     "plan_digest": "sha256:...", "approved_by": "...",
     "target": {
       "checkout": "/absolute/path/to/primary", "checkout_id": "sha256:...",
-      "github": {"host": "github.com", "owner": "owner", "repository": "repo"}
+      "github": {"host": "github.com", "owner": "owner", "repository": "repo", "id": "R_kgDOAAAAAQ"}
     },
     "approved_at": "2026-07-12T00:00:00Z",
     "statement": "approve-and-enter-delivery"
@@ -268,13 +269,15 @@ Copy `GateDoc.plan_digest` and the exact `GateDoc.target` into `approval`.
 Before GateDoc v3, the digest bound only the submitted plan; v3 bound the
 effective contract (submitted scope, engine-contributed criteria, routing and
 `execution` settings), not the checkout or GitHub destination. GateDoc v4
-binds that same contract plus the verified target. Present `execution` (all
+binds that same contract plus the verified target, including the repository ID
+that distinguishes repositories at the same name. Present `execution` (all
 six profiles, concurrency limit, merge strategy, memhub mode, and metrics
 setting) alongside the issues. Never compute approval from `PlanDoc.Digest`
 or reuse an old approval. The earlier byte-for-byte instruction is relaxed:
-JSON whitespace and object-key order do not change approval. Activation v1/v2
-and target drift are refused; re-gate with matching engine and adapter versions
-and obtain fresh approval. Expect `ActivationResult` schema 3.
+JSON whitespace and object-key order do not change approval. Activation v1/v2,
+missing or malformed identity, and target drift are refused; re-gate with
+matching engine and adapter versions and obtain fresh approval. Expect
+`ActivationResult` schema 3.
 
 Before state v6, v5 recorded the contract version and effective execution digest. State v6 retains them and adds block causes and resolution history; v4/v5 remain inspectable, but lifecycle verbs and resume refuse to hot-migrate them: finish using the original engine, or abort and re-plan. Effective configuration drift, including local overrides without a revision change, also requires restoring the approved settings or aborting and re-planning. This restriction applies to every lifecycle verb and resume; engine-authorized issue escalation within the approved profiles remains supported.
 Approval-contract v4 also refuses older approvals for every lifecycle verb and
@@ -482,9 +485,11 @@ parent-session usage.
    independent review. Attribution is not authentication; the engine validates
    structure/head/freshness, never executes supplied command text. Neither CI,
    human merge gates nor any role's existing permissions are waived.
-   Review v3/v4 or approval-contract v2/v3 mismatches fail explicitly: preserve
-   the run and use its original engine, or abort and obtain fresh plan approval.
-   Never migrate an active run or replace its installed engine to continue it.
+   At #528, Review v3/v4 or approval-contract v2/v3 mismatches failed explicitly.
+   After #534, Review remains v4, and contract v4 is required for every lifecycle
+   verb. On mismatch, preserve the run and use its original engine, or abort and
+   obtain fresh plan approval. Never migrate an active run or replace its
+   installed engine to continue it.
 
    `orch run pr-open` is not reachable a second time, so
    `verifications` is optional and takes pr-open's input shape — use

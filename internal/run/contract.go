@@ -16,7 +16,8 @@ import (
 // v3 binds evidence-only review and pending-evidence enforcement. v2 engines
 // must not save runs whose review evidence they would silently discard. Older
 // runs remain inspectable, not executable under changed approval semantics.
-// v4 binds the canonical primary checkout and GitHub target at plan/activation.
+// v4 binds the canonical primary checkout and GitHub repository (selector and
+// ID) at plan/activation.
 const ContractVersion = 4
 
 // ExecutionConfig is the effective configuration approved for this run.

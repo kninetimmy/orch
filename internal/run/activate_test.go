@@ -151,8 +151,13 @@ func ghRepoViewCall(defaultBranch string) execxtest.Call {
 	}
 }
 
+const activationRepoID = "R_kgDOAAAAAQ"
+
 func activationTargetCalls() []execxtest.Call {
-	return []execxtest.Call{ghOpenCall(), ghRepoViewCall("main")}
+	return []execxtest.Call{ghOpenCall(), {
+		Name: "gh", Args: []string{"repo", "view", "--json", "nameWithOwner,defaultBranchRef,url,id"},
+		Stdout: `{"nameWithOwner":"o/r","defaultBranchRef":{"name":"main"},"url":"https://github.com/o/r","id":"` + activationRepoID + `"}`,
+	}}
 }
 
 func activationRepoCall(call execxtest.Call) execxtest.Call {
@@ -251,7 +256,7 @@ func activationApproval(t *testing.T, root, planJSON string) (string, DeliveryTa
 		t.Fatal(err)
 	}
 	target := DeliveryTarget{Checkout: git.Root(), CheckoutID: id,
-		GitHub: ghops.RepoTarget{Host: "github.com", Owner: "o", Repository: "r"}}
+		GitHub: ghops.RepoTarget{Host: "github.com", Owner: "o", Repository: "r", ID: activationRepoID}}
 	contract, err := effectiveContract(p, cfg, target)
 	if err != nil {
 		t.Fatal(err)
@@ -495,7 +500,7 @@ func TestActivateAreaLabelsPresentProceeds(t *testing.T) {
 	// names are); the taxonomy step then lists again and creates the
 	// full §13 set.
 	repoLabels := `[{"name":"Core"},{"name":"cli"}]`
-	calls := []execxtest.Call{ghOpenCall(), ghRepoViewCall("main"), ghLabelListCall(repoLabels), ghLabelListCall(repoLabels)}
+	calls := append(activationTargetCalls(), ghLabelListCall(repoLabels), ghLabelListCall(repoLabels))
 	calls = append(calls, ghLabelCreateCalls()...)
 	calls = append(calls,
 		ghIssueCreateCall("Issue A", []string{"ready", "feature", "implementer", "standard", "core", "cli"}, 1),
@@ -517,9 +522,7 @@ func TestActivateMissingAreaLabelLeavesNothing(t *testing.T) {
 	root := newActivateRepo(t)
 	// The repo has "core" but not "cli": activation must fail closed at
 	// the read-only preflight, before the taxonomy step or any issue.
-	script := &execxtest.Script{T: t, Calls: []execxtest.Call{
-		ghOpenCall(), ghRepoViewCall("main"), ghLabelListCall(`[{"name":"core"}]`),
-	}}
+	script := &execxtest.Script{T: t, Calls: append(activationTargetCalls(), ghLabelListCall(`[{"name":"core"}]`))}
 	env := Env{RepoRoot: root, Runner: muxRunner{git: execx.Local{}, gh: script}, Now: fixedNow}
 
 	_, err := Activate(context.Background(), env, activationJSON(t, root, areaPlanJSON()))
@@ -671,7 +674,7 @@ func TestActivateLockHeldLeavesExistingStateUntouched(t *testing.T) {
 
 func TestActivateContainerNotIgnoredLeavesNothing(t *testing.T) {
 	root := newActivateRepoWithIgnore(t, "") // worktree container not ignored
-	script := &execxtest.Script{T: t, Calls: []execxtest.Call{ghOpenCall(), ghRepoViewCall("main")}}
+	script := &execxtest.Script{T: t, Calls: activationTargetCalls()}
 	env := Env{RepoRoot: root, Runner: muxRunner{git: execx.Local{}, gh: script}, Now: fixedNow}
 
 	_, err := Activate(context.Background(), env, activationJSON(t, root, twoIssuePlanJSON()))

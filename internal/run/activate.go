@@ -224,7 +224,8 @@ func Activate(ctx context.Context, env Env, reqJSON []byte) (*ActivationResult, 
 		return nil, err
 	}
 	if github != approvedTarget.GitHub {
-		return nil, fmt.Errorf("%w: live GitHub target %s does not match the approved target %s; re-gate and obtain fresh approval", ErrBadApproval, github, approvedTarget.GitHub)
+		return nil, fmt.Errorf("%w: live GitHub target %s does not match the approved target %s (live repository ID %q, approved ID %q); re-gate and obtain fresh approval",
+			ErrBadApproval, github, approvedTarget.GitHub, github.ID, approvedTarget.GitHub.ID)
 	}
 	gh, err = gh.ForTarget(github)
 	if err != nil {

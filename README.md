@@ -279,18 +279,22 @@ adapters/opencode` again; see its README for the exact commands and
 project-scoped plugin-health check. Restart Claude Code/Codex CLI or reload the
 affected OpenCode V2 location after upgrading so the new hooks and skills are loaded.
 
-**Engine and adapter compatibility.** The prepared **v0.16.0 target**, not a
-published release, pairs with OpenCode package **0.13.0** and Claude/Codex
-manual adapters **0.13.0**. Claude/Codex marketplace and plugin versions remain
-unchanged because their packaged executable guidance has not changed since
-v0.15.2; OpenCode's package now includes the SDK, guard and bound-lookup changes.
-SDK/util/protocol pins remain 2.2.6. Current source retains state schema 6 and
-metrics document schema 2, but approval/execution contract is now **2**, not 1.
-New contract-2 runs and old contract-1 engines are incompatible in both
-directions; inspection does not authorize continuation or migrate a run.
-Current source uses these manual wire versions: Gate 3, Status 4, Activation 2,
-Dispatch 4, Review 3,
-Escalate 2, Block 2, Resume 2, Resolve Block 1, and the new Repair 1.
+**Engine and adapter compatibility.** At the unpublished **v0.16.0** preparation
+checkpoint, OpenCode and the Claude/Codex manual adapters were labeled
+**0.13.0**. The SDK, guard and bound-lookup changes were in the OpenCode package;
+Claude/Codex executable guidance had not changed since v0.15.2 at that point.
+Repair raised approval/execution contract **1 → 2**; the contracts were
+incompatible in both directions despite retaining state schema 6. That
+checkpoint used Gate 3, Activation 2 and Review 3. #528 then moved Review to 4
+and approval/execution to 3.
+
+**After #534**, current source uses approval/execution contract **4** and these
+manual wire versions: Gate **4**, Status **4**, Activation **3**, Dispatch **4**,
+Review **4**, Escalate **2**, Block **2**, Resume **2**, Resolve Block **1** and
+Repair **1**. State schema 6, metrics document schema 2 and SDK/util/protocol
+pins 2.2.6 are unchanged. The source adapters and marketplace are labeled
+**0.13.1** after #522; match the engine and adapter content, not just those
+labels. Inspection does not authorize continuation or migrate an older run.
 OpenCode child lookup additionally requires **lookup-context schema 2** and a
 Memhub build supporting explicit `--memory-root`, `--code-root` and
 `--profile lookup-only` serving. Old/missing interfaces are unavailable lookup,
@@ -512,10 +516,11 @@ that binary's identity and discovered tools after an explicitly approved install
 
 Before item 15, MCP help advertised inspections, bounded preparation and plan
 decision gates, with no lifecycle operation. After separately approved item 15,
-source exposes sixteen tools plus four read-only resources and one template.
-`orch_run_activate` alone submits an explicit human-approved schema-2 activation
-request to the existing engine. A call, validation or successful gate inspection
-is never approval; the human's statement, approver, timestamp and exact
+source exposed sixteen tools plus four read-only resources and one template.
+`orch_run_activate` alone submitted an explicit human-approved schema-2 activation
+request to the existing engine; #534 changes that request to schema 3. A call,
+validation or successful gate inspection is never approval; the human's
+statement, approver, timestamp and exact
 effective-contract digest must be supplied. Activation can mutate GitHub, Git,
 state/locks and existing audit/metrics records and is not automatically retried.
 Partial-failure recovery remains explicit; dispatch, merge, configuration
@@ -541,10 +546,11 @@ See the guide's dispatch section for the exact effects, tests and blast radius.
 pin, and the schema-3 gate/schema-2 activation handoff did not bind that
 checkout or the GitHub destination to approval. **After #534:** OpenCode MCP
 gate, activation and dispatch verify the invoking session independently at the
-bound primary. Gate 4 and Activation 3 bind the verified primary checkout and
-GitHub host/owner/repository; activation checks both live and targets its GitHub
-operations explicitly. Approval contract 4 requires fresh approval for a new
-run, not migration of an active one. Register OpenCode's checkout pin
+bound primary. Gate 4 and Activation 3 bind the verified primary checkout,
+GitHub host/owner/repository and stable GitHub repository ID. Activation rechecks
+them live before effects and targets its GitHub operations explicitly.
+Approval contract 4 requires fresh approval for a new run, not migration of an
+active one. Register OpenCode's checkout pin
 [at project scope](docs/mcp-status.md#opencode-project-registration), not globally.
 
 Previously `metrics` only accepted its read-only report form. That form still
@@ -846,7 +852,8 @@ Guide search, wrap-up integration and broader rollout tasks 319/331 remain open.
    (paths, source commits and hashes). Select compatible content as a unit,
    including lookup-context schema 2 and explicit-root lookup-only Memhub.
    Finish old runs with their original engine/content or abort and seek fresh
-   approval; state schema 6 alone does not make contracts 1 and 2 compatible.
+   approval; state schema 6 alone did not make contracts 1 and 2 compatible at
+   this checkpoint and does not make later contracts compatible either.
 2. A downloaded release binary must match that trusted release's published
    `SHA256SUMS` **before execution**. v0.16.0 has no published final artifact
    yet. Reload the affected OpenCode location (or restart Claude/Codex), refresh

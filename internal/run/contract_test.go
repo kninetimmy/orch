@@ -237,6 +237,14 @@ func TestContractLegacyApprovalAndFormatting(t *testing.T) {
 			t.Fatalf("version %d: %v", version, err)
 		}
 	}
+	for _, id := range []string{"", "malformed ID"} {
+		target := gate.Target
+		target.GitHub.ID = id
+		req := buildActivationJSON(t, plan, gate.PlanDigest, ApprovalStatement, target)
+		if _, err := Activate(context.Background(), env, req); !errors.Is(err, ErrBadApproval) || !strings.Contains(err.Error(), "requires the exact target") {
+			t.Fatalf("invalid approved repository ID %q: %v", id, err)
+		}
+	}
 	assertNoDeliveryState(t, root)
 }
 

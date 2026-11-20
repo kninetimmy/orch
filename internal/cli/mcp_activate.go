@@ -24,8 +24,9 @@ func addMCPActivation(server *mcp.Server, env Env, root string) {
 		      "target":{"type":"object","properties":{
 		        "checkout":{"type":"string","minLength":1},"checkout_id":{"type":"string","minLength":1},
 		        "github":{"type":"object","properties":{
-		          "host":{"type":"string","minLength":1},"owner":{"type":"string","minLength":1},"repository":{"type":"string","minLength":1}
-		        },"required":["host","owner","repository"],"additionalProperties":false}
+		          "host":{"type":"string","minLength":1},"owner":{"type":"string","minLength":1},
+		          "repository":{"type":"string","minLength":1},"id":{"type":"string","minLength":1}
+		        },"required":["host","owner","repository","id"],"additionalProperties":false}
 		      },"required":["checkout","checkout_id","github"],"additionalProperties":false},
 		      "approved_by":{"type":"string","minLength":1},"approved_at":{"type":"string","minLength":1},"statement":{"type":"string","minLength":1}
 		    },"required":["plan_digest","target","approved_by","approved_at","statement"],"additionalProperties":false}

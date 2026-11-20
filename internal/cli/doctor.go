@@ -559,7 +559,7 @@ func openCodeSkillContracts() []openCodeSkillContract {
 					run.StatusSchemaVersion, run.GateSchemaVersion, run.DispatchSchemaVersion, run.EscalateSchemaVersion, run.ReviewSchemaVersion),
 				"Reject any other `schema_version` before reading or submitting a `Selection`.",
 				fmt.Sprintf("`GateDoc` (`schema_version: %d`)", run.GateSchemaVersion),
-				"Display `target.checkout` and the full `target.github` host/owner/repository",
+				"Display `target.checkout` and the full `target.github` host/owner/repository and `target.github.id`",
 				"Copy `GateDoc.plan_digest` and the exact `GateDoc.target` into `approval`.",
 				fmt.Sprintf("Expect `ActivationResult` schema %d.", run.ActivationSchemaVersion),
 				fmt.Sprintf("`{\"schema_version\": %d, \"issue_number\": N}`. Result (`DispatchResult`)", run.DispatchSchemaVersion),

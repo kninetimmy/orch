@@ -1,8 +1,9 @@
 # Local inspections, configuration interviews, bounded evaluation preparation, plan decision gates, explicitly approved activation and issue dispatch over MCP
 
 `orch mcp` is an optional local stdio MCP server using the official Go SDK
-v1.8.0, prepared for the **v0.16.0 release target** with OpenCode adapter
-**0.13.0**; Claude/Codex manual adapters and marketplace remain **0.13.0**.
+v1.8.0. The **v0.16.0 release-preparation checkpoint** used OpenCode adapter
+**0.13.0**. After #522, all source adapters and the marketplace are labeled
+**0.13.1**. Match actual guidance to the engine, not just those labels.
 Latest published release is still **v0.15.2**, which contains no MCP server.
 The current cumulative surface is **17 tools, four fixed resources and one
 template**. The before/after counts below are historical increments, not
@@ -272,15 +273,24 @@ authentication for arbitrary transports or an atomic checkout/host reservation.
 
 Gate 4 binds `target.checkout` (the canonical primary), `target.checkout_id`
 (the checkout and Git common directory filesystem identities, not HEAD or
-contents), and `target.github.{host,owner,repository}` (the resolved GitHub
-target). Present the checkout and full GitHub target to the human, then echo
-the exact `target` in the Activation 3 approval along with the approved
-`plan_digest`. These are comparison inputs, never new routing instructions.
-Activation recomputes the digest and compares both live identities before
-effects; a moved, replaced, unverified or different target needs a fresh gate
-and a fresh approval. Activation pins its area-label and merged-fixes reads
-and taxonomy/issue writes to the checked `--repo HOST/OWNER/REPO`. This is an
-**activation** GitHub binding, not a new project-wide pin for later verbs.
+contents), and `target.github.{host,owner,repository,id}`. The three name
+components are canonicalized; `id` is the exact, opaque GitHub repository node
+ID from the same authenticated `gh repo view --json nameWithOwner,defaultBranchRef,url,id`
+response. Checking the visible name alone cannot distinguish repositories that
+use the same name at different times. Present the primary checkout and GitHub
+name and ID, then echo the exact `target` and approved `plan_digest` in the
+Activation 3 approval. These are comparison inputs, never routing instructions.
+
+Every CLI or MCP gate refuses missing or malformed GitHub identity. Every
+activation, human or grant, also recomputes the digest and checks independent
+live identities before effects. It refuses a different repository ID even if
+the checkout and GitHub name are unchanged. Obtain a fresh gate and approval
+after target changes. Activation pins its area-label and merged-fixes reads and
+taxonomy/issue writes to the checked `--repo HOST/OWNER/REPO` selector rather
+than re-resolving the local default. The ID comparison is a point-in-time check,
+not an atomic reservation of that GitHub name. This is an **activation**
+binding: dispatch and other later verbs keep their existing GitHub resolution
+and do not recheck the approved ID.
 
 #### #534 blast radius (PR-body ready)
 
@@ -290,18 +300,31 @@ and taxonomy/issue writes to the checked `--repo HOST/OWNER/REPO`. This is an
 | `requireMCPWorkspace`, `requireMCPDispatchPrimary`, `opencode.SessionDirectory`, `openCodeSessionMeta`; reused `opencode.Resolve` | New read-only trust boundary: OpenCode metadata selects a session to look up, not a checkout. `debug paths state`, direct-parent registration, authenticated loopback `/api/info` and session lookup, and local filesystem equality all fail closed. Existing runtime discovery/native Windows binding and catalog behavior hold. No replacement host starts; no raw credentials/payloads are projected. |
 | `withDeliveryMutation`, `run.Dispatch`, status/next/readiness, and resource reads | Serializer requirements and cancellation/recovery still hold. Only the two MCP mutators check host workspace inside the serializer; `orch_plan_gate` and other inspections remain outside it. Shared `run.Dispatch` still loads lifecycle prerequisites, fetches/fast-forwards, sets status and records phase/metrics for matching callers; CLI dispatch does not acquire the MCP workspace requirement. |
 | `gitops.Open`, new `Git.RequirePrimary`, `Git.ListWorktrees`/`CommonDir`, `paths.Canonical`, new `paths.DirectoryID` (Unix/Windows), `deliveryCheckout`/`checkoutIdentity` | Existing Git/paths behavior holds. New target-sensitive use verifies the actual primary and binds directory plus Git common-directory IDs. It does not redirect a linked checkout, or treat HEAD as checkout identity. `runStatusRoot`, hook lookup, existing guard and cleanup/worktree policy stay unchanged. |
-| `ghops.Repo`, new `RepoTarget`, `Repo.Target`, `GH.ForTarget`, `GH.run`, `deliveryGitHub` | Normal unpinned `gh` lookups and commands hold. New target parsing requires matching URL/slug and normalizes the host/owner/repository; no implicit host fallback. Only the explicitly pinned handle scopes **all** its `label`, `issue` and `pr` commands with `--repo` and refuses unsupported command families. Activation is its only caller; other lifecycle GH handles retain their previous resolution. |
-| `Plan`, `GateDoc`, `GateSchemaVersion`, `DeliveryTarget`, `approvalContract`, `effectiveContract`, `contentDigest` | Before, Gate 3 was not checkout/remote-bound and could gate without resolving Git/GitHub. After, Gate 4 shows and hashes the target, and fails if it cannot be verified. For **every** plan host and CLI/MCP gate, scope, routing, contributed criteria, CI observation, Assist/no-lock, and mode-dependent memhub behavior still hold. `PlanDoc` schema/digest and `orch_plan_validate` are unchanged. |
-| `Activate`, `ActivationSchemaVersion`, `ActivationRequest`, `Approval`, `DecodeActivation`, `Approval.validate`, `ActivationResult` | The new target and exact digest are required for **every** activation path, including CLI grant approvals. Reject old/identity-free requests and compare the approved target against fresh Git/GitHub before effects. Only MCP requires explicit nonblank/dated human metadata and excludes grants, as before. Result still contains the same fields, now at v3. |
+| `ghops.Repo`, `GH.Repo`/`RepoWithID`/`viewRepo`, `RepoTarget`/`Valid`/`String`, `Repo.Target`, `deliveryGitHub` | Ordinary `GH.Repo` lookups and commands retain their arguments and behavior. Only shared gate and activation use `RepoWithID`; it reads the ID and visible name in one response. Target validation requires matching URL/slug and a valid opaque ID, with no implicit host fallback or ID normalization. `RepoTarget.String` is still the canonical host/owner/repository selector, not the ID. |
+| `GH.ForTarget`, `GH.run` | Only the explicitly pinned handle scopes **all** its `label`, `issue` and `pr` commands with `--repo` and refuses unsupported command families. Activation is its only caller. The selector does not reserve its mapping to the ID; later lifecycle handles retain their previous resolution. |
+| `Plan`, `GateDoc`, `GateSchemaVersion`, `DeliveryTarget`, `approvalContract`, `effectiveContract`, `contentDigest` | Before, Gate 3 was not checkout/remote-bound and could gate without resolving Git/GitHub. After, Gate 4 shows and hashes the checkout and GitHub selector and ID, and fails if they cannot be verified. For **every** plan host and CLI/MCP gate, scope, routing, contributed criteria, CI observation, Assist/no-lock, and mode-dependent memhub behavior still hold. `PlanDoc` schema/digest and `orch_plan_validate` are unchanged. |
+| `Activate`, `ActivationSchemaVersion`, `ActivationRequest`, `Approval`, `DecodeActivation`, `Approval.validate`, `ActivationResult`, `addMCPActivation` input schema | The target with its ID and exact digest are required for **every** activation path, including CLI grant approvals. Reject old/identity-free requests and compare fresh checkout, selector and exact repository ID before effects. The MCP request schema requires `approval.target.github.id`; only MCP requires explicit nonblank/dated human metadata and excludes grants, as before. Result still contains the same fields, now at v3. |
 | Activation preflights and effects (`planGrant`, `RequireClean`, `CurrentBranch`, `MissingLabels`, `checkFixesMerged`, `memhubGate`, `RequireIgnored`, `EnsureLabelTaxonomy`, `EnterDelivery`, `CreateIssue`, `AddWorktree`, state/metrics/session and error recovery) | Before, grant/catalog/agent/clean checks preceded GitHub target resolution; after, Assist/no-lock and live target validation precede them so a drift refusal incurs neither grant lock nor external maintenance. Grants, catalog/rendered agents, cleanliness/default branch, area/merged-fixes/ignore checks all still apply. Activation's GH preflights and writes are pinned; phase ordering after preflights, taxonomy/issue bodies and explicit partial-failure recovery hold. |
 | `ContractVersion`, `ExecutionConfig`, `checkExecutionConfig`, `loadExecutionConfig`, `PlanRef`, status/approval evidence, resume | Before, contract 3 was executable; after, **every** lifecycle verb and resume require contract 4 with the existing execution fingerprint, versions and configuration checks. No persistent schema or record is migrated. Legacy reports remain readable and explicit abort is unchanged. Use the original engine for an active older run or abort/re-plan. |
-| Claude, Codex and OpenCode `orch-delivery` skills; `CheckSelectionWireVersions`; OpenCode doctor's skill markers | All gate consumers now require Gate 4, show the target and echo it in Activation 3. Native choice/approval policy, routing, existing other wire shapes and model pins hold. Doctor still checks real skill content, now with new target/activation markers. |
-| OpenCode `smoke.mjs` gate consumer | The synthetic fixture still obtains execution metadata from a real gate without activating. Before, it needed no `gh`; after, the gate gets its target from scripted `gh` reads and verifies the v4 target. The smoke's plugin, lookup, release and guard coverage is not replaced. |
-| `README.md`, `ORCH-PRD.md`, this guide, `adapters/opencode/README.md`, `docs/review-evidence.md` | Historical gate/activation, launch-pin and approval-contract behavior remains recorded as before/after. Checkout-specific OpenCode instructions now use project scope, with explicit one-entry global-pin removal. No installer, host settings, plugin registration, `orch_memhub` registration, dependency, CI or release change. |
-| `mcp_workspace_test.go`, stdio/schema/fixture tests (`mcp_test.go`, `mcp_plan_gate_test.go`, `mcp_activate_test.go`, `mcp_dispatch_test.go`, `mcp_resources_test.go`, `run_test.go`) | Existing strict schema checks, complete structured/text/CLI parity, no-artifact snapshots and engine transcripts hold with the new read probes and distinct approval digests. The two real checkouts, linked checkout, loopback host and fake GitHub assert zero refusal effects; the success test proves activation remains pinned even if the fake's default changes after the checked lookup. |
-| Run and GH tests (`activate_test.go`, `gate_test.go`, `contract_test.go`, `fixes_test.go`, `grantgate_test.go`, `verb_unit_test.go`, `repo_test.go`) | Existing gate, work/manifest, fixes, grant stops, lifecycle, phase and recovery checks hold. Fixtures now supply target evidence; tests additionally pin scoped GH arguments, malformed target refusal, same-path checkout replacement and contract-3 inspection without migration. No production GitHub or off-target checkout is used. |
+| Claude, Codex and OpenCode `orch-delivery` skills; `CheckSelectionWireVersions`; OpenCode doctor's skill markers | All gate consumers now require Gate 4, show the checkout, GitHub selector and ID, and echo the exact target in Activation 3. Native choice/approval policy, routing, existing other wire shapes and model pins hold. Doctor still checks real skill content, now with the ID in its target presentation marker. |
+| Claude `GRANTS.md` and `TestGrantActivationExampleMatchesEngine` | Before, the grant example omitted the checkout and GitHub target. After, it uses the same schema-3 request and exact target (including ID) as human activation. The grant statement, approver, stops, issuance/budget/merge policy and CLI-only scope are unchanged. The example now runs through `DecodeActivation` in the adapter test. |
+| OpenCode `smoke.mjs` gate consumer | The synthetic fixture still obtains execution metadata from a real gate without activating. Before, it needed no `gh`; after, the gate gets its target from scripted `gh` reads and the smoke verifies the v4 target, including ID. The smoke's plugin, lookup, release and guard coverage is not replaced. |
+| `README.md`, `ORCH-PRD.md`, this guide, `adapters/opencode/README.md`, `docs/review-evidence.md` | Historical gate/activation, launch-pin and approval-contract behavior remains recorded as before/after. Current source wires are distinguished from checkpoint/released wires. Checkout-specific OpenCode instructions now use project scope, with explicit one-entry global-pin removal. No installer, host settings, plugin registration, `orch_memhub` registration, dependency, CI or release change. |
+| `mcp_workspace_test.go`, stdio/schema/fixture tests (`mcp_test.go`, `mcp_plan_gate_test.go`, `mcp_activate_test.go`, `mcp_dispatch_test.go`, `mcp_resources_test.go`, `run_test.go`) | Existing strict schema checks, complete structured/text/CLI parity, no-artifact snapshots and engine transcripts hold with the new read probes and distinct approval digests. Two real checkouts, a linked checkout, the loopback host and fake GitHub assert zero refusal effects for workspace/name/ID drift and missing or malformed ID. Same-name/different-ID gates hash differently; editing the echo does not preserve approval. Matching activation stays pinned if the fake's checkout-relative default changes after the lookup. |
+| Run and GH tests (`activate_test.go`, `gate_test.go`, `contract_test.go`, `fixes_test.go`, `grantgate_test.go`, `verb_unit_test.go`, `repo_test.go`) | Existing gate, work/manifest, fixes, grant stops, lifecycle, phase and recovery checks hold. Fixtures supply target evidence; tests pin scoped GH arguments, malformed target/ID refusal, same-path checkout replacement and contract-3 inspection without migration. No production GitHub or off-target checkout is used. |
 
-Focused regression: `go test ./internal/cli -run '^TestMCPDeliveryWorkspaceAndTarget$' -v`.
+Focused regressions:
+
+```sh
+go test -count=1 ./internal/cli -run '^TestMCPDeliveryWorkspaceAndTarget$' -v
+go test -count=1 ./internal/ghops ./internal/run ./adapters/claude -run '^(TestRepoTargetRequiresConsistentCanonicalIdentity|TestContractLegacyApprovalAndFormatting|TestGrantActivation|TestGrantActivationExampleMatchesEngine)$' -v
+```
+
+The first test snapshots Git metadata (including refs and worktree registrations),
+checkout contents and Orch state/locks in both disposable checkouts and the linked
+checkout, plus the fake GitHub mutation log. It checks the expected read boundary
+on each refusal, then verifies label/issue creation and Delivery state/worktree
+only on the matching target, followed by a matching dispatch.
 
 **Before trial item 2:** Tool discovery returns exactly one tool,
 **`orch_run_status`**, annotated read-only. **After trial item 2:** discovery
@@ -377,8 +400,9 @@ preserves the preceding fourteen input/output and command/write contracts.
 **Before item 15:** that fifteen-tool catalog had no activation endpoint.
 **After item 15:** `orch_run_activate` joins discovery for **sixteen tools**.
 Unknown outer fields and root overrides remain errors for **every tool**.
-Activation alone accepts the existing schema-2 activation request, with explicit
-human approval metadata; every preceding input schema remains unchanged.
+At that increment activation alone accepted the schema-2 activation request,
+with explicit human approval metadata; every preceding input schema was
+unchanged. After #534 this tool requires schema 3 and the exact target.
 
 **Before item 16:** discovery had no dispatch tool. **After item 16:**
 `orch_run_dispatch` accepts only an explicit schema-4 request and positive integer
@@ -1327,9 +1351,10 @@ go test ./internal/cli -run '^(TestMCPStdio|TestMCPLocalToolsNeverRunExternalCom
 **Before #534:** activation accepted a schema-2 request with only the digest
 and human assertion in `approval`, and returned a schema-2 result. GitHub
 operations relied on checkout-relative `gh` resolution. **After #534:**
-schema 3 requires the exact gate target as a fifth approval member, rechecks
-that target live, and pins activation's GitHub operations to it. Existing
-activation result fields and partial-failure semantics hold.
+schema 3 requires the exact gate target as a fifth approval member, including
+the stable GitHub repository ID. It rechecks the target live and pins
+activation's GitHub operations to the checked selector. Existing activation
+result fields and partial-failure semantics hold.
 
 First submit the plan to the separate effective-contract gate (`orch_plan_gate`
 or `orch run plan`), present the **entire gate** to the human and obtain their
@@ -1346,7 +1371,7 @@ itself, not an `activation_request` wrapper or a plan-file path:
     "plan_digest": "sha256:...the gate's effective-contract digest...",
     "target": {
       "checkout": "/absolute/path/to/primary", "checkout_id": "sha256:...",
-      "github": {"host": "github.com", "owner": "owner", "repository": "repo"}
+      "github": {"host": "github.com", "owner": "owner", "repository": "repo", "id": "R_kgDOAAAAAQ"}
     },
     "approved_by": "...the human approver...",
     "approved_at": "...an explicit RFC3339 timestamp...",
@@ -1355,9 +1380,10 @@ itself, not an `activation_request` wrapper or a plan-file path:
 }
 ```
 
-All three outer members and all five approval members are required. Plans and
-approvals must be objects; unknown outer, approval, plan, issue, facts and
-downgrade fields are errors. The original JSON reaches `run.DecodeActivation`,
+All three outer members, all five approval members and every nested target
+member shown above are required. Plans and approvals must be objects; unknown
+outer, approval, target, plan, issue, facts and downgrade fields are errors.
+The original JSON reaches `run.DecodeActivation`,
 including nested fields and numeric literals; there is no second activation
 decoder, planner, digest calculator or router. The MCP boundary additionally
 requires a non-whitespace approver, nonzero timestamp and the existing
@@ -1366,8 +1392,9 @@ The shared engine still checks the effective-contract digest and refuses a
 human statement naming a grant approver.
 
 **Human-only is this MCP endpoint's restriction**, not a change to every
-activation entry point: shared `run.Activate` and CLI grant-based activation
-retain their existing policy. MCP does not accept `GrantApprovalStatement`,
+activation entry point. CLI grant-based activation retains its existing
+eligibility rules and uses the same exact target requirement as human
+activation. MCP does not accept `GrantApprovalStatement`,
 inspect/spend a grant or infer authorization from `orch_approval_status`.
 The recorded human assertion is not authenticated human identity or
 cryptographic provenance; the client remains responsible for the actual handoff.
@@ -2009,9 +2036,10 @@ policy, and recovery is possible on the same connection after remediation.
 
 **Before #534:** gate had no Git, GitHub, or host probes; its only subprocesses
 were the two mode-dependent memhub commands. **After #534:** CLI and MCP
-verify the Git primary and resolve the authenticated GitHub target with read-only
-commands before those memhub probes; MCP also verifies the invoking OpenCode
-session before entering the gate. Neither runs model-catalog or test probes.
+verify the Git primary and resolve the authenticated GitHub selector and
+repository ID with read-only commands before those memhub probes; MCP also
+verifies the invoking OpenCode session before entering the gate. Neither runs
+model-catalog or test probes.
 The memhub commands in the bound primary are unchanged:
 
 1. `memhub status` when mode is not `off`.
@@ -2043,8 +2071,8 @@ implementations are side-effect-free.
 
 ### Separate human approval handoff
 
-Present the **full returned gate** to the human, including primary checkout and
-GitHub host/owner/repository, effective scope,
+Present the **full returned gate** to the human, including primary checkout,
+GitHub host/owner/repository and repository ID, effective scope,
 contributed criteria, routing profiles/rationale, waves, local-only test
 declarations, overrides and probe/CI limitations. The choices remain approve and
 enter Delivery, adjust routing facts, revise scope, or cancel and stay in Assist.

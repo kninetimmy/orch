@@ -1112,9 +1112,9 @@ func check(ok bool) { if !ok { fmt.Fprintln(os.Stderr, "native command-boundary 
   await writeFile(gateProbeFile, JSON.stringify({
     Root: root, Log: path.join(gateProbe, "commands.log"), Probes: {
       "gh auth status": {},
-      "gh repo view --json nameWithOwner,defaultBranchRef,url": {
+      "gh repo view --json nameWithOwner,defaultBranchRef,url,id": {
         Stdout: JSON.stringify({ nameWithOwner: "fixture/orch-smoke", defaultBranchRef: { name: "main" },
-          url: "https://github.example.invalid/fixture/orch-smoke" }),
+          url: "https://github.example.invalid/fixture/orch-smoke", id: "R_kgDOAAAAAQ" }),
       },
     },
   }))
@@ -1130,7 +1130,7 @@ func check(ok bool) { if !ok { fmt.Fprintln(os.Stderr, "native command-boundary 
   assert.equal(gate.schema_version, 4)
   assert(sameDirectory(gate.target.checkout, root))
   assert.match(gate.target.checkout_id, /^sha256:[0-9a-f]{64}$/)
-  assert.deepEqual(gate.target.github, { host: "github.example.invalid", owner: "fixture", repository: "orch-smoke" })
+  assert.deepEqual(gate.target.github, { host: "github.example.invalid", owner: "fixture", repository: "orch-smoke", id: "R_kgDOAAAAAQ" })
   const executionBytes = JSON.stringify(gate.execution).replace(/[<>&\u2028\u2029]/g, (value) => "\\u" + value.charCodeAt(0).toString(16).padStart(4, "0"))
   fixtureState.run.plan = {
     title: gate.plan_title, digest: gate.plan_digest, approved_by: "synthetic fixture, not a human",

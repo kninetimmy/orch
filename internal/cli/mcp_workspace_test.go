@@ -26,7 +26,9 @@ import (
 )
 
 const mcpTestSession = "ses_fixture"
-const mcpGitHubRepoReply = `{"nameWithOwner":"fixture/isolated","defaultBranchRef":{"name":"main"},"url":"https://github.com/fixture/isolated"}`
+const mcpGitHubTargetFields = "nameWithOwner,defaultBranchRef,url,id"
+const mcpGitHubRepoID = "R_kgDOAAAABQ"
+const mcpGitHubRepoReply = `{"nameWithOwner":"fixture/isolated","defaultBranchRef":{"name":"main"},"url":"https://github.com/fixture/isolated","id":"` + mcpGitHubRepoID + `"}`
 
 func mcpWorkspaceMeta() mcp.Meta {
 	return mcp.Meta{openCodeSessionMeta: mcpTestSession}
@@ -92,7 +94,7 @@ func mcpTargetCalls(root string) []execxtest.Call {
 	return append(mcpPrimaryCalls(root),
 		execxtest.Call{Name: "git", Args: []string{"rev-parse", "--path-format=absolute", "--git-common-dir"}, Dir: root, Stdout: filepath.Join(root, ".orchestrator")},
 		execxtest.Call{Name: "gh", Args: []string{"auth", "status"}, Dir: root},
-		execxtest.Call{Name: "gh", Args: []string{"repo", "view", "--json", "nameWithOwner,defaultBranchRef,url"}, Dir: root, Stdout: mcpGitHubRepoReply})
+		execxtest.Call{Name: "gh", Args: []string{"repo", "view", "--json", mcpGitHubTargetFields}, Dir: root, Stdout: mcpGitHubRepoReply})
 }
 
 func mcpCanonical(t *testing.T, root string) string {
@@ -214,6 +216,7 @@ func mcpInProcess(t *testing.T, env Env, args ...string) (*mcp.ClientSession, fu
 // commands. All Git writes/fetches are real, against disposable local repos.
 type workspaceDeliveryRunner struct {
 	stateDir, target, switchAfterView string
+	repoID                            any // nil omits the field; nonstrings simulate malformed GitHub output.
 	githubReads                       int
 	writes                            map[string][]string
 }
@@ -232,14 +235,19 @@ func (r *workspaceDeliveryRunner) Run(ctx context.Context, cmd execx.Cmd) (execx
 		case "auth status":
 			r.githubReads++
 			return execx.Result{}, nil
-		case "repo view --json nameWithOwner,defaultBranchRef,url":
+		case "repo view --json nameWithOwner,defaultBranchRef,url", "repo view --json " + mcpGitHubTargetFields:
 			r.githubReads++
 			target := r.target
 			if r.switchAfterView != "" {
 				r.target, r.switchAfterView = r.switchAfterView, ""
 			}
 			_, slug, _ := strings.Cut(target, "/")
-			return execx.Result{Stdout: fmt.Sprintf(`{"nameWithOwner":%q,"defaultBranchRef":{"name":"main"},"url":%q}`, slug, "https://"+target)}, nil
+			repo := map[string]any{"nameWithOwner": slug, "defaultBranchRef": map[string]string{"name": "main"}, "url": "https://" + target}
+			if cmd.Args[3] == mcpGitHubTargetFields && r.repoID != nil {
+				repo["id"] = r.repoID
+			}
+			data, err := json.Marshal(repo)
+			return execx.Result{Stdout: string(data)}, err
 		}
 		target, args := r.target, cmd.Args
 		if len(args) >= 4 && args[len(args)-2] == "--repo" {
@@ -301,7 +309,7 @@ func TestMCPDeliveryWorkspaceAndTarget(t *testing.T) {
 		reply := response.Load()
 		return reply.status, reply.data
 	})
-	runner := &workspaceDeliveryRunner{stateDir: stateDir, target: approvedRepo, writes: map[string][]string{}}
+	runner := &workspaceDeliveryRunner{stateDir: stateDir, target: approvedRepo, repoID: mcpGitHubRepoID, writes: map[string][]string{}}
 	start := func(bound string) *mcp.ClientSession {
 		t.Helper()
 		session, close := mcpInProcess(t, Env{RepoRoot: other, Runner: runner, Stderr: io.Discard}, "--repo", bound)
@@ -335,19 +343,20 @@ func TestMCPDeliveryWorkspaceAndTarget(t *testing.T) {
 	plan.Host = "opencode"
 	meta := mcpWorkspaceMeta()
 	gateArgs := map[string]any{"plan": plan}
-	gate := func(s *mcp.ClientSession) run.GateDoc {
+	gate := func(s *mcp.ClientSession, repoID string) run.GateDoc {
 		t.Helper()
 		res := call(s, "orch_plan_gate", gateArgs, meta)
 		var doc run.GateDoc
-		if res.IsError || json.Unmarshal(mcpEvalBytes(t, res.StructuredContent), &doc) != nil || doc.SchemaVersion != 4 || doc.Target.GitHub.String() != approvedRepo || doc.Target.CheckoutID == "" {
+		if res.IsError || json.Unmarshal(mcpEvalBytes(t, res.StructuredContent), &doc) != nil || doc.SchemaVersion != 4 ||
+			doc.Target.GitHub.String() != approvedRepo || doc.Target.GitHub.ID != repoID || doc.Target.CheckoutID == "" {
 			t.Fatalf("gate omitted verified approval target: %+v", res)
 		}
 		return doc
 	}
 	before := snapshot()
-	a := gate(mcpA)
+	a := gate(mcpA, mcpGitHubRepoID)
 	locate(other)
-	b := gate(mcpB)
+	b := gate(mcpB, mcpGitHubRepoID)
 	if a.Target.Checkout != root || b.Target.Checkout != other || a.Target.CheckoutID == b.Target.CheckoutID ||
 		a.PlanDigest == b.PlanDigest || a.Execution != b.Execution || snapshot() != before {
 		t.Fatal("identical plan/HEAD/config in distinct primary checkouts reused approval or changed state")
@@ -390,12 +399,39 @@ func TestMCPDeliveryWorkspaceAndTarget(t *testing.T) {
 	all(mcpA, meta, "registration is not for the OpenCode process")
 	mcpWrite(t, registration, record)
 
+	for _, tc := range []struct {
+		name, reason string
+		id           any
+	}{
+		{"missing", "missing or malformed GitHub repository ID", nil},
+		{"malformed token", "missing or malformed GitHub repository ID", "invalid ID"},
+		{"wrong JSON type", "returned unparsable JSON", 42},
+	} {
+		runner.repoID = tc.id
+		refuse(mcpA, "orch_plan_gate", gateArgs, meta, tc.reason, 2)
+		refuse(mcpA, "orch_run_activate", request, meta, tc.reason, 2)
+		t.Logf("%s GitHub repository ID: no gate, no activation, no effects", tc.name)
+	}
+	const replacementID = "R_kgDOAAAABq"
+	runner.repoID = replacementID
+	replacement := gate(mcpA, replacementID)
+	sameTarget := replacement.Target
+	sameTarget.GitHub.ID = mcpGitHubRepoID
+	if sameTarget != a.Target || replacement.Execution != a.Execution || replacement.PlanDigest == a.PlanDigest || snapshot() != before {
+		t.Fatal("changing only the repository ID reused approval, changed other target evidence, or mutated state")
+	}
+	refuse(mcpA, "orch_run_activate", request, meta, `live repository ID "`+replacementID+`", approved ID "`+mcpGitHubRepoID+`"`, 2)
+	retagged["approval"].(map[string]any)["target"] = replacement.Target
+	refuse(mcpA, "orch_run_activate", retagged, meta, "does not match the recomputed digest", 0)
+	t.Log("same host/owner/name with different repository ID: new digest; old approval and edited echo refused without effects")
+	runner.repoID = mcpGitHubRepoID
+
 	for _, target := range []string{"github.example.invalid/fixture/isolated", "github.com/other/isolated", "github.com/fixture/renamed"} {
 		runner.target = target
 		refuse(mcpA, "orch_run_activate", request, meta, "live GitHub target "+target+" does not match the approved target", 2)
 	}
-	// Drift after resolution cannot change the target of activation's individual
-	// GitHub commands. Only the canonical tuple observed at approval is passed.
+	// A changed checkout-relative default after resolution does not retarget
+	// activation's GitHub commands. They use the checked canonical selector.
 	runner.target, runner.switchAfterView = approvedRepo, alternate
 	result := call(mcpA, "orch_run_activate", request, meta)
 	var activated run.ActivationResult

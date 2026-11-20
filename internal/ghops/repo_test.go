@@ -84,10 +84,30 @@ func TestRepoMissingNameWithOwner(t *testing.T) {
 }
 
 func TestRepoTargetRequiresConsistentCanonicalIdentity(t *testing.T) {
-	repo := Repo{NameWithOwner: "Octo/Project.One", URL: "https://GitHub.Example.NET/OCTO/Project.One"}
+	const id = "R_kgDOAAAAAQ"
+	root := tempRoot(t)
+	g, script := openScripted(t, root, execxtest.Call{
+		Name:   "gh",
+		Args:   []string{"repo", "view", "--json", "nameWithOwner,defaultBranchRef,url,id"},
+		Dir:    root,
+		Env:    ghTestEnv,
+		Stdout: `{"nameWithOwner":"Octo/Project.One","url":"https://GitHub.Example.NET/OCTO/Project.One","id":"` + id + `"}`,
+	})
+	repo, err := g.RepoWithID(t.Context())
+	if err != nil {
+		t.Fatal(err)
+	}
+	script.AssertExhausted()
 	target, err := repo.Target()
-	if err != nil || target.String() != "github.example.net/octo/project.one" {
+	if err != nil || target.String() != "github.example.net/octo/project.one" || target.ID != id {
 		t.Fatalf("enterprise selector = %q, %v", target, err)
+	}
+	for _, id := range []string{"", " " + id, id + "\n", id + ":invalid"} {
+		bad := repo
+		bad.ID = id
+		if target, err := bad.Target(); !errors.Is(err, ErrNoGitHubRepo) || target != (RepoTarget{}) {
+			t.Fatalf("invalid repository ID returned target %+v, error %v", target, err)
+		}
 	}
 	for _, address := range []string{
 		"", "/Octo/Project.One", "https://github.example.net/elsewhere/Project.One",

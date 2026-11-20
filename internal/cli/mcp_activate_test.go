@@ -315,6 +315,16 @@ func mcpActivationRefusals(t *testing.T, ctx context.Context, root string, sessi
 	unknownTarget := mcpDecoded(t, request).(map[string]any)
 	unknownTarget["approval"].(map[string]any)["target"].(map[string]any)["repo"] = "wrong"
 	mcpEvalError(t, mcpCall(t, ctx, session, root, "orch_run_activate", unknownTarget), "")
+	for _, id := range []any{nil, 42, "invalid ID"} {
+		input := mcpDecoded(t, request).(map[string]any)
+		github := input["approval"].(map[string]any)["target"].(map[string]any)["github"].(map[string]any)
+		if id == nil {
+			delete(github, "id")
+		} else {
+			github["id"] = id
+		}
+		mcpEvalError(t, mcpCall(t, ctx, session, root, "orch_run_activate", input), "")
+	}
 	// Original bytes must reach DecodeActivation: the SDK's validation pass
 	// may otherwise normalize 3.0 or discard unknown nested fields.
 	for _, raw := range []string{
