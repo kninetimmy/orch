@@ -92,9 +92,9 @@ func (g *GH) gh(ctx context.Context, args ...string) (string, error) {
 	return g.ghStdin(ctx, nil, args...)
 }
 
-// ghStdin is gh with standard input attached; issue and PR bodies
-// travel this way (--body-file -) because they can exceed
-// command-line length limits and must never be shell-quoted.
+// ghStdin is gh with standard input attached; issue and PR bodies travel
+// this way because they can exceed command-line length limits and must
+// never be shell-quoted.
 func (g *GH) ghStdin(ctx context.Context, stdin io.Reader, args ...string) (string, error) {
 	res, err := g.run(ctx, stdin, args...)
 	if err != nil {

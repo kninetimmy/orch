@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/kninetimmy/orch/internal/execx"
+	"github.com/kninetimmy/orch/internal/execx/execxtest"
 	"github.com/kninetimmy/orch/internal/lockfile"
 	"github.com/kninetimmy/orch/internal/manifest"
 	"github.com/kninetimmy/orch/internal/metrics"
@@ -96,13 +97,17 @@ func TestRepairHelpIsActionable(t *testing.T) {
 func TestRunPlanEndToEnd(t *testing.T) {
 	env, stdout, stderr := testEnv(t)
 	writeConfig(t, env.RepoRoot, validTOML)
+	env.RepoRoot = mcpCanonical(t, env.RepoRoot)
+	script := &execxtest.Script{T: t, Calls: mcpTargetCalls(env.RepoRoot)}
+	env.Runner = script
 	env.Stdin = bytes.NewReader([]byte(minimalPlanJSON))
 
 	if code := Run([]string{"run", "plan"}, env); code != ExitOK {
 		t.Fatalf("exit = %d, want %d; stderr = %s", code, ExitOK, stderr.String())
 	}
+	script.AssertExhausted()
 	out := stdout.String()
-	for _, want := range []string{`"schema_version"`, `"plan_digest"`, `"plan_title"`, `"fix-status-lock"`} {
+	for _, want := range []string{`"schema_version"`, `"plan_digest"`, `"plan_title"`, `"fix-status-lock"`, `"target"`, `"github.com"`} {
 		if !strings.Contains(out, want) {
 			t.Errorf("stdout missing %q:\n%s", want, out)
 		}
@@ -211,6 +216,10 @@ func TestRunPlanAndStatusDoNotWaitForMutationSerialization(t *testing.T) {
 			callEnv.Stderr = &callStderr
 			if name == "plan" {
 				callEnv.Stdin = strings.NewReader(minimalPlanJSON)
+				callEnv.RepoRoot = mcpCanonical(t, callEnv.RepoRoot)
+				script := &execxtest.Script{T: t, Calls: mcpTargetCalls(callEnv.RepoRoot)}
+				callEnv.Runner = script
+				defer script.AssertExhausted()
 			}
 			done := make(chan int, 1)
 			go func() { done <- Run(args, callEnv) }()
@@ -256,10 +265,7 @@ func (r dispatchRunner) Run(ctx context.Context, cmd execx.Cmd) (execx.Result, e
 
 func testApprovedPlanRef(t *testing.T, root string) state.PlanRef {
 	t.Helper()
-	gate, err := run.Plan(context.Background(), run.Env{RepoRoot: root}, []byte(minimalPlanJSON))
-	if err != nil {
-		t.Fatal(err)
-	}
+	gate := mcpFixtureGate(t, root, []byte(minimalPlanJSON))
 	digest, err := gate.Execution.Digest()
 	if err != nil {
 		t.Fatal(err)

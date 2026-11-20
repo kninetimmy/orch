@@ -6,6 +6,7 @@ package main
 import (
 	"encoding/json"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -40,7 +41,19 @@ func respond() (int, error) {
 	if err != nil {
 		return 0, err
 	}
-	command := strings.TrimSuffix(filepath.Base(os.Args[0]), ".exe") + " " + strings.Join(os.Args[1:], " ")
+	tool := strings.TrimSuffix(filepath.Base(os.Args[0]), ".exe")
+	command := tool + " " + strings.Join(os.Args[1:], " ")
+	if tool == "gh" && len(os.Args) > 2 && os.Args[1] == "api" && os.Args[2] == "graphql" {
+		var request struct{ OperationName string }
+		b, err := io.ReadAll(os.Stdin)
+		if err != nil {
+			return 0, err
+		}
+		if err := json.Unmarshal(b, &request); err != nil || request.OperationName == "" {
+			return 0, fmt.Errorf("missing or malformed fixture GraphQL operation: %v", err)
+		}
+		command += " " + request.OperationName
+	}
 	log, err := os.OpenFile(fixture.Log, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o600)
 	if err != nil {
 		return 0, err

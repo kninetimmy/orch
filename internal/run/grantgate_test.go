@@ -12,7 +12,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/kninetimmy/orch/internal/config"
 	"github.com/kninetimmy/orch/internal/execx"
 	"github.com/kninetimmy/orch/internal/execx/execxtest"
 	"github.com/kninetimmy/orch/internal/ghops"
@@ -88,26 +87,11 @@ func getGrant(t *testing.T, root, id string) *grant.Grant {
 // approvedBy and statement.
 func activationRequest(t *testing.T, root, planJSON, approvedBy, statement string) []byte {
 	t.Helper()
-	p, err := DecodePlan([]byte(planJSON))
-	if err != nil {
-		t.Fatal(err)
-	}
-	cfg, err := config.Load(root)
-	if err != nil {
-		t.Fatal(err)
-	}
-	contract, err := effectiveContract(p, cfg)
-	if err != nil {
-		t.Fatal(err)
-	}
-	digest, err := contentDigest(contract)
-	if err != nil {
-		t.Fatal(err)
-	}
+	digest, target := activationApproval(t, root, planJSON)
 	data, err := json.Marshal(map[string]any{
 		"schema_version": ActivationSchemaVersion,
 		"plan":           json.RawMessage(planJSON),
-		"approval":       map[string]any{"plan_digest": digest, "approved_by": approvedBy, "approved_at": "2026-07-11T12:00:00Z", "statement": statement},
+		"approval":       map[string]any{"plan_digest": digest, "target": target, "approved_by": approvedBy, "approved_at": "2026-07-11T12:00:00Z", "statement": statement},
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -123,7 +107,16 @@ func TestGrantActivation(t *testing.T) {
 	root := newActivateRepoWithConfig(t, metricsEnabledConfigTOML)
 	g := seedGrant(t, root, nil)
 	id := g.Terms.ID
-	script := &execxtest.Script{T: t, Calls: validPlanCalls()}
+	calls := validPlanCalls()
+	issueCall := &calls[len(calls)-1]
+	check := issueCall.CheckStdin
+	issueCall.CheckStdin = func(t *testing.T, stdin string) {
+		check(t, stdin)
+		if got := getGrant(t, root, id); len(got.Runs) != 1 || got.Runs[0].Ref != loadRun(t, root).Run.ID {
+			t.Fatalf("issue creation attempted before the grant run was spent: %+v", got.Runs)
+		}
+	}
+	script := &execxtest.Script{T: t, Calls: calls}
 	env := Env{RepoRoot: root, Runner: muxRunner{git: execx.Local{}, gh: script}, Now: fixedNow}
 
 	res, err := Activate(context.Background(), env, activationRequest(t, root, validPlanJSON(), "grant:"+id, GrantApprovalStatement))
@@ -142,7 +135,7 @@ func TestGrantActivation(t *testing.T) {
 	if want := []grant.RecordedApproval{{Gate: "plan", RunID: res.RunID, At: fixedNow()}}; !reflect.DeepEqual(got.Approvals, want) {
 		t.Errorf("grant approvals = %+v, want %+v", got.Approvals, want)
 	}
-	body := script.StdinAt(len(fullTaxonomyScript()))
+	body := activationIssueBody(t, script, len(fullTaxonomyScript()))
 	line := "Plan approved under Orch grant " + id + "; no person reviewed or approved this plan."
 	if v := findVerification(t, body, planApprovalName); v.Result != line || !strings.Contains(body, line) {
 		t.Errorf("audit record plan approval = %+v, want %q", v, line)
@@ -223,13 +216,13 @@ func TestGrantActivationStops(t *testing.T) {
 				approver = c.approver(id)
 			}
 
-			script := &execxtest.Script{T: t}
+			script := &execxtest.Script{T: t, Calls: activationTargetCalls()}
 			env := Env{RepoRoot: root, Runner: muxRunner{git: execx.Local{}, gh: script}, Now: fixedNow}
 			_, err := Activate(context.Background(), env, activationRequest(t, root, plan, approver, GrantApprovalStatement))
 			if !errors.Is(err, ErrGrantStop) || !strings.Contains(err.Error(), c.want) {
 				t.Fatalf("err = %v, want a grant stop naming %q", err, c.want)
 			}
-			script.AssertExhausted() // nothing reached GitHub
+			script.AssertExhausted() // read-only target resolution, no GitHub writes
 			assertNoActivationArtifacts(t, root)
 			if before != nil && !reflect.DeepEqual(getGrant(t, root, id), before) {
 				t.Error("a refused grant activation changed the grant")
@@ -626,7 +619,7 @@ func TestGrantPlanLineSurvivesPROpen(t *testing.T) {
 		t.Fatalf("Activate: %v", err)
 	}
 	script.AssertExhausted()
-	activated := script.StdinAt(len(fullTaxonomyScript()))
+	activated := activationIssueBody(t, script, len(fullTaxonomyScript()))
 	m, err := manifest.Parse(activated)
 	if err != nil {
 		t.Fatal(err)

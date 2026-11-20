@@ -103,13 +103,28 @@ Other refusals only show up later (an escalation or block in the issue's
 history, a spent merge budget, required CI not passing); handle those when they
 occur.
 
-Plan activation is the same `ActivationRequest` as a human approval, with:
+**Before #534:** the grant plan activation example used only the digest and
+grant assertion, with no checkout or GitHub target. **After #534:** use the
+same schema-3 `ActivationRequest` as a human approval. Pass the identical gated
+`PlanDoc` (shown as `{}` below) and copy `GateDoc.plan_digest` and the entire
+`GateDoc.target` exactly, including the GitHub repository ID. Target checks
+apply to every activation, not just the human gate. Grant-specific eligibility
+and the approver/statement below are unchanged:
 
 ```json
-"approval": {
-  "plan_digest": "sha256:...", "approved_by": "grant:<id>",
-  "approved_at": "2026-07-12T00:00:00Z",
-  "statement": "grant-approve-and-enter-delivery"
+{
+  "schema_version": 3,
+  "plan": {},
+  "approval": {
+    "plan_digest": "sha256:...",
+    "target": {
+      "checkout": "/absolute/path/to/primary", "checkout_id": "sha256:...",
+      "github": {"host": "github.com", "owner": "owner", "repository": "repo", "id": "R_kgDOAAAAAQ"}
+    },
+    "approved_by": "grant:<id>",
+    "approved_at": "2026-07-12T00:00:00Z",
+    "statement": "grant-approve-and-enter-delivery"
+  }
 }
 ```
 

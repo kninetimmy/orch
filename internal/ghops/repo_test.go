@@ -82,3 +82,44 @@ func TestRepoMissingNameWithOwner(t *testing.T) {
 		t.Fatalf("err = %v, want missing nameWithOwner error", err)
 	}
 }
+
+func TestRepoTargetRequiresConsistentCanonicalIdentity(t *testing.T) {
+	const id = "R_kgDOAAAAAQ"
+	root := tempRoot(t)
+	g, script := openScripted(t, root, execxtest.Call{
+		Name:   "gh",
+		Args:   []string{"repo", "view", "--json", "nameWithOwner,defaultBranchRef,url,id"},
+		Dir:    root,
+		Env:    ghTestEnv,
+		Stdout: `{"nameWithOwner":"Octo/Project.One","url":"https://GitHub.Example.NET/OCTO/Project.One","id":"` + id + `"}`,
+	})
+	repo, err := g.RepoWithID(t.Context())
+	if err != nil {
+		t.Fatal(err)
+	}
+	script.AssertExhausted()
+	target, err := repo.Target()
+	if err != nil || target.String() != "github.example.net/octo/project.one" || target.ID != id {
+		t.Fatalf("enterprise selector = %q, %v", target, err)
+	}
+	for _, id := range []string{"", " " + id, id + "\n", id + ":invalid"} {
+		bad := repo
+		bad.ID = id
+		if target, err := bad.Target(); !errors.Is(err, ErrNoGitHubRepo) || target != (RepoTarget{}) {
+			t.Fatalf("invalid repository ID returned target %+v, error %v", target, err)
+		}
+	}
+	for _, address := range []string{
+		"", "/Octo/Project.One", "https://github.example.net/elsewhere/Project.One",
+		"https://github.example.net/Octo/Project.One?secret=not-for-output",
+		"https://credential@github.example.net/Octo/Project.One",
+		"https://github.example.net/Octo/%50roject.One",
+		"https://github.example.net/Octo/Project.One/issues",
+	} {
+		repo.URL = address
+		target, err := repo.Target()
+		if !errors.Is(err, ErrNoGitHubRepo) || target != (RepoTarget{}) || strings.Contains(err.Error(), "not-for-output") || strings.Contains(err.Error(), "credential") {
+			t.Fatalf("unverifiable repository returned target %q or unsafe error: %v", target, err)
+		}
+	}
+}

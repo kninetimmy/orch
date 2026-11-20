@@ -18,7 +18,8 @@ import (
 // stale adapter silently drop the execution profile.
 // v3 additionally binds approval to the effective contract and exposes its
 // execution configuration. v2 bound only the submitted PlanDoc.
-const GateSchemaVersion = 3
+// v4 adds the primary checkout and GitHub repository (selector and ID).
+const GateSchemaVersion = 4
 
 // GateDoc is the human decision gate for a plan (PRD §8, covering
 // every §8 bullet): the adapter renders it natively and owns the four
@@ -29,6 +30,7 @@ type GateDoc struct {
 	PlanDigest      string          `json:"plan_digest"`
 	PlanTitle       string          `json:"plan_title"`
 	Host            string          `json:"host"`
+	Target          DeliveryTarget  `json:"target"`
 	ConfigRevision  string          `json:"config_revision"`
 	ConfigOverrides []string        `json:"config_overrides,omitempty"`
 	MergeStrategy   string          `json:"merge_strategy"`
@@ -97,7 +99,16 @@ func Plan(ctx context.Context, env Env, planJSON []byte) (*GateDoc, error) {
 	if err := plan.Validate(cfg); err != nil {
 		return nil, err
 	}
-	contract, err := effectiveContract(plan, cfg)
+	git, checkoutID, err := deliveryCheckout(ctx, env)
+	if err != nil {
+		return nil, err
+	}
+	_, _, github, err := deliveryGitHub(ctx, env)
+	if err != nil {
+		return nil, err
+	}
+	target := DeliveryTarget{Checkout: git.Root(), CheckoutID: checkoutID, GitHub: github}
+	contract, err := effectiveContract(plan, cfg, target)
 	if err != nil {
 		return nil, err
 	}
@@ -119,7 +130,7 @@ func Plan(ctx context.Context, env Env, planJSON []byte) (*GateDoc, error) {
 
 	return &GateDoc{
 		SchemaVersion: GateSchemaVersion, PlanDigest: digest,
-		PlanTitle: plan.Title, Host: plan.Host, ConfigRevision: cfg.ConfigRevision,
+		PlanTitle: plan.Title, Host: plan.Host, Target: target, ConfigRevision: cfg.ConfigRevision,
 		ConfigOverrides: cfg.Overrides, MergeStrategy: cfg.Merge.Strategy,
 		Execution: contract.Execution, Memhub: mh, CI: ci, Issues: contract.Issues,
 	}, nil

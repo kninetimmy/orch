@@ -379,7 +379,10 @@ func CheckSelectionWireVersions(t *testing.T, deliverySkillPath, architectSkillP
 	phrases := []string{
 		versions,
 		fmt.Sprintf("(`schema_version: %d`) carrying the **identical** `PlanDoc`", run.ActivationSchemaVersion),
-		"Before GateDoc v3, this bound only the submitted plan; now it binds the effective contract",
+		"Display `target.checkout` and the full `target.github` host/owner/repository and `target.github.id`",
+		"Copy `GateDoc.plan_digest` and the exact `GateDoc.target` into `approval`.",
+		fmt.Sprintf("Expect `ActivationResult` schema %d.", run.ActivationSchemaVersion),
+		fmt.Sprintf("Approval-contract v%d also refuses older approvals", run.ContractVersion),
 		"v4/v5 remain inspectable, but lifecycle verbs and resume refuse to hot-migrate them",
 		fmt.Sprintf("Reject unsupported result versions: resolve-block v%d, block v%d, resume v%d.", run.ResolveBlockSchemaVersion, run.BlockSchemaVersion, run.ResumeSchemaVersion),
 		"Reject any other `schema_version` before reading or submitting a `Selection`.",

@@ -458,6 +458,29 @@ func TestGrantsStatementLiteralsPinnedToEngineConstants(t *testing.T) {
 	}
 }
 
+func TestGrantActivationExampleMatchesEngine(t *testing.T) {
+	data, err := os.ReadFile(grantsPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, block := range strings.Split(string(data), "```") {
+		example, ok := strings.CutPrefix(block, "json")
+		if !ok || !strings.Contains(example, run.GrantApprovalStatement) {
+			continue
+		}
+		checkout, err := json.Marshal(t.TempDir())
+		if err != nil {
+			t.Fatal(err)
+		}
+		example = strings.Replace(example, `"/absolute/path/to/primary"`, string(checkout), 1)
+		if _, err := run.DecodeActivation([]byte(example)); err != nil {
+			t.Fatalf("grant plan activation example does not match the engine: %v", err)
+		}
+		return
+	}
+	t.Fatal("missing grant plan activation JSON example")
+}
+
 // TestGrantsSubcommandsAreReal runs every `orch grant <sub>` GRANTS.md names
 // against an empty directory: the CLI answers an unsupported subcommand with
 // a usage error and a real one with anything else. The directory is not a

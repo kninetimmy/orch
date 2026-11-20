@@ -253,7 +253,7 @@ func TestCIDeclarationReachesTheExecutorAndReviewer(t *testing.T) {
 	// managed region and the audit record's own list inside it both
 	// annotate the declared test and only it, so a reader comparing the
 	// two halves of one body finds them saying the same thing.
-	body := script.StdinAt(len(taxonomy))
+	body := activationIssueBody(t, script, len(taxonomy))
 	wantProse := "- `" + planLocalOnlyTest + "`" + manifest.CIDoesNotRunNote + "\n"
 	if !strings.Contains(body, wantProse) {
 		t.Errorf("the created issue body's prose list does not annotate the declared test\nwant line: %q\n--- body ---\n%s", wantProse, body)

@@ -73,6 +73,30 @@ func (g *Git) ListWorktrees(ctx context.Context) ([]Worktree, error) {
 	return list, nil
 }
 
+// RequirePrimary verifies this exact root, without redirecting from a linked
+// worktree to the primary as a read-only status caller may do.
+func (g *Git) RequirePrimary(ctx context.Context) error {
+	list, err := g.ListWorktrees(ctx)
+	if err != nil {
+		return err
+	}
+	if len(list) == 0 {
+		return fmt.Errorf("Git did not report a primary checkout")
+	}
+	root, err := os.Stat(g.root)
+	if err != nil {
+		return err
+	}
+	primary, err := os.Stat(list[0].Path)
+	if err != nil {
+		return err
+	}
+	if !root.IsDir() || !primary.IsDir() || !os.SameFile(root, primary) {
+		return fmt.Errorf("%s is not the primary checkout (%s); open the primary checkout", g.root, list[0].Path)
+	}
+	return nil
+}
+
 // prepareWorktreePath canonicalizes path and applies the two placement
 // pre-checks every worktree creation shares, in order: path must not
 // already exist (never clobber), and a path inside the primary

@@ -13,7 +13,6 @@ import (
 	"github.com/kninetimmy/orch/internal/agents"
 	"github.com/kninetimmy/orch/internal/config"
 	"github.com/kninetimmy/orch/internal/ghops"
-	"github.com/kninetimmy/orch/internal/gitops"
 	"github.com/kninetimmy/orch/internal/grant"
 	"github.com/kninetimmy/orch/internal/manifest"
 	"github.com/kninetimmy/orch/internal/memhub"
@@ -24,8 +23,8 @@ import (
 )
 
 // ActivationSchemaVersion is the activation-request/result schema this
-// build accepts and emits.
-const ActivationSchemaVersion = 2
+// build accepts and emits. v3 requires the target from GateDoc v4.
+const ActivationSchemaVersion = 3
 
 // ApprovalStatement is the exact assertion an adapter's human approval
 // must carry (PRD §8): the engine cannot verify a human, so this
@@ -46,10 +45,11 @@ type ActivationRequest struct {
 // Approval is the adapter's assertion that a human approved plan
 // (identified by digest) for entry into Delivery.
 type Approval struct {
-	PlanDigest string    `json:"plan_digest"`
-	ApprovedBy string    `json:"approved_by"`
-	ApprovedAt time.Time `json:"approved_at"`
-	Statement  string    `json:"statement"`
+	PlanDigest string         `json:"plan_digest"`
+	Target     DeliveryTarget `json:"target"`
+	ApprovedBy string         `json:"approved_by"`
+	ApprovedAt time.Time      `json:"approved_at"`
+	Statement  string         `json:"statement"`
 }
 
 // validate checks a against the freshly recomputed digest: the
@@ -108,6 +108,9 @@ func DecodeActivation(data []byte) (*ActivationRequest, error) {
 	if req.SchemaVersion != ActivationSchemaVersion {
 		return nil, fmt.Errorf("%w: schema_version %d is unsupported (this build supports %d); run `orch run plan` and obtain fresh approval with a matching adapter", ErrBadApproval, req.SchemaVersion, ActivationSchemaVersion)
 	}
+	if !req.Approval.Target.valid() {
+		return nil, fmt.Errorf("%w: approval requires the exact target from the plan gate; run `orch run plan` and obtain fresh approval", ErrBadApproval)
+	}
 	return &req, nil
 }
 
@@ -130,11 +133,12 @@ func wrapAfterEnter(err error) error {
 //
 //   - Phase 1 (pure validation): decode/validate the plan and its
 //     approval, derive routing and labels for every issue.
-//   - Phase 2 (read-only preflights): for a grant approval, every grant
-//     stop first (planGrant); then Assist+no-lock, configured OpenCode
+//   - Phase 2: Assist+no-lock and a live match of the approved primary
+//     checkout and authenticated GitHub target before side effects;
+//     then grant stops (planGrant) if applicable, configured OpenCode
 //     selections present in the project-scoped live catalog, current rendered
 //     project agent files for the plan's host, clean primary
-//     checkout, authenticated GitHub remote, primary on the default
+//     checkout, primary on the checked target's default
 //     branch (F4), every plan-declared area label existing in the
 //     repository (area labels are repository-defined per PRD §13, so
 //     activation never creates them), the memhub gate, and the
@@ -163,7 +167,8 @@ func Activate(ctx context.Context, env Env, reqJSON []byte) (*ActivationResult, 
 	if err := plan.Validate(cfg); err != nil {
 		return nil, err
 	}
-	contract, err := effectiveContract(plan, cfg)
+	approvedTarget := req.Approval.Target
+	contract, err := effectiveContract(plan, cfg, approvedTarget)
 	if err != nil {
 		return nil, err
 	}
@@ -202,16 +207,36 @@ func Activate(ctx context.Context, env Env, reqJSON []byte) (*ActivationResult, 
 		waveByID[pi.ID] = pi.Wave
 	}
 
-	// Phase 2: read-only preflights, grant stops first.
+	// Phase 2: compare against independent live evidence before any side
+	// effect. The echoed approval target above is used only for comparison.
+	if err := requireAssistNoLock(env.RepoRoot); err != nil {
+		return nil, err
+	}
+	git, checkoutID, err := deliveryCheckout(ctx, env)
+	if err != nil {
+		return nil, err
+	}
+	if git.Root() != approvedTarget.Checkout || checkoutID != approvedTarget.CheckoutID {
+		return nil, fmt.Errorf("%w: primary checkout %q does not match the approved checkout %q; re-gate and obtain fresh approval", ErrBadApproval, git.Root(), approvedTarget.Checkout)
+	}
+	gh, repo, github, err := deliveryGitHub(ctx, env)
+	if err != nil {
+		return nil, err
+	}
+	if github != approvedTarget.GitHub {
+		return nil, fmt.Errorf("%w: live GitHub target %s does not match the approved target %s (live repository ID %q, approved ID %q); re-gate and obtain fresh approval",
+			ErrBadApproval, github, approvedTarget.GitHub, github.ID, approvedTarget.GitHub.ID)
+	}
+	targetRepo, err := gh.ForTarget(github)
+	if err != nil {
+		return nil, err
+	}
 	var grants *grant.Store
 	var g *grant.Grant
 	if byGrant {
 		if grants, g, err = planGrant(ctx, env, plan, req.Approval.ApprovedBy); err != nil {
 			return nil, err
 		}
-	}
-	if err := requireAssistNoLock(env.RepoRoot); err != nil {
-		return nil, err
 	}
 	var warnings []string
 	if plan.Host == "opencode" {
@@ -244,20 +269,8 @@ func Activate(ctx context.Context, env Env, reqJSON []byte) (*ActivationResult, 
 	if staleErr != nil {
 		return nil, staleErr
 	}
-	git, err := gitops.Open(ctx, env.Runner, env.RepoRoot)
-	if err != nil {
-		return nil, err
-	}
 	if err := git.RequireClean(ctx, ""); err != nil {
 		return nil, fmt.Errorf("%w%s", err, metrics.ExplainTrap(cfg.Metrics.Enabled, env.RepoRoot))
-	}
-	gh, err := ghops.Open(ctx, env.Runner, env.RepoRoot)
-	if err != nil {
-		return nil, err
-	}
-	repo, err := gh.Repo(ctx)
-	if err != nil {
-		return nil, err
 	}
 	branch, err := git.CurrentBranch(ctx)
 	if err != nil {
@@ -267,7 +280,7 @@ func Activate(ctx context.Context, env Env, reqJSON []byte) (*ActivationResult, 
 		return nil, fmt.Errorf("primary checkout is on %s, not the default branch %s; activation requires the primary checkout on the default branch", branch, repo.DefaultBranch)
 	}
 	if areas := planAreaLabels(plan); len(areas) > 0 {
-		missing, err := gh.MissingLabels(ctx, areas)
+		missing, err := targetRepo.MissingLabels(ctx, areas)
 		if err != nil {
 			return nil, err
 		}
@@ -275,7 +288,7 @@ func Activate(ctx context.Context, env Env, reqJSON []byte) (*ActivationResult, 
 			return nil, fmt.Errorf("%w: %s; create them in the repository (gh label create <name>) or remove them from the plan, then resubmit for approval", ErrAreaLabelMissing, strings.Join(missing, ", "))
 		}
 	}
-	if err := checkFixesMerged(ctx, gh, plan); err != nil {
+	if err := checkFixesMerged(ctx, targetRepo, plan); err != nil {
 		return nil, err
 	}
 	if _, err := memhubGate(ctx, cfg.Memhub.Mode, memhub.New(env.Runner, env.RepoRoot)); err != nil {
@@ -287,7 +300,7 @@ func Activate(ctx context.Context, env Env, reqJSON []byte) (*ActivationResult, 
 	}
 
 	// Phase 3: idempotent GitHub prep (the only pre-lock mutation, F6).
-	if _, err := gh.EnsureLabelTaxonomy(ctx); err != nil {
+	if err := targetRepo.EnsureLabelTaxonomy(ctx); err != nil {
 		return nil, err
 	}
 
@@ -370,7 +383,7 @@ func Activate(ctx context.Context, env Env, reqJSON []byte) (*ActivationResult, 
 			return nil, wrapAfterEnter(err)
 		}
 
-		number, url, err := gh.CreateIssue(ctx, pi.Title, body, l, denylist...)
+		number, url, err := targetRepo.CreateIssue(ctx, pi.Title, body, l, denylist...)
 		if err != nil {
 			return nil, wrapAfterEnter(err)
 		}
@@ -467,10 +480,8 @@ func planAreaLabels(p *PlanDoc) []string {
 }
 
 // checkFixesMerged requires every PR a plan issue says it fixes to exist
-// and be merged, each PR read once however many issues name it. A read
-// failure (gh reports a PR that does not exist as an error) is wrapped so
-// the error names the PR.
-func checkFixesMerged(ctx context.Context, gh *ghops.GH, p *PlanDoc) error {
+// and be merged in the verified repository, reading each number once.
+func checkFixesMerged(ctx context.Context, repo *ghops.ActivationRepo, p *PlanDoc) error {
 	checked := map[int]bool{}
 	for _, pi := range p.Issues {
 		for _, n := range pi.Fixes {
@@ -478,12 +489,12 @@ func checkFixesMerged(ctx context.Context, gh *ghops.GH, p *PlanDoc) error {
 				continue
 			}
 			checked[n] = true
-			pr, err := gh.PR(ctx, n)
+			prState, err := repo.PullRequestState(ctx, n)
 			if err != nil {
 				return fmt.Errorf("%w: issue %s fixes PR #%d: %v; correct the plan's fixes and resubmit for approval", ErrFixesPRNotMerged, pi.ID, n, err)
 			}
-			if pr.State != "MERGED" {
-				return fmt.Errorf("%w: issue %s fixes PR #%d, which is %s; correct the plan's fixes and resubmit for approval", ErrFixesPRNotMerged, pi.ID, n, strings.ToLower(pr.State))
+			if prState != "MERGED" {
+				return fmt.Errorf("%w: issue %s fixes PR #%d, which is %s; correct the plan's fixes and resubmit for approval", ErrFixesPRNotMerged, pi.ID, n, strings.ToLower(prState))
 			}
 		}
 	}

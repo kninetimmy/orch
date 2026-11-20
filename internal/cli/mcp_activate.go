@@ -15,8 +15,23 @@ import (
 func addMCPActivation(server *mcp.Server, env Env, root string) {
 	mcp.AddTool(server, &mcp.Tool{
 		Name:        "orch_run_activate",
-		Description: "Submit an explicit human-approved activation request to the bound repository's shared engine (orch run activate). Requires the human's approval statement, approver, timestamp and effective-contract plan digest; a tool call, validation or gate inspection is not approval. Non-idempotent: may create GitHub labels/issues, branches/worktrees, Delivery state/locks and existing audit/metrics records. Partial failures can preserve artifacts and require explicit recovery; never automatically retry. Does not dispatch, merge, apply configuration, execute evaluations or support grant-based activation.",
-		InputSchema: json.RawMessage(`{"type":"object","properties":{"schema_version":{"type":"integer"},"plan":{"type":"object"},"approval":{"type":"object","properties":{"plan_digest":{"type":"string","minLength":1},"approved_by":{"type":"string","minLength":1},"approved_at":{"type":"string","minLength":1},"statement":{"type":"string","minLength":1}},"required":["plan_digest","approved_by","approved_at","statement"],"additionalProperties":false}},"required":["schema_version","plan","approval"],"additionalProperties":false}`),
+		Description: "Submit an explicit human-approved activation request to the bound repository's shared engine (orch run activate). Requires a verified OpenCode session at the bound primary checkout and the human's approval statement, approver, timestamp, GateDoc target and effective-contract plan digest; a tool call, validation or gate inspection is not approval. Non-idempotent: may create GitHub labels/issues, branches/worktrees, Delivery state/locks and existing audit/metrics records. Partial failures can preserve artifacts and require explicit recovery; never automatically retry. Does not dispatch, merge, apply configuration, execute evaluations or support grant-based activation.",
+		InputSchema: json.RawMessage(`{
+		  "type":"object","properties":{
+		    "schema_version":{"type":"integer"},"plan":{"type":"object"},
+		    "approval":{"type":"object","properties":{
+		      "plan_digest":{"type":"string","minLength":1},
+		      "target":{"type":"object","properties":{
+		        "checkout":{"type":"string","minLength":1},"checkout_id":{"type":"string","minLength":1},
+		        "github":{"type":"object","properties":{
+		          "host":{"type":"string","minLength":1},"owner":{"type":"string","minLength":1},
+		          "repository":{"type":"string","minLength":1},"id":{"type":"string","minLength":1}
+		        },"required":["host","owner","repository","id"],"additionalProperties":false}
+		      },"required":["checkout","checkout_id","github"],"additionalProperties":false},
+		      "approved_by":{"type":"string","minLength":1},"approved_at":{"type":"string","minLength":1},"statement":{"type":"string","minLength":1}
+		    },"required":["plan_digest","target","approved_by","approved_at","statement"],"additionalProperties":false}
+		  },"required":["schema_version","plan","approval"],"additionalProperties":false
+		}`),
 		Annotations: &mcp.ToolAnnotations{DestructiveHint: new(true), OpenWorldHint: new(true)},
 	}, func(ctx context.Context, req *mcp.CallToolRequest, _ any) (*mcp.CallToolResult, *run.ActivationResult, error) {
 		// Keep the original JSON (including nested fields and number literals).
@@ -37,6 +52,9 @@ func addMCPActivation(server *mcp.Server, env Env, root string) {
 		}
 		var doc *run.ActivationResult
 		err = withDeliveryMutation(root, func() error {
+			if err := requireMCPWorkspace(ctx, req, env.Runner, root); err != nil {
+				return err
+			}
 			doc, err = run.Activate(ctx, run.Env{
 				RepoRoot: root, Runner: env.Runner, ClaudeSession: os.Getenv(grant.SessionEnv),
 			}, req.Params.Arguments)

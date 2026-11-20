@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/kninetimmy/orch/internal/config"
+	"github.com/kninetimmy/orch/internal/execx/execxtest"
 	"github.com/kninetimmy/orch/internal/manifest"
 	"github.com/kninetimmy/orch/internal/state"
 )
@@ -66,11 +67,35 @@ func setupRepo(t *testing.T, tomlContent string) string {
 
 func fixedNow() time.Time { return time.Date(2026, 7, 11, 12, 0, 0, 0, time.UTC) }
 
+// Gate-only unit fixtures simulate Git and gh. Real registration and
+// filesystem/clone separation are covered by the activation and MCP fixtures.
+func gateTestEnv(t *testing.T, root string) (Env, *execxtest.Script) {
+	t.Helper()
+	gitDir := filepath.Join(root, ".git")
+	if err := os.MkdirAll(gitDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	calls := []execxtest.Call{
+		{Name: "git", Args: []string{"rev-parse", "--show-toplevel"}, Stdout: root},
+		{Name: "git", Args: []string{"worktree", "list", "--porcelain"}, Stdout: "worktree " + root + "\n"},
+		{Name: "git", Args: []string{"rev-parse", "--path-format=absolute", "--git-common-dir"}, Stdout: gitDir},
+	}
+	script := &execxtest.Script{T: t, Calls: append(calls, activationTargetCalls()...)}
+	return Env{RepoRoot: root, Runner: script, Now: fixedNow}, script
+}
+
+func planInGateFixture(t *testing.T, root, plan string) (*GateDoc, error) {
+	t.Helper()
+	env, script := gateTestEnv(t, root)
+	doc, err := Plan(t.Context(), env, []byte(plan))
+	script.AssertExhausted()
+	return doc, err
+}
+
 func TestPlanGoldenTwoIssue(t *testing.T) {
 	root := setupRepo(t, testConfigTOML)
-	env := Env{RepoRoot: root, Now: fixedNow}
 
-	doc, err := Plan(context.Background(), env, []byte(twoIssuePlanJSON()))
+	doc, err := planInGateFixture(t, root, twoIssuePlanJSON())
 	if err != nil {
 		t.Fatalf("Plan: %v", err)
 	}
@@ -105,7 +130,7 @@ func TestPlanGoldenTwoIssue(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	contract, err := effectiveContract(p, cfg)
+	contract, err := effectiveContract(p, cfg, doc.Target)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -188,7 +213,7 @@ func TestPlanGatePreservesOpenCodeVariantAndNoVariant(t *testing.T) {
 	}
 	root := setupRepo(t, string(data))
 	plan := strings.Replace(validPlanJSON(), `"host": "claude"`, `"host": "opencode"`, 1)
-	doc, err := Plan(context.Background(), Env{RepoRoot: root, Now: fixedNow}, []byte(plan))
+	doc, err := planInGateFixture(t, root, plan)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -210,9 +235,7 @@ func TestPlanGatePreservesOpenCodeVariantAndNoVariant(t *testing.T) {
 // CI coverage.
 func TestPlanGateShowsWhichRequiredTestsCIDoesNotRun(t *testing.T) {
 	root := setupRepo(t, testConfigTOML)
-	env := Env{RepoRoot: root, Now: fixedNow}
-
-	doc, err := Plan(context.Background(), env, []byte(ciDeclarationPlanJSON()))
+	doc, err := planInGateFixture(t, root, ciDeclarationPlanJSON())
 	if err != nil {
 		t.Fatalf("Plan: %v", err)
 	}
@@ -227,7 +250,7 @@ func TestPlanGateShowsWhichRequiredTestsCIDoesNotRun(t *testing.T) {
 		t.Errorf("tests_ci_does_not_run = %q, want just %q", iss.TestsCIDoesNotRun, planLocalOnlyTest)
 	}
 
-	silent, err := Plan(context.Background(), env, []byte(validPlanJSON()))
+	silent, err := planInGateFixture(t, root, validPlanJSON())
 	if err != nil {
 		t.Fatalf("Plan (no declaration): %v", err)
 	}
@@ -252,9 +275,7 @@ func TestPlanCIStatementWithWorkflowFixture(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(wfDir, "ci.yml"), []byte("name: ci\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	env := Env{RepoRoot: root, Now: fixedNow}
-
-	doc, err := Plan(context.Background(), env, []byte(validPlanJSON()))
+	doc, err := planInGateFixture(t, root, validPlanJSON())
 	if err != nil {
 		t.Fatalf("Plan: %v", err)
 	}

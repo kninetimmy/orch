@@ -83,7 +83,12 @@ artifact identity/content and result fit remain the independent reviewer's job.
 
 ## Compatibility
 
-Review request/result schema **4** and approval contract **3** are closed.
+At #528 the closed versions were Review request/result **4** and approval
+contract **3**. After #534, Review stays at **4**, but approval contract **4**
+binds the checkout, GitHub selector and repository ID at the plan gate and
+activation. Contract-3 runs remain inspectable, not executable with the new
+engine; finish with the original engine or abort and obtain fresh approval.
+The evidence-only review rules do not change.
 The optional review fields remain in state schema 6; manifest schema 5's
 generic verification format is unchanged. Contract-2 engines refuse contract-3
 runs before lifecycle saves could discard new fields/receipts. This engine

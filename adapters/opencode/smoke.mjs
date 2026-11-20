@@ -1101,15 +1101,36 @@ func check(ok bool) { if !ok { fmt.Fprintln(os.Stderr, "native command-boundary 
   const lockPath = path.join(root, ".orchestrator", "delivery.lock")
   // The existing containment fixture is synthetic. Obtain execution/config
   // fields from the real read-only gate, never weaken the engine's checks or
-  // call activation/GitHub to turn a test fixture into a claimed human approval.
+  // call activation or live GitHub to turn a fixture into a human approval.
+  // Gate 4 requires a concrete target; only the two scripted gh reads are
+  // available for this gate invocation.
+  const gateProbe = path.join(temp, "gate-probe")
+  await mkdir(gateProbe)
+  command("go", ["build", "-o", path.join(gateProbe, process.platform === "win32" ? "gh.exe" : "gh"),
+    "./internal/cli/testdata/doctor-probe"], repo)
+  const gateProbeFile = path.join(gateProbe, "commands.json")
+  await writeFile(gateProbeFile, JSON.stringify({
+    Root: root, Log: path.join(gateProbe, "commands.log"), Probes: {
+      "gh auth status": {},
+      "gh repo view --json nameWithOwner,defaultBranchRef,url,id": {
+        Stdout: JSON.stringify({ nameWithOwner: "fixture/orch-smoke", defaultBranchRef: { name: "main" },
+          url: "https://github.example.invalid/fixture/orch-smoke", id: "R_kgDOAAAAAQ" }),
+      },
+    },
+  }))
+  const gateEnv = { ...env, PATH: gateProbe + delimiter + env.PATH, ORCH_TEST_DOCTOR_FIXTURE: gateProbeFile }
   await rm(stateFile)
   await rm(lockPath)
-  const gate = JSON.parse(command(orchBinary, ["run", "plan"], root, env, JSON.stringify({
+  const gate = JSON.parse(command(orchBinary, ["run", "plan"], root, gateEnv, JSON.stringify({
     schema_version: 1, host: "opencode", title: "Synthetic lifecycle smoke; no real approval",
     issues: [{ id: "synthetic", title: "Synthetic lifecycle", objective: "Exercise only owned fixtures",
       acceptance_criteria: ["Fixture paths and host activity are verified"], type: "bug", facts: {},
       wave: 1, required_tests: ["synthetic smoke"], usage_class: "heavy" }],
   })))
+  assert.equal(gate.schema_version, 4)
+  assert(sameDirectory(gate.target.checkout, root))
+  assert.match(gate.target.checkout_id, /^sha256:[0-9a-f]{64}$/)
+  assert.deepEqual(gate.target.github, { host: "github.example.invalid", owner: "fixture", repository: "orch-smoke", id: "R_kgDOAAAAAQ" })
   const executionBytes = JSON.stringify(gate.execution).replace(/[<>&\u2028\u2029]/g, (value) => "\\u" + value.charCodeAt(0).toString(16).padStart(4, "0"))
   fixtureState.run.plan = {
     title: gate.plan_title, digest: gate.plan_digest, approved_by: "synthetic fixture, not a human",

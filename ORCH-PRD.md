@@ -163,6 +163,19 @@ The plan gate shows, for every proposed issue:
 - Risk classification.
 - Relative usage class.
 
+Before #534, Delivery approval bound the effective execution contract but not
+its checkout or GitHub destination. After #534, the gate also shows and binds the
+canonical primary checkout and GitHub host/owner/repository plus its repository
+ID. Every activation entry point, including activation under a Claude grant,
+rechecks those identities before effects. Orch refuses missing, malformed or
+different target evidence; obtain a fresh gate and approval. Before the #534
+write-binding fix, activation pinned its GitHub commands to the checked
+host/owner/repository selector, which could be reassigned after the check.
+After the fix, activation addresses its GitHub reads and writes to the checked
+node ID on the verified host, with no name fallback. OpenCode's MCP gate,
+activation and dispatch additionally require independent host evidence that the
+invoking session is at that primary checkout.
+
 Native choices:
 
 - Approve and enter Delivery.

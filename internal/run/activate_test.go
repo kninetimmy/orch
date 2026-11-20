@@ -9,6 +9,8 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"reflect"
+	"slices"
 	"strings"
 	"testing"
 
@@ -151,13 +153,56 @@ func ghRepoViewCall(defaultBranch string) execxtest.Call {
 	}
 }
 
-func ghLabelListCall(stdout string) execxtest.Call {
-	return execxtest.Call{Name: "gh", Args: []string{"label", "list", "--json", "name", "--limit", "1000"}, Stdout: stdout}
+const activationRepoID = "R_kgDOAAAAAQ"
+
+func activationTargetCalls() []execxtest.Call {
+	return []execxtest.Call{ghOpenCall(), {
+		Name: "gh", Args: []string{"repo", "view", "--json", "nameWithOwner,defaultBranchRef,url,id"},
+		Stdout: `{"nameWithOwner":"o/r","defaultBranchRef":{"name":"main"},"url":"https://github.com/o/r","id":"` + activationRepoID + `"}`,
+	}}
 }
 
-func ghLabelListEmptyCall() execxtest.Call {
-	return ghLabelListCall("[]")
+func activationGraphQLCall(operation, stdout string, check func(*testing.T, json.RawMessage)) execxtest.Call {
+	return execxtest.Call{
+		Name: "gh", Args: []string{"api", "graphql", "--hostname", "github.com", "--method", "POST", "--header", "Content-Type: application/json", "--input", "-"},
+		Stdout: stdout,
+		CheckStdin: func(t *testing.T, stdin string) {
+			t.Helper()
+			var req struct {
+				OperationName, Query string
+				Variables            json.RawMessage
+			}
+			if err := json.Unmarshal([]byte(stdin), &req); err != nil || req.OperationName != operation || !strings.Contains(req.Query, " "+operation+"(") {
+				t.Fatalf("GraphQL request for %s: %v, got operation %q", operation, err, req.OperationName)
+			}
+			check(t, req.Variables)
+		},
+	}
 }
+
+func checkGraphQLVariables(t *testing.T, raw json.RawMessage, want map[string]any) {
+	t.Helper()
+	var got map[string]any
+	if err := json.Unmarshal(raw, &got); err != nil || !reflect.DeepEqual(got, want) {
+		t.Fatalf("GraphQL variables: got %s, want %v; decode err=%v", raw, want, err)
+	}
+}
+
+func activationLabelID(name string) string { return "LA_" + strings.ToLower(name) }
+
+func ghLabelListCall(names ...string) execxtest.Call {
+	var labels []string
+	for _, name := range names {
+		labels = append(labels, fmt.Sprintf(`{"name":%q,"id":%q}`, name, activationLabelID(name)))
+	}
+	return activationGraphQLCall("OrchActivationLabels",
+		`{"data":{"node":{"id":"`+activationRepoID+`","labels":{"nodes":[`+strings.Join(labels, ",")+`],"pageInfo":{"hasNextPage":false}}}}}`,
+		func(t *testing.T, raw json.RawMessage) {
+			checkGraphQLVariables(t, raw, map[string]any{"repositoryId": activationRepoID, "after": nil})
+		})
+}
+
+func ghLabelListEmptyCall() execxtest.Call { return ghLabelListCall() }
 
 // taxonomyLabels mirrors ghops's private label taxonomy table
 // (name, color, description) in creation order.
@@ -183,29 +228,67 @@ var taxonomyLabels = []struct{ name, color, desc string }{
 func ghLabelCreateCalls() []execxtest.Call {
 	calls := make([]execxtest.Call, len(taxonomyLabels))
 	for i, l := range taxonomyLabels {
-		calls[i] = execxtest.Call{Name: "gh", Args: []string{"label", "create", l.name, "--color", l.color, "--description", l.desc}}
+		calls[i] = activationGraphQLCall("OrchCreateLabel",
+			fmt.Sprintf(`{"data":{"createLabel":{"label":{"id":%q,"name":%q}}}}`, activationLabelID(l.name), l.name),
+			func(t *testing.T, raw json.RawMessage) {
+				checkGraphQLVariables(t, raw, map[string]any{"input": map[string]any{
+					"repositoryId": activationRepoID, "name": l.name, "color": l.color, "description": l.desc,
+				}})
+			})
 	}
 	return calls
 }
 
-func ghIssueCreateCall(title string, labels []string, number int) execxtest.Call {
-	args := []string{"issue", "create", "--title", title, "--body-file", "-"}
-	for _, l := range labels {
-		args = append(args, "--label", l)
+type activationIssueInput struct {
+	Title, Body, RepositoryID string
+	LabelIDs                  []string
+}
+
+func activationIssueVariables(t *testing.T, raw []byte) activationIssueInput {
+	t.Helper()
+	var variables struct{ Input activationIssueInput }
+	if err := json.Unmarshal(raw, &variables); err != nil {
+		t.Fatalf("decode createIssue variables: %v", err)
 	}
-	return execxtest.Call{Name: "gh", Args: args, Stdout: fmt.Sprintf("https://github.com/o/r/issues/%d\n", number)}
+	return variables.Input
+}
+
+func activationIssueBody(t *testing.T, script *execxtest.Script, call int) string {
+	t.Helper()
+	var req struct{ Variables json.RawMessage }
+	if err := json.Unmarshal([]byte(script.StdinAt(call)), &req); err != nil {
+		t.Fatalf("decode createIssue request at call %d: %v", call, err)
+	}
+	return activationIssueVariables(t, req.Variables).Body
+}
+
+func ghIssueCreateCall(title string, labels []string, number int) execxtest.Call {
+	ids := make([]string, 0, len(labels))
+	for _, l := range labels {
+		ids = append(ids, activationLabelID(l))
+	}
+	return activationGraphQLCall("OrchCreateIssue", fmt.Sprintf(
+		`{"data":{"createIssue":{"issue":{"number":%d,"url":"https://github.com/o/r/issues/%d","repository":{"id":%q}}}}}`, number, number, activationRepoID),
+		func(t *testing.T, raw json.RawMessage) {
+			t.Helper()
+			got := activationIssueVariables(t, raw)
+			if got.RepositoryID != activationRepoID || got.Title != title || !slices.Equal(got.LabelIDs, ids) || got.Body == "" {
+				t.Fatalf("createIssue for %q: got title %q, repository ID %q, label IDs %v, body bytes %d", title, got.Title, got.RepositoryID, got.LabelIDs, len(got.Body))
+			}
+		})
 }
 
 // buildActivationJSON assembles an activation request with an
 // explicit digest and statement, so tests can construct both valid
 // and deliberately-mismatched approvals.
-func buildActivationJSON(t *testing.T, planJSON, digest, statement string) []byte {
+func buildActivationJSON(t *testing.T, planJSON, digest, statement string, target DeliveryTarget) []byte {
 	t.Helper()
 	req := map[string]any{
 		"schema_version": ActivationSchemaVersion,
 		"plan":           json.RawMessage(planJSON),
 		"approval": map[string]any{
 			"plan_digest": digest,
+			"target":      target,
 			"approved_by": "alice",
 			"approved_at": "2026-07-11T12:00:00Z",
 			"statement":   statement,
@@ -222,6 +305,12 @@ func buildActivationJSON(t *testing.T, planJSON, digest, statement string) []byt
 // correct recomputed digest and the correct approval statement.
 func activationJSON(t *testing.T, root, planJSON string) []byte {
 	t.Helper()
+	digest, target := activationApproval(t, root, planJSON)
+	return buildActivationJSON(t, planJSON, digest, ApprovalStatement, target)
+}
+
+func activationApproval(t *testing.T, root, planJSON string) (string, DeliveryTarget) {
+	t.Helper()
 	p, err := DecodePlan([]byte(planJSON))
 	if err != nil {
 		t.Fatal(err)
@@ -230,7 +319,13 @@ func activationJSON(t *testing.T, root, planJSON string) []byte {
 	if err != nil {
 		t.Fatal(err)
 	}
-	contract, err := effectiveContract(p, cfg)
+	git, id, err := deliveryCheckout(t.Context(), Env{RepoRoot: root, Runner: execx.Local{}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	target := DeliveryTarget{Checkout: git.Root(), CheckoutID: id,
+		GitHub: ghops.RepoTarget{Host: "github.com", Owner: "o", Repository: "r", ID: activationRepoID}}
+	contract, err := effectiveContract(p, cfg, target)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -238,11 +333,11 @@ func activationJSON(t *testing.T, root, planJSON string) []byte {
 	if err != nil {
 		t.Fatal(err)
 	}
-	return buildActivationJSON(t, planJSON, digest, ApprovalStatement)
+	return digest, target
 }
 
 func fullTaxonomyScript() []execxtest.Call {
-	calls := []execxtest.Call{ghOpenCall(), ghRepoViewCall("main"), ghLabelListEmptyCall()}
+	calls := append(activationTargetCalls(), ghLabelListEmptyCall())
 	return append(calls, ghLabelCreateCalls()...)
 }
 
@@ -342,20 +437,20 @@ func TestActivateRecordsApprovedWork(t *testing.T) {
 		ghIssueCreateCall("Issue A", []string{"ready", "feature", "implementer", "standard"}, 1),
 		ghIssueCreateCall("Issue B", []string{"ready", "feature", "specialist", "critical"}, 2),
 	)
-	script := &execxtest.Script{T: t, Calls: calls}
+	script := &execxtest.Script{T: t, Calls: append(activationTargetCalls(), calls...)}
 	env := Env{RepoRoot: root, Runner: muxRunner{git: execx.Local{}, gh: script}, Now: fixedNow}
 	gate, err := Plan(context.Background(), env, []byte(twoIssuePlanJSON()))
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := Activate(context.Background(), env, buildActivationJSON(t, twoIssuePlanJSON(), gate.PlanDigest, ApprovalStatement)); err != nil {
+	if _, err := Activate(context.Background(), env, buildActivationJSON(t, twoIssuePlanJSON(), gate.PlanDigest, ApprovalStatement, gate.Target)); err != nil {
 		t.Fatalf("Activate: %v", err)
 	}
 	script.AssertExhausted()
 
 	// The posted audit record carries the approved work and the honest
 	// effort-delivery mechanism.
-	m, err := manifest.Parse(script.StdinAt(len(taxonomy)))
+	m, err := manifest.Parse(activationIssueBody(t, script, len(activationTargetCalls())+len(taxonomy)))
 	if err != nil {
 		t.Fatalf("Parse the created issue body: %v", err)
 	}
@@ -386,7 +481,7 @@ func TestActivateRecordsApprovedWork(t *testing.T) {
 	}
 	for i, approved := range gate.Issues {
 		issue := st.Run.Issues[i]
-		m, err := manifest.Parse(script.StdinAt(len(taxonomy) + i))
+		m, err := manifest.Parse(activationIssueBody(t, script, len(activationTargetCalls())+len(taxonomy)+i))
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -412,7 +507,7 @@ func TestActivateRecordsApprovedWork(t *testing.T) {
 
 	// Issue a declares no risk domain, so every place carries exactly the
 	// plan's one criterion — the created issue body included.
-	bodyA := script.StdinAt(len(taxonomy))
+	bodyA := activationIssueBody(t, script, len(activationTargetCalls())+len(taxonomy))
 	if strings.Contains(bodyA, BlastRadiusCriterion) {
 		t.Error("issue a's created body carries the contributed criterion; a declares no risk domain")
 	}
@@ -424,7 +519,7 @@ func TestActivateRecordsApprovedWork(t *testing.T) {
 	if len(b.AcceptanceCriteria) != 2 || b.AcceptanceCriteria[0] != "B works" || b.AcceptanceCriteria[1] != BlastRadiusCriterion {
 		t.Errorf("issue b state criteria = %q, want the plan's plus the contributed criterion", b.AcceptanceCriteria)
 	}
-	bodyB := script.StdinAt(len(taxonomy) + 1)
+	bodyB := activationIssueBody(t, script, len(activationTargetCalls())+len(taxonomy)+1)
 	mb, err := manifest.Parse(bodyB)
 	if err != nil {
 		t.Fatalf("Parse issue b's created body: %v", err)
@@ -472,8 +567,8 @@ func TestActivateAreaLabelsPresentProceeds(t *testing.T) {
 	// Preflight matches area labels case-insensitively (GitHub label
 	// names are); the taxonomy step then lists again and creates the
 	// full §13 set.
-	repoLabels := `[{"name":"Core"},{"name":"cli"}]`
-	calls := []execxtest.Call{ghOpenCall(), ghRepoViewCall("main"), ghLabelListCall(repoLabels), ghLabelListCall(repoLabels)}
+	repoLabels := ghLabelListCall("Core", "cli")
+	calls := append(activationTargetCalls(), repoLabels, repoLabels)
 	calls = append(calls, ghLabelCreateCalls()...)
 	calls = append(calls,
 		ghIssueCreateCall("Issue A", []string{"ready", "feature", "implementer", "standard", "core", "cli"}, 1),
@@ -495,9 +590,7 @@ func TestActivateMissingAreaLabelLeavesNothing(t *testing.T) {
 	root := newActivateRepo(t)
 	// The repo has "core" but not "cli": activation must fail closed at
 	// the read-only preflight, before the taxonomy step or any issue.
-	script := &execxtest.Script{T: t, Calls: []execxtest.Call{
-		ghOpenCall(), ghRepoViewCall("main"), ghLabelListCall(`[{"name":"core"}]`),
-	}}
+	script := &execxtest.Script{T: t, Calls: append(activationTargetCalls(), ghLabelListCall("core"))}
 	env := Env{RepoRoot: root, Runner: muxRunner{git: execx.Local{}, gh: script}, Now: fixedNow}
 
 	_, err := Activate(context.Background(), env, activationJSON(t, root, areaPlanJSON()))
@@ -514,19 +607,20 @@ func TestActivateMissingAreaLabelLeavesNothing(t *testing.T) {
 func TestActivateFailureAtSecondIssueCreateIsResumable(t *testing.T) {
 	root := newActivateRepo(t)
 	calls := fullTaxonomyScript()
+	second := ghIssueCreateCall("Issue B", []string{"ready", "feature", "specialist", "critical"}, 2)
+	// A partial payload (even with a usable-looking issue) does not prove
+	// success. No retry or second worktree may follow it.
+	second.Stdout = strings.TrimSuffix(second.Stdout, "}") + `,"errors":[{"message":"incomplete mutation result"}]}`
 	calls = append(calls,
 		ghIssueCreateCall("Issue A", []string{"ready", "feature", "implementer", "standard"}, 1),
-		execxtest.Call{
-			Name: "gh", Args: []string{"issue", "create", "--title", "Issue B", "--body-file", "-", "--label", "ready", "--label", "feature", "--label", "specialist", "--label", "critical"},
-			Exit: 1, Stderr: "network error",
-		},
+		second,
 	)
 	script := &execxtest.Script{T: t, Calls: calls}
 	env := Env{RepoRoot: root, Runner: muxRunner{git: execx.Local{}, gh: script}, Now: fixedNow}
 
 	_, err := Activate(context.Background(), env, activationJSON(t, root, twoIssuePlanJSON()))
-	if err == nil {
-		t.Fatal("Activate succeeded, want error")
+	if err == nil || !strings.Contains(err.Error(), "incomplete mutation result") || !strings.Contains(err.Error(), "state and the delivery lock are preserved") {
+		t.Fatalf("Activate error = %v, want GraphQL failure and recovery guidance", err)
 	}
 	script.AssertExhausted()
 
@@ -540,8 +634,8 @@ func TestActivateFailureAtSecondIssueCreateIsResumable(t *testing.T) {
 	if st.Run.Issues[0].Phase != state.PhaseWorktreeReady {
 		t.Errorf("issue a phase = %s, want worktree-ready", st.Run.Issues[0].Phase)
 	}
-	if st.Run.Issues[1].Phase != state.PhasePlanned {
-		t.Errorf("issue b phase = %s, want planned", st.Run.Issues[1].Phase)
+	if b := st.Run.Issues[1]; b.Phase != state.PhasePlanned || b.Number != 0 || b.Worktree != "" {
+		t.Errorf("issue b = %+v, want planned with no recorded artifacts", b)
 	}
 	owner, err := lockfile.Inspect(root)
 	if err != nil || owner == nil {
@@ -583,7 +677,7 @@ func TestActivateDirtyTreeLeavesNothing(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(root, "untracked.txt"), []byte("x"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	script := &execxtest.Script{T: t}
+	script := &execxtest.Script{T: t, Calls: activationTargetCalls()}
 	env := Env{RepoRoot: root, Runner: muxRunner{git: execx.Local{}, gh: script}, Now: fixedNow}
 
 	_, err := Activate(context.Background(), env, activationJSON(t, root, twoIssuePlanJSON()))
@@ -606,7 +700,7 @@ func TestActivateMetricsTrapNamesCause(t *testing.T) {
 	if err := metrics.Append(root, "run-leftover", metrics.Event{At: "2026-07-11T12:00:00Z", Verb: "activate"}); err != nil {
 		t.Fatal(err)
 	}
-	script := &execxtest.Script{T: t}
+	script := &execxtest.Script{T: t, Calls: activationTargetCalls()}
 	env := Env{RepoRoot: root, Runner: muxRunner{git: execx.Local{}, gh: script}, Now: fixedNow}
 
 	_, err := Activate(context.Background(), env, activationJSON(t, root, twoIssuePlanJSON()))
@@ -649,7 +743,7 @@ func TestActivateLockHeldLeavesExistingStateUntouched(t *testing.T) {
 
 func TestActivateContainerNotIgnoredLeavesNothing(t *testing.T) {
 	root := newActivateRepoWithIgnore(t, "") // worktree container not ignored
-	script := &execxtest.Script{T: t, Calls: []execxtest.Call{ghOpenCall(), ghRepoViewCall("main")}}
+	script := &execxtest.Script{T: t, Calls: activationTargetCalls()}
 	env := Env{RepoRoot: root, Runner: muxRunner{git: execx.Local{}, gh: script}, Now: fixedNow}
 
 	_, err := Activate(context.Background(), env, activationJSON(t, root, twoIssuePlanJSON()))
@@ -665,13 +759,41 @@ func TestActivateDigestMismatchLeavesNothing(t *testing.T) {
 	script := &execxtest.Script{T: t}
 	env := Env{RepoRoot: root, Runner: muxRunner{git: execx.Local{}, gh: script}, Now: fixedNow}
 
-	req := buildActivationJSON(t, twoIssuePlanJSON(), "sha256:wrong", ApprovalStatement)
+	_, target := activationApproval(t, root, twoIssuePlanJSON())
+	req := buildActivationJSON(t, twoIssuePlanJSON(), "sha256:wrong", ApprovalStatement, target)
 	_, err := Activate(context.Background(), env, req)
 	if !errors.Is(err, ErrBadApproval) {
 		t.Fatalf("err = %v, want ErrBadApproval", err)
 	}
 	script.AssertExhausted()
 	assertNoDeliveryState(t, root)
+}
+
+func TestActivateRejectsCheckoutReplacedAtTheSamePath(t *testing.T) {
+	root := newActivateRepo(t)
+	gateRunner := &execxtest.Script{T: t, Calls: activationTargetCalls()}
+	gate, err := Plan(t.Context(), Env{RepoRoot: root, Runner: muxRunner{git: execx.Local{}, gh: gateRunner}}, []byte(validPlanJSON()))
+	if err != nil {
+		t.Fatal(err)
+	}
+	gateRunner.AssertExhausted()
+	old := root + "-original"
+	if err := os.Rename(root, old); err != nil {
+		t.Fatal(err)
+	}
+	rawGit(t, filepath.Dir(root), "clone", "--no-hardlinks", old, root)
+	if rawGit(t, root, "rev-parse", "HEAD") != rawGit(t, old, "rev-parse", "HEAD") {
+		t.Fatal("replacement fixture differs in commit")
+	}
+	noGitHub := &execxtest.Script{T: t}
+	env := Env{RepoRoot: root, Runner: muxRunner{git: execx.Local{}, gh: noGitHub}}
+	_, err = Activate(t.Context(), env, buildActivationJSON(t, validPlanJSON(), gate.PlanDigest, ApprovalStatement, gate.Target))
+	if !errors.Is(err, ErrBadApproval) || !strings.Contains(err.Error(), "does not match the approved checkout") {
+		t.Fatalf("same-path replacement did not refuse the original approval: %v", err)
+	}
+	noGitHub.AssertExhausted()
+	assertNoActivationArtifacts(t, root)
+	assertNoActivationArtifacts(t, old)
 }
 
 func TestActivateWrongStatementLeavesNothing(t *testing.T) {
@@ -687,7 +809,8 @@ func TestActivateWrongStatementLeavesNothing(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	req := buildActivationJSON(t, twoIssuePlanJSON(), digest, "yes-please")
+	_, target := activationApproval(t, root, twoIssuePlanJSON())
+	req := buildActivationJSON(t, twoIssuePlanJSON(), digest, "yes-please", target)
 	_, err = Activate(context.Background(), env, req)
 	if !errors.Is(err, ErrBadApproval) {
 		t.Fatalf("err = %v, want ErrBadApproval", err)
@@ -810,7 +933,7 @@ func TestActivateCodexAbsentAgentsLeavesNothing(t *testing.T) {
 	if err := os.RemoveAll(filepath.Join(root, filepath.FromSlash(agents.CodexDir))); err != nil {
 		t.Fatal(err)
 	}
-	script := &execxtest.Script{T: t}
+	script := &execxtest.Script{T: t, Calls: activationTargetCalls()}
 	env := Env{RepoRoot: root, Runner: muxRunner{git: execx.Local{}, gh: script}, Now: fixedNow}
 
 	_, err := Activate(context.Background(), env, activationJSON(t, root, codexPlanJSON()))
@@ -835,7 +958,7 @@ func TestActivateCodexEditedAgentRefused(t *testing.T) {
 	if err := os.WriteFile(edited, []byte("stale\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	script := &execxtest.Script{T: t}
+	script := &execxtest.Script{T: t, Calls: activationTargetCalls()}
 	env := Env{RepoRoot: root, Runner: muxRunner{git: execx.Local{}, gh: script}, Now: fixedNow}
 
 	_, err := Activate(context.Background(), env, activationJSON(t, root, codexPlanJSON()))
@@ -900,7 +1023,7 @@ func TestActivateClaudeAbsentAgentsLeavesNothing(t *testing.T) {
 	if err := os.RemoveAll(filepath.Join(root, filepath.FromSlash(agents.ClaudeDir))); err != nil {
 		t.Fatal(err)
 	}
-	script := &execxtest.Script{T: t}
+	script := &execxtest.Script{T: t, Calls: activationTargetCalls()}
 	env := Env{RepoRoot: root, Runner: muxRunner{git: execx.Local{}, gh: script}, Now: fixedNow}
 	claudePlan := strings.Replace(codexPlanJSON(), `"host": "codex"`, `"host": "claude"`, 1)
 
@@ -979,10 +1102,10 @@ func availableMixedOpenCodeModels() string {
 func TestActivateOpenCodeUnavailableSelectionsLeaveNothing(t *testing.T) {
 	root := newActivateRepoWithConfigAndIgnore(t, mixedOpenCodeConfigTOML, fullGitignore)
 	models := `{"id":"unrelated","providerID":"catalog","enabled":true,"capabilities":{"tools":true,"input":["text"],"output":["text"]},"variants":[{"id":"secret-variant","settings":{"token":"catalog-secret"}}]}`
-	script := &execxtest.Script{T: t, Calls: []execxtest.Call{
-		{Name: "opencode2", Args: []string{"--version"}, Stdout: opencodecatalog.MinimumVersion},
+	script := &execxtest.Script{T: t, Calls: append(activationTargetCalls(),
+		execxtest.Call{Name: "opencode2", Args: []string{"--version"}, Stdout: opencodecatalog.MinimumVersion},
 		openCodeCatalogCall(root, models),
-	}}
+	)}
 	env := Env{RepoRoot: root, Runner: muxRunner{git: execx.Local{}, gh: script}, Now: fixedNow}
 
 	_, err := Activate(context.Background(), env, activationJSON(t, root, openCodePlanJSON()))
@@ -1013,12 +1136,13 @@ func TestActivateOpenCodeAvailableMixedProfileProceedsWithFreshAgents(t *testing
 	}
 	catalogCall := openCodeCatalogCall(root, availableMixedOpenCodeModels())
 	catalogCall.Name = "opencode"
-	calls := []execxtest.Call{
+	catalogCalls := []execxtest.Call{
 		{Name: "opencode2", Args: []string{"--version"}, Err: errors.New("not found")},
 		{Name: "opencode", Args: []string{"--version"}, Stdout: "opencode v3.0.0"},
 		catalogCall,
 	}
-	calls = append(calls, fullTaxonomyScript()...)
+	calls := append(activationTargetCalls(), catalogCalls...)
+	calls = append(calls, fullTaxonomyScript()[len(activationTargetCalls()):]...)
 	calls = append(calls, ghIssueCreateCall("Issue A", []string{"ready", "feature", "implementer", "standard"}, 1))
 	script := &execxtest.Script{T: t, Calls: calls}
 	env := Env{RepoRoot: root, Runner: muxRunner{git: execx.Local{}, gh: script}, Now: fixedNow}
