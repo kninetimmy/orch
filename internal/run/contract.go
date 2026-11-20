@@ -16,7 +16,8 @@ import (
 // v3 binds evidence-only review and pending-evidence enforcement. v2 engines
 // must not save runs whose review evidence they would silently discard. Older
 // runs remain inspectable, not executable under changed approval semantics.
-const ContractVersion = 3
+// v4 binds the canonical primary checkout and GitHub target at plan/activation.
+const ContractVersion = 4
 
 // ExecutionConfig is the effective configuration approved for this run.
 // All six profiles are bound, including routes available to later escalation.
@@ -55,9 +56,10 @@ type approvalContract struct {
 	Plan      *PlanDoc        `json:"plan"`
 	Execution ExecutionConfig `json:"execution"`
 	Issues    []GateIssue     `json:"issues"`
+	Target    DeliveryTarget  `json:"target"`
 }
 
-func effectiveContract(plan *PlanDoc, cfg *config.Config) (*approvalContract, error) {
+func effectiveContract(plan *PlanDoc, cfg *config.Config, target DeliveryTarget) (*approvalContract, error) {
 	execution, err := executionConfig(cfg, plan.Host)
 	if err != nil {
 		return nil, err
@@ -66,7 +68,7 @@ func effectiveContract(plan *PlanDoc, cfg *config.Config) (*approvalContract, er
 	if err != nil {
 		return nil, err
 	}
-	return &approvalContract{Plan: plan, Execution: execution, Issues: issues}, nil
+	return &approvalContract{Plan: plan, Execution: execution, Issues: issues, Target: target}, nil
 }
 
 // loadExecutionConfig is the read-only configuration precondition shared by

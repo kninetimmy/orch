@@ -16,23 +16,23 @@ import (
 
 func TestApprovalRejectsEffectiveLocalDrift(t *testing.T) {
 	root := setupRepo(t, testConfigTOML)
-	env := Env{RepoRoot: root}
 	plan := twoIssuePlanJSON()
-	gate, err := Plan(context.Background(), env, []byte(plan))
+	gate, err := planInGateFixture(t, root, plan)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if err := os.WriteFile(filepath.Join(root, ".orchestrator", "config.local.toml"), []byte("[hosts.claude.roles.implementer]\neffort = \"high\"\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	changed, err := Plan(context.Background(), env, []byte(plan))
+	changed, err := planInGateFixture(t, root, plan)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if gate.PlanDigest == changed.PlanDigest {
 		t.Error("effective profile changed but approval digest did not")
 	}
-	_, err = Activate(context.Background(), env, buildActivationJSON(t, plan, gate.PlanDigest, ApprovalStatement))
+	env := Env{RepoRoot: root, Runner: &execxtest.Script{T: t}}
+	_, err = Activate(context.Background(), env, buildActivationJSON(t, plan, gate.PlanDigest, ApprovalStatement, gate.Target))
 	if !errors.Is(err, ErrBadApproval) {
 		t.Errorf("activation = %v, want approval rejection before preflights", err)
 	}
@@ -85,7 +85,7 @@ func TestApprovalContractBindsEveryInput(t *testing.T) {
 			root := setupRepo(t, testConfigTOMLBothHosts)
 			script := &execxtest.Script{T: t}
 			env := Env{RepoRoot: root, Runner: script}
-			gate, err := Plan(context.Background(), env, []byte(twoIssuePlanJSON()))
+			gate, err := planInGateFixture(t, root, twoIssuePlanJSON())
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -109,7 +109,7 @@ func TestApprovalContractBindsEveryInput(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			_, err = Activate(context.Background(), env, buildActivationJSON(t, string(plan), gate.PlanDigest, ApprovalStatement))
+			_, err = Activate(context.Background(), env, buildActivationJSON(t, string(plan), gate.PlanDigest, ApprovalStatement, gate.Target))
 			if !errors.Is(err, ErrBadApproval) {
 				t.Fatalf("activation = %v, want ErrBadApproval", err)
 			}
@@ -134,7 +134,7 @@ func TestContractBindsEveryProfileAndEffectiveCriterion(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	contract, err := effectiveContract(p, cfg)
+	contract, err := effectiveContract(p, cfg, DeliveryTarget{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -157,7 +157,7 @@ func TestContractBindsEveryProfileAndEffectiveCriterion(t *testing.T) {
 				if err != nil {
 					t.Fatal(err)
 				}
-				c, err := effectiveContract(p, changed)
+				c, err := effectiveContract(p, changed, DeliveryTarget{})
 				if err != nil {
 					t.Fatal(err)
 				}
@@ -193,7 +193,7 @@ func TestContractLegacyApprovalAndFormatting(t *testing.T) {
 	root := setupRepo(t, testConfigTOML)
 	env := Env{RepoRoot: root, Runner: &execxtest.Script{T: t}}
 	plan := twoIssuePlanJSON()
-	gate, err := Plan(context.Background(), env, []byte(plan))
+	gate, err := planInGateFixture(t, root, plan)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -205,13 +205,15 @@ func TestContractLegacyApprovalAndFormatting(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	again, err := Plan(context.Background(), env, reformatted)
+	gateEnv, script := gateTestEnv(t, root)
+	again, err := Plan(context.Background(), gateEnv, reformatted)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if gate.PlanDigest != again.PlanDigest {
 		t.Fatal("whitespace/key order changed approval")
 	}
+	script.AssertExhausted()
 	p, err := DecodePlan([]byte(plan))
 	if err != nil {
 		t.Fatal(err)
@@ -220,11 +222,11 @@ func TestContractLegacyApprovalAndFormatting(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, err = Activate(context.Background(), env, buildActivationJSON(t, plan, legacy, ApprovalStatement))
+	_, err = Activate(context.Background(), env, buildActivationJSON(t, plan, legacy, ApprovalStatement, gate.Target))
 	if !errors.Is(err, ErrBadApproval) {
 		t.Fatalf("legacy digest = %v", err)
 	}
-	for _, version := range []int{1, 999} {
+	for _, version := range []int{1, 2, 999} {
 		req := ActivationRequest{SchemaVersion: version, Plan: *p, Approval: Approval{PlanDigest: gate.PlanDigest, Statement: ApprovalStatement}}
 		data, err := json.Marshal(req)
 		if err != nil {
@@ -318,4 +320,28 @@ func TestContractOneRunRemainsInspectionOnly(t *testing.T) {
 		t.Fatal("contract-1 refusal migrated or changed state")
 	}
 	script.AssertExhausted()
+}
+
+func TestContractThreeRunRemainsInspectionOnly(t *testing.T) {
+	root := setupDeliveryRepo(t, "r1", []state.Issue{fixtureIssue("a", 1, state.PhaseWorktreeReady)})
+	st := loadRun(t, root)
+	st.Run.Plan.ContractVersion = 3 // The immediate predecessor on the same state schema.
+	if err := state.Save(root, st); err != nil {
+		t.Fatal(err)
+	}
+	before := stateBytes(t, root)
+	env := ghEnv(root, &execxtest.Script{T: t})
+	doc, err := Status(t.Context(), env)
+	if err != nil || doc.Run.Plan.ContractVersion != 3 {
+		t.Fatalf("contract-3 inspection = %+v, %v", doc, err)
+	}
+	if _, err := loadVerb(env, 1, []state.Phase{state.PhaseWorktreeReady}, false); !errors.Is(err, ErrBadApproval) {
+		t.Fatalf("contract-3 lifecycle: %v", err)
+	}
+	if _, err := resumeLoad(env); !errors.Is(err, ErrBadApproval) {
+		t.Fatalf("contract-3 resume: %v", err)
+	}
+	if string(before) != string(stateBytes(t, root)) {
+		t.Fatal("contract-3 refusal migrated or changed state")
+	}
 }

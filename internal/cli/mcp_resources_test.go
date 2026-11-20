@@ -14,8 +14,10 @@ import (
 	"time"
 
 	"github.com/kninetimmy/orch/internal/config"
+	"github.com/kninetimmy/orch/internal/execx/execxtest"
 	"github.com/kninetimmy/orch/internal/lockfile"
 	"github.com/kninetimmy/orch/internal/manifest"
+	"github.com/kninetimmy/orch/internal/memhub"
 	"github.com/kninetimmy/orch/internal/paths"
 	"github.com/kninetimmy/orch/internal/run"
 	"github.com/kninetimmy/orch/internal/state"
@@ -208,12 +210,13 @@ func mcpResourcesExercise(t *testing.T, binary string) {
 	mcpResourceReports(t, ctx, root, session, 1) // Assist issue error, empty history.
 	// Build synthetic approval metadata through the shared gate with the
 	// existing fake probes; required memhub must never reach a real process.
-	gate, err := run.Plan(ctx, run.Env{RepoRoot: root, Runner: fakeRunner{}}, []byte(minimalPlanJSON))
-	if err != nil {
-		t.Fatal(err)
-	}
+	gate := mcpFixtureGate(t, root, []byte(minimalPlanJSON),
+		execxtest.Call{Name: "memhub", Args: []string{"status"}},
+		execxtest.Call{Name: "memhub", Args: []string{"recall", memhub.RecallProbeQuery, "--json", "--max-results", "1"}, Stdout: `{"results":[]}`},
+	)
 	ref := testPlanRef()
 	ref.ContractVersion = run.ContractVersion
+	var err error
 	ref.ExecutionDigest, err = gate.Execution.Digest()
 	if err != nil {
 		t.Fatal(err)

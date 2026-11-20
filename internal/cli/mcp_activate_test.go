@@ -5,16 +5,14 @@ import (
 	"context"
 	"encoding/json"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"reflect"
-	"runtime"
+	"slices"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/kninetimmy/orch/internal/config"
-	"github.com/kninetimmy/orch/internal/execx"
 	"github.com/kninetimmy/orch/internal/execx/execxtest"
 	"github.com/kninetimmy/orch/internal/lockfile"
 	"github.com/kninetimmy/orch/internal/manifest"
@@ -64,15 +62,16 @@ func mcpActivationSchema(t *testing.T, tool *mcp.Tool) {
 
 func mcpActivationRequest(t *testing.T, root string) []byte {
 	t.Helper()
-	gate, err := run.Plan(t.Context(), run.Env{RepoRoot: root}, []byte(minimalPlanJSON))
-	if err != nil {
-		t.Fatal(err)
-	}
+	return mcpApprovalForGate(t, mcpFixtureGate(t, root, []byte(minimalPlanJSON)), mustMCPActivationPlan(t))
+}
+
+func mcpApprovalForGate(t *testing.T, gate *run.GateDoc, plan *run.PlanDoc) []byte {
+	t.Helper()
 	// Synthetic human evidence is supplied explicitly, never inferred from
 	// the successful gate. No test invokes a live GitHub or host command.
 	data, err := json.Marshal(run.ActivationRequest{
-		SchemaVersion: run.ActivationSchemaVersion, Plan: *mustMCPActivationPlan(t),
-		Approval: run.Approval{PlanDigest: gate.PlanDigest, ApprovedBy: "fixture-human",
+		SchemaVersion: run.ActivationSchemaVersion, Plan: *plan,
+		Approval: run.Approval{PlanDigest: gate.PlanDigest, Target: gate.Target, ApprovedBy: "fixture-human",
 			ApprovedAt: time.Date(2026, 11, 13, 12, 0, 0, 0, time.UTC), Statement: run.ApprovalStatement},
 	})
 	if err != nil {
@@ -94,37 +93,35 @@ func mustMCPActivationPlan(t *testing.T) *run.PlanDoc {
 // existing compiled doctor-probe executable. Git mutations are simulated too:
 // PATH contains only these fixture executables, never production git/gh/hosts.
 func mcpActivationCalls(root, scenario string) []execxtest.Call {
-	calls := []execxtest.Call{
-		{Name: "git", Args: []string{"rev-parse", "--show-toplevel"}, Stdout: root},
+	tail := []execxtest.Call{
 		{Name: "git", Args: []string{"status", "--porcelain=v1", "--untracked-files=all"}},
-		{Name: "gh", Args: []string{"auth", "status"}},
-		{Name: "gh", Args: []string{"repo", "view", "--json", "nameWithOwner,defaultBranchRef,url"}, Stdout: `{"nameWithOwner":"fixture/isolated","defaultBranchRef":{"name":"main"},"url":"https://github.com/fixture/isolated"}`},
 		{Name: "git", Args: []string{"symbolic-ref", "--short", "HEAD"}, Stdout: "main"},
 		{Name: "git", Args: []string{"check-ignore", "-q", "--", ".orchestrator/worktrees/orch-check-ignore-probe"}},
 		{Name: "git", Args: []string{"check-ignore", "-q", "--", ".orchestrator/worktrees/0"}},
-		{Name: "gh", Args: []string{"label", "list", "--json", "name", "--limit", "1000"}, Stdout: `[{"name":"in-progress"},{"name":"blocked"},{"name":"needs-human"},{"name":"awaiting-review"},{"name":"delivered"},{"name":"feature"},{"name":"bug"},{"name":"chore"},{"name":"infra"},{"name":"docs"},{"name":"research"},{"name":"implementer"},{"name":"specialist"},{"name":"standard"},{"name":"critical"}]`},
-		{Name: "gh", Args: []string{"label", "create", "ready", "--color", "1D76DB", "--description", "orch status label — exactly one per issue (PRD §13)"}},
-		{Name: "gh", Args: []string{"issue", "create", "--title", "Fix the status lock race", "--body-file", "-", "--label", "ready", "--label", "bug", "--label", "implementer", "--label", "standard"}, Stdout: "https://github.com/fixture/isolated/issues/71"},
+		{Name: "gh", Args: []string{"label", "list", "--json", "name", "--limit", "1000", "--repo", "github.com/fixture/isolated"}, Stdout: `[{"name":"in-progress"},{"name":"blocked"},{"name":"needs-human"},{"name":"awaiting-review"},{"name":"delivered"},{"name":"feature"},{"name":"bug"},{"name":"chore"},{"name":"infra"},{"name":"docs"},{"name":"research"},{"name":"implementer"},{"name":"specialist"},{"name":"standard"},{"name":"critical"}]`},
+		{Name: "gh", Args: []string{"label", "create", "ready", "--color", "1D76DB", "--description", "orch status label — exactly one per issue (PRD §13)", "--repo", "github.com/fixture/isolated"}},
+		{Name: "gh", Args: []string{"issue", "create", "--title", "Fix the status lock race", "--body-file", "-", "--label", "ready", "--label", "bug", "--label", "implementer", "--label", "standard", "--repo", "github.com/fixture/isolated"}, Stdout: "https://github.com/fixture/isolated/issues/71"},
 		{Name: "git", Args: []string{"check-ignore", "-q", "--", ".orchestrator/worktrees/issue-71/orch-check-ignore-probe"}},
 		{Name: "git", Args: []string{"check-ignore", "-q", "--", ".orchestrator/worktrees/issue-71/0"}},
 		{Name: "git", Args: []string{"rev-parse", "--verify", "--quiet", "refs/heads/orch/issue-71-fix-the-status-lock-race"}, Exit: 1},
 		{Name: "git", Args: []string{"worktree", "add", "-b", "orch/issue-71-fix-the-status-lock-race", filepath.Join(root, ".orchestrator", "worktrees", "issue-71"), "main"}},
 		{Name: "git", Args: []string{"rev-parse", "--verify", "orch/issue-71-fix-the-status-lock-race^{commit}"}, Stdout: strings.Repeat("a", 40)},
 	}
+	calls := append(mcpTargetCalls(root), tail...)
 	failAt := -1
 	switch scenario {
 	case "dirty checkout":
-		calls[1].Stdout, failAt = " M README.md", 1
+		calls[5].Stdout, failAt = " M README.md", 5
 	case "authentication":
-		failAt = 2
+		failAt = 3
 	case "non-default branch":
-		calls[4].Stdout, failAt = "feature", 4
+		calls[6].Stdout, failAt = "feature", 6
 	case "label failure":
-		failAt = 8
+		failAt = 10
 	case "issue failure":
-		failAt = 9
+		failAt = 11
 	case "worktree failure":
-		failAt = 13
+		failAt = 15
 	}
 	if failAt >= 0 {
 		if scenario != "dirty checkout" && scenario != "non-default branch" {
@@ -140,24 +137,7 @@ func mcpActivationCalls(root, scenario string) []execxtest.Call {
 
 func mcpActivationExercise(t *testing.T, binary string) {
 	t.Helper()
-	probes := t.TempDir()
-	suffix := ""
-	if runtime.GOOS == "windows" {
-		suffix = ".exe"
-	}
-	probe := filepath.Join(probes, "git"+suffix)
-	build := exec.CommandContext(t.Context(), "go", "build", "-o", probe, "./testdata/doctor-probe")
-	if out, err := build.CombinedOutput(); err != nil {
-		t.Fatalf("build isolated activation commands: %v: %s", err, out)
-	}
-	data, err := os.ReadFile(probe)
-	if err != nil {
-		t.Fatal(err)
-	}
-	mcpWrite(t, filepath.Join(probes, "gh"+suffix), data)
-	if err := os.Chmod(filepath.Join(probes, "gh"+suffix), 0o755); err != nil {
-		t.Fatal(err)
-	}
+	probes := mcpProbeBin(t, "git", "gh", "opencode2")
 	for _, scenario := range []string{"success", "dirty checkout", "authentication", "non-default branch", "label failure", "issue failure", "worktree failure"} {
 		t.Run(scenario, func(t *testing.T) {
 			root, sharedRoot, cwd := t.TempDir(), t.TempDir(), t.TempDir()
@@ -176,16 +156,14 @@ func mcpActivationExercise(t *testing.T, binary string) {
 				t.Fatal(err)
 			}
 			request := mcpActivationRequest(t, root)
-			if !reflect.DeepEqual(request, mcpActivationRequest(t, sharedRoot)) {
-				t.Fatal("isolated roots changed the approved contract")
+			sharedRequest := mcpActivationRequest(t, sharedRoot)
+			if reflect.DeepEqual(request, sharedRequest) {
+				t.Fatal("isolated roots reused the same approval")
 			}
-			calls := mcpActivationCalls(root, scenario)
-			fixture, logPath := filepath.Join(t.TempDir(), "commands.json"), filepath.Join(t.TempDir(), "commands.log")
-			responses := map[string]execx.Result{}
-			for _, call := range calls {
-				responses[call.Name+" "+strings.Join(call.Args, " ")] = execx.Result{Stdout: call.Stdout, Stderr: call.Stderr, ExitCode: call.Exit}
-			}
-			mcpWrite(t, fixture, mcpEvalBytes(t, map[string]any{"Root": root, "Log": logPath, "Probes": responses}))
+			workspace := mcpWorkspaceCalls(root, mcpMatchingHost(t, os.Getpid(), root))
+			calls := append(slices.Clone(workspace), mcpActivationCalls(root, scenario)...)
+			logPath := filepath.Join(t.TempDir(), "commands.log")
+			fixture := mcpProbeFile(t, root, logPath, calls)
 			ctx, cancel := context.WithTimeout(t.Context(), 60*time.Second)
 			defer cancel()
 			cmd := mcpProcess(ctx, binary, cwd, "mcp", "--repo", root)
@@ -193,17 +171,20 @@ func mcpActivationExercise(t *testing.T, binary string) {
 			session, closeSession := mcpConnectCommand(t, ctx, cmd, root)
 			cwdBefore := mcpTree(t, cwd)
 			mcpDiscover(t, ctx, session, root)
+			if _, err := os.Stat(logPath); !os.IsNotExist(err) {
+				t.Fatalf("initialization/discovery ran commands: %v", err)
+			}
+			var prior []byte
 			if scenario == "success" {
 				mcpActivationRefusals(t, ctx, root, session, request)
-			}
-			if _, err := os.Stat(logPath); !os.IsNotExist(err) {
-				t.Fatalf("initialization/discovery/refusals ran commands: %v", err)
+				prior = mcpReadProbeLog(t, logPath)
+				mcpOnlyProbes(t, prior, append(slices.Clone(workspace), mcpTargetCalls(root)...))
 			}
 			script := &execxtest.Script{T: t, Calls: mcpActivationCalls(sharedRoot, scenario)}
 			want, wantErr := run.Activate(ctx, run.Env{RepoRoot: sharedRoot, Runner: script,
-				ClaudeSession: "aaaaaaaa-0000-4000-8000-000000000001"}, request)
+				ClaudeSession: "aaaaaaaa-0000-4000-8000-000000000001"}, sharedRequest)
 			script.AssertExhausted()
-			result, err := session.CallTool(ctx, &mcp.CallToolParams{Name: "orch_run_activate", Arguments: json.RawMessage(request)})
+			result, err := session.CallTool(ctx, &mcp.CallToolParams{Meta: mcpWorkspaceMeta(), Name: "orch_run_activate", Arguments: json.RawMessage(request)})
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -242,26 +223,21 @@ func mcpActivationExercise(t *testing.T, binary string) {
 					!reflect.DeepEqual(mcpDecoded(t, []byte(text.Text)), expected) {
 					t.Fatalf("engine/structured/text parity: shared=%+v MCP=%+v", want, result)
 				}
-				m, err := manifest.Parse(script.StdinAt(9))
+				m, err := manifest.Parse(script.StdinAt(11))
 				if err != nil || m.Objective != mustMCPActivationPlan(t).Issues[0].Objective || m.Executor.Model == "" {
 					t.Fatalf("shared engine activation audit lost approved work: %+v err=%v", m, err)
 				}
 				t.Log("shared engine = real-stdio structured = JSON text (independent run IDs); explicit approval and protocol-only stdout")
 			}
+			log := mcpReadProbeLog(t, logPath)
+			if want := string(prior) + mcpProbeLog(calls); string(log) != want {
+				t.Fatalf("activation commands escaped binding, retried or exceeded engine transcript:\ngot %s\nwant %s", log, want)
+			}
 			// Fresh status, tools and all resources still use their ordinary
 			// read-only reports, even after success or interrupted activation.
 			mcpActivationStateParity(t, ctx, binary, root, sharedRoot, session, request)
-			log, err := os.ReadFile(logPath)
-			if err != nil {
-				t.Fatal(err)
-			}
-			var expectedLog strings.Builder
-			for _, call := range calls {
-				expectedLog.WriteString(root + "\t" + call.Name + " " + strings.Join(call.Args, " ") + "\n")
-			}
-			if string(log) != expectedLog.String() {
-				t.Fatalf("activation commands escaped binding, retried or exceeded engine transcript:\ngot %s\nwant %s", log, expectedLog.String())
-			}
+			mcpOnlyProbes(t, mcpReadProbeLog(t, logPath)[len(log):], workspace)
+			log = mcpReadProbeLog(t, logPath)
 			mcpDiscover(t, ctx, session, root)
 			closeSession()
 			after, err := os.ReadFile(logPath)
@@ -305,7 +281,7 @@ func mcpActivationRefusals(t *testing.T, ctx context.Context, root string, sessi
 		delete(input, key)
 		mcpEvalError(t, mcpCall(t, ctx, session, root, "orch_run_activate", input), "")
 	}
-	for _, key := range []string{"plan_digest", "approved_by", "approved_at", "statement"} {
+	for _, key := range []string{"plan_digest", "target", "approved_by", "approved_at", "statement"} {
 		for _, value := range []any{nil, "", 1, []any{}} {
 			input := mcpDecoded(t, request).(map[string]any)
 			input["approval"].(map[string]any)[key] = value
@@ -336,11 +312,15 @@ func mcpActivationRefusals(t *testing.T, ctx context.Context, root string, sessi
 	unknownApproval := mcpDecoded(t, request).(map[string]any)
 	unknownApproval["approval"].(map[string]any)["unexpected"] = true
 	mcpEvalError(t, mcpCall(t, ctx, session, root, "orch_run_activate", unknownApproval), "")
+	unknownTarget := mcpDecoded(t, request).(map[string]any)
+	unknownTarget["approval"].(map[string]any)["target"].(map[string]any)["repo"] = "wrong"
+	mcpEvalError(t, mcpCall(t, ctx, session, root, "orch_run_activate", unknownTarget), "")
 	// Original bytes must reach DecodeActivation: the SDK's validation pass
-	// may otherwise normalize 2.0 or discard unknown nested fields.
+	// may otherwise normalize 3.0 or discard unknown nested fields.
 	for _, raw := range []string{
-		strings.Replace(string(request), `"schema_version":2`, `"schema_version":2.0`, 1),
-		strings.Replace(string(request), `"schema_version":2`, `"schema_version":99`, 1),
+		strings.Replace(string(request), `"schema_version":3`, `"schema_version":3.0`, 1),
+		strings.Replace(string(request), `"schema_version":3`, `"schema_version":2`, 1),
+		strings.Replace(string(request), `"schema_version":3`, `"schema_version":99`, 1),
 		strings.Replace(string(request), `"host":`, `"unexpected":true,"host":`, 1),
 		strings.Replace(string(request), `"id":`, `"unexpected":true,"id":`, 1),
 		strings.Replace(string(request), `"read_only":`, `"unexpected":true,"read_only":`, 1),
@@ -394,7 +374,7 @@ func mcpActivationRefusals(t *testing.T, ctx context.Context, root string, sessi
 	if err := os.Remove(filepath.Join(root, state.Path)); err != nil {
 		t.Fatal(err)
 	}
-	t.Log("strict outer/nested schema, explicit metadata/human-only approval, stale digests/configuration and active/held/corrupt lock refusals; no commands or writes")
+	t.Log("strict outer/nested schema, explicit metadata/human-only approval, stale digests/configuration and active/held/corrupt lock refusals; no mutations")
 }
 
 func mcpActivationRefusalParity(t *testing.T, ctx context.Context, root string, session *mcp.ClientSession, request []byte) {
@@ -424,7 +404,13 @@ func mcpActivationStateParity(t *testing.T, ctx context.Context, binary, root, s
 		t.Fatalf("fresh activation status differs: shared=%+v MCP=%+v", want, got)
 	}
 	if got.Run != nil {
-		if !reflect.DeepEqual(got.Run.Plan, want.Run.Plan) || !reflect.DeepEqual(got.Run.Issues, want.Run.Issues) ||
+		approval, err := run.DecodeActivation(request)
+		if err != nil || got.Run.Plan.Digest != approval.Approval.PlanDigest || got.Run.Plan.Digest == want.Run.Plan.Digest {
+			t.Fatalf("run lost its checkout-specific approval: %+v, %v", got.Run.Plan, err)
+		}
+		sharedPlan := want.Run.Plan
+		sharedPlan.Digest = got.Run.Plan.Digest // Distinct checkout identities are expected.
+		if !reflect.DeepEqual(got.Run.Plan, sharedPlan) || !reflect.DeepEqual(got.Run.Issues, want.Run.Issues) ||
 			got.Lock.RunID != got.Run.ID || got.Lock.Host != got.Run.Host {
 			t.Fatalf("activation lost approval/work/routing/phase/lock: shared=%+v MCP=%+v", want, got)
 		}

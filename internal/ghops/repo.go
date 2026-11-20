@@ -4,6 +4,8 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"net/url"
+	"regexp"
 	"strings"
 )
 
@@ -16,6 +18,40 @@ type Repo struct {
 	DefaultBranch string
 	// URL is the repository's web URL.
 	URL string
+}
+
+// RepoTarget is the canonical, case-insensitive GitHub repository selector.
+type RepoTarget struct {
+	Host       string `json:"host"`
+	Owner      string `json:"owner"`
+	Repository string `json:"repository"`
+}
+
+func (t RepoTarget) String() string { return t.Host + "/" + t.Owner + "/" + t.Repository }
+
+var (
+	repoHost = regexp.MustCompile(`^[a-z0-9](?:[a-z0-9.-]*[a-z0-9])?$`)
+	repoPart = regexp.MustCompile(`^[a-z0-9_.-]+$`)
+)
+
+func (t RepoTarget) Valid() bool {
+	validPart := func(s string) bool { return s != "." && s != ".." && repoPart.MatchString(s) }
+	return repoHost.MatchString(t.Host) && validPart(t.Owner) && validPart(t.Repository)
+}
+
+// Target derives an explicit gh selector from the observed repository, not a
+// configured remote URL or request parameter. The URL and slug must agree.
+func (r Repo) Target() (RepoTarget, error) {
+	u, err := url.Parse(r.URL)
+	owner, name, ok := strings.Cut(strings.ToLower(r.NameWithOwner), "/")
+	if err == nil && ok && u.Scheme == "https" && u.User == nil && u.RawQuery == "" &&
+		!u.ForceQuery && u.Fragment == "" && u.RawPath == "" && strings.EqualFold(u.Path, "/"+r.NameWithOwner) {
+		target := RepoTarget{Host: strings.ToLower(u.Host), Owner: owner, Repository: name}
+		if target.Valid() {
+			return target, nil
+		}
+	}
+	return RepoTarget{}, fmt.Errorf("%w: gh repo view did not return a verifiable GitHub host/owner/repository", ErrNoGitHubRepo)
 }
 
 // Repo resolves the GitHub repository from the checkout's remotes.

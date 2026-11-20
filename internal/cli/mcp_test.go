@@ -471,7 +471,14 @@ func mcpDiscover(t *testing.T, ctx context.Context, session *mcp.ClientSession, 
 			wantSchema = mcpDecoded(t, []byte(`{"type":"object","properties":{"plan":{"type":"object"}},"required":["plan"],"additionalProperties":false}`))
 		}
 		if activation {
-			wantSchema = mcpDecoded(t, []byte(`{"type":"object","properties":{"schema_version":{"type":"integer"},"plan":{"type":"object"},"approval":{"type":"object","properties":{"plan_digest":{"type":"string","minLength":1},"approved_by":{"type":"string","minLength":1},"approved_at":{"type":"string","minLength":1},"statement":{"type":"string","minLength":1}},"required":["plan_digest","approved_by","approved_at","statement"],"additionalProperties":false}},"required":["schema_version","plan","approval"],"additionalProperties":false}`))
+			wantSchema = mcpDecoded(t, []byte(`{"type":"object","properties":{"schema_version":{"type":"integer"},"plan":{"type":"object"},
+				"approval":{"type":"object","properties":{"plan_digest":{"type":"string","minLength":1},
+				"target":{"type":"object","properties":{"checkout":{"type":"string","minLength":1},"checkout_id":{"type":"string","minLength":1},
+				"github":{"type":"object","properties":{"host":{"type":"string","minLength":1},"owner":{"type":"string","minLength":1},"repository":{"type":"string","minLength":1}},"required":["host","owner","repository"],"additionalProperties":false}},
+				"required":["checkout","checkout_id","github"],"additionalProperties":false},
+				"approved_by":{"type":"string","minLength":1},"approved_at":{"type":"string","minLength":1},"statement":{"type":"string","minLength":1}},
+				"required":["plan_digest","target","approved_by","approved_at","statement"],"additionalProperties":false}},
+				"required":["schema_version","plan","approval"],"additionalProperties":false}`))
 			mcpActivationSchema(t, tool)
 		}
 		if dispatch {
@@ -491,7 +498,12 @@ func mcpDiscover(t *testing.T, ctx context.Context, session *mcp.ClientSession, 
 func mcpCall(t *testing.T, ctx context.Context, session *mcp.ClientSession, root, tool string, args any) *mcp.CallToolResult {
 	t.Helper()
 	before := mcpTree(t, root)
-	result, err := session.CallTool(ctx, &mcp.CallToolParams{Name: tool, Arguments: args})
+	params := &mcp.CallToolParams{Name: tool, Arguments: args}
+	switch tool {
+	case "orch_plan_gate", "orch_run_activate", "orch_run_dispatch":
+		params.Meta = mcpWorkspaceMeta()
+	}
+	result, err := session.CallTool(ctx, params)
 	if err != nil {
 		t.Fatal(err)
 	}

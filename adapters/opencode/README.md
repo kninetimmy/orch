@@ -11,11 +11,14 @@ Package **0.13.0** is prepared for the **v0.16.0 engine target**, not a publishe
 release or npm artifact. Latest published engine remains **v0.15.2**, whose
 OpenCode package was 0.12.0. Claude/Codex plugins and marketplace stay 0.13.0:
 their packaged executable guidance has not changed in this release range.
-Use compatible engine/adapter **content**, not labels alone. Current source
-uses state schema 6, approval/execution contract 2, Gate 3, Status 4, Activation 2,
+Use compatible engine/adapter **content**, not labels alone. The repair increment
+used state schema 6, approval/execution contract 2, Gate 3, Status 4, Activation 2,
 Dispatch 4, Review 3, Escalate 2, Block 2, Resume 2, Resolve Block 1 and CLI
-Repair 1; metrics documents remain schema 2. Repair does not migrate contract-1
-runs: finish with original content or abort and obtain fresh approval.
+Repair 1; metrics documents remain schema 2. Review #528 moved Review to 4 and
+approval/execution to 3. After #534, Gate 4 and Activation 3 use approval/execution
+contract 4; the remaining schemas above are unchanged. As with repair's
+contract-1 refusal, finish older runs with original content or abort and obtain
+fresh approval. Do not replace the engine/adapter mid-run.
 Native child reads require lookup-context **schema 2** and a Memhub build with
 explicit-root lookup-only serving, as detailed below.
 
@@ -49,6 +52,17 @@ Windows V2 `2.3.0` has also been observed in isolated smoke and installed
 candidate checks with the existing unverified-version advisory. Other admitted
 runtimes and platforms still need live qualification.
 Source smoke evidence is separate from verification of an installed adapter.
+
+## Optional Orch MCP registration
+
+Before #534, the three Delivery MCP endpoints relied on the server's fixed
+launch pin. After #534, `orch_plan_gate`, `orch_run_activate` and
+`orch_run_dispatch` require the invoking OpenCode session's independently
+verified location at the bound primary. A connected/readable MCP server is
+not proof of its caller's checkout. Follow the
+[project-scoped registration and stale-global-pin replacement guide](../../docs/mcp-status.md#opencode-project-registration);
+this setup is separate from the `orch.delivery` plugin and native child
+`orch_memhub` registration.
 
 ## Catalog safety and blast radius
 
@@ -88,7 +102,7 @@ them and are never copied into diagnostics.
 | Native setup pagination (`question.Pagination` / `PaginateOptions`) | Before, schema v1 emitted no page contract and a one-answer domain could reach a setup skill as a host-invalid one-option select. Schema v2 still emits one shared deterministic page sequence and the complete answer domain: every answer appears exactly once, each page has two or three mutually exclusive answer/navigation options, and a one-answer domain gains cancel. Claude and Codex continue to present those pages. OpenCode now presents the complete parent `options[]` in one native picker, in emitted order, without page actions or free text. Schema-v1 AnswerSets remain rejected, and the answer domain — including configure and configure-local's sole unavailable committed-value exception — is unchanged. |
 | `configure-local` catalog and environment reads | Before catalog-driven local setup, the interview needed only committed/local files. After, CLI step and apply calls rerun `initDetect` and pass its project catalog and environment snapshot to `NextConfigureLocalWithFacts`; the terminal local-write document keeps `Detection` nil because those facts are re-read, not serialized. |
 | OpenCode model-reference grammar | Before, native profiles allowed exactly `provider/model` and rejected another slash. After, only the first slash separates the provider; the non-empty model ID remains opaque and may contain slashes, so catalog references such as `lmstudio/google/gemma-4-26b-a4b` round-trip exactly. This grammar applies to every native OpenCode role, with or without a variant; Claude/Codex grammar and legacy v0.8.0 loading are unchanged. |
-| Plan `GateDoc` wire | Before, it remained schema v1 even after its selections could carry variant/no-variant fields, so a stale adapter could silently drop them. Schema v2 versioned all three selection shapes but bound approval only to the submitted plan. Now v3 retains those shapes and binds the effective contract, including engine criteria, all six host profiles, and execution settings. Adapters reject other result versions before reading a selection. |
+| Plan `GateDoc` wire | Before, it remained schema v1 even after its selections could carry variant/no-variant fields, so a stale adapter could silently drop them. Schema v2 versioned all three selection shapes but bound approval only to the submitted plan. Schema v3 retained those shapes and bound the effective contract, including engine criteria, all six host profiles, and execution settings. Schema v4 also binds and presents the verified checkout/GitHub target. Adapters still reject other result versions before reading a selection. |
 | `Dispatch` wire | Before, request/result stayed at v3 while executor/reviewer gained the new Selection shape. After, v4 preserves all three shapes, and a v3 request is rejected before dispatch mutation. |
 | `Escalate` wire | Before, request/result stayed at v1 while reroutes gained the new Selection shape. After, v2 preserves all three shapes, and a v1 request is rejected before escalation mutation. |
 | `Review` wire | Before, request/result stayed at v2, allowing a stale adapter to submit an effort-only approximation that failed later as a reviewer mismatch. After, v3 accepts exact effort/variant/no-variant selections, and v2 is rejected before reviewer comparison. |

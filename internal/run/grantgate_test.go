@@ -12,7 +12,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/kninetimmy/orch/internal/config"
 	"github.com/kninetimmy/orch/internal/execx"
 	"github.com/kninetimmy/orch/internal/execx/execxtest"
 	"github.com/kninetimmy/orch/internal/ghops"
@@ -88,26 +87,11 @@ func getGrant(t *testing.T, root, id string) *grant.Grant {
 // approvedBy and statement.
 func activationRequest(t *testing.T, root, planJSON, approvedBy, statement string) []byte {
 	t.Helper()
-	p, err := DecodePlan([]byte(planJSON))
-	if err != nil {
-		t.Fatal(err)
-	}
-	cfg, err := config.Load(root)
-	if err != nil {
-		t.Fatal(err)
-	}
-	contract, err := effectiveContract(p, cfg)
-	if err != nil {
-		t.Fatal(err)
-	}
-	digest, err := contentDigest(contract)
-	if err != nil {
-		t.Fatal(err)
-	}
+	digest, target := activationApproval(t, root, planJSON)
 	data, err := json.Marshal(map[string]any{
 		"schema_version": ActivationSchemaVersion,
 		"plan":           json.RawMessage(planJSON),
-		"approval":       map[string]any{"plan_digest": digest, "approved_by": approvedBy, "approved_at": "2026-07-11T12:00:00Z", "statement": statement},
+		"approval":       map[string]any{"plan_digest": digest, "target": target, "approved_by": approvedBy, "approved_at": "2026-07-11T12:00:00Z", "statement": statement},
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -223,13 +207,13 @@ func TestGrantActivationStops(t *testing.T) {
 				approver = c.approver(id)
 			}
 
-			script := &execxtest.Script{T: t}
+			script := &execxtest.Script{T: t, Calls: activationTargetCalls()}
 			env := Env{RepoRoot: root, Runner: muxRunner{git: execx.Local{}, gh: script}, Now: fixedNow}
 			_, err := Activate(context.Background(), env, activationRequest(t, root, plan, approver, GrantApprovalStatement))
 			if !errors.Is(err, ErrGrantStop) || !strings.Contains(err.Error(), c.want) {
 				t.Fatalf("err = %v, want a grant stop naming %q", err, c.want)
 			}
-			script.AssertExhausted() // nothing reached GitHub
+			script.AssertExhausted() // read-only target resolution, no GitHub writes
 			assertNoActivationArtifacts(t, root)
 			if before != nil && !reflect.DeepEqual(getGrant(t, root, id), before) {
 				t.Error("a refused grant activation changed the grant")

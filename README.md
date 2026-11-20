@@ -537,6 +537,16 @@ inspect fresh state and use normal engine recovery, never automatically retry.
 Building source does not upgrade an installed MCP server or qualify a live host.
 See the guide's dispatch section for the exact effects, tests and blast radius.
 
+**Before #534:** the three MCP Delivery endpoints trusted the server's checkout
+pin, and the schema-3 gate/schema-2 activation handoff did not bind that
+checkout or the GitHub destination to approval. **After #534:** OpenCode MCP
+gate, activation and dispatch verify the invoking session independently at the
+bound primary. Gate 4 and Activation 3 bind the verified primary checkout and
+GitHub host/owner/repository; activation checks both live and targets its GitHub
+operations explicitly. Approval contract 4 requires fresh approval for a new
+run, not migration of an active one. Register OpenCode's checkout pin
+[at project scope](docs/mcp-status.md#opencode-project-registration), not globally.
+
 Previously `metrics` only accepted its read-only report form. That form still
 works; `metrics record` now accepts durable observation JSON. See the
 [observation contract and compatibility notes](docs/metric-observations.md).

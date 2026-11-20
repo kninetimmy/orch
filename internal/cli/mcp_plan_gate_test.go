@@ -10,6 +10,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"reflect"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -54,7 +55,7 @@ func mcpPlanGateSchema(t *testing.T, tool *mcp.Tool) {
 	if !ok {
 		t.Fatalf("gate output properties: %#v", schema)
 	}
-	for _, field := range []string{"schema_version", "plan_digest", "plan_title", "host", "config_revision", "config_overrides", "merge_strategy", "execution", "memhub", "ci", "issues"} {
+	for _, field := range []string{"schema_version", "plan_digest", "plan_title", "host", "target", "config_revision", "config_overrides", "merge_strategy", "execution", "memhub", "ci", "issues"} {
 		if properties[field] == nil {
 			t.Fatalf("gate output schema omitted %s: %#v", field, schema)
 		}
@@ -67,6 +68,7 @@ func mcpPlanGateSchema(t *testing.T, tool *mcp.Tool) {
 func mcpPlanGateExercise(t *testing.T, binary string) {
 	t.Helper()
 	root, cwd := t.TempDir(), t.TempDir()
+	root = mcpCanonical(t, root)
 	allHosts := validBothHostsTOML + validOpenCodeTOML[strings.Index(validOpenCodeTOML, "[hosts.opencode"):]
 	writeConfigOnly(t, root, allHosts)
 	writeConfigOnly(t, cwd, "invalid launching configuration [")
@@ -78,12 +80,19 @@ func mcpPlanGateExercise(t *testing.T, binary string) {
 	ctx, cancel := context.WithTimeout(t.Context(), 60*time.Second)
 	defer cancel()
 	cwdBefore := mcpTree(t, cwd)
-	session, closeSession := mcpConnect(t, ctx, binary, cwd, root, "--repo", root)
+	stateDir := mcpMatchingHost(t, os.Getpid(), root)
+	calls := append(mcpWorkspaceCalls(root, stateDir), mcpTargetCalls(root)...)
+	bin := mcpProbeBin(t, "git", "gh", "opencode2")
+	log := filepath.Join(t.TempDir(), "commands.log")
+	fixture := mcpProbeFile(t, root, log, calls)
+	cmd := mcpProcess(ctx, binary, cwd, "mcp", "--repo", root)
+	cmd.Env = append(cmd.Env, "PATH="+bin, "ORCH_TEST_DOCTOR_FIXTURE="+fixture)
+	session, closeSession := mcpConnectCommand(t, ctx, cmd, root)
 	mcpDiscover(t, ctx, session, root)
 	plan := mcpGatePlan()
 	check := func() *run.GateDoc {
 		t.Helper()
-		return mcpPlanGateParity(t, ctx, binary, root, session, mcpGateJSON(t, plan))
+		return mcpPlanGateParity(t, ctx, binary, root, session, bin, fixture, mcpGateJSON(t, plan))
 	}
 	for _, host := range []string{"claude", "codex", "opencode"} {
 		plan.Host = host
@@ -157,7 +166,7 @@ max_subagents = 7
 		strings.Replace(string(raw), `"wave":1`, `"wave":"one"`, 1),
 		strings.Replace(string(raw), `"tests_ci_does_not_run":["local check"]`, `"tests_ci_does_not_run":["undeclared"]`, 1),
 	} {
-		if doc := mcpPlanGateParity(t, ctx, binary, root, session, []byte(invalid)); doc != nil {
+		if doc := mcpPlanGateParity(t, ctx, binary, root, session, bin, fixture, []byte(invalid)); doc != nil {
 			t.Fatalf("invalid nested plan succeeded: %s", invalid)
 		}
 	}
@@ -176,7 +185,8 @@ max_subagents = 7
 	if err := os.Remove(local); err != nil {
 		t.Fatal(err)
 	}
-	// PATH is empty for both real processes: a required missing memhub must
+	// PATH contains only the fake Git/GitHub/OpenCode commands in both processes:
+	// a required missing memhub must
 	// fail closed; best-effort must retain the same explicit probe failure.
 	for _, mode := range []string{"required", "best-effort"} {
 		mcpWrite(t, committed, []byte(strings.Replace(allHosts, `mode = "off"`, `mode = "`+mode+`"`, 1)))
@@ -226,10 +236,11 @@ max_subagents = 7
 	closeSession()
 }
 
-func mcpPlanGateParity(t *testing.T, ctx context.Context, binary, root string, session *mcp.ClientSession, plan []byte) *run.GateDoc {
+func mcpPlanGateParity(t *testing.T, ctx context.Context, binary, root string, session *mcp.ClientSession, bin, fixture string, plan []byte) *run.GateDoc {
 	t.Helper()
 	before := mcpTree(t, root)
 	cmd := mcpProcess(ctx, binary, root, "run", "plan")
+	cmd.Env = append(cmd.Env, "PATH="+bin, "ORCH_TEST_DOCTOR_FIXTURE="+fixture)
 	cmd.Stdin = bytes.NewReader(plan)
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout, cmd.Stderr = &stdout, &stderr
@@ -308,7 +319,10 @@ func TestMCPPlanGateMemhubParity(t *testing.T) {
 				}
 			}
 			// Exact ordered calls for CLI then MCP; no real memhub is reachable.
-			script := &execxtest.Script{T: t, Calls: append(append([]execxtest.Call{}, calls...), calls...)}
+			stateDir := mcpMatchingHost(t, os.Getppid(), root)
+			cliCalls := append(mcpTargetCalls(root), calls...)
+			mcpCalls := append(mcpWorkspaceCalls(root, stateDir), cliCalls...)
+			script := &execxtest.Script{T: t, Calls: slices.Concat(cliCalls, mcpCalls)}
 			env.Runner = script
 			plan := mcpGateJSON(t, mcpGatePlan())
 			env.Stdin = bytes.NewReader(plan)

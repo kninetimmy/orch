@@ -30,16 +30,20 @@ func TestGateDigestUnchangedForAPlanListingNoFixes(t *testing.T) {
 		t.Fatal(err)
 	}
 	for plan, want := range map[string]string{validPlanJSON(): preFixesValidGateDigest, twoIssuePlanJSON(): preFixesTwoIssueGateDigest} {
-		doc, err := Plan(context.Background(), Env{RepoRoot: root}, []byte(plan))
+		doc, err := planInGateFixture(t, root, plan)
 		if err != nil {
 			t.Fatal(err)
 		}
-		legacy, err := effectiveContract(mustDecodePlan(t, plan), cfg)
+		legacy, err := effectiveContract(mustDecodePlan(t, plan), cfg, doc.Target)
 		if err != nil {
 			t.Fatal(err)
 		}
 		legacy.Execution.Version = 1
-		digest, err := contentDigest(legacy)
+		digest, err := contentDigest(struct {
+			Plan      *PlanDoc        `json:"plan"`
+			Execution ExecutionConfig `json:"execution"`
+			Issues    []GateIssue     `json:"issues"`
+		}{legacy.Plan, legacy.Execution, legacy.Issues})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -47,7 +51,7 @@ func TestGateDigestUnchangedForAPlanListingNoFixes(t *testing.T) {
 			t.Errorf("contract-v1 plan_digest = %q, want the pre-fixes digest %q", digest, want)
 		}
 		if doc.PlanDigest == want {
-			t.Error("contract-v2 gate reused a contract-v1 approval digest")
+			t.Error("current gate reused a contract-v1 approval digest")
 		}
 		gateJSON, err := json.Marshal(doc)
 		if err != nil {
@@ -73,14 +77,14 @@ func fixesPlanJSON(t *testing.T, fixes ...int) string {
 
 func TestPlanGateShowsFixes(t *testing.T) {
 	root := setupRepo(t, testConfigTOML)
-	doc, err := Plan(context.Background(), Env{RepoRoot: root}, []byte(fixesPlanJSON(t, 12, 7)))
+	doc, err := planInGateFixture(t, root, fixesPlanJSON(t, 12, 7))
 	if err != nil {
 		t.Fatalf("Plan: %v", err)
 	}
 	if got := doc.Issues[0].Fixes; len(got) != 2 || got[0] != 12 || got[1] != 7 {
 		t.Errorf("gate fixes = %v, want [12 7]", got)
 	}
-	ordinary, err := Plan(context.Background(), Env{RepoRoot: root}, []byte(validPlanJSON()))
+	ordinary, err := planInGateFixture(t, root, validPlanJSON())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -93,7 +97,7 @@ func TestPlanGateShowsFixes(t *testing.T) {
 // including the fixes check, then the given tail.
 func activateWithFixes(t *testing.T, root string, prCall execxtest.Call, tail ...execxtest.Call) (*execxtest.Script, error) {
 	t.Helper()
-	calls := []execxtest.Call{ghOpenCall(), ghRepoViewCall("main"), prCall}
+	calls := append(activationTargetCalls(), activationRepoCall(prCall))
 	calls = append(calls, tail...)
 	script := &execxtest.Script{T: t, Calls: calls}
 	env := Env{RepoRoot: root, Runner: muxRunner{git: execx.Local{}, gh: script}, Now: fixedNow}

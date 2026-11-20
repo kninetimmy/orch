@@ -82,3 +82,24 @@ func TestRepoMissingNameWithOwner(t *testing.T) {
 		t.Fatalf("err = %v, want missing nameWithOwner error", err)
 	}
 }
+
+func TestRepoTargetRequiresConsistentCanonicalIdentity(t *testing.T) {
+	repo := Repo{NameWithOwner: "Octo/Project.One", URL: "https://GitHub.Example.NET/OCTO/Project.One"}
+	target, err := repo.Target()
+	if err != nil || target.String() != "github.example.net/octo/project.one" {
+		t.Fatalf("enterprise selector = %q, %v", target, err)
+	}
+	for _, address := range []string{
+		"", "/Octo/Project.One", "https://github.example.net/elsewhere/Project.One",
+		"https://github.example.net/Octo/Project.One?secret=not-for-output",
+		"https://credential@github.example.net/Octo/Project.One",
+		"https://github.example.net/Octo/%50roject.One",
+		"https://github.example.net/Octo/Project.One/issues",
+	} {
+		repo.URL = address
+		target, err := repo.Target()
+		if !errors.Is(err, ErrNoGitHubRepo) || target != (RepoTarget{}) || strings.Contains(err.Error(), "not-for-output") || strings.Contains(err.Error(), "credential") {
+			t.Fatalf("unverifiable repository returned target %q or unsafe error: %v", target, err)
+		}
+	}
+}

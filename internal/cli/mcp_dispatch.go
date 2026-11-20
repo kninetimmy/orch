@@ -15,7 +15,7 @@ import (
 func addMCPDispatch(server *mcp.Server, env Env, root string) {
 	mcp.AddTool(server, &mcp.Tool{
 		Name:        "orch_run_dispatch",
-		Description: "Dispatch one approved worktree-ready issue through the bound repository's shared engine (orch run dispatch), returning its complete schema-4 execution brief, not an agent launch or issue-context inspection. Non-idempotent, mutating and externally effectful: may fetch/fast-forward Git, set GitHub in-progress, save phase and record existing sessions/metrics. Partial failures or cancellation can leave effects; inspect fresh state and use normal engine recovery, never automatically retry. Does not spawn an agent, choose a model, grant approval or perform PR/review/merge operations.",
+		Description: "Dispatch one approved worktree-ready issue through the bound repository's shared engine (orch run dispatch), returning its complete schema-4 execution brief, not an agent launch or issue-context inspection. Requires a verified OpenCode session at the bound primary checkout. Non-idempotent, mutating and externally effectful: may fetch/fast-forward Git, set GitHub in-progress, save phase and record existing sessions/metrics. Partial failures or cancellation can leave effects; inspect fresh state and use normal engine recovery, never automatically retry. Does not spawn an agent, choose a model, grant approval or perform PR/review/merge operations.",
 		InputSchema: json.RawMessage(`{"type":"object","properties":{"schema_version":{"type":"integer","enum":[4]},"issue_number":{"type":"integer","minimum":1}},"required":["schema_version","issue_number"],"additionalProperties":false}`),
 		Annotations: &mcp.ToolAnnotations{DestructiveHint: new(true), OpenWorldHint: new(true)},
 	}, func(ctx context.Context, req *mcp.CallToolRequest, _ any) (*mcp.CallToolResult, *run.DispatchResult, error) {
@@ -37,6 +37,12 @@ func addMCPDispatch(server *mcp.Server, env Env, root string) {
 		}
 		var doc *run.DispatchResult
 		err := withDeliveryMutation(root, func() error {
+			if err := requireMCPWorkspace(ctx, req, env.Runner, root); err != nil {
+				return err
+			}
+			if err := requireMCPDispatchPrimary(ctx, env.Runner, root); err != nil {
+				return err
+			}
 			var err error
 			doc, err = run.Dispatch(ctx, run.Env{
 				RepoRoot: root, Runner: env.Runner, ClaudeSession: os.Getenv(grant.SessionEnv),

@@ -1307,7 +1307,7 @@ func TestSelectionWireRequestVersionsRejectPrevious(t *testing.T) {
 
 func TestSelectionWireSchemaVersions(t *testing.T) {
 	got := []int{StatusSchemaVersion, GateSchemaVersion, DispatchSchemaVersion, EscalateSchemaVersion, ReviewSchemaVersion}
-	want := []int{4, 3, 4, 2, 4}
+	want := []int{4, 4, 4, 2, 4}
 	if !slices.Equal(got, want) {
 		t.Errorf("Selection wire versions = %v, want %v", got, want)
 	}

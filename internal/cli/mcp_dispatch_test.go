@@ -7,10 +7,9 @@ import (
 	"errors"
 	"io"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"reflect"
-	"runtime"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -70,10 +69,7 @@ func mcpDispatchFixture(t *testing.T, root, host string) *state.State {
 	plan.Issues[0].AcceptanceCriteria = []string{"Keep order and whitespace.\nSecond line.", "No agent launch."}
 	plan.Issues[0].RequiredTests = []string{"go test ./...", "approved local-only check"}
 	plan.Issues[0].TestsCIDoesNotRun = []string{"approved local-only check"}
-	gate, err := run.Plan(t.Context(), run.Env{RepoRoot: root}, mcpEvalBytes(t, plan))
-	if err != nil {
-		t.Fatal(err)
-	}
+	gate := mcpFixtureGate(t, root, mcpEvalBytes(t, plan))
 	digest, err := gate.Execution.Digest()
 	if err != nil {
 		t.Fatal(err)
@@ -134,24 +130,7 @@ func mcpDispatchCalls(root, scenario string) []execxtest.Call {
 
 func mcpDispatchExercise(t *testing.T, binary string) {
 	t.Helper()
-	probes := t.TempDir()
-	suffix := ""
-	if runtime.GOOS == "windows" {
-		suffix = ".exe"
-	}
-	probe := filepath.Join(probes, "git"+suffix)
-	build := exec.CommandContext(t.Context(), "go", "build", "-o", probe, "./testdata/doctor-probe")
-	if out, err := build.CombinedOutput(); err != nil {
-		t.Fatalf("build isolated dispatch commands: %v: %s", err, out)
-	}
-	data, err := os.ReadFile(probe)
-	if err != nil {
-		t.Fatal(err)
-	}
-	mcpWrite(t, filepath.Join(probes, "gh"+suffix), data)
-	if err := os.Chmod(filepath.Join(probes, "gh"+suffix), 0o755); err != nil {
-		t.Fatal(err)
-	}
+	probes := mcpProbeBin(t, "git", "gh", "opencode2")
 	for _, scenario := range []string{"success and contention", "claude profiles", "fetch failure", "fast-forward failure", "partial external failure", "post-save metrics failure"} {
 		t.Run(scenario, func(t *testing.T) {
 			root, sharedRoot, cwd := t.TempDir(), t.TempDir(), t.TempDir()
@@ -183,16 +162,10 @@ func mcpDispatchExercise(t *testing.T, binary string) {
 					mcpWrite(t, filepath.Join(repo, ".orchestrator", "metrics", s.Run.ID+".json"), []byte("{corrupt metrics"))
 				}
 			}
-			calls := mcpDispatchCalls(root, scenario)
-			fixture, logPath := filepath.Join(t.TempDir(), "commands.json"), filepath.Join(t.TempDir(), "commands.log")
-			responses := map[string]any{}
-			for _, call := range calls {
-				responses[call.Name+" "+strings.Join(call.Args, " ")] = struct {
-					execx.Result
-					Dir string
-				}{execx.Result{Stdout: call.Stdout, Stderr: call.Stderr, ExitCode: call.Exit}, call.Dir}
-			}
-			mcpWrite(t, fixture, mcpEvalBytes(t, map[string]any{"Root": root, "Log": logPath, "Probes": responses}))
+			workspace := append(mcpWorkspaceCalls(root, mcpMatchingHost(t, os.Getpid(), root)), mcpPrimaryCalls(root)...)
+			calls := append(slices.Clone(workspace), mcpDispatchCalls(root, scenario)...)
+			logPath := filepath.Join(t.TempDir(), "commands.log")
+			fixture := mcpProbeFile(t, root, logPath, calls)
 			ctx, cancel := context.WithTimeout(t.Context(), 60*time.Second)
 			defer cancel()
 			cmd := mcpProcess(ctx, binary, cwd, "mcp", "--repo", root)
@@ -200,6 +173,10 @@ func mcpDispatchExercise(t *testing.T, binary string) {
 			session, closeSession := mcpConnectCommand(t, ctx, cmd, root)
 			cwdBefore := mcpTree(t, cwd)
 			mcpDiscover(t, ctx, session, root)
+			if _, err := os.Stat(logPath); !os.IsNotExist(err) {
+				t.Fatalf("initialization/discovery ran commands: %v", err)
+			}
+			var prior []byte
 			if scenario == "success and contention" {
 				lock, err := lockfile.AcquireMutation(root)
 				if err != nil {
@@ -212,20 +189,22 @@ func mcpDispatchExercise(t *testing.T, binary string) {
 				}()
 				mcpDispatchInvalidInputs(t, ctx, root, session)
 				mcpMetricsOmittedArguments(t, ctx, binary, cwd, root)
+				if _, err := os.Stat(logPath); !os.IsNotExist(err) {
+					t.Fatalf("invalid inputs ran commands: %v", err)
+				}
 				if err := lock.Release(); err != nil {
 					t.Fatal(err)
 				}
 				mcpDispatchPrerequisites(t, ctx, root, session, st)
-			}
-			if _, err := os.Stat(logPath); !os.IsNotExist(err) {
-				t.Fatalf("initialization/discovery/refusals ran commands: %v", err)
+				prior = mcpReadProbeLog(t, logPath)
+				mcpOnlyProbes(t, prior, workspace)
 			}
 			mcpIssueContextParity(t, ctx, binary, root, session, 71)
 			script := &execxtest.Script{T: t, Calls: mcpDispatchCalls(sharedRoot, scenario)}
 			want, wantErr := run.Dispatch(ctx, run.Env{RepoRoot: sharedRoot, Runner: script, ClaudeSession: mcpDispatchSession}, []byte(mcpDispatchRequest))
 			script.AssertExhausted()
 			invoke := func() (*mcp.CallToolResult, error) {
-				return session.CallTool(ctx, &mcp.CallToolParams{Name: "orch_run_dispatch", Arguments: json.RawMessage(mcpDispatchRequest)})
+				return session.CallTool(ctx, &mcp.CallToolParams{Meta: mcpWorkspaceMeta(), Name: "orch_run_dispatch", Arguments: json.RawMessage(mcpDispatchRequest)})
 			}
 			var result *mcp.CallToolResult
 			var callErr error
@@ -250,8 +229,8 @@ func mcpDispatchExercise(t *testing.T, binary string) {
 				if mcpTree(t, root) != before {
 					t.Fatal("contending dispatch mutated before acquiring the serializer")
 				}
-				if _, err := os.Stat(logPath); !os.IsNotExist(err) {
-					t.Fatalf("contending dispatch ran commands: %v", err)
+				if current := mcpReadProbeLog(t, logPath); !bytes.Equal(current, prior) {
+					t.Fatal("contending dispatch ran commands before acquiring the serializer")
 				}
 				// Inspection is still unlocked while the mutator waits.
 				mcpResourceReports(t, ctx, root, session, 71)
@@ -264,6 +243,10 @@ func mcpDispatchExercise(t *testing.T, binary string) {
 			}
 			if callErr != nil {
 				t.Fatal(callErr)
+			}
+			log := mcpReadProbeLog(t, logPath)
+			if want := string(prior) + mcpProbeLog(calls); string(log) != want {
+				t.Fatalf("dispatch escaped binding, retried or exceeded the expected transcript:\ngot %s\nwant %s", log, want)
 			}
 			if wantErr != nil {
 				expected := strings.ReplaceAll(wantErr.Error(), sharedRoot, root)
@@ -326,16 +309,9 @@ func mcpDispatchExercise(t *testing.T, binary string) {
 			mcpResourceReports(t, ctx, root, session, 71)
 			mcpDiscover(t, ctx, session, root)
 			closeSession()
-			log, err := os.ReadFile(logPath)
-			if err != nil {
-				t.Fatal(err)
-			}
-			var expectedLog strings.Builder
-			for _, call := range calls {
-				expectedLog.WriteString(call.Dir + "\t" + call.Name + " " + strings.Join(call.Args, " ") + "\n")
-			}
-			if string(log) != expectedLog.String() || mcpTree(t, cwd) != cwdBefore {
-				t.Fatalf("dispatch escaped binding, retried, launched extra commands or mutated cwd:\ngot %s\nwant %s", log, expectedLog.String())
+			mcpOnlyProbes(t, mcpReadProbeLog(t, logPath)[len(log):], workspace)
+			if mcpTree(t, cwd) != cwdBefore {
+				t.Fatal("dispatch mutated the launching checkout")
 			}
 		})
 	}
@@ -516,7 +492,8 @@ func TestMCPDispatchCancellation(t *testing.T) {
 	}
 	env.RepoRoot = root
 	mcpDispatchFixture(t, env.RepoRoot, "opencode")
-	script := &execxtest.Script{T: t, Calls: mcpDispatchCalls(env.RepoRoot, "")}
+	workspace := append(mcpWorkspaceCalls(root, mcpMatchingHost(t, os.Getppid(), root)), mcpPrimaryCalls(root)...)
+	script := &execxtest.Script{T: t, Calls: append(workspace, mcpDispatchCalls(root, "")...)}
 	entered, canceled := make(chan struct{}), make(chan struct{})
 	env.Runner = mcpCancelDispatchRunner{script, entered, canceled}
 	input, clientWriter := io.Pipe()
@@ -543,7 +520,7 @@ func TestMCPDispatchCancellation(t *testing.T) {
 	var result *mcp.CallToolResult
 	var callErr error
 	go func() {
-		result, callErr = session.CallTool(callCtx, &mcp.CallToolParams{Name: "orch_run_dispatch", Arguments: json.RawMessage(mcpDispatchRequest)})
+		result, callErr = session.CallTool(callCtx, &mcp.CallToolParams{Meta: mcpWorkspaceMeta(), Name: "orch_run_dispatch", Arguments: json.RawMessage(mcpDispatchRequest)})
 		close(finished)
 	}()
 	select {

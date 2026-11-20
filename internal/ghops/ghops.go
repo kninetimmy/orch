@@ -50,6 +50,7 @@ var ghEnv = []string{
 type GH struct {
 	r    execx.Runner
 	root string
+	repo string // Explicit selector on a pinned handle only.
 }
 
 // Open binds to the repository whose primary checkout root is
@@ -79,9 +80,28 @@ func Open(ctx context.Context, r execx.Runner, repoRoot string) (*GH, error) {
 // Root returns the canonical primary-checkout root.
 func (g *GH) Root() string { return g.root }
 
+// ForTarget makes a copy pinned to a verified Repo.Target. It never changes the
+// original handle's checkout-relative resolution.
+func (g *GH) ForTarget(target RepoTarget) (*GH, error) {
+	if !target.Valid() {
+		return nil, fmt.Errorf("%w: invalid explicit GitHub repository target", ErrNoGitHubRepo)
+	}
+	pinned := *g
+	pinned.repo = target.String()
+	return &pinned, nil
+}
+
 // run executes gh with the fail-closed environment and returns the
 // raw result; callers that treat non-zero exit as data use this.
 func (g *GH) run(ctx context.Context, stdin io.Reader, args ...string) (execx.Result, error) {
+	if g.repo != "" {
+		switch args[0] {
+		case "label", "issue", "pr":
+			args = append(args, "--repo", g.repo)
+		default:
+			return execx.Result{}, fmt.Errorf("gh %s is not supported on a repo-pinned handle", args[0])
+		}
+	}
 	return g.r.Run(ctx, execx.Cmd{Name: "gh", Args: args, Dir: g.root, Env: ghEnv, Stdin: stdin})
 }
 
