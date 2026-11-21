@@ -156,3 +156,34 @@ func TestWindowsReleaseRejectsIncompleteTerminalEvidence(t *testing.T) {
 		})
 	}
 }
+
+func TestWindowsReleaseRejectsAmbiguousTerminalEvidence(t *testing.T) {
+	const session = `{"id":"sesIdle","location":{"directory":TARGET}}`
+	const running = `"id":"pty","sessionID":"sesIdle","cwd":ROOT,"status":"running"`
+	for _, tc := range []struct {
+		name, page, terminals string
+	}{
+		{"duplicate page data", `{"data":[` + session + `],"Data":[],"cursor":{}}`, ""},
+		{"duplicate cursor", `{"data":[` + session + `],"cursor":{"next":"A"},"cursor":{"next":""}}`, ""},
+		{"folded next cursor", `{"data":[` + session + `],"cursor":{"next":"A","NEXT":""}}`, ""},
+		{"escaped owner directory", `{"data":[{"id":"sesIdle","location":{"directory":TARGET,"\u0064irectory":ROOT}}],"cursor":{}}`,
+			`{"data":[{` + running + `}]}`},
+		{"duplicate terminal data", "", `{"data":[{` + running + `}],"data":[]}`},
+		{"duplicate terminal status", "", `{"data":[{` + running + `,"status":"exited"}]}`},
+		{"Unicode folded terminal status", "", `{"data":[{` + running + `,"\u017Ftatus":"exited"}]}`},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			f := newReleaseFixture(t)
+			paths := strings.NewReplacer("ROOT", releaseJSON(f.root), "TARGET", releaseJSON(f.target))
+			if tc.page != "" {
+				f.bodies["/api/session?limit=100"] = paths.Replace(tc.page)
+			}
+			if tc.terminals != "" {
+				f.bodies["/api/experimental/session/sesIdle/terminal"] = paths.Replace(tc.terminals)
+			}
+			if err := f.run(t); err == nil || !strings.Contains(err.Error(), "malformed host response") || f.deletes != 0 {
+				t.Fatalf("expected ambiguous evidence refusal before eviction: err=%v, deletes=%d", err, f.deletes)
+			}
+		})
+	}
+}

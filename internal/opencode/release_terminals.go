@@ -1,7 +1,9 @@
 package opencode
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"fmt"
 	"net/url"
 	"path/filepath"
@@ -9,6 +11,7 @@ import (
 	"strings"
 	"sync"
 	"sync/atomic"
+	"unicode"
 )
 
 const windowsTerminalReads = 8
@@ -37,7 +40,7 @@ func releaseActivity(ctx context.Context, request func(context.Context, string, 
 		if cursor != "" {
 			query.Set("cursor", cursor)
 		}
-		if err := request(ctx, "get", "/api/session?"+query.Encode(), &response); err != nil {
+		if err := request(ctx, "get", "/api/session?"+query.Encode(), releaseTerminalEvidence(&response)); err != nil {
 			return err
 		}
 		if response.Data == nil || response.Cursor == nil || len(response.Data) > 100 {
@@ -110,7 +113,7 @@ func releaseSessionTerminals(ctx context.Context, request func(context.Context, 
 			Status    string `json:"status"`
 		} `json:"data"`
 	}
-	if err := request(ctx, "get", "/api/experimental/session/"+url.PathEscape(session.ID)+"/terminal", &terminals); err != nil {
+	if err := request(ctx, "get", "/api/experimental/session/"+url.PathEscape(session.ID)+"/terminal", releaseTerminalEvidence(&terminals)); err != nil {
 		return err
 	}
 	if terminals.Data == nil || len(terminals.Data) > 1000 {
@@ -142,4 +145,69 @@ func releaseSessionTerminals(ctx context.Context, request func(context.Context, 
 		}
 	}
 	return nil
+}
+
+// Use this only for the Windows session-page and persistent-terminal lists,
+// not for other host operations or the non-Windows release path.
+func releaseTerminalEvidence(out any) any {
+	if runtime.GOOS == "windows" {
+		return &windowsReleaseEvidence{out: out}
+	}
+	return out
+}
+
+type windowsReleaseEvidence struct{ out any }
+
+func (e *windowsReleaseEvidence) UnmarshalJSON(data []byte) error {
+	// json.Unmarshal has already checked syntax and nesting. Check names before
+	// the typed decode can merge or overwrite conflicting evidence.
+	dec := json.NewDecoder(bytes.NewReader(data))
+	dec.UseNumber()
+	if err := checkReleaseEvidenceNames(dec); err != nil {
+		return err
+	}
+	return json.Unmarshal(data, e.out)
+}
+
+func checkReleaseEvidenceNames(dec *json.Decoder) error {
+	token, err := dec.Token()
+	if err != nil || (token != json.Delim('{') && token != json.Delim('[')) {
+		return err
+	}
+	var seen map[string]bool
+	if token == json.Delim('{') {
+		seen = make(map[string]bool)
+	}
+	for dec.More() {
+		if seen != nil {
+			key, err := dec.Token()
+			if err != nil {
+				return err
+			}
+			name, ok := key.(string)
+			if !ok {
+				return fmt.Errorf("invalid inventory member name")
+			}
+			// Match encoding/json's Unicode simple folding, not ToLower
+			// (for example, both S and ſ match the s in "status").
+			folded := strings.Map(func(r rune) rune {
+				for {
+					next := unicode.SimpleFold(r)
+					if next <= r {
+						return next
+					}
+					r = next
+				}
+			}, name)
+			if seen[folded] {
+				return fmt.Errorf("ambiguous inventory member name")
+			}
+			seen[folded] = true
+		}
+		if err := checkReleaseEvidenceNames(dec); err != nil {
+			return err
+		}
+	}
+	_, err = dec.Token()
+	return err
 }

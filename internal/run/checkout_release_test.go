@@ -61,17 +61,20 @@ func (h *checkoutHost) Run(ctx context.Context, cmd execx.Cmd) (execx.Result, er
 		return res, err
 	}
 	if cmd.Name != "opencode2" {
-		h.t.Fatalf("unexpected non-Git command: %+v", cmd)
+		h.t.Errorf("unexpected non-Git command: %+v", cmd)
+		return execx.Result{}, fmt.Errorf("unexpected fixture command")
 	}
 	if slices.Equal(cmd.Args, []string{"--version"}) {
 		return execx.Result{Stdout: "opencode v2.3.0"}, nil
 	}
 	if len(cmd.Args) != 3 || cmd.Args[0] != "api" || cmd.Dir != h.root {
-		h.t.Fatalf("unexpected host command: %+v", cmd)
+		h.t.Errorf("unexpected host command: %+v", cmd)
+		return execx.Result{}, fmt.Errorf("unexpected fixture command")
 	}
 	endpoint, err := url.Parse(cmd.Args[2])
 	if err != nil {
-		h.t.Fatal(err)
+		h.t.Error(err)
+		return execx.Result{}, err
 	}
 	if h.beforeAPI != nil {
 		h.beforeAPI(endpoint)
@@ -80,7 +83,8 @@ func (h *checkoutHost) Run(ctx context.Context, cmd execx.Cmd) (execx.Result, er
 	body := func(value any) (execx.Result, error) {
 		data, err := json.Marshal(value)
 		if err != nil {
-			h.t.Fatal(err)
+			h.t.Error(err)
+			return execx.Result{}, err
 		}
 		return execx.Result{Stdout: string(data)}, nil
 	}
@@ -162,8 +166,8 @@ func (h *checkoutHost) Run(ctx context.Context, cmd execx.Cmd) (execx.Result, er
 		}
 		return execx.Result{Stdout: `{"data":[]}`}, nil
 	}
-	h.t.Fatalf("unexpected host endpoint: %+v", cmd)
-	return execx.Result{}, nil
+	h.t.Errorf("unexpected host endpoint: %+v", cmd)
+	return execx.Result{}, fmt.Errorf("unexpected fixture endpoint")
 }
 
 func TestOpenCodeCleanupDoesNotReactivateReleasedCheckouts(t *testing.T) {
