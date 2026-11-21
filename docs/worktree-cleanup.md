@@ -173,12 +173,18 @@ terminal domains are separate; checking one does not cover the other.
 Every host release attempt has a two-minute deadline (external runner cancellation
 also retains its existing bounded pipe-wait allowance). Inventories are capped:
 1,024 loaded locations; 1,000 active sessions, running jobs or terminals per
-response; ten session pages of at most 100 entries. Malformed, repeated,
-oversized, unavailable, wrong-root or unsupported evidence fails closed, as
-does unsuccessful disposal or a failed post-disposal observation. A larger
-session history needs a future complete host inventory API, not a partial
-"idle" conclusion. Interior inspection is metadata-only, handle-rooted and capped
-at 100,000 total entries and 64 directory levels per tree; it honors cancellation.
+response; at most 100 entries per session page. **Before #537:** ten session
+pages and sequential terminal-list requests imposed a ceiling of 1,000 saved
+sessions. A larger history was refused pending a future complete host
+inventory API, rather than treating a partial scan as idle. **After #537:**
+Windows follows the validated cursor chain to its end under the original
+deadline, with at most eight terminal-list reads in flight. Non-Windows
+retains the ten-page ceiling and sequential reads.
+Malformed, repeated, oversized, unavailable, wrong-root, unsupported or
+incomplete evidence still fails closed, as does unsuccessful disposal or a
+failed post-disposal observation. Interior inspection is metadata-only,
+handle-rooted and capped at 100,000 total entries and 64 directory levels per
+tree; it honors cancellation.
 The shell/PTY 1,000-entry cap now applies to both ordinary arrays as well as
 persistent arrays (the first #506 implementation omitted the ordinary cap).
 
@@ -609,3 +615,71 @@ does not certify every descendant handle or make Git transactional. Keep both
 targets unused throughout cleanup. Late failures still preserve residue under
 #505; no session relocation, manual residue recovery, service restart or
 process-kill fallback is authorized by this change.
+
+## Complete Windows persistent-terminal scans (issue #537)
+
+Windows checkout release uses the same authenticated native OpenCode `api`
+command for unfiltered session pages and per-session terminal lists. A page
+and its continuation must validate; a repeated session ID, repeated cursor
+(even across nonadjacent pages), or empty continuing page refuses. The engine
+validates every terminal list before treating the scan as complete. A
+successful scan skips no session based on age, owner activity, or location.
+A running terminal's owner location or independent cwd in any target still
+refuses.
+
+At most eight terminal-list reads can run at once **in each shared Windows
+release**, across all requested checkouts. Pages are fetched one at a time;
+workers finish or are canceled and joined before the next page, a refusal,
+or any eviction. A deadline expiring during a host command is reported as a
+timeout, not an unsupported request. The one allowed preflight recheck still
+uses the remaining time on the original two-minute deadline. Only the exact
+scoped evictions and non-loading debug inventory may run after eviction starts.
+
+### Touched elements and retained behavior
+
+| Element | Before → after; does the prior behavior still hold? |
+| --- | --- |
+| `ReleaseLocations`, `request`/`call` and `releaseContextError` | Requests still use the batch context; Windows terminal reads use a cancellable child that inherits its deadline. Windows reports actual cancellation/timeout without disclosing subprocess errors or endpoint data. Runtime resolution, authenticated argv/cwd, OpenAPI validation, unloaded-target handling, exact cache keys, detected drift, one-recheck gate, scoped DELETEs, final inventory and delete-access checks remain. Non-Windows keeps its previous request/error behavior. |
+| `releaseActivity` and `releaseSession` | Before, the helper ran the first active/job check and then up to ten history pages. Now the caller runs the same active/job check before the extracted history scan. Windows replaces the page ceiling with the shared deadline and rejects any reused continuation cursor, not just the current cursor. The existing session-row shape, 100-entry limit, unique IDs, opaque cursor encoding and absolute owner paths remain. Non-Windows retains its prior pagination and order. |
+| `releaseTerminalPage` and `windowsTerminalReads` | New bounded workers for one validated page at a time. A failed read or blocking activity cancels the other workers, but the engine waits for every issued read to finish or exit on cancellation before returning. The cap applies to every persistent-terminal list read in a Windows release batch, not to ordinary PTY/shell, foreground/job or generic `execx.Runner` calls. |
+| `releaseSessionTerminals`, `releaseBelongs` and `releaseDirectory` | Session-scoped authenticated GETs, 1,000-entry list cap, expected owner IDs, supported running/exited states, absolute cwd and physical/descendant attribution remain. Windows also refuses duplicate terminal IDs within each session response. Exited terminals still do not count as running. No broader abort, process termination, session deletion or changed path-identity semantics. |
+| `releaseActiveJobs`, `releaseOrdinaryProcesses`, target/root/inventory checks, and `releaseDeleteAccess` | Unchanged checks for foreground drains, job owner/child, every exact loaded shell/PTY key and its owner/cwd, target and unrelated location identities, and Windows delete-access. Existing bounds remain. Only the history scan overlaps; no check can reload a sibling after eviction begins. |
+| `ReleaseLocation`, `releaseCheckouts`, `checkoutReleaseTarget`, `Cleanup`, `ReviewWorktree` and Git removers | Both Windows lifecycle entry points inherit the shared scan. Refused preflight still performs no checkout or branch removal or issue phase change. Ownership, confirmation, clean executor vs. detached review, interior checks, verified absence, residue preservation and Git order remain. Generic removers and other hosts do not acquire this host scan. |
+| `releaseFixture.run`, recheck diagnostic case, and `TestWindowsReleaseTerminalWorkers` / `TestWindowsReleaseRejectsIncompleteTerminalEvidence` | Fixture call/deadline recording is concurrency-safe; earlier refusals remain. Barriers prove eight reads overlap, no release while blocked, and cancellation is joined on error and mid-call deadline. The simulated recheck consumes the remaining 30 seconds of the original deadline. New pagination and terminal validation cases refuse before DELETE. |
+| `checkoutHost.Run` / `sessions` / `terminalCwds` and `TestWindowsOpenCodeCheckoutReleasePastFirstThousand` | Existing real-Git/scripted-host fixtures and reactivation model remain. Synchronized fixture state, multi-page results and a late terminal exercise both success paths and owner/cwd refusals at session 1,001. Refusals preserve registrations, branch tips and run state. |
+| `smoke.mjs` `checkout_release.source_files`, this guide and adapter README | The existing Windows smoke behavior stays the same; its source evidence also hashes the extracted scan and the new Windows tests. The guides retain the old bound as before/after. No adapter runtime, credentials, dependencies, configuration, permissions, state or installation changes. |
+
+### Isolated Windows qualification
+
+On 2026-11-21, one private OpenCode V2.3.2 service on Windows x64
+(build 26300) was seeded through the native CLI with synthetic idle sessions.
+No prompts or provider requests were made. For each cleanup pair, the
+same host and session IDs were used, with both target checkouts reprovisioned
+and loaded before timing. The sequential control was the same source built
+with a temporary one-worker overlay, not the previous ten-page implementation.
+The timings cover the complete Orch command, including Git, not just the
+terminal reads.
+
+| Operation | Saved sessions | One worker | Eight workers |
+| --- | ---: | --- | --- |
+| Cleanup (both checkouts) | 128 | 15.514 s, succeeded | 5.848 s, succeeded |
+| Cleanup (both checkouts) | 1,001 | 99.662 s, succeeded | 22.779 s, succeeded |
+| Review replacement | 1,001 | Not measured | 22.885 s, succeeded |
+
+The 1,001-session inventory returned ten 100-row pages, one 1-row page
+and the terminating empty page. Cleanup verified both caches, directories,
+Git registrations and branch refs were gone. Replacement verified the old
+review cache was gone and Git checked out the new detached OID without writing
+run state. Inventory IDs and primary cache were preserved. The earlier
+13.464 s vs. 2.737 s sample measured only 128 CLI reads, not a full release.
+The isolated qualification script, overlay, source/binary hashes and outcomes
+are retained at `%LOCALAPPDATA%\Temp\opencode\issue537-qualification-OWWNk3\`.
+
+The Windows regression with the old ten-page implementation refused both
+idle releases before reaching session 1,001. With the new implementation the
+same fixture released both idle checkouts and refused a running terminal on the
+last page in both lifecycle paths. The required source-build Windows smoke
+passed all 35 checks with zero provider requests and verified owned-service
+shutdown; its `evidence.json` and OpenAPI observations are retained at
+`%LOCALAPPDATA%\Temp\opencode\orch-opencode-smoke-OXQorh\`. These results do
+not qualify an installed or shared user host.

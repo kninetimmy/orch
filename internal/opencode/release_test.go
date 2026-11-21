@@ -11,6 +11,7 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -88,19 +89,23 @@ func (f *releaseFixture) session(id, directory string) {
 func (f *releaseFixture) run(t *testing.T) error {
 	t.Helper()
 	var originalDeadline time.Time
+	var recorded sync.Mutex
 	runner := releaseContextRunner(func(ctx context.Context, ctxCmd execx.Cmd) (execx.Result, error) {
 		deadline, ok := ctx.Deadline()
 		if !ok || time.Until(deadline) > 2*time.Minute {
-			t.Fatal("host command has no bounded deadline")
+			t.Error("host command has no bounded deadline")
 		}
+		recorded.Lock()
 		if originalDeadline.IsZero() {
 			originalDeadline = deadline
 		} else if !originalDeadline.Equal(deadline) {
-			t.Fatal("release reset its original deadline")
+			t.Error("release reset its original deadline")
 		}
 		f.calls = append(f.calls, ctxCmd)
+		recorded.Unlock()
 		if ctxCmd.Dir != f.root {
-			t.Fatalf("host command escaped primary cwd: %+v", ctxCmd)
+			t.Errorf("host command escaped primary cwd: %+v", ctxCmd)
+			return execx.Result{}, errors.New("wrong fixture cwd")
 		}
 		if f.beforeCall != nil {
 			if err := f.beforeCall(ctx, ctxCmd); err != nil {
@@ -114,7 +119,8 @@ func (f *releaseFixture) run(t *testing.T) error {
 			return execx.Result{Stdout: "opencode v2.3.0"}, nil
 		}
 		if ctxCmd.Name != f.executable || len(ctxCmd.Args) != 3 || ctxCmd.Args[0] != "api" {
-			t.Fatalf("unexpected invocation: %+v", ctxCmd)
+			t.Errorf("unexpected invocation: %+v", ctxCmd)
+			return execx.Result{}, errors.New("unexpected fixture invocation")
 		}
 		method, endpoint := ctxCmd.Args[1], ctxCmd.Args[2]
 		if f.fail[endpoint] {
@@ -149,11 +155,10 @@ func (f *releaseFixture) run(t *testing.T) error {
 			}
 			return execx.Result{}, nil
 		}
-		t.Fatalf("unexpected endpoint: %+v", ctxCmd)
-		return execx.Result{}, nil
+		t.Errorf("unexpected endpoint: %+v", ctxCmd)
+		return execx.Result{}, errors.New("unexpected fixture endpoint")
 	})
-	ctx := context.Background()
-	return ReleaseLocation(ctx, runner, f.root, f.target)
+	return ReleaseLocation(context.Background(), runner, f.root, f.target)
 }
 
 func TestReleaseLocation(t *testing.T) {
@@ -552,6 +557,10 @@ func TestReleaseLocationPreservesPhysicalIdentity(t *testing.T) {
 }
 
 func TestReleaseLocationEvictionRecheck(t *testing.T) {
+	deadlineDiagnostic := "unavailable"
+	if runtime.GOOS == "windows" {
+		deadlineDiagnostic = "deadline exceeded"
+	}
 	for _, tc := range []struct {
 		name    string
 		arrange func(*testing.T, *releaseFixture, string)
@@ -617,7 +626,7 @@ func TestReleaseLocationEvictionRecheck(t *testing.T) {
 		{name: "malformed fresh inventory", want: "malformed", fresh: func(_ *testing.T, f *releaseFixture, _ string) {
 			f.bodies["/api/debug/location"] = `null`
 		}},
-		{name: "deadline exhausted", want: "unavailable"},
+		{name: "deadline exhausted", want: deadlineDiagnostic},
 		{name: "multiple disappearances", want: "another loaded location disappeared", arrange: func(_ *testing.T, f *releaseFixture, alias string) {
 			f.beforeReinventory = func() {
 				f.loaded = slices.DeleteFunc(f.loaded, func(key string) bool { return key == alias })

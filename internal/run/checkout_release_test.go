@@ -11,7 +11,9 @@ import (
 	"path/filepath"
 	"runtime"
 	"slices"
+	"strconv"
 	"strings"
+	"sync"
 	"testing"
 
 	"github.com/kninetimmy/orch/internal/config"
@@ -22,6 +24,7 @@ import (
 )
 
 type checkoutHost struct {
+	mu            sync.Mutex
 	t             *testing.T
 	root          string
 	loaded        map[string]bool
@@ -33,10 +36,13 @@ type checkoutHost struct {
 	beforeAPI     func(*url.URL)
 	inventories   int
 	sessions      map[string]string
+	terminalCwds  map[string]string
 	reactivated   []string
 }
 
 func (h *checkoutHost) Run(ctx context.Context, cmd execx.Cmd) (execx.Result, error) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
 	h.calls = append(h.calls, cmd)
 	if cmd.Name == "git" {
 		res, err := (execx.Local{}).Run(ctx, cmd)
@@ -110,15 +116,27 @@ func (h *checkoutHost) Run(ctx context.Context, cmd execx.Cmd) (execx.Result, er
 		return execx.Result{Stdout: `{"data":[]}`}, nil
 	case "/api/session":
 		sessions := []map[string]any{}
+		cursor := map[string]any{}
 		ids := make([]string, 0, len(h.sessions))
 		for id := range h.sessions {
 			ids = append(ids, id)
 		}
 		slices.Sort(ids)
-		for _, id := range ids {
+		start := 0
+		if c := endpoint.Query().Get("cursor"); c != "" {
+			start, err = strconv.Atoi(c)
+			if err != nil || start < 0 || start >= len(ids) {
+				h.t.Fatalf("unexpected fixture cursor: %q", c)
+			}
+		}
+		end := min(start+100, len(ids))
+		if end < len(ids) {
+			cursor["next"] = strconv.Itoa(end)
+		}
+		for _, id := range ids[start:end] {
 			sessions = append(sessions, map[string]any{"id": id, "location": map[string]string{"directory": h.sessions[id]}})
 		}
-		return body(map[string]any{"data": sessions, "cursor": map[string]any{}})
+		return body(map[string]any{"data": sessions, "cursor": cursor})
 	case "/api/location":
 		return body(map[string]any{"directory": target, "project": map[string]string{"directory": target, "canonical": h.root}})
 	case "/api/shell", "/api/pty":
@@ -128,13 +146,19 @@ func (h *checkoutHost) Run(ctx context.Context, cmd execx.Cmd) (execx.Result, er
 		id := strings.TrimSuffix(strings.TrimPrefix(endpoint.Path, "/api/experimental/session/"), "/terminal")
 		directory, ok := h.sessions[id]
 		if !ok {
-			h.t.Fatalf("unknown completed fixture session: %s", id)
+			h.t.Errorf("unknown completed fixture session: %s", id)
+			return execx.Result{}, fmt.Errorf("unknown fixture session")
 		}
 		// Deterministic model of a host terminal-inventory read loading its
 		// completed session's assigned checkout. No real host is involved.
 		if !h.loaded[directory] {
 			h.loaded[directory] = true
 			h.reactivated = append(h.reactivated, directory)
+		}
+		if cwd, ok := h.terminalCwds[id]; ok {
+			return body(map[string]any{"data": []map[string]string{
+				{"id": "pty-" + id, "sessionID": id, "cwd": cwd, "status": "running"},
+			}})
 		}
 		return execx.Result{Stdout: `{"data":[]}`}, nil
 	}
