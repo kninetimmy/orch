@@ -3,10 +3,12 @@ package opencode
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/url"
 	"os"
 	"path/filepath"
+	"runtime"
 	"slices"
 	"strings"
 	"time"
@@ -39,6 +41,7 @@ func ReleaseLocation(ctx context.Context, runner execx.Runner, primary, target s
 // NOT atomic exclusion of host re-entry. No idle/completion hook calls this.
 // All commands use the existing authenticated V2 CLI discovery, never a relay,
 // service restart, session deletion or process termination.
+// On Windows the runner must support concurrent persistent-terminal reads.
 // Before #525 sequential handoffs could reload an earlier target through later
 // session/terminal probes. Now ALL loading probes precede the first eviction.
 func ReleaseLocations(ctx context.Context, runner execx.Runner, primary string, targets ...string) error {
@@ -47,18 +50,26 @@ func ReleaseLocations(ctx context.Context, runner execx.Runner, primary string, 
 	}
 	ctx, cancel := context.WithTimeout(ctx, 2*time.Minute)
 	defer cancel()
-	runtime, err := Resolve(ctx, runner, primary)
+	host, err := Resolve(ctx, runner, primary)
 	if err != nil {
 		return err
 	}
-	call := func(method, endpoint string, out any) error {
-		if ctx.Err() != nil {
-			return fmt.Errorf("OpenCode checkout release: release deadline exhausted or canceled; preserve the checkout")
+	request := func(ctx context.Context, method, endpoint string, out any) error {
+		if err := ctx.Err(); err != nil {
+			return releaseContextError(err)
 		}
 		res, err := runner.Run(ctx, execx.Cmd{
-			Name: runtime.Executable, Args: []string{"api", method, endpoint}, Dir: primary,
+			Name: host.Executable, Args: []string{"api", method, endpoint}, Dir: primary,
 		})
 		// Never project raw host output, command bodies or subprocess errors.
+		if runtime.GOOS == "windows" {
+			if err := ctx.Err(); err != nil {
+				return releaseContextError(err)
+			}
+			if errors.Is(err, context.DeadlineExceeded) {
+				return releaseContextError(context.DeadlineExceeded)
+			}
+		}
 		if err != nil || res.ExitCode != 0 || ctx.Err() != nil {
 			return fmt.Errorf("OpenCode checkout release: host %s request unavailable or unsupported; preserve the checkout and inspect the host before retrying", method)
 		}
@@ -70,6 +81,9 @@ func ReleaseLocations(ctx context.Context, runner execx.Runner, primary string, 
 			return fmt.Errorf("OpenCode checkout release: malformed host response")
 		}
 		return nil
+	}
+	call := func(method, endpoint string, out any) error {
+		return request(ctx, method, endpoint, out)
 	}
 	targetInfos := make([]releaseLocation, 0, len(targets))
 	for _, target := range targets {
@@ -184,7 +198,10 @@ func ReleaseLocations(ctx context.Context, runner execx.Runner, primary string, 
 				return err
 			}
 		}
-		if err := releaseActivity(call, targets); err != nil {
+		if err := releaseActiveJobs(call, targets); err != nil {
+			return err
+		}
+		if err := releaseActivity(ctx, request, targets); err != nil {
 			return err
 		}
 		for i, key := range loaded {
@@ -282,17 +299,24 @@ func ReleaseLocations(ctx context.Context, runner execx.Runner, primary string, 
 		if err := unchanged(target); err != nil {
 			return err
 		}
-		if ctx.Err() != nil {
-			return fmt.Errorf("OpenCode checkout release: release deadline exhausted or canceled; preserve the checkout")
+		if err := ctx.Err(); err != nil {
+			return releaseContextError(err)
 		}
 		if err := releaseDeleteAccess(target.Directory, target.info); err != nil {
 			return err
 		}
 	}
-	if ctx.Err() != nil {
-		return fmt.Errorf("OpenCode checkout release: release deadline exhausted or canceled; preserve the checkout")
+	if err := ctx.Err(); err != nil {
+		return releaseContextError(err)
 	}
 	return nil
+}
+
+func releaseContextError(err error) error {
+	if runtime.GOOS == "windows" {
+		return fmt.Errorf("OpenCode checkout release: preserve the checkout: %w", err)
+	}
+	return fmt.Errorf("OpenCode checkout release: release deadline exhausted or canceled; preserve the checkout")
 }
 
 type releaseCall func(method, endpoint string, out any) error
@@ -465,82 +489,4 @@ func releaseActiveJobs(call releaseCall, targets []string) error {
 		}
 	}
 	return nil
-}
-
-func releaseActivity(call releaseCall, targets []string) error {
-	if err := releaseActiveJobs(call, targets); err != nil {
-		return err
-	}
-	// Persistent terminals can survive an idle session or a session move. Walk
-	// the unfiltered, paginated session inventory, not just target's sessions.
-	// ponytail: cap at 1000 sessions / two minutes; refuse larger inventories
-	// until OpenCode exposes a complete global persistent-terminal inventory.
-	seen := make(map[string]bool)
-	cursor := ""
-	for page := 0; page < 10; page++ {
-		var response struct {
-			Data []struct {
-				ID       string          `json:"id"`
-				Location releaseLocation `json:"location"`
-			} `json:"data"`
-			Cursor *struct {
-				Next string `json:"next"`
-			} `json:"cursor"`
-		}
-		query := url.Values{"limit": {"100"}}
-		if cursor != "" {
-			query.Set("cursor", cursor)
-		}
-		if err := call("get", "/api/session?"+query.Encode(), &response); err != nil {
-			return err
-		}
-		if response.Data == nil || response.Cursor == nil || len(response.Data) > 100 {
-			return fmt.Errorf("OpenCode checkout release: malformed session/terminal inventory")
-		}
-		for _, session := range response.Data {
-			if !strings.HasPrefix(session.ID, "ses") || seen[session.ID] || !filepath.IsAbs(session.Location.Directory) {
-				return fmt.Errorf("OpenCode checkout release: malformed or repeated session inventory")
-			}
-			seen[session.ID] = true
-			var terminals struct {
-				Data []struct {
-					ID        string `json:"id"`
-					SessionID string `json:"sessionID"`
-					Cwd       string `json:"cwd"`
-					Status    string `json:"status"`
-				} `json:"data"`
-			}
-			if err := call("get", "/api/experimental/session/"+url.PathEscape(session.ID)+"/terminal", &terminals); err != nil {
-				return err
-			}
-			if terminals.Data == nil || len(terminals.Data) > 1000 {
-				return fmt.Errorf("OpenCode checkout release: malformed persistent-terminal inventory")
-			}
-			for _, terminal := range terminals.Data {
-				if terminal.ID == "" || terminal.SessionID != session.ID || !slices.Contains([]string{"running", "exited"}, terminal.Status) || !filepath.IsAbs(terminal.Cwd) {
-					return fmt.Errorf("OpenCode checkout release: unsupported persistent-terminal evidence")
-				}
-				if terminal.Status == "exited" {
-					continue
-				}
-				for _, directory := range []string{session.Location.Directory, terminal.Cwd} {
-					belongs, err := releaseBelongs(targets, directory)
-					if err != nil {
-						return err
-					}
-					if belongs {
-						return fmt.Errorf("OpenCode checkout release: running persistent terminal prevents removal")
-					}
-				}
-			}
-		}
-		if response.Cursor.Next == "" {
-			return nil
-		}
-		if response.Cursor.Next == cursor || len(response.Data) == 0 {
-			return fmt.Errorf("OpenCode checkout release: session pagination did not advance")
-		}
-		cursor = response.Cursor.Next
-	}
-	return fmt.Errorf("OpenCode checkout release: session inventory exceeds the bounded activity check")
 }

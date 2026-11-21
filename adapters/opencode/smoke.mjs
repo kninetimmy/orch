@@ -1069,8 +1069,10 @@ func check(ok bool) { if !ok { fmt.Fprintln(os.Stderr, "native command-boundary 
   const releaseEvidence = evidence.checkout_release = { refusals: [], qualification: "source/selected-artifact isolated simulation only; not installed manual Delivery or atomic host quiescence" }
   if (selection.mode === "source-build") {
     releaseEvidence.source_files = await Promise.all([
-      "internal/opencode/release.go", "internal/opencode/release_test.go", "internal/opencode/release_access_windows.go", "internal/opencode/release_access_other.go",
+      "internal/opencode/release.go", "internal/opencode/release_terminals.go", "internal/opencode/release_test.go", "internal/opencode/release_terminals_windows_test.go",
+      "internal/opencode/release_access_windows.go", "internal/opencode/release_access_other.go",
       "internal/run/checkout_release.go", "internal/run/checkout_release_test.go", "internal/run/checkout_release_windows_test.go",
+      "internal/run/checkout_pagination_windows_test.go",
     ].map((file) => fileIdentity(path.join(repo, file))))
   }
   const releaseSpec = await api("/openapi.json")

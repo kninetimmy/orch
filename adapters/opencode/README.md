@@ -286,6 +286,15 @@ both owner location and independent cwd, just as persistent-terminal
 attribution checks both its owner and cwd. Target-only process inventory was
 the pre-repair behavior and missed primary-owned activity in a disposable cwd.
 
+**Before #537:** saved sessions were checked sequentially, with a ten-page
+ceiling. **After #537:** Windows checks up to eight persistent-terminal lists
+at a time and follows valid session pages to the end within the same two-minute
+release deadline. Before the review fix, repeated JSON members could hide a
+continuation or running terminal; both Windows lists now refuse ambiguous
+member names before interpreting evidence. Non-Windows retains the old
+behavior. See the
+[bounds and release evidence](../../docs/worktree-cleanup.md#complete-windows-persistent-terminal-scans-issue-537).
+
 Both executor and review checkout classes use this handoff, but only at the
 engine's explicit `ReviewWorktree`/confirmed `Cleanup` entry points; generic
 Git removal implementations, scratch teardown, other hosts, all child/root
