@@ -647,6 +647,44 @@ permissions does not make previously untrusted journal contents trustworthy.
   and preserve it separately before retrying into the now-vacant archive name.
   A verified archive/receipt that later fails verification is not recreated.
 
+**Before the directory-sync repair:** POSIX synced the parents of newly made
+storage and archive directories only on the creation path. On restart, readable
+entries were not proof that the interrupted process had synced them.
+**After:** both entrypoints verify and sync the parent of the shared store
+before relying on it, including when adopting a store already visible on disk.
+Before recording retention or removing scratch, including on retry after the
+manifest write or a retained record, POSIX syncs the verified receipt and its
+directory or the archive payload, manifest, run directory and configured archive
+root. Recovery flushes the observed journal before acting on it. After scratch
+removal, both the fresh and retry paths sync its absence before clearing the
+journal. A failed pre-removal sync leaves scratch and pending in place; if
+removal already completed, failure to sync that removal leaves pending.
+These barriers rely on provisioned storage and the filesystem honoring `fsync`.
+Volatile storage such as tmpfs does not survive power loss. Windows flushes files
+but does not qualify directory durability across power loss.
+
+**Before the archive-separation repair:** canonical path spelling was used to
+rule out overlap, and a configured root could be pinned before checking the run
+name. **After:** neither root may be inside or physically alias the other, even
+through an ancestor. Archive ancestors are checked against the source inventory;
+the archive wrapper, manifest and every payload entry must be physically
+distinct from the smoke storage ancestry and all recorded source entries, even
+if scratch has already been removed. Linux also checks mount topology: a subtree
+or overlay mount on the path to either storage root, an interior archive mount
+or unavailable topology refuses the archive rather than assuming disjointness.
+This is a restriction on every failure archive, new or resumed, not on pass
+receipts or other commands. Ordinary disjoint paths on the same or separate
+supported volumes remain eligible. No claim is made about separate physical
+media behind the filesystems or a topology that changes mid-run.
+
+An unsafe root or an existing unpinned run name refuses before the harness
+pins a new destination, creates an archive, or removes scratch. Recovery of an
+empty pre-activity allocation checks the destination before writing evidence
+to it. The original smoke still records its own shutdown and final evidence
+before disposition, so an operator can correct an unpinned destination and
+retry without rerunning smoke. Do not change the spelling to work around a
+physical overlap refusal; use separate verified storage.
+
 **#539 review fix — source ownership:** The first version wrote shutdown and
 evidence-file hashes to `finished`, then built the first source inventory
 later. A retry could mistake a newly arrived regular file for owned scratch.
@@ -722,15 +760,15 @@ Memhub binary for the isolated qualification checks.
 | Touched element | Before → after / retained behavior |
 |---|---|
 | `smoke.mjs` startup, fixture paths and invocation evidence | Three artifact selectors and both qualification modes retain their existing preflight and checks. Before, `mkdtemp` allocated immediately in OS temp (or its `opencode/` directory). Now the shared journal reserves one named run first; Git-ancestry and filesystem checks precede allocation. Verified macOS `/var/folders` and `/tmp` aliases remain. In addition to the retention, path and shutdown helpers, harness evidence hashes `smoke-lock.mjs`, `smoke-native.mjs`, `smoke-lock.c` and the prepared binding. |
-| `openSmokeStorage`, `decode`, `load`/`refresh`, `requireIdle`, `begin`, `log`/`clear`, `markRunning`, `finish`, `dispose`, `recover`, `recoveryAction` and `Symbol.asyncDispose` | The socket and version-2 authority are replaced by the stable lock and intent binding described above. The lock is checked before journal writes/clearing and scratch removal; it cannot be disposed during an in-flight operation. Existing intent-before-allocation, stage/readback, shutdown plus source inventory and retry gates remain. No historical discovery or cleanup. Both entrypoints and all qualified worktrees and selection modes using that storage share these restrictions. |
+| `openSmokeStorage`, `decode`, `load`/`refresh`, `requireIdle`, `begin`, `log`/`clear`, `markRunning`, `finish`, `dispose`, `recover`, `recoveryAction` and `Symbol.asyncDispose` | The socket and version-2 authority are replaced by the stable lock and intent binding described above. The lock is checked before journal writes/clearing and scratch removal; it cannot be disposed during an in-flight operation. Existing intent-before-allocation, stage/readback, shutdown plus source inventory and retry gates remain. Existing stores now also require the POSIX parent sync, recovery flushes the journal, and clearing must follow the sync of scratch absence. No historical discovery or cleanup. Both entrypoints and all qualified worktrees and selection modes using that storage share these restrictions. |
 | `smoke-lock.mjs` (`prepare`, `createBuildDirectory`, `smokeLockBinary`, `checkBinary`, `smokeLockEvidenceFiles`, `prepareSmokeLockFile`, `acquireSmokeLock`) and `smoke-native.mjs` | New smoke-only preparation, private binding load, lock creation/check and evidence-path helpers. The wrapper exposes in-process lock and read-only OS probes; it supplies no sidecar or permission handoff. Preparation cannot replace a lock or operate on pending scratch. |
 | `smoke-lock.c` (`napi_register_module_v1`, `acquire`, `take_lock`, `close_lock`, `release`, `finalize`) | New Node-API binding uses non-inheritable handles, open-existing-only native acquisition, explicit busy/error results and release on close or exit. Unix uses no-follow nonblocking `flock`; Windows uses no-reparse and no-delete-sharing `LockFileEx`. This is not the grant/Delivery lock or an adapter runtime feature. |
-| `externalDirectory`, `privateDirectory`, `checkWindows`, `checkMacData`, `emptyPrivateFile`, `readRegular`, `inventory`, `copyTree` and `removeTree` | Verified local paths and identities, non-overwriting copy, readback and removal by recorded name remain. Existing Windows ACL/named-stream checks remain. macOS now refuses forks through both payload trees and managed evidence and rechecks each removal. `emptyPrivateFile` checks the lock's identity/private regular-file status without reading its locked byte. Redirect, external hard-link, type, identity and content checks are not limited to one named member. |
+| `externalDirectory`, `privateDirectory`, `checkWindows`, `checkMacData`, `emptyPrivateFile`, `archiveSeparation`, `readRegular`, `syncDirectory`, `inventory`, `copyTree` and `removeTree` | Verified local paths and identities, non-overwriting copy, readback and removal by recorded name remain. Windows ACL/named-stream checks remain. macOS refuses forks through both payload trees and managed evidence and rechecks each removal. `emptyPrivateFile` checks the lock's identity/private regular-file status without reading its locked byte. Archive separation compares physical identities and checks Linux mount topology; the archive inventory also flushes on POSIX, which used to sync payload directories only during copy. Source inventories remain read-only. `syncDirectory` verifies the identity it flushes; the post-removal sync now also covers retry after the source is already absent. Redirect, external hard-link, type, identity and content checks are not limited to one named member. |
 | `findOpenCode`, `privateOpenCode` and private PATH | The candidate order, version admission and private binary identity checks remain. Before, the first `--version` probe inherited the caller's environment; now it uses the isolated environment too. The Unix private executable is now a copy instead of a symlink; Windows retains its npm shim layout. |
 | Isolated child environment | Before, it inherited the caller's Node compile-cache setting. Now it removes `NODE_COMPILE_CACHE` and sets `NODE_DISABLE_COMPILE_CACHE=1` for every child receiving the isolated environment, not the invoking npm/Node process or other adapter invocations. Other home/cache, credential, proxy and simulation isolation rules remain. |
 | `joined`, `verifyStopped`, `namesFixture`, `linuxProcesses`, the native process/fork probes and final host/provider/direct Memhub cleanup | The isolated native stop, provider trap, joins, service-record binding, direct probe and owned startup fallback remain. Before, joining the host was enough. Now durable verified shutdown (or proof activity could not start) is also required for removal. Native Windows `windowsProcessPaths`, macOS `macProcessPaths`/`hasResourceFork` and Linux `linuxProcessScope` provide the platform observations above. Neither overlapping recovery nor process termination is a fallback for incomplete activity proof. |
-| `pass`, final evidence, `receipt`, `archivePath`, `dispose` and `SMOKE_EVIDENCE` | Every existing success label and post-run selected/private artifact check remains. `evidence.json` and `server.log` were retained with every fixture; now only failures with verified shutdown and source ownership archive them together with scratch. Pass keeps verified identities/check outcomes separately; ambiguous or incomplete evidence keeps pending scratch. The pointer identifies local evidence; only the Architect records it in Memhub. |
-| `test/smoke-retention.test.js`, `test/smoke-artifacts.test.js`, `package.json` and `.github/workflows/ci.yml` | Existing selectors, permissions, interruption, ownership, archive/receipt, Windows streams and macOS aliases remain covered. New tests verify same-process and cross-worktree contention, stable identity, refusal on unsafe lock and legacy records, holder death with pending or surviving child, exact/descendant/unrelated argv and actual macOS forks. Linux CI requires a real namespace test with `unshare`, `setpriv` and noninteractive `sudo`; unavailable tooling fails that lane. `pretest`/`smoke:prepare` build the binding outside the checkout. The existing CI matrix and smoke commands remain; live smoke is not run by CI and npm dependency pins do not change. |
+| `pass`, final evidence, `receipt`, `archivePath`, `dispose` and `SMOKE_EVIDENCE` | Every existing success label and post-run selected/private artifact check remains. `evidence.json` and `server.log` were retained with every fixture; now only failures with verified shutdown and source ownership archive them together with scratch. Pass keeps verified identities/check outcomes separately. The shared retention path syncs verified destinations on POSIX including retries, and a failure archive needs verified disjointness before pinning or creation. Ambiguous or incomplete evidence keeps pending scratch. The pointer identifies local evidence; only the Architect records it in Memhub. |
+| `test/smoke-retention.test.js`, `test/smoke-artifacts.test.js`, `package.json` and `.github/workflows/ci.yml` | Existing selectors, permissions, interruption, ownership, archive/receipt, Windows streams and macOS aliases remain covered. Tests verify same-process and cross-worktree contention, stable identity, refusal on unsafe lock and legacy records, holder death with pending or surviving child, exact/descendant/unrelated argv and actual macOS forks. New tests inject POSIX sync failures, verify ordering on restart, and model shared identities and Linux topology with ordinary private directories, not attached volumes or mount changes. Linux CI requires a real network/PID namespace test with `unshare`, `setpriv` and noninteractive `sudo`; unavailable tooling fails that lane. `pretest`/`smoke:prepare` build the binding outside the checkout. The existing CI matrix and smoke commands remain; live smoke is not run by CI and npm dependency pins do not change. |
 | This README and `docs/worktree-cleanup.md` | Prior full-evidence behavior is kept as history. Both documents now distinguish full failure archives from pass receipts and isolated qualification from installed behavior. This does not change the checkout-release or removal contract. |
 
 No adapter plugin runtime, Delivery policy, grant lock, other host or

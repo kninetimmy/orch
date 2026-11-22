@@ -94,6 +94,71 @@ const absent = (file) => assert.rejects(fs.lstat(file), { code: "ENOENT" })
 const pointer = ({ stdout }) => JSON.parse(stdout.split(/\r?\n/).find((line) => line.startsWith("SMOKE_EVIDENCE ")).slice(15))
 const windowsOnly = { skip: process.platform !== "win32" }
 const macOnly = { skip: process.platform !== "darwin" }
+const posixOnly = { skip: process.platform === "win32" }
+
+async function recover(f, options) {
+  await using storage = await openSmokeStorage({ temp: f.temp, archiveRoot: f.archive, ...options })
+  return await storage.recover()
+}
+
+function observeSync(t, sync) {
+  const open = fs.open
+  t.mock.method(fs, "open", async (file, ...args) => {
+    const handle = await open(file, ...args)
+    const flush = handle.sync.bind(handle)
+    handle.sync = () => sync(file, flush)
+    return handle
+  })
+}
+
+function modeledIdentities(t) {
+  const aliases = new Map()
+  for (const method of ["stat", "lstat"]) {
+    const stat = fs[method]
+    t.mock.method(fs, method, async (file, options) => {
+      const info = await stat(file, options)
+      const original = options?.bigint && aliases.get(file)
+      return original ? Object.assign(info, original) : info
+    })
+  }
+  // Keep paths ordinary. Model a kernel reporting the same object through
+  // two spellings, independently of the recorded creation time.
+  return async (file, id, use) => {
+    const [dev, ino, birthtimeNs] = id.split(":").map(BigInt)
+    aliases.set(file, { dev, ino, birthtimeNs: birthtimeNs + 1n })
+    try { await use() } finally { aliases.delete(file) }
+  }
+}
+
+async function observedID(file) {
+  const { dev, ino, birthtimeNs } = await fs.stat(file, { bigint: true })
+  return `${dev}:${ino}:${birthtimeNs}`
+}
+
+test("POSIX adopts a visible store only after syncing its parent, before any intent or allocation", posixOnly, async (t) => {
+  const f = await fixture(t)
+  await fs.mkdir(f.store, { mode: 0o700 }) // Previous creator stopped before syncing.
+  let fail = true
+  let synced = false
+  observeSync(t, async (file, flush) => {
+    if (file !== f.temp) return flush()
+    assert.deepEqual(await fs.readdir(f.store), [])
+    if (fail) throw new Error("injected store parent fsync failure")
+    await flush()
+    synced = true
+  })
+  await assert.rejects(openSmokeStorage({ temp: f.temp }), /injected store parent fsync failure/)
+  assert.deepEqual(await fs.readdir(f.store), [])
+  fail = false
+  await using storage = await openSmokeStorage({ temp: f.temp, async checkpoint(at, source) {
+    if (at !== "intent") return
+    assert(synced)
+    assert.equal(JSON.parse(await fs.readFile(f.pending)).data.fixture_root, source)
+    await absent(source)
+  } })
+  assert(synced, "adopting a store must really sync its parent")
+  assert.deepEqual(await fs.readdir(await storage.begin()), [])
+})
 
 async function withBroadGrant(file, use, windowsRight = "Write", mode = 0o777) {
   let set
@@ -611,6 +676,88 @@ test("failure archive verifies exact payload and resumes partial scratch removal
   assert.deepEqual(await fs.readFile(manifest), before)
 })
 
+test("POSIX verifies and syncs a complete archive on retry, even if retention was already recorded", posixOnly, async (t) => {
+  const f = await fixture(t)
+  const { fixture_root: source, run_id: id } = await crash(f, "archive-manifest-written", "fail")
+  const target = path.join(f.archive, "orch-opencode-smoke-" + id)
+  const manifest = path.join(target, "manifest.json")
+  const payload = path.join(target, "fixture")
+  const order = [path.join(payload, "payload"), path.join(payload, "empty"), payload, manifest, target, f.archive]
+  const before = await fs.readFile(manifest)
+  const manifestID = await observedID(manifest)
+  let journal = await fs.readFile(f.pending)
+  let fail = true
+  const synced = []
+  observeSync(t, async (file, flush) => {
+    if (!order.includes(file)) return flush()
+    assert.deepEqual(await fs.readFile(f.pending), journal, "archive sync must precede the retained record")
+    assert.equal(await fs.readFile(path.join(source, "payload"), "utf8"), "fixture bytes")
+    if (file === f.archive && fail) throw new Error("injected archive parent fsync failure")
+    await flush()
+    synced.push(file)
+  })
+  async function expectRefusal() {
+    synced.length = 0
+    await assert.rejects(recover(f), /injected archive parent fsync failure/)
+    assert.deepEqual(synced, order.slice(0, -1))
+    assert.deepEqual(await fs.readFile(f.pending), journal)
+    assert.deepEqual(await fs.readFile(manifest), before)
+    assert.equal(await fs.readFile(path.join(source, "payload"), "utf8"), "fixture bytes")
+    assert.equal(await fs.readFile(f.sentinel, "utf8"), "unrelated; preserve")
+  }
+  await expectRefusal()
+  fail = false
+  synced.length = 0
+  await assert.rejects(recover(f, { checkpoint(at) {
+    if (at !== "retained") return
+    assert.deepEqual(synced, order)
+    throw new Error("interrupted just after retained")
+  } }), /interrupted just after retained/)
+  journal = await fs.readFile(f.pending)
+  assert.match(journal.toString(), /"stage":"retained"/)
+  fail = true
+  await expectRefusal()
+  fail = false
+  assert.deepEqual(await recover(f), { run_id: id, kind: "failure-archive", path: target, sha256: sha(before) })
+  await absent(source)
+  await absent(f.pending)
+  assert.equal(await observedID(manifest), manifestID)
+})
+
+test("POSIX retries flush an existing receipt and the scratch removal before clearing pending", posixOnly, async (t) => {
+  const f = await fixture(t)
+  const { fixture_root: source, run_id: id } = await crash(f, "evidence-written")
+  const target = path.join(f.store, `receipt-${id}.json`)
+  const before = await fs.readFile(f.pending)
+  let fault = target
+  let clearing = false
+  let syncedRemoval = false
+  observeSync(t, async (file, flush) => {
+    if (file === target && fault === target) throw new Error("injected receipt fsync failure")
+    if (file === f.store && clearing && !syncedRemoval) {
+      await absent(source)
+      assert.match(await fs.readFile(f.pending, "utf8"), /"stage":"retained"/)
+      if (fault === f.store) throw new Error("injected removal fsync failure")
+      await flush()
+      syncedRemoval = true
+    } else await flush()
+  })
+  const options = { checkpoint(at) { if (at === "scratch-removed") clearing = true } }
+  await assert.rejects(recover(f, options), /injected receipt fsync failure/)
+  assert.deepEqual(await fs.readFile(f.pending), before)
+  assert.equal(await fs.readFile(path.join(source, "payload"), "utf8"), "fixture bytes")
+  fault = f.store
+  await assert.rejects(recover(f, options), /injected removal fsync failure/)
+  await absent(source)
+  const retained = await fs.readFile(target)
+  fault = undefined
+  clearing = false
+  assert.equal((await recover(f, options)).sha256, sha(retained))
+  assert(syncedRemoval)
+  await absent(f.pending)
+  assert.deepEqual(await fs.readFile(target), retained)
+})
+
 test("with scratch already removed, corrupt receipt blocks clearing pending until verified", async (t) => {
   const f = await fixture(t)
   const { fixture_root: source, run_id: id } = await crash(f, "scratch-removed")
@@ -641,6 +788,14 @@ test("missing, redirected and full archive storage refuse without loss or overwr
     await blocked(f, source, recovery, pattern)
     assert.equal(await fs.readFile(f.pending, "utf8"), initial, "binding failures must not advance the journal")
   }
+  const target = path.join(f.archive, "orch-opencode-smoke-" + id)
+  await fs.mkdir(target, { mode: 0o700 })
+  await fs.copyFile(f.sentinel, path.join(target, "sentinel"))
+  f.env.ORCH_SMOKE_ARCHIVE_ROOT = f.archive
+  await blocked(f, source, recovery, /archive already exists without a pinned destination/)
+  assert.equal(await fs.readFile(f.pending, "utf8"), initial)
+  const collision = path.join(f.archive, "operator-preserved-collision")
+  await fs.rename(target, collision)
   {
     await using storage = await openSmokeStorage({ temp: f.temp, archiveRoot: f.archive, async checkpoint(at, target) {
       if (at === "archive-mkdir") {
@@ -650,8 +805,6 @@ test("missing, redirected and full archive storage refuse without loss or overwr
     } })
     await assert.rejects(storage.recover(), /ENOSPC/)
   }
-  const target = path.join(f.archive, "orch-opencode-smoke-" + id)
-  f.env.ORCH_SMOKE_ARCHIVE_ROOT = f.archive
   await blocked(f, source, recovery, /incomplete or unexpected archive entries/)
   assert.equal(await fs.readFile(path.join(target, "partial"), "utf8"), "original incomplete copy")
   assert.equal(await fs.readFile(path.join(source, "payload"), "utf8"), "fixture bytes")
@@ -661,7 +814,90 @@ test("missing, redirected and full archive storage refuse without loss or overwr
   assert.equal(resumed.code, 0, resumed.stderr)
   assert.equal(pointer(resumed).path, target)
   assert.equal(await fs.readFile(path.join(preserved, "partial"), "utf8"), "original incomplete copy")
+  assert.equal(await fs.readFile(path.join(collision, "sentinel"), "utf8"), "unrelated; preserve")
   await absent(source)
+})
+
+test("modeled physical overlap refuses archive selection in either direction before pinning or writing", async (t) => {
+  const f = await fixture(t)
+  const { fixture_root: source } = await crash(f, "finished", "fail")
+  const descendant = path.join(f.archive, "deeper")
+  await fs.mkdir(descendant, { mode: 0o700 })
+  const journal = await fs.readFile(f.pending)
+  const entries = await fs.readdir(source)
+  const model = modeledIdentities(t)
+  for (const [archiveRoot, id] of [[descendant, await observedID(path.join(source, "empty"))], [f.archive, await observedID(f.temp)]]) {
+    await model(f.archive, id, async () => {
+      await assert.rejects(recover(f, { archiveRoot }), /archive storage must be separate/)
+      assert.deepEqual(await fs.readFile(f.pending), journal)
+      assert.deepEqual(await fs.readdir(source), entries)
+      assert.equal(await fs.readFile(path.join(source, "payload"), "utf8"), "fixture bytes")
+      assert.deepEqual(await fs.readdir(f.archive), ["deeper"])
+      assert.deepEqual(await fs.readdir(descendant), [])
+      assert.equal(await fs.readFile(f.sentinel, "utf8"), "unrelated; preserve")
+    })
+  }
+  assert.equal((await recover(f)).kind, "failure-archive")
+  await absent(f.pending)
+  await absent(source)
+})
+
+test("an unstarted fixture is not modified on recovery until the archive is separated", async (t) => {
+  const f = await fixture(t)
+  const { fixture_root: source } = await crash(f, "allocated")
+  const journal = await fs.readFile(f.pending)
+  await modeledIdentities(t)(f.archive, await observedID(source), async () => {
+    await assert.rejects(recover(f), /archive storage must be separate/)
+    assert.deepEqual(await fs.readdir(source), [])
+    assert.deepEqual(await fs.readFile(f.pending), journal)
+    assert.deepEqual(await fs.readdir(f.archive), [])
+  })
+  assert.equal((await recover(f)).kind, "failure-archive")
+  await absent(f.pending)
+  await absent(source)
+})
+
+test("a pinned archive cannot share an identity with recorded source even after scratch removal", async (t) => {
+  const f = await fixture(t)
+  const { fixture_root: source, run_id: id } = await crash(f, "scratch-removed", "fail")
+  const target = path.join(f.archive, "orch-opencode-smoke-" + id)
+  const manifest = await fs.readFile(path.join(target, "manifest.json"))
+  const journal = await fs.readFile(f.pending, "utf8")
+  const { inventory } = journal.trimEnd().split("\n").map((line) => JSON.parse(line).data).find((row) => row.stage === "finished")
+  await absent(source)
+  await modeledIdentities(t)(path.join(target, "fixture", "empty"), inventory.rows.find((row) => row.name === "empty").id, async () => {
+    await assert.rejects(recover(f), /archive storage must be separate/)
+    assert.equal(await fs.readFile(f.pending, "utf8"), journal)
+    assert.deepEqual(await fs.readFile(path.join(target, "manifest.json")), manifest)
+    assert.equal(await fs.readFile(f.sentinel, "utf8"), "unrelated; preserve")
+  })
+  assert.equal((await recover(f)).sha256, sha(manifest))
+  await absent(f.pending)
+})
+
+test("Linux refuses unverifiable archive topology before pinning", { skip: process.platform !== "linux" }, async (t) => {
+  const f = await fixture(t)
+  const { fixture_root: source, run_id: id } = await crash(f, "finished", "fail")
+  const target = path.join(f.archive, "orch-opencode-smoke-" + id)
+  const journal = await fs.readFile(f.pending)
+  const readFile = fs.readFile
+  let topology
+  t.mock.method(fs, "readFile", async (file, ...args) => file === "/proc/self/mountinfo" && args.length === 0
+    ? Buffer.from(topology) : readFile(file, ...args))
+  const root = "1 0 8:1 / / rw - ext4 test rw\n"
+  for (const [observed, pattern] of [
+    ["unavailable", /cannot verify Linux mount topology/],
+    [root + `2 1 8:1 /subdir ${f.archive} rw - ext4 test rw\n`, /cannot verify archive separation through Linux mount/],
+    [root + `2 1 0:2 / ${f.temp} rw - overlay test rw\n`, /cannot verify archive separation through Linux mount/],
+    [root + `2 1 8:1 / ${target} rw - ext4 test rw\n`, /mount inside smoke archive/],
+  ]) {
+    topology = observed
+    await assert.rejects(recover(f), pattern)
+    assert.deepEqual(await fs.readFile(f.pending), journal)
+    assert.deepEqual(await fs.readdir(f.archive), [])
+    assert.equal(await fs.readFile(path.join(source, "payload"), "utf8"), "fixture bytes")
+  }
+  assert.equal(await fs.readFile(f.sentinel, "utf8"), "unrelated; preserve")
 })
 
 test("corrupt journals/evidence, substituted roots, and interior links fail closed with external sentinels", async (t) => {

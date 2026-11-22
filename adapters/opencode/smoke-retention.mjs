@@ -3,11 +3,10 @@ import { randomUUID } from "node:crypto"
 import fs from "node:fs/promises"
 import { hostname, tmpdir } from "node:os"
 import path from "node:path"
-import { inside } from "./smoke-artifacts.mjs"
 import { acquireSmokeLock, prepareSmokeLockFile } from "./smoke-lock.mjs"
 import { verifyStopped } from "./smoke-shutdown.mjs"
 import {
-  append, contents, copyTree, directory, externalDirectory, inventory,
+  append, archiveSeparation, contents, copyTree, directory, externalDirectory, inventory,
   json, present, privateDirectory, readRegular, removeTree, sha256, syncDirectory, treeBytes, writeNew,
 } from "./smoke-storage.mjs"
 
@@ -102,16 +101,17 @@ export async function openSmokeStorage({ temp = tmpdir(), archiveRoot = process.
     const { canonical: base, id } = await externalDirectory(temp)
     root = path.join(base, "orch-opencode-smoke")
     pending = path.join(root, "pending.jsonl")
+    await directory(base, id)
     try {
-      await directory(base, id)
       await fs.mkdir(root, { mode: 0o700 })
-      await syncDirectory(base)
     } catch (error) {
       if (error.code !== "EEXIST") throw error
     }
     const checked = await externalDirectory(root, true)
     assert.equal(checked.canonical, root, "smoke storage redirected")
     rootID = checked.id
+    // The process that made the store may have exited before syncing its name.
+    await syncDirectory(base, id)
   } catch (error) {
     throw diagnostic(`Cannot verify private smoke storage: ${error.message}`, inspectStorage)
   }
@@ -168,8 +168,11 @@ export async function openSmokeStorage({ temp = tmpdir(), archiveRoot = process.
   async function clear() {
     await lock.check()
     assert.deepEqual(await readRegular(pending), current.entry, "pending journal changed before disposal")
+    // Absence of scratch may be visible after an interrupted removal, but the
+    // removal must be durable before we unlink its journal.
+    await syncDirectory(root, rootID)
     await fs.unlink(pending)
-    await syncDirectory(root)
+    await syncDirectory(root, rootID)
     current = undefined
   }
 
@@ -206,7 +209,7 @@ export async function openSmokeStorage({ temp = tmpdir(), archiveRoot = process.
     await verifyRoot()
     await fs.mkdir(temp, { mode: 0o700 })
     await checkpoint("mkdir", temp)
-    await syncDirectory(root)
+    await syncDirectory(root, rootID)
     await log("allocated", { id: await privateDirectory(temp) })
     await checkpoint("allocated", temp)
     return temp
@@ -238,12 +241,16 @@ export async function openSmokeStorage({ temp = tmpdir(), archiveRoot = process.
     await checkpoint("finished", intent.fixture_root)
   }
 
-  async function archivePath(archive, runID) {
-    const { canonical, id } = await externalDirectory(archive.root, true)
-    assert(canonical === archive.root && !inside(root, canonical) && !inside(canonical, root),
-      "archive storage must be separate from smoke storage")
-    assert.equal(id, archive.id, `archive directory ownership changed: ${canonical}`)
-    return path.join(canonical, "orch-opencode-smoke-" + runID)
+  async function archivePath(archive, runID, sourceRows) {
+    const configured = archive?.root ?? archiveRoot
+    assert(configured, `configure ${archiveVariable} with an existing absolute local archive directory`)
+    const checked = await externalDirectory(configured, true)
+    const { canonical, id } = checked
+    if (archive) assert(canonical === archive.root && id === archive.id, `archive directory ownership changed: ${canonical}`)
+    const target = path.join(canonical, "orch-opencode-smoke-" + runID)
+    const archiveEntries = await archiveSeparation({ canonical: root, id: rootID }, checked, target, sourceRows)
+    assert(archive || !await present(target), `archive already exists without a pinned destination: ${target}`)
+    return { target, archiveEntries, location: { root: canonical, id } }
   }
 
   async function dispose(recovering = false) {
@@ -252,6 +259,9 @@ export async function openSmokeStorage({ temp = tmpdir(), archiveRoot = process.
     const { fixture_root: source, run_id: runID } = intent
     await lock.check()
     assert(intent.version === journalVersion, "legacy pending journal was not written under the current storage lock")
+    if (recovering) {
+      assert.deepEqual(await readRegular(pending, { flush: true }), current.entry, "pending journal changed before recovery")
+    }
     if (!allocated) {
       assert(!await present(source), `scratch exists but allocation ownership was never recorded: ${source}`)
       await clear()
@@ -260,9 +270,10 @@ export async function openSmokeStorage({ temp = tmpdir(), archiveRoot = process.
     }
     if (!running && !current.records.finished) {
       // No process can start before the durable running stage.
-      await privateDirectory(source, allocated.id, "data")
+      const sourceID = await privateDirectory(source, allocated.id, "data")
       assert((await fs.readdir(source)).length === 0, `unexpected data before fixture activity: ${source}`)
       verifyStopped(source)
+      await archivePath(undefined, runID, [{ id: sourceID }])
       await finish({
         fixture_root: source, passed: false, checks: [], provider_requests: 0,
         error: { message: "smoke interrupted before starting fixture activity" },
@@ -272,7 +283,7 @@ export async function openSmokeStorage({ temp = tmpdir(), archiveRoot = process.
     const finished = current.records.finished
     assert(finished?.shutdown === true, "owned shutdown is unconfirmed")
     const { inventory: snapshot } = finished
-    let { archive, retained } = current.records
+    const { archive, retained } = current.records
     const rows = await present(source) ? await inventory(source, allocated.id) : []
     if (recovering) {
       verifyStopped(source)
@@ -301,18 +312,14 @@ export async function openSmokeStorage({ temp = tmpdir(), archiveRoot = process.
         intended = json(receipt(evidence, intent, finished.files))
         if (!await present(target)) await writeNew(target, intended)
       }
-      const read = await readRegular(target)
+      const read = await readRegular(target, { flush: true })
       if (intended) assert(read.bytes.equals(Buffer.from(intended)), `receipt does not match verified smoke: ${target}`)
+      await syncDirectory(root, rootID)
       proof = { id: read.id, sha256: sha256(read.bytes) }
     } else {
-      if (!archive) {
-        assert(archiveRoot, `configure ${archiveVariable} with an existing absolute local archive directory`)
-        const { canonical, id } = await externalDirectory(archiveRoot, true)
-        assert(!inside(root, canonical) && !inside(canonical, root), "archive storage must be separate from smoke storage")
-        await log("archive", { root: canonical, id })
-        archive = current.records.archive
-      }
-      target = await archivePath(archive, runID)
+      const destination = await archivePath(archive, runID, expected)
+      const { archiveEntries, location } = destination
+      target = destination.target
       const payload = path.join(target, "fixture")
       const manifest = path.join(target, "manifest.json")
       const intended = json({
@@ -320,26 +327,34 @@ export async function openSmokeStorage({ temp = tmpdir(), archiveRoot = process.
         bytes: snapshot.bytes, files: contents(expected), original_evidence_sha256: finished.files["evidence.json"],
       })
       if (!retained && !await present(target)) {
-        await privateDirectory(archive.root, archive.id)
-        const free = await fs.statfs(archive.root, { bigint: true })
+        await privateDirectory(location.root, location.id)
+        const free = await fs.statfs(location.root, { bigint: true })
         assert(free.bavail * free.bsize >= BigInt(snapshot.bytes + Buffer.byteLength(intended)),
-          `insufficient space for smoke archive on ${archive.root}`)
+          `insufficient space for smoke archive on ${location.root}`)
+        if (!archive) await log("archive", location)
+        await directory(location.root, location.id)
         await fs.mkdir(target, { mode: 0o700 })
         const targetID = await directory(target)
+        archiveEntries([targetID])
         await checkpoint("archive-mkdir", target)
         await privateDirectory(target, targetID, "data")
         await copyTree(source, expected, payload)
         await directory(target, targetID)
         await writeNew(manifest, intended)
-        await syncDirectory(archive.root)
-      }
+        await checkpoint("archive-manifest-written", target)
+      } else assert(archive, `archive already exists without a pinned destination: ${target}`)
       const targetID = await privateDirectory(target, retained?.id, "data")
+      archiveEntries([targetID])
       const names = (await fs.readdir(target)).sort()
       assert.deepEqual(names, ["fixture", "manifest.json"], `incomplete or unexpected archive entries: ${target}`)
       const archived = await readRegular(manifest)
+      archiveEntries([archived.id])
       assert(archived.bytes.equals(Buffer.from(intended)), `archive manifest differs from intended fixture: ${target}`)
-      assert.deepEqual(contents(await inventory(payload)), contents(expected), `archive contents differ from intended fixture: ${target}`)
-      await directory(target, targetID)
+      assert.deepEqual(contents(await inventory(payload, undefined, { archiveEntries })), contents(expected),
+        `archive contents differ from intended fixture: ${target}`)
+      assert.deepEqual(await readRegular(manifest, { flush: true }), archived, `archive manifest changed during verification: ${target}`)
+      await syncDirectory(target, targetID)
+      await syncDirectory(location.root, location.id)
       proof = { id: targetID, sha256: sha256(archived.bytes) }
     }
     if (retained) {

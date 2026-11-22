@@ -9,6 +9,7 @@ import { hasResourceFork } from "./smoke-native.mjs"
 
 const windows = process.platform === "win32"
 const mac = process.platform === "darwin"
+const linuxArchiveTypes = new Set(["ext2", "ext3", "ext4", "xfs", "btrfs", "tmpfs", "f2fs"])
 export const sha256 = (bytes) => createHash("sha256").update(bytes).digest("hex")
 export const json = (data) => JSON.stringify(data, null, 2) + "\n"
 const noFollow = constants.O_NOFOLLOW ?? 0
@@ -33,6 +34,13 @@ export async function present(file) {
 export function identity(info) {
   assert(info && info.ino !== 0n, "missing filesystem identity")
   return `${info.dev}:${info.ino}:${info.birthtimeNs}`
+}
+
+const device = (id) => id.split(":")[0]
+function physicalID(id) {
+  const match = /^(\d+:[1-9]\d*):-?\d+$/.exec(id)
+  assert(match, "missing filesystem identity for archive separation")
+  return match[1]
 }
 
 function component(name) {
@@ -266,6 +274,53 @@ export async function externalDirectory(value, privateEntry = false) {
   return { canonical, id }
 }
 
+async function linuxMounts() {
+  if (process.platform !== "linux") return []
+  const text = new TextDecoder("utf-8", { fatal: true }).decode(await fs.readFile("/proc/self/mountinfo"))
+  const mounts = text.trimEnd().split("\n").map((line) => {
+    const [fields, details] = line.split(" - ")
+    const [, , , origin, at] = fields.split(" ")
+    const type = details?.split(" ")[0]
+    assert(type && origin?.startsWith("/") && at?.startsWith("/"), "cannot verify Linux mount topology")
+    const point = at.replace(/\\([0-7]{3})/g, (_, octal) => String.fromCharCode(parseInt(octal, 8)))
+    return { origin, point, type }
+  })
+  assert(mounts.some(({ point }) => point === "/"), "cannot verify Linux mount topology")
+  return mounts
+}
+
+async function directoryLineage(file, id) {
+  const ids = [physicalID(await directory(file, id))]
+  while (file !== path.dirname(file)) {
+    file = path.dirname(file)
+    ids.push(physicalID(await directory(file)))
+  }
+  return ids
+}
+
+export async function archiveSeparation(store, archive, target, sourceRows) {
+  const { canonical: from, id: fromID } = store
+  const { canonical: to, id: toID } = archive
+  const reason = `archive storage must be separate from smoke storage: ${to}`
+  assert(!inside(from, to) && !inside(to, from), reason)
+  const ancestors = await directoryLineage(from, fromID)
+  const destination = await directoryLineage(to, toID)
+  const source = new Set([ancestors[0], ...sourceRows.map((row) => physicalID(row.id))])
+  assert(!ancestors.includes(destination[0]) && !destination.some((id) => source.has(id)), reason)
+  for (const { origin, point, type } of await linuxMounts()) {
+    assert(!inside(target, point), `mount inside smoke archive: ${point}`)
+    // Subtree mounts hide ancestors; layered views may not share inode identities.
+    if (inside(point, from) || inside(point, to)) {
+      assert(origin === "/" && linuxArchiveTypes.has(type), `cannot verify archive separation through Linux mount: ${point} (${type})`)
+    }
+  }
+  for (const id of ancestors) source.add(id)
+  return (ids) => {
+    assert(ids.every((id) => !source.has(physicalID(id))), reason)
+    assert(ids.every((id) => device(id) === device(toID)), `off-volume entry in smoke archive: ${target}`)
+  }
+}
+
 function regular(info, file, links = 1n) {
   assert(info?.isFile() && !info.isSymbolicLink() && info.nlink === links, `missing, externally linked or non-regular smoke file: ${file}`)
   return identity(info)
@@ -282,7 +337,7 @@ async function withFile(file, flags, use, links, privateEntry = false) {
     const after = await present(file)
     assert.equal(regular(after, file, links), id, `file ownership changed: ${file}`)
     if (privateEntry && !windows) checkPosixAccess(after, file, true)
-    if (flags === constants.O_RDONLY) {
+    if (!(flags & constants.O_WRONLY)) {
       assert(after.size === before.size && after.mtimeNs === before.mtimeNs, `file changed while reading: ${file}`)
     }
     return value
@@ -291,11 +346,12 @@ async function withFile(file, flags, use, links, privateEntry = false) {
   }
 }
 
-export function readRegular(file) {
+export function readRegular(file, { flush = false } = {}) {
   checkWindows(file, "data")
-  return withFile(file, constants.O_RDONLY, async (handle, info) => {
+  return withFile(file, flush ? constants.O_RDWR : constants.O_RDONLY, async (handle, info) => {
     checkMacData(file)
     const bytes = await handle.readFile()
+    if (flush) await handle.sync()
     checkMacData(file)
     return { bytes, id: identity(info) }
   }, undefined, true)
@@ -309,15 +365,24 @@ export async function emptyPrivateFile(file) {
   }, undefined, true)
 }
 
-export async function syncDirectory(dir) {
+export async function syncDirectory(dir, expected) {
   // Node cannot open a Windows directory for fsync. Files themselves are flushed
   // on both platforms; Windows recovery is for process interruption, not power loss.
-  if (windows) return
-  const handle = await fs.open(dir, constants.O_RDONLY | constants.O_DIRECTORY | noFollow)
+  if (windows) {
+    if (expected !== undefined) await directory(dir, expected)
+    return
+  }
   try {
-    await handle.sync()
-  } finally {
-    await handle.close()
+    const handle = await fs.open(dir, constants.O_RDONLY | constants.O_DIRECTORY | noFollow)
+    try {
+      const id = directoryID(await handle.stat({ bigint: true }), dir, expected)
+      await handle.sync()
+      await directory(dir, id)
+    } finally {
+      await handle.close()
+    }
+  } catch (error) {
+    throw new Error(`cannot sync smoke directory ${dir}: ${error.message}`, { cause: error })
   }
 }
 
@@ -335,20 +400,16 @@ export async function append(file, previous, bytes) {
   }, undefined, true)
 }
 
-export async function inventory(root, rootID) {
+export async function inventory(root, rootID, { archiveEntries } = {}) {
   const id = await privateDirectory(root, rootID, "tree")
-  if (process.platform === "linux") {
-    // stat.dev alone misses a bind mount of another directory on the same disk.
-    const mounts = (await fs.readFile("/proc/self/mountinfo", "utf8")).trimEnd().split("\n")
-    for (const line of mounts) {
-      const mount = line.split(" ")[4].replace(/\\([0-7]{3})/g, (_, octal) => String.fromCharCode(parseInt(octal, 8)))
-      assert(!inside(root, mount), `mount inside smoke tree: ${mount}`)
-    }
+  // stat.dev alone misses a mount of another directory on the same disk.
+  for (const { point } of await linuxMounts()) {
+    assert(!inside(root, point), `mount inside smoke tree: ${point}`)
   }
   const rows = []
   async function walk(file, name) {
     const info = await present(file)
-    assert(info && !info.isSymbolicLink() && String(info.dev) === id.split(":")[0],
+    assert(info && !info.isSymbolicLink() && String(info.dev) === device(id),
       `missing, redirected or off-volume smoke entry: ${file}`)
     checkMacData(file)
     if (info.isDirectory()) {
@@ -367,22 +428,32 @@ export async function inventory(root, rootID) {
   }
   await walk(root, "")
   assert.equal(rows[0].id, id, `fixture ownership changed: ${root}`)
+  archiveEntries?.(rows.map((row) => row.id))
+  // A restarted reader must not rely on another process having flushed a
+  // readable POSIX archive. Source inventories are still read-only.
+  const flush = archiveEntries && !windows
   const byName = new Map(rows.map((row) => [row.name, row]))
   const links = linkCounts(rows)
   const hashes = new Map()
   for (const row of rows.filter((item) => item.bytes !== undefined)) {
     await parents(root, byName, row.name)
     const file = member(root, row.name)
-    row.sha256 = await withFile(file, constants.O_RDONLY, async (handle, current) => {
+    row.sha256 = await withFile(file, flush ? constants.O_RDWR : constants.O_RDONLY, async (handle, current) => {
       assert(identity(current) === row.id && current.size === BigInt(row.bytes) && String(current.mtimeNs) === row.mtime,
         `file changed during inventory: ${file}`)
       if (!hashes.has(row.id)) {
         const hasher = createHash("sha256")
         for await (const chunk of handle.createReadStream({ autoClose: false })) hasher.update(chunk)
         hashes.set(row.id, hasher.digest("hex"))
+        if (flush) await handle.sync()
       }
       return hashes.get(row.id)
     }, links.get(row.id))
+  }
+  if (flush) {
+    for (const row of rows.toReversed()) {
+      if (row.bytes === undefined) await syncDirectory(member(root, row.name), row.id)
+    }
   }
   return rows
 }
@@ -449,11 +520,6 @@ export async function copyTree(source, rows, destination) {
       }, links.get(row.id))
     }
   }
-  for (const [name, { id }] of [...created].reverse()) {
-    const dir = member(destination, name)
-    await directory(dir, id)
-    await syncDirectory(dir)
-  }
 }
 
 export async function removeTree(root, remaining, checkpoint) {
@@ -479,5 +545,4 @@ export async function removeTree(root, remaining, checkpoint) {
     }
     await checkpoint("removed-entry", file)
   }
-  await syncDirectory(path.dirname(root))
 }
