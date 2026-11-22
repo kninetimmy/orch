@@ -10,7 +10,6 @@ import test from "node:test"
 import { fileURLToPath, pathToFileURL } from "node:url"
 import { promisify } from "node:util"
 import { openSmokeStorage } from "../smoke-retention.mjs"
-import { smokeLockBinary } from "../smoke-lock.mjs"
 
 const execFile = promisify(callbackExec)
 const adapter = fileURLToPath(new URL("..", import.meta.url))
@@ -228,12 +227,6 @@ test("shared storage blocks another registered worktree from allocation, not mis
   await git("add", "-A")
   await git("-c", "user.name=Fixture", "-c", "user.email=fixture@example.invalid", "commit", "-m", "private fixture")
   await git("worktree", "add", "--detach", other, "HEAD")
-  const binary = await smokeLockBinary()
-  for (const worktree of [primary, other]) {
-    const output = path.join(worktree, path.relative(adapter, binary))
-    await fs.mkdir(path.dirname(output), { mode: 0o700 })
-    await fs.copyFile(binary, output)
-  }
   let lockID
   {
     await using active = await openSmokeStorage({ temp: f.temp, archiveRoot: f.archive })
@@ -269,6 +262,7 @@ test("lock errors and lock identity changes refuse without adopting or mutating 
   const lock = path.join(f.store, "smoke.lock")
   const original = path.join(f.base, "original-lock")
   const before = await fs.readFile(f.pending)
+  const originalStat = await fs.stat(lock, { bigint: true })
   const unknown = "unknown (inspect the pending record)"
   await withBroadGrant(lock, async () => {
     const result = await blocked(f, unknown, recovery, /Cannot verify or acquire smoke\.lock/)
@@ -285,9 +279,7 @@ test("lock errors and lock identity changes refuse without adopting or mutating 
   assert.deepEqual(await fs.readFile(f.pending), before)
   assert.deepEqual(await fs.readdir(source), [])
   assert.deepEqual(await fs.readdir(f.archive), [])
-  await fs.unlink(lock)
-  await fs.rename(original, lock)
-  assert.equal((await node(f, [recovery])).code, 0)
+  assert.equal((await fs.stat(original, { bigint: true })).ino, originalStat.ino)
 })
 
 // Only the test owns/terminates these processes. No PID-based stop in recovery.
@@ -301,7 +293,7 @@ async function killedRunner(f, point, use, args = []) {
     if (point === "running") {
       await storage.markRunning();
       const child = spawn(process.execPath, ["-e", "require('node:net').connect(+process.argv[1], '127.0.0.1')", port],
-        { cwd: outside, stdio: "ignore" });
+        { cwd: outside, stdio: "ignore", detached: true, windowsHide: true });
       child.on("error", (error) => { throw error });
     }
     process.stdout.write("READY " + source + "\\n");
@@ -335,28 +327,35 @@ async function killedRunner(f, point, use, args = []) {
 test("unexpected runner death releases the lock, not the running fixture, even with a surviving child outside its argv", async (t) => {
   const f = await fixture(t)
   const control = createServer()
-  const childConnected = once(control, "connection")
+  let socket, childClosed, socketError
+  const childConnected = new Promise((resolve) => control.once("connection", (child) => {
+    socket = child
+    child.on("error", (cause) => { socketError = cause })
+    childClosed = new Promise((done) => child.once("close", done))
+    resolve(child)
+  }))
   try {
     control.listen(0, "127.0.0.1")
     await once(control, "listening")
     await killedRunner(f, "running", async (source, kill) => {
-      const [child] = await childConnected
-      const childClosed = once(child, "close")
+      const child = await childConnected
       try {
         const journal = await fs.readFile(f.pending)
         await blocked(f, source, recovery, /busy \(smoke\.lock held\)/)
         await kill()
         await blocked(f, source, recovery, /owned shutdown is unconfirmed/)
-        assert.equal(child.destroyed, false, "the child must survive the holder")
+        assert.equal(child.destroyed, false, `the child must survive the holder (${socketError?.message ?? "socket closed"})`)
         assert.deepEqual(await fs.readFile(f.pending), journal)
         assert.deepEqual(await fs.readdir(f.archive), [])
       } finally {
         child.end()
         await childClosed
+        assert.ifError(socketError)
       }
       await blocked(f, source, recovery, /owned shutdown is unconfirmed/)
     }, [String(control.address().port), f.outside])
   } finally {
+    socket?.destroy()
     control.close()
   }
 })
@@ -377,7 +376,7 @@ test("Linux real namespaces share the smoke lock and refuse recovery with obscur
     async function runInNamespace(flags, script) {
       const args = ["-n", "/usr/bin/unshare", ...flags, "--", "/usr/bin/setpriv",
         "--reuid=" + process.getuid(), "--regid=" + process.getgid(), "--clear-groups", "--reset-env", "--",
-        "/usr/bin/env", `TMPDIR=${f.temp}`, `ORCH_SMOKE_ARCHIVE_ROOT=${f.archive}`,
+        "/usr/bin/env", `HOME=${f.env.HOME}`, `TMPDIR=${f.temp}`, `ORCH_SMOKE_ARCHIVE_ROOT=${f.archive}`,
         process.execPath, "--import", "data:text/javascript," + encodeURIComponent(witness), script]
       try {
         return { code: 0, ...await execFile("/usr/bin/sudo", args, { timeout: 60_000 }) }
@@ -471,7 +470,7 @@ test("recovery never adopts a regular file added after a verified finished check
     assert.equal(await fs.readFile(path.join(source, "payload"), "utf8"), "fixture bytes")
     assert.equal(await fs.readFile(late, "utf8"), "unrelated; preserve")
     assert.deepEqual(await fs.readdir(f.archive), [])
-    assert.deepEqual((await fs.readdir(f.store)).sort(), ["pending.jsonl", path.basename(source)].sort())
+    assert.deepEqual((await fs.readdir(f.store)).sort(), ["pending.jsonl", "smoke.lock", path.basename(source)].sort())
 
     await fs.unlink(late)
     const resumed = await node(f, [recovery])

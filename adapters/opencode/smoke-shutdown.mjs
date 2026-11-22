@@ -40,7 +40,9 @@ function linuxProcesses(matches) {
       const uid = /^Uid:\s+(\d+)\s+(\d+)\s+(\d+)\s+(\d+)$/m.exec(status)
       const state = /^State:\s+([A-Z])/m.exec(status)
       assert(uid && state, invisible)
-      if (uid.slice(1).every((id) => Number(id) !== process.geteuid()) || ["Z", "X"].includes(state[1])) continue
+      // Our smoke children run unprivileged as this UID. Privileged processes
+      // with only a matching real UID (e.g. sudo) are not those children.
+      if (Number(uid[2]) !== process.geteuid() || ["Z", "X"].includes(state[1])) continue
       const args = fs.readFileSync(processDir + "/cmdline", "utf8").split("\0")
       // Linux kernel threads have no executable, cwd or userspace argv.
       if (!args[0] && /^Kthread:\s+1$/m.test(status)) continue
@@ -55,7 +57,7 @@ function linuxProcesses(matches) {
       } catch (statusError) {
         if (statusError.code === "ENOENT" || statusError.code === "ESRCH") continue
       }
-      throw new Error(`${invisible}: Linux process ${pid}`, { cause: error })
+      throw new Error(`${invisible}: Linux process ${pid} (${error.code ?? error.message})`, { cause: error })
     }
   }
 }

@@ -1,18 +1,20 @@
 import assert from "node:assert/strict"
 import { spawnSync } from "node:child_process"
 import fs from "node:fs/promises"
+import { homedir } from "node:os"
 import path from "node:path"
 import { fileURLToPath } from "node:url"
 import { loadSmokeNative } from "./smoke-native.mjs"
 import { checkWindows, emptyPrivateFile, externalDirectory, present, privateDirectory, sha256, syncDirectory, writeNew } from "./smoke-storage.mjs"
 
 const source = fileURLToPath(new URL("smoke-lock.c", import.meta.url))
-const prepared = fileURLToPath(new URL(".smoke-native", import.meta.url))
 const windows = process.platform === "win32"
+const prepared = path.join(windows ? process.env.LOCALAPPDATA || homedir() : homedir(), ".orch-smoke-native")
 let binding
 
 export async function smokeLockBinary() {
-  return path.join(prepared, `${process.platform}-${process.arch}-${sha256(await fs.readFile(source))}.node`)
+  const code = (await fs.readFile(source, "utf8")).replaceAll("\r\n", "\n")
+  return path.join(prepared, `${process.platform}-${process.arch}-${sha256(code)}.node`)
 }
 
 export async function smokeLockEvidenceFiles() {

@@ -1,3 +1,5 @@
+//go:build ignore
+
 /* Smoke-only Node-API bridge. The Node mutator, not a child, owns the handle. */
 #ifdef __APPLE__
 #define _DARWIN_C_SOURCE

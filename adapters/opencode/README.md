@@ -564,16 +564,16 @@ Use compatible harnesses in **all** worktrees sharing the storage. Stop using
 the earlier socket-lock harness before switching; it cannot observe the file
 lock. Do not change temp storage to evade an unresolved run.
 
-From each smoke or recovery checkout, prepare the smoke-only native binding
-once (repeat after changing its source, OS or architecture):
+Prepare the smoke-only native binding once (repeat after changing its source,
+OS or architecture; matching worktrees use the same prepared bytes):
 
 ```sh
 npm run smoke:prepare --prefix adapters/opencode
 ```
 
 This needs a preinstalled C compiler (`/usr/bin/cc` on Linux/macOS or native
-MinGW `gcc` on Windows) and builds into the checkout's ignored
-`adapters/opencode/.smoke-native/` directory. No npm package, Node SDK download
+MinGW `gcc` on Windows) and builds into the private `~/.orch-smoke-native/`
+directory (`%LOCALAPPDATA%\.orch-smoke-native\` on Windows). No npm package, Node SDK download
 or selected Orch build is required for preparation. `npm test` prepares it
 automatically. Smoke and recovery use the prepared binding without compiling
 or downloading anything as part of lock acquisition. It is not loaded by the
@@ -730,7 +730,7 @@ Memhub binary for the isolated qualification checks.
 | Isolated child environment | Before, it inherited the caller's Node compile-cache setting. Now it removes `NODE_COMPILE_CACHE` and sets `NODE_DISABLE_COMPILE_CACHE=1` for every child receiving the isolated environment, not the invoking npm/Node process or other adapter invocations. Other home/cache, credential, proxy and simulation isolation rules remain. |
 | `joined`, `verifyStopped`, `namesFixture`, `linuxProcesses`, the native process/fork probes and final host/provider/direct Memhub cleanup | The isolated native stop, provider trap, joins, service-record binding, direct probe and owned startup fallback remain. Before, joining the host was enough. Now durable verified shutdown (or proof activity could not start) is also required for removal. Native Windows `windowsProcessPaths`, macOS `macProcessPaths`/`hasResourceFork` and Linux `linuxProcessScope` provide the platform observations above. Neither overlapping recovery nor process termination is a fallback for incomplete activity proof. |
 | `pass`, final evidence, `receipt`, `archivePath`, `dispose` and `SMOKE_EVIDENCE` | Every existing success label and post-run selected/private artifact check remains. `evidence.json` and `server.log` were retained with every fixture; now only failures with verified shutdown and source ownership archive them together with scratch. Pass keeps verified identities/check outcomes separately; ambiguous or incomplete evidence keeps pending scratch. The pointer identifies local evidence; only the Architect records it in Memhub. |
-| `test/smoke-retention.test.js`, `test/smoke-artifacts.test.js`, `package.json`, `.gitignore` and `.github/workflows/ci.yml` | Existing selectors, permissions, interruption, ownership, archive/receipt, Windows streams and macOS aliases remain covered. New tests verify same-process and cross-worktree contention, stable identity, refusal on unsafe lock and legacy records, holder death with pending or surviving child, exact/descendant/unrelated argv and actual macOS forks. Linux CI requires a real namespace test with `unshare`, `setpriv` and noninteractive `sudo`; unavailable tooling fails that lane. `pretest`/`smoke:prepare` build the ignored binding. The existing CI matrix and smoke commands remain; live smoke is not run by CI and npm dependency pins do not change. |
+| `test/smoke-retention.test.js`, `test/smoke-artifacts.test.js`, `package.json` and `.github/workflows/ci.yml` | Existing selectors, permissions, interruption, ownership, archive/receipt, Windows streams and macOS aliases remain covered. New tests verify same-process and cross-worktree contention, stable identity, refusal on unsafe lock and legacy records, holder death with pending or surviving child, exact/descendant/unrelated argv and actual macOS forks. Linux CI requires a real namespace test with `unshare`, `setpriv` and noninteractive `sudo`; unavailable tooling fails that lane. `pretest`/`smoke:prepare` build the binding outside the checkout. The existing CI matrix and smoke commands remain; live smoke is not run by CI and npm dependency pins do not change. |
 | This README and `docs/worktree-cleanup.md` | Prior full-evidence behavior is kept as history. Both documents now distinguish full failure archives from pass receipts and isolated qualification from installed behavior. This does not change the checkout-release or removal contract. |
 
 No adapter plugin runtime, Delivery policy, grant lock, other host or
