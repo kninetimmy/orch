@@ -1,17 +1,18 @@
 # OpenCode V2 adapter
 
 This directory is Orch's npm-native OpenCode V2 adapter. Its package ID
-is `@kninetimmy/orch-opencode` (source version `0.13.1`) and its running plugin
+is `@kninetimmy/orch-opencode` (source version `0.13.2`) and its running plugin
 ID is `orch.delivery`. It is not the Codex marketplace adapter: that is
 `adapters/codex/`, installed as `orch@orch` from the shared marketplace.
 
 ## Compatibility
 
-Package **0.13.0** was prepared for the **v0.16.0 engine target**, not a published
-release or npm artifact. Latest published engine remains **v0.15.2**, whose
-OpenCode package was 0.12.0. Claude/Codex packaged guidance was unchanged at the
-v0.16.0 checkpoint. After #522, all source adapters and the marketplace are
-labeled 0.13.1; subsequent guidance changes require matching engine content.
+Latest published engine **v0.16.0** pairs with package **0.13.0** on all three
+hosts. The pending **v0.17.0** candidate pairs with **0.13.2** adapters and
+marketplace, following #522's 0.13.1 source bump. OpenCode is not published to
+npm. Historical v0.15.2 used OpenCode 0.12.0, and Claude/Codex packaged guidance
+was unchanged at the v0.16.0 checkpoint. See the [candidate release notes and
+post-merge qualification gates](../../README.md#v0170-release-target-not-published).
 Use compatible engine/adapter **content**, not labels alone. The repair increment
 used state schema 6, approval/execution contract 2, Gate 3, Status 4, Activation 2,
 Dispatch 4, Review 3, Escalate 2, Block 2, Resume 2, Resolve Block 1 and CLI
@@ -807,10 +808,11 @@ guard denial and an unmanaged project with no bound server were checked.
 Only scoped locations were reloaded/reconnected; the shared OpenCode service
 was not restarted and unrelated processes were retained.
 
-Those installed bytes are **not this final 0.13.0 package** and are not a
-published v0.16.0 artifact. Isolated smoke uses all five roles with simulation;
-it is not a model-driven five-role trial. This normal Delivery cycle's executor
-successfully used installed native bound status, `get_row` (decision 70) and
+Those installed bytes are **not the released 0.13.0 package**, a published
+v0.16.0 artifact or v0.17.0 candidate qualification. Isolated smoke uses all five
+roles with simulation; it is not a model-driven five-role trial. During that
+release-preparation Delivery cycle, the executor successfully used installed
+native bound status, `get_row` (decision 70) and
 locate from its assigned implementation checkout at `f57fc37`, with matching
 explicit roots/common directory and hash-verified locate hits. A fresh reviewer
 must independently move to its assigned review checkout, validate status and
@@ -961,7 +963,9 @@ and hashes. Select compatible engine/adapter content together, including
 lookup-context schema 2 and explicit-root lookup-only Memhub; an old engine or
 schema-1 adapter is not a fallback. Never replace these during an active run.
 Verify downloaded release binaries against trusted published checksums before
-execution; v0.16.0 has no published final artifact yet.
+execution; v0.17.0 has no published final artifact yet. Finish active Delivery
+runs with their original engine and matching adapters before upgrading, or
+explicitly abort and obtain fresh plan approval; active runs are not migrated.
 
 In the persistent checkout, set `ORCH_ADAPTER_COMMIT` to the inspected, approved
 commit matching the selected engine, not an unreviewed moving branch:

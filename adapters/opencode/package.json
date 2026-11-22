@@ -1,6 +1,6 @@
 {
   "name": "@kninetimmy/orch-opencode",
-  "version": "0.13.1",
+  "version": "0.13.2",
   "type": "module",
   "exports": "./src/index.js",
   "scripts": {
