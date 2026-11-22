@@ -17,7 +17,10 @@ gate result means) comes from `orch run <verb>`; your job is to
 construct honest requests, run the verb, and present its result
 faithfully.
 
-## The JSON pattern every verb call follows
+## The CLI JSON pattern
+
+Use this pattern for CLI calls selected by the workflow below. Dispatch transport
+selection and recovery in per-issue step 1 take precedence over this CLI pattern.
 
 1. Write the request JSON to a scratch file in the OS temp directory,
    **outside the repository** (never inside the working tree or a
@@ -33,8 +36,8 @@ faithfully.
 3. Exit 0: parse stdout as the verb's JSON result.
 4. Non-zero exit: the engine refused. Present the stderr message
    **verbatim** — never paraphrase, never retry blind, never work
-   around it. Only a revised request (different facts, different
-   approval, a resolved precondition) is a valid next step.
+   around it. Any later request needs different facts, different approval or a
+   resolved precondition, and must follow that verb's recovery rules.
 
 `orch run status --json` never reads stdin — call it bare.
 
@@ -298,13 +301,30 @@ in flight at once. OpenCode does not expose exact child-session usage as an
 engine value. Omit all optional usage fields; never estimate or substitute
 parent-session usage.
 
-1. **Dispatch** — `orch run dispatch` with
+1. **Dispatch** — At the verified primary checkout, confirm the approved active
+   run, target issue's `worktree-ready` phase and normal engine prerequisites
+   from fresh read-only state. Discover `orch_run_dispatch` in the native tool
+   catalog before any dispatch attempt. When available, call it once with
    `{"schema_version": 4, "issue_number": N}`. Result
    (`DispatchResult`): `branch`, `worktree`, `executor`, `reviewer`,
    `rationale`, `objective`, `acceptance_criteria`, `required_tests`,
-   `tests_ci_does_not_run`.
+   `tests_ci_does_not_run`. Reject a missing, malformed or non-schema-4 brief
+   before reading its routed selections or launching a child.
 
-2. **Dispatch the executor** — dispatch `orch-implementer` or
+   Use `orch run dispatch` only after confirmed tool absence before any dispatch
+   attempt, under the same verified preconditions, with the same schema-4 request
+   via the CLI JSON pattern above. Discovery errors, binding failures and policy
+   refusals are not tool absence: stop and report them, never route around them.
+
+   After any dispatch error, cancellation or uncertain result, inspect fresh
+   read-only status, issue context and actual Git/GitHub artifacts, then follow
+   normal authorized engine recovery (`resume`/`abort` or its stated fresh-plan/
+   repair path). Failure is not a rollback guarantee. Do not automatically retry,
+   switch transports or launch a child from an unverified brief, even if the
+   phase appears unchanged. Read-only observations are not dispatch receipts.
+
+2. **Dispatch the executor** — Only after a successful, verified schema-4 brief,
+   separately launch `orch-implementer` or
    `orch-specialist` (per the routed role) through OpenCode's `subagent` tool.
    The agent that actually runs is whatever its project definition under
    `.opencode/agents/` pins with `model: provider/model#variant` or bare

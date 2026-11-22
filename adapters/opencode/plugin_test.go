@@ -161,6 +161,72 @@ func TestDeliverySkillHasRoutedSelectionCue(t *testing.T) {
 	adaptertest.CheckOpenCodeRoutedSelectionCue(t, deliverySkillPath)
 }
 
+func TestDeliverySkillPrefersNativeDispatchWithoutRetry(t *testing.T) {
+	data, err := opencode.Skills.ReadFile(deliverySkillPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	content := adaptertest.NormalizeWhitespace(string(data))
+	for _, section := range []struct {
+		start, end string
+		phrases    []string
+	}{
+		{
+			start: "## The CLI JSON pattern", end: "## PlanDoc construction",
+			phrases: []string{
+				"Dispatch transport selection and recovery in per-issue step 1 take precedence over this CLI pattern",
+				"must follow that verb's recovery rules",
+			},
+		},
+		{
+			start: "1. **Dispatch**", end: "2. **Dispatch the executor**",
+			phrases: []string{
+				"At the verified primary checkout",
+				"approved active run",
+				"`worktree-ready` phase",
+				"Discover `orch_run_dispatch` in the native tool catalog before any dispatch attempt",
+				"When available, call it once with `{\"schema_version\": 4, \"issue_number\": N}`",
+				"Use `orch run dispatch` only after confirmed tool absence before any dispatch attempt, under the same verified preconditions",
+				"Discovery errors, binding failures and policy refusals are not tool absence",
+				"Reject a missing, malformed or non-schema-4 brief",
+				"After any dispatch error, cancellation or uncertain result",
+				"fresh read-only status, issue context and actual Git/GitHub artifacts",
+				"follow normal authorized engine recovery",
+				"Do not automatically retry, switch transports or launch a child from an unverified brief",
+				"even if the phase appears unchanged",
+			},
+		},
+		{
+			start: "2. **Dispatch the executor**", end: "3. **PR-open**",
+			phrases: []string{
+				"Only after a successful, verified schema-4 brief, separately launch",
+				"through OpenCode's `subagent` tool",
+				"`DispatchResult`'s `{model, variant}` or `{model, no_variant: true}`",
+				"Transcribe `DispatchResult.objective`, `.acceptance_criteria`, and `.required_tests` into the prompt **verbatim**",
+				"along with the worktree path and branch",
+			},
+		},
+	} {
+		_, body, ok := strings.Cut(content, section.start)
+		if !ok {
+			t.Errorf("%s missing section %q", deliverySkillPath, section.start)
+			continue
+		}
+		body, _, ok = strings.Cut(body, section.end)
+		if !ok {
+			t.Fatalf("%s missing section boundary %q", deliverySkillPath, section.end)
+		}
+		for _, phrase := range section.phrases {
+			if !strings.Contains(body, adaptertest.NormalizeWhitespace(phrase)) {
+				t.Errorf("%s section %q missing dispatch guidance %q", deliverySkillPath, section.start, phrase)
+			}
+		}
+	}
+	if strings.Contains(content, "1. **Dispatch** — `orch run dispatch` with") {
+		t.Errorf("%s retains CLI-first dispatch guidance", deliverySkillPath)
+	}
+}
+
 func TestSelectionWireVersionsMatchEngine(t *testing.T) {
 	adaptertest.CheckSelectionWireVersions(t, deliverySkillPath, architectSkillPath)
 }
