@@ -7,6 +7,7 @@ import path from "node:path"
 import { inside } from "./smoke-artifacts.mjs"
 
 const windows = process.platform === "win32"
+const mac = process.platform === "darwin"
 export const sha256 = (bytes) => createHash("sha256").update(bytes).digest("hex")
 export const json = (data) => JSON.stringify(data, null, 2) + "\n"
 const noFollow = constants.O_NOFOLLOW ?? 0
@@ -33,12 +34,16 @@ function component(name) {
 
 // Node does not expose all reparse tags or named data streams. Windows
 // PowerShell's file cmdlets cannot enumerate directory streams on all versions.
-export function checkWindows(file, mode = "path") {
+export function checkWindows(file, mode = "path", privateEntry = true) {
   if (!windows) return
   const result = spawnSync(path.join(process.env.SystemRoot, "System32", "WindowsPowerShell", "v1.0", "powershell.exe"),
     ["-NoProfile", "-NonInteractive", "-Command", String.raw`
 $ErrorActionPreference = 'Stop'
 $mode = $env:ORCH_SMOKE_INSPECT_MODE
+$privateEntry = $env:ORCH_SMOKE_INSPECT_PRIVATE -eq '1'
+$user = [Security.Principal.WindowsIdentity]::GetCurrent().User.Value
+# SYSTEM, built-in Administrators and the Windows servicing account.
+$trusted = @($user, 'S-1-5-18', 'S-1-5-32-544', 'S-1-5-80-956008885-3418522649-1831038044-1853292631-2271478464')
 if ($mode -ne 'path') {
   Add-Type -TypeDefinition @'
 using System;
@@ -79,70 +84,175 @@ public static class SmokeStreams {
 }
 '@
 }
-function Check($p, $data, $walk) {
+function CheckAccess($p, $isDirectory, $private) {
+  $sections = [Security.AccessControl.AccessControlSections]'Access, Owner'
+  $acl = if ($isDirectory) { [IO.Directory]::GetAccessControl($p, $sections) }
+         else { [IO.File]::GetAccessControl($p, $sections) }
+  $sd = [Security.AccessControl.RawSecurityDescriptor]::new($acl.GetSecurityDescriptorBinaryForm(), 0)
+  if ($sd.Owner.Value -notin $trusted) {
+    throw "Unsafe Windows smoke owner: $p"
+  }
+  if (-not ($sd.ControlFlags -band [Security.AccessControl.ControlFlags]::DiscretionaryAclPresent) -or
+      $null -eq $sd.DiscretionaryAcl) { throw "Cannot verify Windows smoke access list: $p" }
+
+  # Ancestors may grant read/traverse and creation of new entries. Not deletion of
+  # an existing child, redirection of a directory, or changes to access control.
+  $allowed = 0xa01200af # GENERIC_READ/EXECUTE and their mapped rights, plus ADD_FILE/ADD_SUBDIRECTORY
+  # A local volume root itself cannot be deleted/replaced. It may grant modify
+  # rights on the root, but not DELETE_CHILD or security descriptor writes.
+  if ($p -eq $root) { $allowed = $allowed -bor 0x40010116 } # GENERIC_WRITE and its mapped rights, plus DELETE
+  foreach ($ace in $sd.DiscretionaryAcl) {
+    $inheritOnly = [int]$ace.AceFlags -band [int][Security.AccessControl.AceFlags]::InheritOnly
+    if ($inheritOnly -and -not $private) { continue }
+    if ($ace -isnot [Security.AccessControl.CommonAce] -or $ace.IsCallback -or
+        $ace.AceType -notin @('AccessAllowed', 'AccessDenied')) { throw "Cannot verify Windows smoke access entry: $p" }
+    if ($ace.AceType -eq 'AccessDenied' -or $ace.SecurityIdentifier.Value -in $trusted -or
+        ($inheritOnly -and $ace.SecurityIdentifier.Value -eq 'S-1-3-0')) { continue }
+    if ($private -or ($ace.AccessMask -band (-bnot $allowed))) { throw "Unsafe Windows smoke permissions: $p" }
+  }
+}
+function Check($p, $data, $walk, $private) {
   $a = [IO.File]::GetAttributes($p)
   if ($a -band [IO.FileAttributes]::ReparsePoint) { throw "Windows reparse point: $p" }
+  $isDirectory = ($a -band [IO.FileAttributes]::Directory) -ne 0
+  CheckAccess $p $isDirectory $private
   if ($data) { [SmokeStreams]::Check($p) }
-  if ($walk -and ($a -band [IO.FileAttributes]::Directory)) {
-    foreach ($child in [IO.Directory]::EnumerateFileSystemEntries($p)) { Check $child $true $true }
+  if ($walk -and $isDirectory) {
+    foreach ($child in [IO.Directory]::EnumerateFileSystemEntries($p)) { Check $child $true $true $private }
   }
 }
 $p = $env:ORCH_SMOKE_INSPECT
 $root = [IO.Path]::GetPathRoot($p)
-if ([IO.DriveInfo]::new($root).DriveType -notin @('Fixed', 'Removable')) { throw "Not a local disk: $root" }
+$drive = [IO.DriveInfo]::new($root)
+if ($drive.DriveType -notin @('Fixed', 'Removable') -or $drive.DriveFormat -notin @('NTFS', 'ReFS')) {
+  throw "Not a local Windows disk with verifiable access control: $root"
+}
 $ancestors = @()
 for ($dir = $p; $dir -ne $root;) {
   $dir = [IO.Path]::GetDirectoryName($dir)
   $ancestors += ,$dir
 }
-for ($i = $ancestors.Length - 1; $i -ge 0; $i--) { Check $ancestors[$i] $false $false }
-Check $p ($mode -ne 'path') ($mode -eq 'tree')
+for ($i = $ancestors.Length - 1; $i -ge 0; $i--) { Check $ancestors[$i] $false $false $false }
+Check $p ($mode -ne 'path') ($mode -eq 'tree') $privateEntry
 `], {
-      env: { ...process.env, ORCH_SMOKE_INSPECT: file, ORCH_SMOKE_INSPECT_MODE: mode },
+      env: { ...process.env, ORCH_SMOKE_INSPECT: file, ORCH_SMOKE_INSPECT_MODE: mode, ORCH_SMOKE_INSPECT_PRIVATE: privateEntry ? "1" : "0" },
       encoding: "utf8", windowsHide: true, timeout: 30_000,
     })
   assert(result.status === 0 && !result.error, `cannot verify Windows smoke path ${file}: ${result.error?.message ?? result.stderr.trim()}`)
 }
 
-export async function directory(file, expected) {
-  const info = await present(file)
+function directoryID(info, file, expected) {
   assert(info?.isDirectory() && !info.isSymbolicLink(), `missing, redirected or non-directory smoke path: ${file}`)
   const id = identity(info)
   assert(expected === undefined || id === expected, `directory ownership changed: ${file}`)
   return id
 }
 
-export async function externalDirectory(value) {
+export async function directory(file, expected) {
+  return directoryID(await present(file), file, expected)
+}
+
+function checkPosixAccess(info, file, privateEntry) {
+  assert((mac || process.platform === "linux") && typeof process.geteuid === "function", "cannot verify POSIX smoke permissions on this platform")
+  assert(info.uid === BigInt(process.geteuid()) || (!privateEntry && info.uid === 0n), `unsafe smoke path owner: ${file}`)
+  // The sticky bit protects an owned child in a shared temp directory. Linux
+  // POSIX ACL grants to named users/groups are bounded by the group mode bits.
+  assert(privateEntry ? (info.mode & 0o077n) === 0n : (info.mode & 0o022n) === 0n || (info.mode & 0o1000n) !== 0n,
+    `unsafe smoke path permissions: ${file}`)
+  if (mac) {
+    // macOS ACLs can grant access independently of the mode. Accept only no
+    // ACL or deny-only ACLs. Use numeric owners/ACL UUIDs and escape filenames.
+    const result = spawnSync("/bin/ls", ["-blden", file], { env: { LC_ALL: "C" }, encoding: "utf8", timeout: 30_000 })
+    const [entry, ...acl] = result.stdout?.trimEnd().split("\n") ?? []
+    assert(result.status === 0 && !result.error && !result.stderr && /^[d-][rwxstST-]{9}[ +@]/.test(entry) &&
+      (entry[10] !== "+" || acl.length > 0) &&
+      acl.every((line) => /^\s+\d+: (?:[0-9a-f-]{36}|(?:user|group):\S+) (?:inherited )?deny \S+$/i.test(line)),
+    `cannot verify private macOS smoke access (unexpected or granting ACL): ${file}`)
+  }
+}
+
+async function checkLocalPosix(file) {
+  const options = { env: { LC_ALL: "C" }, encoding: "utf8", timeout: 30_000 }
+  const df = spawnSync("/bin/df", ["-lP", file], options)
+  const rows = df.stdout?.trimEnd().split("\n")
+  assert(df.status === 0 && !df.error && !df.stderr && rows?.length === 2, `cannot verify local filesystem: ${file}`)
+  if (mac) {
+    // The macOS noowners mount option can report another account's files as ours.
+    const volume = /^(.+?)\s+\d+\s+\d+\s+-?\d+\s+-?\d+%\s+(.+)$/.exec(rows[1])
+    const mounts = spawnSync("/sbin/mount", [], options)
+    const prefix = volume && `${volume[1]} on ${volume[2]} (`
+    const matching = mounts.stdout?.split("\n").filter((line) => prefix && line.startsWith(prefix) && line.endsWith(")"))
+    const flags = matching?.length === 1 && matching[0].slice(prefix.length, -1).split(", ")
+    assert(mounts.status === 0 && !mounts.error && !mounts.stderr &&
+      flags && ["apfs", "hfs"].includes(flags[0]) && flags.includes("local") && !flags.includes("noowners"),
+    `cannot verify macOS ownership enforcement on local APFS/HFS: ${file}`)
+  } else {
+    const { type } = await fs.statfs(file, { bigint: true })
+    // Linux kernel filesystems with POSIX ownership/modes. Do not trust
+    // synthesized ownership on incompatible or userspace filesystems.
+    assert([0xef53n, 0x58465342n, 0x9123683en, 0x01021994n, 0x794c7630n, 0xf2f52010n].includes(type),
+      `cannot verify Linux ownership enforcement (expected ext, XFS, btrfs, tmpfs, overlayfs or f2fs): ${file}`)
+  }
+}
+
+export async function privateDirectory(file, expected, mode = "path") {
+  const { root, names } = storagePath(file)
+  const id = await checkDirectoryPath(root, names, true, mode)
+  assert(expected === undefined || expected === id, `directory ownership changed: ${file}`)
+  return id
+}
+
+function storagePath(value) {
   assert(typeof value === "string" && path.isAbsolute(value) &&
     (!windows || /^[a-z]:[\\/]/i.test(value)), "smoke storage needs an absolute local directory path")
   const root = path.parse(value).root
   const names = value.slice(root.length).split(windows ? /[\\/]+/ : /\/+/).filter(Boolean)
   for (const name of names) component(name)
-  const absolute = path.normalize(value)
-  const normalized = absolute.length > root.length && absolute.endsWith(path.sep) ? absolute.slice(0, -1) : absolute
-  // Do not trust a link in an ancestor even when its destination is a directory.
+  return { root, names }
+}
+
+async function checkDirectoryPath(root, names, privateEntry, mode = "path") {
+  let id
   for (let i = 0; i <= names.length; i++) {
     const at = path.join(root, ...names.slice(0, i))
-    await directory(at)
+    const info = await present(at)
+    id = directoryID(info, at)
+    if (!windows) checkPosixAccess(info, at, privateEntry && i === names.length)
   }
-  checkWindows(normalized)
+  checkWindows(path.join(root, ...names), mode, privateEntry)
+  return id
+}
+
+export async function externalDirectory(value, privateEntry = false) {
+  let { root, names } = storagePath(value)
+  const normalized = path.join(root, ...names)
+  // Only these root-owned macOS system aliases may precede a storage path.
+  // Check every canonical component and bind it back to the original spelling.
+  if (mac && ["var", "tmp"].includes(names[0])) {
+    const alias = path.join(root, names[0])
+    const info = await present(alias)
+    if (info?.isSymbolicLink()) {
+      const target = await fs.readlink(alias)
+      assert(info.uid === 0n && [`private/${names[0]}`, `/private/${names[0]}`].includes(target),
+        `unexpected macOS system directory alias: ${alias}`)
+      names = ["private", ...names]
+    }
+  }
+  const id = await checkDirectoryPath(root, names, privateEntry)
   const canonical = await fs.realpath(normalized)
   if (windows) {
     assert.equal(path.parse(canonical).root.toUpperCase(), path.parse(normalized).root.toUpperCase(),
       `redirected Windows drive: ${normalized}`)
-  } else {
-    const result = spawnSync("/bin/df", ["-lP", canonical], { encoding: "utf8", timeout: 30_000 })
-    assert(result.status === 0 && !result.error && result.stdout.trim().split("\n").length > 1,
-      `cannot verify local filesystem: ${canonical}`)
-  }
+  } else await checkLocalPosix(canonical)
   for (let at = canonical; ; at = path.dirname(at)) {
     assert(!await present(path.join(at, ".git")) &&
       !(await present(path.join(at, "HEAD")) && await present(path.join(at, "objects"))),
     `smoke storage must be outside Git checkouts and repositories: ${at}`)
     if (at === path.dirname(at)) break
   }
-  await directory(canonical, await directory(normalized))
-  return canonical
+  assert.equal(identity(await fs.stat(normalized, { bigint: true })), id, `smoke storage redirected: ${normalized}`)
+  await directory(canonical, id)
+  return { canonical, id }
 }
 
 function regular(info, file, links = 1n) {
@@ -150,15 +260,17 @@ function regular(info, file, links = 1n) {
   return identity(info)
 }
 
-async function withFile(file, flags, use, links) {
+async function withFile(file, flags, use, links, privateEntry = false) {
   const id = regular(await present(file), file, links)
   const handle = await fs.open(file, flags | noFollow)
   try {
     const before = await handle.stat({ bigint: true })
     assert.equal(regular(before, file, links), id, `file ownership changed: ${file}`)
+    if (privateEntry && !windows) checkPosixAccess(before, file, true)
     const value = await use(handle, before)
     const after = await present(file)
     assert.equal(regular(after, file, links), id, `file ownership changed: ${file}`)
+    if (privateEntry && !windows) checkPosixAccess(after, file, true)
     if (flags === constants.O_RDONLY) {
       assert(after.size === before.size && after.mtimeNs === before.mtimeNs, `file changed while reading: ${file}`)
     }
@@ -172,7 +284,7 @@ export function readRegular(file) {
   checkWindows(file, "data")
   return withFile(file, constants.O_RDONLY, async (handle, info) => ({
     bytes: await handle.readFile(), id: identity(info),
-  }))
+  }), undefined, true)
 }
 
 export async function syncDirectory(dir) {
@@ -198,12 +310,11 @@ export async function append(file, previous, bytes) {
     assert(identity(info) === previous.id && info.size === BigInt(previous.bytes.length), `pending journal changed: ${file}`)
     await handle.writeFile(bytes)
     await handle.sync()
-  })
+  }, undefined, true)
 }
 
 export async function inventory(root, rootID) {
-  const id = await directory(root, rootID)
-  checkWindows(root, "tree")
+  const id = await privateDirectory(root, rootID, "tree")
   if (process.platform === "linux") {
     // stat.dev alone misses a bind mount of another directory on the same disk.
     const mounts = (await fs.readFile("/proc/self/mountinfo", "utf8")).trimEnd().split("\n")

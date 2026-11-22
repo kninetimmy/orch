@@ -37,7 +37,7 @@ async function fixture(t) {
   const temp = path.join(base, "temp")
   const archive = path.join(base, "archive")
   const outside = path.join(base, "outside")
-  for (const dir of [temp, archive, outside]) await fs.mkdir(dir)
+  for (const dir of [temp, archive, outside]) await fs.mkdir(dir, { mode: 0o700 })
   const sentinel = path.join(outside, "sentinel")
   await fs.writeFile(sentinel, "unrelated; preserve")
   const store = path.join(temp, "orch-opencode-smoke")
@@ -90,6 +90,132 @@ async function blocked(f, source, script = harness, pattern = /recovery is requi
 
 const absent = (file) => assert.rejects(fs.lstat(file), { code: "ENOENT" })
 const pointer = ({ stdout }) => JSON.parse(stdout.split(/\r?\n/).find((line) => line.startsWith("SMOKE_EVIDENCE ")).slice(15))
+const windowsOnly = { skip: process.platform !== "win32" }
+const macOnly = { skip: process.platform !== "darwin" }
+
+async function withBroadGrant(file, use, windowsRight = "Write", mode = 0o777) {
+  let set
+  if (process.platform === "win32") {
+    set = (add) => execFile(path.join(process.env.SystemRoot, "System32", "WindowsPowerShell", "v1.0", "powershell.exe"),
+      ["-NoProfile", "-NonInteractive", "-Command", `
+$ErrorActionPreference = 'Stop'
+$p = $env:ORCH_TEST_ACL_PATH
+$api = if ([IO.Directory]::Exists($p)) { [IO.Directory] } else { [IO.File] }
+$acl = $api::GetAccessControl($p)
+$right = [Security.AccessControl.FileSystemRights]$env:ORCH_TEST_ACL_RIGHT
+$rule = [Security.AccessControl.FileSystemAccessRule]::new([Security.Principal.SecurityIdentifier]'S-1-1-0', $right, 'Allow')
+if ($env:ORCH_TEST_ACL_ADD -eq '1') { $acl.AddAccessRule($rule) } else { $acl.RemoveAccessRuleSpecific($rule) }
+$api::SetAccessControl($p, $acl)
+`], { env: { ...process.env, ORCH_TEST_ACL_PATH: file, ORCH_TEST_ACL_RIGHT: windowsRight, ORCH_TEST_ACL_ADD: add ? "1" : "0" } })
+  } else {
+    const original = (await fs.stat(file)).mode & 0o7777
+    set = (add) => fs.chmod(file, add ? mode : original)
+  }
+  await set(true)
+  try { await use() } finally { await set(false) }
+}
+
+test("journal storage and the journal itself must be private before recovery reads them", async (t) => {
+  const f = await fixture(t)
+  const { fixture_root: source } = await crash(f, "finished", "fail")
+  const journal = await fs.readFile(f.pending)
+  const entries = (await fs.readdir(f.store)).sort()
+  const unknown = "unknown (inspect the pending record)"
+  const unsafe = /unsafe (?:Windows smoke|smoke path) permissions/i
+  for (const [file, right] of [[f.temp, "DeleteSubdirectoriesAndFiles"], [f.store, "Write"], [f.pending, "Write"]]) {
+    await withBroadGrant(file, async () => {
+      for (const script of [harness, recovery]) {
+        const refused = await blocked(f, unknown, script, unsafe)
+        assert(!refused.stderr.includes(source), "the record must not be trusted for diagnostics")
+        assert.doesNotMatch(refused.stdout, /SMOKE_EVIDENCE/)
+      }
+      assert.deepEqual(await fs.readFile(f.pending), journal)
+      assert.equal(await fs.readFile(path.join(source, "payload"), "utf8"), "fixture bytes")
+      assert.deepEqual((await fs.readdir(f.store)).sort(), entries)
+      assert.deepEqual(await fs.readdir(f.archive), [])
+    }, right)
+  }
+
+  await withBroadGrant(f.archive, async () => {
+    await blocked(f, source, recovery, unsafe)
+    assert.deepEqual(await fs.readFile(f.pending), journal)
+    assert.equal(await fs.readFile(path.join(source, "payload"), "utf8"), "fixture bytes")
+    assert.deepEqual(await fs.readdir(f.archive), [])
+  })
+
+  // A current-user-owned journal under a sticky POSIX temp parent is still private.
+  if (process.platform !== "win32") await fs.chmod(f.temp, 0o1777)
+  const resumed = await node(f, [recovery])
+  assert.equal(resumed.code, 0, resumed.stderr)
+  assert.equal(pointer(resumed).kind, "failure-archive")
+  await absent(f.pending)
+  await absent(source)
+})
+
+test("macOS accepts raw OS temp aliases but not a redirect below them", macOnly, async (t) => {
+  const userTemp = (await execFile("/usr/bin/getconf", ["DARWIN_USER_TEMP_DIR"])).stdout.trim()
+  assert.equal(await fs.realpath("/tmp"), "/private/tmp", "exercise the real system alias")
+  for (const parent of new Set([tmpdir(), path.normalize(userTemp), "/tmp"])) {
+    const raw = await fs.mkdtemp(path.join(parent, "orch-smoke-raw-test-"))
+    t.after(() => fs.rm(raw, { recursive: true, force: true }))
+    const archive = path.join(raw, "archive")
+    await fs.mkdir(archive, { mode: 0o700 })
+    const canonical = await fs.realpath(raw) // Expected result only; the runner gets the raw spelling.
+    const f = {
+      env: { ...process.env, TMPDIR: raw, ORCH_SMOKE_ARCHIVE_ROOT: archive },
+      pending: path.join(canonical, "orch-opencode-smoke", "pending.jsonl"),
+    }
+    const { fixture_root: source } = await crash(f, "allocated")
+    assert.equal(path.dirname(source), path.dirname(f.pending))
+    if (parent === "/tmp") {
+      {
+        await using storage = await openSmokeStorage({ temp: canonical })
+        const busy = await node(f, [recovery])
+        assert.equal(busy.code, 1)
+        assert.match(busy.stderr, /busy or its local lock is unavailable/)
+      }
+      const rawSource = path.join(raw, "orch-opencode-smoke", path.basename(source), "probe")
+      const child = spawn(process.execPath, ["-e", "process.stdin.resume(); process.stdout.write('ready')", rawSource],
+        { stdio: ["pipe", "pipe", "ignore"] })
+      const closed = once(child, "close")
+      try {
+        await once(child.stdout, "data")
+        const owned = await node(f, [recovery])
+        assert.equal(owned.code, 1)
+        assert.match(owned.stderr, /a process still names this smoke fixture/)
+        assert.equal(child.exitCode, null)
+      } finally {
+        child.stdin.end()
+        await closed
+      }
+    }
+    const result = await node(f, [recovery])
+    assert.equal(result.code, 0, result.stderr)
+    assert.equal(path.dirname(pointer(result).path), path.join(canonical, "archive"))
+    await absent(f.pending)
+    await absent(source)
+
+    const redirected = path.join(raw, "redirect")
+    await fs.symlink(archive, redirected, linkType)
+    await assert.rejects(openSmokeStorage({ temp: redirected }), /missing, redirected or non-directory/)
+  }
+})
+
+test("macOS mode bits alone cannot authorize a journal directory with a granting ACL", macOnly, async (t) => {
+  const f = await fixture(t)
+  const { fixture_root: source } = await crash(f, "allocated")
+  const before = await fs.readFile(f.pending)
+  const grant = "everyone allow add_file"
+  await execFile("/bin/chmod", ["+a", grant, f.store])
+  try {
+    const refused = await blocked(f, "unknown (inspect the pending record)", recovery, /unexpected or granting ACL/)
+    assert(!refused.stderr.includes(source))
+    assert.deepEqual(await fs.readFile(f.pending), before)
+    assert.deepEqual(await fs.readdir(source), [])
+  } finally {
+    await execFile("/bin/chmod", ["-a", grant, f.store])
+  }
+})
 
 test("shared storage blocks another registered worktree from allocation, not mislabeling an active owner", async (t) => {
   const f = await fixture(t)
@@ -387,8 +513,6 @@ async function withNamedStream(file, check) {
   assert.equal(await fs.readFile(stream, "utf8"), "benign named data")
   await fs.unlink(stream)
 }
-
-const windowsOnly = { skip: process.platform !== "win32" }
 
 test("Windows recovery preserves named streams on scratch files, directories and the pending journal", windowsOnly, async (t) => {
   const f = await fixture(t)

@@ -26,6 +26,9 @@ Get-CimInstance -ClassName Win32_Process | Where-Object {
 `], { env: { ...process.env, ORCH_SMOKE_PROCESS_ROOT: root }, encoding: "utf8", windowsHide: true, timeout: 30_000 })
     : spawnSync("ps", ["-ax", "-ww", "-o", "command="], { encoding: "utf8", timeout: 30_000 })
   assert(result.status === 0 && !result.error, "could not verify private smoke process inventory")
-  assert(windows ? !result.stdout.trim() : !result.stdout.includes(root + path.sep), "a process still names this smoke fixture")
+  const spellings = [root]
+  if (process.platform === "darwin" && /^\/private\/(?:var|tmp)\//.test(root)) spellings.push(root.slice("/private".length))
+  assert(windows ? !result.stdout.trim() : !spellings.some((file) => result.stdout.includes(file + path.sep)),
+    "a process still names this smoke fixture")
   return { scope: "process executable paths or commands naming the fixture", matching: 0 }
 }

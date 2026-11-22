@@ -247,6 +247,10 @@ The same checks still run. After #539 a pass retains a verified receipt of
 identities, checks, provider count and shutdown; a verified failure archive
 retains the full `evidence.json`. See
 [smoke fixture retention and recovery](../adapters/opencode/README.md#smoke-fixture-retention-and-recovery-issue-539).
+Both smoke entrypoints now verify private local journal storage before reading
+recovery state. The macOS Node tests exercise the normal OS temp aliases without
+running a host. Neither storage check changes the explicit checkout-release or
+Git-removal contract described here.
 Source/isolated success is not installation, current installed cleanup,
 real-model Delivery qualification, full partial-cleanup recovery or proof of
 atomic host quiescence. Unverified runtime versions keep their advisory.

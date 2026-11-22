@@ -545,6 +545,35 @@ the next action. Use this version or a compatible harness in every worktree;
 older harnesses do not honor the journal. Do not change temp storage to evade
 the block.
 
+**#539 review fix — storage access and macOS temp paths:** The first journal
+implementation checked storage type and identity, but those do not prove who
+can write recovery state. Startup and recovery now verify private control of
+the journal directory and `pending.jsonl` before reading or trusting a record,
+including for busy-lock diagnostics. On Linux and macOS the directory and file
+must belong to the effective user with no group/other access. Ancestors must be
+owned by that user or root, and shared writable ancestors must be sticky
+(so other users cannot replace an owned child). On macOS granting or unreadable
+ACLs also refuse. The check requires local APFS/HFS ownership enforcement on
+macOS, and Linux storage on ext, XFS, btrfs, tmpfs, overlayfs or f2fs.
+The initial implementation rejected ordinary `/var/folders`
+and `/tmp` temp paths on macOS. Only the root-owned system links from `/var`
+and `/tmp` to their matching `/private` paths are now recognized; every
+component below them still has to pass the normal checks. Verified spellings
+of the same physical temp storage use the same lock and record.
+
+On Windows, Node modes and the location of a user profile do not prove private
+access. Local NTFS/ReFS storage must have readable access control lists. For
+private entries, only the invoking account and trusted Windows administrative
+principals may control or access them. Ancestors must not grant other principals
+rights to replace or redirect existing entries or change their access control.
+These checks also cover the configured archive and retained evidence; they do
+not change permissions on existing paths. If Windows temp is not suitable,
+configure `TEMP` and `TMP` for the smoke process to an existing private local
+directory with safe ancestry. Use that same storage for recovery and across
+worktrees. If there might already be pending state, preserve its location and
+have the operator verify access and provenance before retrying. Tightening
+permissions does not make previously untrusted journal contents trustworthy.
+
 - **Pass:** `receipt-<id>.json` in the shared storage is readable on its own.
   It contains harness, selected/executed artifact and probe identities, the
   passed checks, provider count and owned shutdown proof. It does not contain
@@ -627,14 +656,14 @@ Memhub binary for the isolated qualification checks.
 
 | Touched element | Before → after / retained behavior |
 |---|---|
-| `smoke.mjs` startup, fixture paths and invocation evidence | Three artifact selectors and both qualification modes retain their existing preflight and checks. Before, `mkdtemp` allocated immediately in OS temp (or its `opencode/` directory). Now the shared journal reserves one named run first; Git-ancestry and filesystem checks precede allocation. The harness also hashes the retention, path and shutdown helpers. |
-| `openSmokeStorage` (`requireIdle`, `begin`, `markRunning`, `finish`, `recover`), `pending.jsonl` and `smoke:recover` | New OS lock keyed to the physical temp storage, flushed stage records, and explicit recovery with no artifact/host startup. The `finished` stage records source ownership with verified shutdown; version-1 journals cannot authorize cleanup. All invocations using that storage, not just one worktree or one selection mode, honor pending state. No historical discovery or cleanup. |
-| `externalDirectory`, `checkWindows`, `readRegular`, `inventory`, `copyTree`, `removeTree` and journal/file checks in `smoke-storage.mjs` | New verified local paths and filesystem identities, non-overwriting archive writes, exact re-read verification and removal by recorded name. Redirect, external hard-link, type and ownership refusal applies to every recovery source, archive or receipt path and every inspected tree entry, not only `run-<id>` or `evidence.json`. Windows also rejects named streams across the source and retained paths listed above; POSIX inventory is unchanged by that check. |
+| `smoke.mjs` startup, fixture paths and invocation evidence | Three artifact selectors and both qualification modes retain their existing preflight and checks. Before, `mkdtemp` allocated immediately in OS temp (or its `opencode/` directory). Now the shared journal reserves one named run first; Git-ancestry and filesystem checks precede allocation. Ordinary macOS `/var/folders` and `/tmp` are supported via their verified system aliases, not by resolving arbitrary temp links. The harness also hashes the retention, path and shutdown helpers. |
+| `openSmokeStorage` (`requireIdle`, `begin`, `markRunning`, `finish`, `recover`), `pending.jsonl` and `smoke:recover` | New OS lock keyed to the physical temp storage, flushed stage records, and explicit recovery with no artifact/host startup. The `finished` stage records source ownership with verified shutdown; version-1 journals cannot authorize cleanup. The first implementation checked only type and identity. The private-access prerequisite now applies before journal reads and actions. Both entrypoints and every worktree or selection mode using that storage honor pending state. No historical discovery or cleanup. |
+| `externalDirectory`, `privateDirectory`, `checkWindows`, `readRegular`, `inventory`, `copyTree`, `removeTree` and journal/file checks in `smoke-storage.mjs` | Verified local paths and filesystem identities, non-overwriting archive writes, exact re-read verification and removal by recorded name remain. The macOS alias rule is limited to external temp and archive directory inputs and those two system links. Access checks cover journal, scratch and archive roots and managed evidence files (including receipts and manifests); Windows also checks access lists and named streams through both source and archive payload trees. Existing redirect, external hard-link, type, identity and content checks still apply to all inspected entries, not only `run-<id>` or `evidence.json`. |
 | `findOpenCode`, `privateOpenCode` and private PATH | The candidate order, version admission and private binary identity checks remain. Before, the first `--version` probe inherited the caller's environment; now it uses the isolated environment too. The Unix private executable is now a copy instead of a symlink; Windows retains its npm shim layout. |
 | Isolated child environment | Before, it inherited the caller's Node compile-cache setting. Now it removes `NODE_COMPILE_CACHE` and sets `NODE_DISABLE_COMPILE_CACHE=1` for every child receiving the isolated environment, not the invoking npm/Node process or other adapter invocations. Other home/cache, credential, proxy and simulation isolation rules remain. |
-| `joined`, `verifyStopped`, final host/provider and direct Memhub cleanup | The isolated native stop, provider trap and active runner's owned startup fallback remain. Before, joining the host process was enough to mark it stopped. Now disposition requires native stop verified against the owned service record (or no host started), a joined process, cleared service record, checked direct probe and no process naming the fixture in its executable path or command. Startup fallback alone does not prove shutdown. Recovery checks for activity but never stops a process. |
+| `joined`, `verifyStopped`, final host/provider and direct Memhub cleanup | The isolated native stop, provider trap and active runner's owned startup fallback remain. Before, joining the host process was enough to mark it stopped. Now disposition requires native stop verified against the owned service record (or no host started), a joined process, cleared service record, checked direct probe and no process naming the fixture in its executable path or command. On macOS the process check includes both admitted system temp spellings. Startup fallback alone does not prove shutdown. Recovery checks for activity but never stops a process. |
 | `pass`, final evidence, `receipt`, `archivePath`, `dispose` and `SMOKE_EVIDENCE` | Every existing success label and post-run selected/private artifact check remains. `evidence.json` and `server.log` were retained with every fixture; now only failures with verified shutdown and source ownership archive them together with scratch. Pass keeps verified identities/check outcomes separately; ambiguous or incomplete evidence keeps pending scratch. The pointer identifies local evidence; only the Architect records it in Memhub. |
-| `test/smoke-retention.test.js`, `test/smoke-artifacts.test.js` and `package.json` | Existing artifact tests and `npm run smoke` remain; the invalid-selector test now has private temp storage. Deterministic private tests cover active, interrupted, failed and successful disposition, including late regular files, legacy journals and real Windows file and directory streams. `smoke:recover` is new; npm dependencies, adapter/runtime code, other hosts, Delivery policy, installation and hosted-CI entrypoints are unchanged. |
+| `test/smoke-retention.test.js`, `test/smoke-artifacts.test.js` and `package.json` | Existing artifact tests and `npm run smoke` remain; the invalid-selector test now has private temp storage. Deterministic private tests cover active, interrupted, failed and successful disposition, including unsafe permissions, late regular files, legacy journals and real Windows file and directory streams. The macOS Node suite exercises the raw OS temp aliases; this is not live macOS qualification. `smoke:recover` is new; npm dependencies, adapter/runtime code, other hosts, Delivery policy, installation and hosted-CI entrypoints are unchanged. |
 | This README and `docs/worktree-cleanup.md` | Prior full-evidence behavior is kept as history. Both documents now distinguish full failure archives from pass receipts and isolated qualification from installed behavior. This does not change the checkout-release or removal contract. |
 
 ### Earlier isolated qualification tuple (2026-11-14)

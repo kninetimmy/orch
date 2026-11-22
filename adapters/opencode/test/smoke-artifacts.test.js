@@ -93,7 +93,7 @@ test("real smoke exits nonzero after archiving an isolated module preflight fail
   const f = await fixture(t)
   const harness = fileURLToPath(new URL("../smoke.mjs", import.meta.url))
   const archive = path.join(f.root, "archive")
-  await mkdir(archive)
+  await mkdir(archive, { mode: 0o700 })
   await writeFile(path.join(f.installed, "src", "index.js"), "export default {}")
   const env = {
     ...process.env, ...f.env, TMPDIR: f.root, TEMP: f.root, TMP: f.root, ORCH_SMOKE_ARCHIVE_ROOT: archive,
