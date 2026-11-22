@@ -286,9 +286,10 @@ test("lock errors and lock identity changes refuse without adopting or mutating 
 async function killedRunner(f, point, use, args = []) {
   const code = `
     import { spawn } from "node:child_process";
+    import { once } from "node:events";
     import { openSmokeStorage } from ${JSON.stringify(pathToFileURL(recovery).href)};
     const [point, port, outside] = process.argv.slice(1);
-    const storage = await openSmokeStorage();
+    await using storage = await openSmokeStorage();
     const source = await storage.begin();
     if (point === "running") {
       await storage.markRunning();
@@ -296,8 +297,11 @@ async function killedRunner(f, point, use, args = []) {
         { cwd: outside, stdio: "ignore", detached: true, windowsHide: true });
       child.on("error", (error) => { throw error });
     }
-    process.stdout.write("READY " + source + "\\n");
+    const inputClosed = once(process.stdin, "end");
     process.stdin.resume();
+    process.stdout.write("READY " + source + "\\n");
+    await inputClosed;
+    throw new Error("holder control pipe closed before forced exit");
   `
   const holder = spawn(process.execPath, ["--input-type=module", "--eval", code, point, ...args], {
     env: f.env, stdio: ["pipe", "pipe", "pipe"], windowsHide: true,
