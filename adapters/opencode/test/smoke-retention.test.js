@@ -139,13 +139,81 @@ test("interruption after mkdir but before ownership proof refuses to clear or al
 })
 
 test("interrupted activity and explicitly unconfirmed shutdown both preserve the owned fixture", async (t) => {
-  for (const point of ["running", "finished"]) {
+  for (const [point, outcome] of [["running", "unknown"], ["final-files-written", "pass"], ["finished", "unknown"]]) {
     const f = await fixture(t)
-    const { fixture_root: source } = await crash(f, point, "unknown")
+    const { fixture_root: source } = await crash(f, point, outcome)
     const before = await fs.readFile(f.pending)
+    const late = path.join(source, "late")
+    await fs.copyFile(f.sentinel, late)
     await blocked(f, source, harness, /Automated recovery refuses without proof/)
     await blocked(f, source, recovery, /owned shutdown is unconfirmed/)
     assert.deepEqual(await fs.readFile(f.pending), before)
+    assert.equal(await fs.readFile(path.join(source, "payload"), "utf8"), "fixture bytes")
+    assert.equal(await fs.readFile(late, "utf8"), "unrelated; preserve")
+    assert.deepEqual(await fs.readdir(f.archive), [])
+  }
+})
+
+test("recovery never adopts a regular file added after a verified finished checkpoint", async (t) => {
+  for (const outcome of ["pass", "fail"]) {
+    const f = await fixture(t)
+    const { fixture_root: source } = await crash(f, "finished", outcome)
+    const before = await fs.readFile(f.pending)
+    const late = path.join(source, "late")
+    await fs.copyFile(f.sentinel, late)
+    await blocked(f, source)
+    const blockedRecovery = await blocked(f, source, recovery, /source inventory changed before verified retention/)
+    assert.match(blockedRecovery.stderr, /\(\d+ bytes\)/)
+    assert.deepEqual(await fs.readFile(f.pending), before)
+    assert.equal(await fs.readFile(path.join(source, "payload"), "utf8"), "fixture bytes")
+    assert.equal(await fs.readFile(late, "utf8"), "unrelated; preserve")
+    assert.deepEqual(await fs.readdir(f.archive), [])
+    assert.deepEqual((await fs.readdir(f.store)).sort(), ["pending.jsonl", path.basename(source)].sort())
+
+    await fs.unlink(late)
+    const resumed = await node(f, [recovery])
+    assert.equal(resumed.code, 0, resumed.stderr)
+    assert.equal(pointer(resumed).kind, outcome === "pass" ? "receipt" : "failure-archive")
+    await absent(source)
+    await absent(f.pending)
+  }
+})
+
+test("recovery of a pre-activity allocation never adopts an unexpected entry into its first inventory", async (t) => {
+  const f = await fixture(t)
+  const { fixture_root: source } = await crash(f, "allocated")
+  const before = await fs.readFile(f.pending)
+  const late = path.join(source, "late")
+  {
+    await using storage = await openSmokeStorage({ temp: f.temp, archiveRoot: f.archive, async checkpoint(at) {
+      if (at === "final-files-written") await fs.copyFile(f.sentinel, late)
+    } })
+    await assert.rejects(storage.recover(), /unexpected data before fixture activity/)
+  }
+  await blocked(f, source, recovery, /unexpected data before fixture activity/)
+  assert.equal(await fs.readFile(late, "utf8"), "unrelated; preserve")
+  assert.deepEqual(await fs.readFile(f.pending), before)
+  assert.deepEqual(await fs.readdir(f.archive), [])
+})
+
+test("legacy journal recovery refuses with or without an inventory from the old prepared stage", async (t) => {
+  const f = await fixture(t)
+  const { fixture_root: source } = await crash(f, "finished", "fail")
+  const records = (await fs.readFile(f.pending, "utf8")).trimEnd().split("\n").map((line) => JSON.parse(line).data)
+  records[0].version = 1
+  const snapshot = records.at(-1).inventory
+  delete records.at(-1).inventory
+  for (const legacy of [records, [...records, { stage: "prepared", ...snapshot }]]) {
+    let previous = null
+    const journal = legacy.map((data) => {
+      const sha256 = sha(JSON.stringify([previous, data]))
+      const row = JSON.stringify({ previous, sha256, data })
+      previous = sha256
+      return row + "\n"
+    }).join("")
+    await fs.writeFile(f.pending, journal)
+    await blocked(f, source, recovery, /legacy pending journal has no trusted source inventory/)
+    assert.equal(await fs.readFile(f.pending, "utf8"), journal)
     assert.equal(await fs.readFile(path.join(source, "payload"), "utf8"), "fixture bytes")
     assert.deepEqual(await fs.readdir(f.archive), [])
   }
@@ -245,7 +313,6 @@ test("missing, redirected and full archive storage refuse without loss or overwr
   const alias = path.join(f.base, "redirect")
   await fs.symlink(f.outside, alias, linkType)
   const initial = await fs.readFile(f.pending, "utf8")
-  let prepared
   for (const [location, pattern] of [
     ["", /configure ORCH_SMOKE_ARCHIVE_ROOT/],
     [path.join(f.base, "unavailable"), /missing, redirected or non-directory/],
@@ -254,10 +321,7 @@ test("missing, redirected and full archive storage refuse without loss or overwr
   ]) {
     f.env.ORCH_SMOKE_ARCHIVE_ROOT = location
     await blocked(f, source, recovery, pattern)
-    const current = await fs.readFile(f.pending, "utf8")
-    assert(current.startsWith(initial), "source evidence must remain in the pending record")
-    prepared ??= current
-    assert.equal(current, prepared, "binding failures must not advance the prepared record")
+    assert.equal(await fs.readFile(f.pending, "utf8"), initial, "binding failures must not advance the journal")
   }
   {
     await using storage = await openSmokeStorage({ temp: f.temp, archiveRoot: f.archive, async checkpoint(at, target) {
@@ -314,4 +378,61 @@ test("corrupt journals/evidence, substituted roots, and interior links fail clos
   assert.equal(await fs.readFile(path.join(source, "external-sentinel"), "utf8"), "unowned fixture replacement")
   assert.equal(await fs.readFile(path.join(originalSource, "payload"), "utf8"), "fixture bytes")
   assert.deepEqual(await fs.readFile(f.pending), journal)
+})
+
+async function withNamedStream(file, check) {
+  const stream = file + ":orch-smoke-test-note"
+  await fs.writeFile(stream, "benign named data", { flag: "wx" })
+  await check()
+  assert.equal(await fs.readFile(stream, "utf8"), "benign named data")
+  await fs.unlink(stream)
+}
+
+const windowsOnly = { skip: process.platform !== "win32" }
+
+test("Windows recovery preserves named streams on scratch files, directories and the pending journal", windowsOnly, async (t) => {
+  const f = await fixture(t)
+  const { fixture_root: source } = await crash(f, "finished", "fail")
+  const before = await fs.readFile(f.pending)
+  for (const file of [source, path.join(source, "empty"), path.join(source, "payload"), f.pending]) {
+    await withNamedStream(file, async () => {
+      const intended = file === f.pending ? "unknown (inspect the pending record)" : source
+      await blocked(f, intended, recovery, /Windows named data stream/)
+      assert.deepEqual(await fs.readFile(f.pending), before)
+      assert.equal(await fs.readFile(path.join(source, "payload"), "utf8"), "fixture bytes")
+      assert.deepEqual(await fs.readdir(f.archive), [])
+    })
+  }
+
+  const empty = await fixture(t)
+  const { fixture_root: unstarted } = await crash(empty, "allocated")
+  const unstartedJournal = await fs.readFile(empty.pending)
+  await withNamedStream(unstarted, async () => {
+    await blocked(empty, unstarted, recovery, /Windows named data stream/)
+    assert.deepEqual(await fs.readdir(unstarted), [], "a directory with a named stream is not an empty allocation")
+    assert.deepEqual(await fs.readFile(empty.pending), unstartedJournal)
+  })
+})
+
+test("Windows recovery re-verifies stream absence on retained receipts and complete archives", windowsOnly, async (t) => {
+  for (const outcome of ["pass", "fail"]) {
+    const f = await fixture(t)
+    const { fixture_root: source, run_id: id } = await crash(f, "retained", outcome)
+    const before = await fs.readFile(f.pending)
+    const target = path.join(f.archive, "orch-opencode-smoke-" + id)
+    const files = outcome === "pass" ? [path.join(f.store, `receipt-${id}.json`)] : [
+      target, path.join(target, "manifest.json"), path.join(target, "fixture", "empty"), path.join(target, "fixture", "payload"),
+    ]
+    for (const file of files) {
+      await withNamedStream(file, async () => {
+        await blocked(f, source, recovery, /Windows named data stream/)
+        assert.deepEqual(await fs.readFile(f.pending), before)
+        assert.equal(await fs.readFile(path.join(source, "payload"), "utf8"), "fixture bytes")
+      })
+    }
+    const resumed = await node(f, [recovery])
+    assert.equal(resumed.code, 0, resumed.stderr)
+    await absent(source)
+    await absent(f.pending)
+  }
 })

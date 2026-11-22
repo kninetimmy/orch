@@ -495,6 +495,16 @@ requests. Native MCP lifecycle owns service cancellation/shutdown. Before #539
 the full evidence and fixtures were retained externally after the private
 process tree was stopped. After #539, see the [retention rules below](#smoke-fixture-retention-and-recovery-issue-539).
 
+Before #539, the isolated child environment inherited `NODE_COMPILE_CACHE`,
+so a child could write to a caller-selected cache outside the fixture. Now
+every child given that environment, including the adapter-import check and
+runtime version probes, has `NODE_COMPILE_CACHE` removed and
+`NODE_DISABLE_COMPILE_CACHE=1` set. This does not change the caller's npm/Node
+environment or the installed adapter. Before #539, the Unix fixture's
+`bin/opencode2` was a symlink to the selected executable; it is now a regular
+byte-identical executable copy at the same private path. The Windows private
+npm shim layout and runtime byte-identity checks remain.
+
 `evidence.json` records the mode, harness Git revision/status and harness-file
 hashes separately from the selected canonical adapter path and SHA-256 identities
 of its manifest, lockfile, server entrypoint, `src/**` and `skills/**`. It records
@@ -563,15 +573,38 @@ the block.
   checkout with this harness and the same OS temp storage. The command needs
   neither artifact selectors nor Memhub. It never runs a new smoke or stops
   processes. It can clear an intent with no allocated directory, archive a
-  proven allocation interrupted before activity, or finish a disposition
-  backed by durable shutdown evidence. Recovery checks for fresh process
-  activity when scratch still exists. It re-verifies retained evidence even
+  proven empty allocation interrupted before activity, or finish a disposition
+  backed by durable shutdown and source ownership evidence. Recovery checks
+  for fresh process activity when scratch still exists. It re-verifies retained evidence even
   after partial removal or if scratch is already gone; with no pending
   record a second retry does nothing. If the archive is unavailable or full,
   set the archive selector if none was pinned, or restore/free space on the
   pinned storage. If interrupted copying left an incomplete archive, inspect
   and preserve it separately before retrying into the now-vacant archive name.
   A verified archive/receipt that later fails verification is not recreated.
+
+**#539 review fix — source ownership:** The first version wrote shutdown and
+evidence-file hashes to `finished`, then built the first source inventory
+later. A retry could mistake a newly arrived regular file for owned scratch.
+The version-2 journal now flushes shutdown and the source inventory together,
+before any retention or removal. Before verified retention, recovery
+requires the exact recorded tree. After verification it may finish removing
+only a matching remainder. If interrupted before the proof was logged, the
+evidence files alone cannot authorize removal. A verified empty allocation can
+still be recovered; its first inventory must contain only the root and the
+two recovery evidence files. Version-1 journals (including those with a later
+`prepared` inventory) are diagnostic only and must be left for the operator.
+
+**#539 review fix — Windows data streams:** The first version compared only
+unnamed file data, so a byte-matching archive could omit named streams. Now
+native stream enumeration must find no named data streams on **any** fixture
+or archived payload file or directory, including both tree roots, or on the
+archive wrapper, manifest, pass receipt or pending journal. This applies to
+initial disposition and recovery. A named stream, an enumeration error or
+an unsupported filesystem refuses disposition; no stream is copied or
+stripped by the harness. Preserve the source and evidence and ask the
+operator to inspect the reported path. Windows uses the existing system
+PowerShell and Win32 APIs, with no new npm dependency.
 
 If shutdown or ownership is unconfirmed, or the journal or paths cannot be
 verified, leave both the journal and scratch in place. Inspect the pending path,
@@ -595,12 +628,14 @@ Memhub binary for the isolated qualification checks.
 | Touched element | Before → after / retained behavior |
 |---|---|
 | `smoke.mjs` startup, fixture paths and invocation evidence | Three artifact selectors and both qualification modes retain their existing preflight and checks. Before, `mkdtemp` allocated immediately in OS temp (or its `opencode/` directory). Now the shared journal reserves one named run first; Git-ancestry and filesystem checks precede allocation. The harness also hashes the retention, path and shutdown helpers. |
-| `openSmokeStorage` (`requireIdle`, `begin`, `markRunning`, `finish`, `recover`), `pending.jsonl` and `smoke:recover` | New OS lock keyed to the physical temp storage, flushed stage records, and explicit recovery with no artifact/host startup. All invocations using that storage, not just one worktree or one selection mode, honor pending state. No historical discovery or cleanup. |
-| `externalDirectory`, `inventory`, `copyTree`, `removeTree` and journal/file checks in `smoke-storage.mjs` | New verified local path and filesystem identities, non-overwriting archive writes, exact re-read verification and named-entry removal. Redirect, external hard-link, type and ownership refusal applies to every recovery source, archive or receipt path and every inspected tree entry, not only `run-<id>` or `evidence.json`. |
-| `findOpenCode` and `privateOpenCode` | The candidate order, version admission and private binary identity checks remain. Before, even the first `--version` probe inherited the caller's environment and could leave runtime scratch outside the fixture. Now the selected candidate is probed in the verified fixture environment, so that scratch follows the same retention rules. |
+| `openSmokeStorage` (`requireIdle`, `begin`, `markRunning`, `finish`, `recover`), `pending.jsonl` and `smoke:recover` | New OS lock keyed to the physical temp storage, flushed stage records, and explicit recovery with no artifact/host startup. The `finished` stage records source ownership with verified shutdown; version-1 journals cannot authorize cleanup. All invocations using that storage, not just one worktree or one selection mode, honor pending state. No historical discovery or cleanup. |
+| `externalDirectory`, `checkWindows`, `readRegular`, `inventory`, `copyTree`, `removeTree` and journal/file checks in `smoke-storage.mjs` | New verified local paths and filesystem identities, non-overwriting archive writes, exact re-read verification and removal by recorded name. Redirect, external hard-link, type and ownership refusal applies to every recovery source, archive or receipt path and every inspected tree entry, not only `run-<id>` or `evidence.json`. Windows also rejects named streams across the source and retained paths listed above; POSIX inventory is unchanged by that check. |
+| `findOpenCode`, `privateOpenCode` and private PATH | The candidate order, version admission and private binary identity checks remain. Before, the first `--version` probe inherited the caller's environment; now it uses the isolated environment too. The Unix private executable is now a copy instead of a symlink; Windows retains its npm shim layout. |
+| Isolated child environment | Before, it inherited the caller's Node compile-cache setting. Now it removes `NODE_COMPILE_CACHE` and sets `NODE_DISABLE_COMPILE_CACHE=1` for every child receiving the isolated environment, not the invoking npm/Node process or other adapter invocations. Other home/cache, credential, proxy and simulation isolation rules remain. |
 | `joined`, `verifyStopped`, final host/provider and direct Memhub cleanup | The isolated native stop, provider trap and active runner's owned startup fallback remain. Before, joining the host process was enough to mark it stopped. Now disposition requires native stop verified against the owned service record (or no host started), a joined process, cleared service record, checked direct probe and no process naming the fixture in its executable path or command. Startup fallback alone does not prove shutdown. Recovery checks for activity but never stops a process. |
-| `pass`, final evidence and disposition | Every existing success label and post-run selected/private artifact check remains. `evidence.json` and `server.log` were retained with every fixture; now only failures with verified shutdown archive them together with scratch. Pass keeps verified identities/check outcomes separately; ambiguous or incomplete evidence keeps pending scratch. |
-| `test/smoke-retention.test.js`, `test/smoke-artifacts.test.js`, `package.json`, this README and `docs/worktree-cleanup.md` | Existing artifact tests and `npm run smoke` remain; the invalid-selector test now has private temp storage. Deterministic private tests cover active, interrupted, failed and successful disposition and safe refusal. `smoke:recover` is new; the npm package's dependencies, adapter/runtime code, other hosts, Delivery policy, installation and hosted-CI entrypoints are unchanged. |
+| `pass`, final evidence, `receipt`, `archivePath`, `dispose` and `SMOKE_EVIDENCE` | Every existing success label and post-run selected/private artifact check remains. `evidence.json` and `server.log` were retained with every fixture; now only failures with verified shutdown and source ownership archive them together with scratch. Pass keeps verified identities/check outcomes separately; ambiguous or incomplete evidence keeps pending scratch. The pointer identifies local evidence; only the Architect records it in Memhub. |
+| `test/smoke-retention.test.js`, `test/smoke-artifacts.test.js` and `package.json` | Existing artifact tests and `npm run smoke` remain; the invalid-selector test now has private temp storage. Deterministic private tests cover active, interrupted, failed and successful disposition, including late regular files, legacy journals and real Windows file and directory streams. `smoke:recover` is new; npm dependencies, adapter/runtime code, other hosts, Delivery policy, installation and hosted-CI entrypoints are unchanged. |
+| This README and `docs/worktree-cleanup.md` | Prior full-evidence behavior is kept as history. Both documents now distinguish full failure archives from pass receipts and isolated qualification from installed behavior. This does not change the checkout-release or removal contract. |
 
 ### Earlier isolated qualification tuple (2026-11-14)
 

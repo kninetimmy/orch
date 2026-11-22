@@ -38,19 +38,27 @@ function decode(bytes, root, rootID) {
     records[record.data.stage] = record.data
   }
   const { intent, allocated, running, finished, prepared, archive, retained } = records
-  assert(intent?.version === 1 && uuid.test(intent.run_id) && intent.storage_id === rootID &&
+  assert([1, 2].includes(intent?.version) && uuid.test(intent.run_id) && intent.storage_id === rootID &&
     intent.fixture_root === localName(root, intent.run_id) && intent.hostname === hostname(), "unverifiable pending owner or fixture path")
   assert(!allocated || idPattern.test(allocated.id), "invalid allocated fixture identity")
   assert(!running || allocated, "run never proved allocation")
   assert(!finished || (allocated && typeof finished.passed === "boolean" && typeof finished.shutdown === "boolean" &&
     (!finished.passed || (running && finished.shutdown)) &&
     evidenceFiles.every((name) => digest.test(finished.files?.[name]))), "invalid completed evidence")
-  assert(!prepared || (finished?.shutdown === true && Number.isSafeInteger(prepared.bytes) && prepared.bytes >= 0 &&
-    Array.isArray(prepared.rows) && prepared.rows[0]?.name === "" && prepared.rows[0].id === allocated.id), "invalid source inventory")
-  assert(!archive || (prepared && !finished.passed && path.isAbsolute(archive.root) && idPattern.test(archive.id)), "invalid archive target")
-  assert(!retained || (prepared && (finished.passed || archive) && idPattern.test(retained.id) && digest.test(retained.sha256)),
+  const snapshot = intent.version === 1 ? prepared : finished?.inventory
+  assert(intent.version === 1 || (!prepared && Boolean(snapshot) === (finished?.shutdown === true)), "missing or misplaced source inventory")
+  assert(!snapshot || (finished?.shutdown === true && Number.isSafeInteger(snapshot.bytes) && snapshot.bytes >= 0 &&
+    Array.isArray(snapshot.rows) && snapshot.rows[0]?.name === "" && snapshot.rows[0].id === allocated.id), "invalid source inventory")
+  assert(!archive || (snapshot && !finished.passed && path.isAbsolute(archive.root) && idPattern.test(archive.id)), "invalid archive target")
+  assert(!retained || (snapshot && (finished.passed || archive) && idPattern.test(retained.id) && digest.test(retained.sha256)),
     "invalid retained evidence record")
   return { records, previous }
+}
+
+function verifyEvidenceFiles(rows, files) {
+  for (const name of evidenceFiles) {
+    assert(rows.some((row) => row.name === name && row.sha256 === files[name]), `missing or corrupt ${name}`)
+  }
 }
 
 function receipt(evidence, intent, files) {
@@ -101,14 +109,13 @@ export async function openSmokeStorage({ temp = tmpdir(), archiveRoot = process.
   async function load() {
     await directory(root, rootID)
     if (!await present(pending)) return undefined
-    checkWindows(pending)
     const entry = await readRegular(pending)
     return { entry, ...decode(entry.bytes, root, rootID) }
   }
 
   function diagnostic(reason, recovery, state = current?.records) {
     const fixture = state?.intent?.fixture_root ?? "unknown (inspect the pending record)"
-    const bytes = state?.prepared?.bytes ?? "unknown"
+    const bytes = state?.finished?.inventory?.bytes ?? state?.prepared?.bytes ?? "unknown"
     return new Error(`${reason}\nSmoke pending record: ${pending}\nIntended fixture: ${fixture} (${bytes} bytes)\nAction: ${recovery}`)
   }
 
@@ -141,17 +148,14 @@ export async function openSmokeStorage({ temp = tmpdir(), archiveRoot = process.
   async function log(stage, data) {
     await directory(root, rootID)
     const row = encode({ stage, ...data }, current?.previous)
-    if (current) {
-      checkWindows(pending)
-      await append(pending, current.entry, row)
-    } else await writeNew(pending, row)
+    if (current) await append(pending, current.entry, row)
+    else await writeNew(pending, row)
     await refresh()
     assert.equal(current?.records[stage]?.stage, stage, `pending stage did not persist: ${stage}`)
   }
 
   async function clear() {
     await directory(root, rootID)
-    checkWindows(pending)
     assert.deepEqual(await readRegular(pending), current.entry, "pending journal changed before disposal")
     await fs.unlink(pending)
     await syncDirectory(root)
@@ -161,8 +165,9 @@ export async function openSmokeStorage({ temp = tmpdir(), archiveRoot = process.
   function recoveryAction() {
     const { intent, allocated, running, finished, archive } = current.records
     if (running && finished?.shutdown !== true) {
-      return `Do not restart or kill by PID. Inspect ${path.join(intent.fixture_root, "state", "opencode", "service.json")} and local logs; ask the responsible operator to verify owned-process shutdown and disposition separately. Automated recovery refuses without proof.`
+      return `Do not restart or kill by PID. Inspect ${path.join(intent.fixture_root, "state", "opencode", "service.json")} and local logs; ask the responsible operator to verify owned-process shutdown and disposition separately. Automated recovery refuses without proof of shutdown and source ownership.`
     }
+    if (intent.version !== 2) return "Preserve the legacy journal and scratch for operator inspection; this journal cannot prove which entries belonged to the run."
     if (!allocated) return `Run ${recoveryCommand} to verify that scratch was never allocated. If it exists without ownership proof, leave it and the journal for operator inspection.`
     const target = finished?.passed ? path.join(root, `receipt-${intent.run_id}.json`)
       : archive ? path.join(archive.root, "orch-opencode-smoke-" + intent.run_id) : `local storage in ${archiveVariable}`
@@ -179,7 +184,7 @@ export async function openSmokeStorage({ temp = tmpdir(), archiveRoot = process.
     const run_id = randomUUID()
     const temp = localName(root, run_id)
     await log("intent", {
-      version: 1, run_id, fixture_root: temp, storage_id: rootID, hostname: hostname(),
+      version: 2, run_id, fixture_root: temp, storage_id: rootID, hostname: hostname(),
       pid: process.pid, started_at: new Date().toISOString(),
     })
     console.log(`Smoke pending: ${pending}; intended fixture: ${temp}`)
@@ -194,7 +199,7 @@ export async function openSmokeStorage({ temp = tmpdir(), archiveRoot = process.
   }
 
   async function finish(evidence, logs) {
-    const { intent, allocated } = current.records
+    const { intent, allocated, running } = current.records
     assert.equal(evidence.fixture_root, intent.fixture_root)
     await directory(root, rootID)
     await directory(intent.fixture_root, allocated.id)
@@ -204,12 +209,20 @@ export async function openSmokeStorage({ temp = tmpdir(), archiveRoot = process.
       await directory(intent.fixture_root, allocated.id)
       await writeNew(path.join(intent.fixture_root, name), files[name])
     }
-    await log("finished", {
-      passed: evidence.passed === true, shutdown: evidence.owned_shutdown?.verified === true,
-      files: Object.fromEntries(evidenceFiles.map((name) => [name, sha256(files[name])])),
-    })
+    await checkpoint("final-files-written", intent.fixture_root)
+    const hashes = Object.fromEntries(evidenceFiles.map((name) => [name, sha256(files[name])]))
+    const shutdown = evidence.owned_shutdown?.verified === true
+    let snapshot
+    if (shutdown) {
+      const rows = await inventory(intent.fixture_root, allocated.id)
+      verifyEvidenceFiles(rows, hashes)
+      if (!running) assert(rows.length === 1 + evidenceFiles.length, "unexpected data before fixture activity")
+      snapshot = { bytes: treeBytes(rows), rows }
+    }
+    // Shutdown and the source proof must become recoverable together. Never
+    // start an ownership inventory from a stopped runner's unproven tree.
+    await log("finished", { passed: evidence.passed === true, shutdown, files: hashes, inventory: snapshot })
     await checkpoint("finished", intent.fixture_root)
-    return dispose()
   }
 
   async function archivePath(archive, runID) {
@@ -225,6 +238,7 @@ export async function openSmokeStorage({ temp = tmpdir(), archiveRoot = process.
     const { intent, allocated, running } = current.records
     const { fixture_root: source, run_id: runID } = intent
     await directory(root, rootID)
+    assert(intent.version === 2, "legacy pending journal has no trusted source inventory")
     if (!allocated) {
       assert(!await present(source), `scratch exists but allocation ownership was never recorded: ${source}`)
       await clear()
@@ -234,8 +248,10 @@ export async function openSmokeStorage({ temp = tmpdir(), archiveRoot = process.
     if (!running && !current.records.finished) {
       // No process can start before the durable running stage.
       await directory(source, allocated.id)
+      checkWindows(source, "data")
       assert((await fs.readdir(source)).length === 0, `unexpected data before fixture activity: ${source}`)
-      return finish({
+      if (recovering) verifyStopped(source)
+      await finish({
         fixture_root: source, passed: false, checks: [], provider_requests: 0,
         error: { message: "smoke interrupted before starting fixture activity" },
         owned_server_stopped: true, owned_shutdown: { method: "no fixture activity started", verified: true },
@@ -243,29 +259,24 @@ export async function openSmokeStorage({ temp = tmpdir(), archiveRoot = process.
     }
     const finished = current.records.finished
     assert(finished?.shutdown === true, "owned shutdown is unconfirmed")
-    let { prepared, archive, retained } = current.records
+    const { inventory: snapshot } = finished
+    let { archive, retained } = current.records
     const rows = await present(source) ? await inventory(source, allocated.id) : []
     if (recovering && rows.length) {
       verifyStopped(source)
       assert(!rows.some((row) => row.name === "state/opencode/service.json"), "private service record reappeared")
     }
-    const expected = prepared?.rows ?? rows
+    const expected = snapshot.rows
+    verifyEvidenceFiles(expected, finished.files)
     if (!retained) {
       assert(rows.length, "owned scratch is missing before verified retention")
+      verifyEvidenceFiles(rows, finished.files)
       assert.deepEqual(rows, expected, "source inventory changed before verified retention")
     } else {
       const original = new Map(expected.map((row) => [row.name, JSON.stringify(row)]))
       assert(rows.every((row) => JSON.stringify(row) === original.get(row.name)),
         "source has unexpected or changed entries; refusing resumed removal")
     }
-    for (const name of evidenceFiles) {
-      assert(expected.some((row) => row.name === name && row.sha256 === finished.files[name]), `missing or corrupt ${name}`)
-    }
-    if (!prepared) {
-      await log("prepared", { bytes: treeBytes(expected), rows: expected })
-      prepared = current.records.prepared
-    }
-
     let target, proof
     if (finished.passed) {
       target = path.join(root, `receipt-${runID}.json`)
@@ -278,7 +289,6 @@ export async function openSmokeStorage({ temp = tmpdir(), archiveRoot = process.
         intended = json(receipt(evidence, intent, finished.files))
         if (!await present(target)) await writeNew(target, intended)
       }
-      checkWindows(target)
       const read = await readRegular(target)
       if (intended) assert(read.bytes.equals(Buffer.from(intended)), `receipt does not match verified smoke: ${target}`)
       proof = { id: read.id, sha256: sha256(read.bytes) }
@@ -295,27 +305,27 @@ export async function openSmokeStorage({ temp = tmpdir(), archiveRoot = process.
       const manifest = path.join(target, "manifest.json")
       const intended = json({
         version: 1, run_id: runID, started_at: intent.started_at, fixture_root: source, passed: false,
-        bytes: prepared.bytes, files: contents(expected), original_evidence_sha256: finished.files["evidence.json"],
+        bytes: snapshot.bytes, files: contents(expected), original_evidence_sha256: finished.files["evidence.json"],
       })
       if (!retained && !await present(target)) {
         await directory(archive.root, archive.id)
         const free = await fs.statfs(archive.root, { bigint: true })
-        assert(free.bavail * free.bsize >= BigInt(prepared.bytes + Buffer.byteLength(intended)),
+        assert(free.bavail * free.bsize >= BigInt(snapshot.bytes + Buffer.byteLength(intended)),
           `insufficient space for smoke archive on ${archive.root}`)
         await fs.mkdir(target, { mode: 0o700 })
         const targetID = await directory(target)
         await checkpoint("archive-mkdir", target)
         await directory(target, targetID)
-        await copyTree(source, rows, payload)
+        checkWindows(target, "data")
+        await copyTree(source, expected, payload)
         await directory(target, targetID)
         await writeNew(manifest, intended)
         await syncDirectory(archive.root)
       }
       const targetID = await directory(target, retained?.id)
-      checkWindows(target)
+      checkWindows(target, "data")
       const names = (await fs.readdir(target)).sort()
       assert.deepEqual(names, ["fixture", "manifest.json"], `incomplete or unexpected archive entries: ${target}`)
-      checkWindows(manifest)
       const archived = await readRegular(manifest)
       assert(archived.bytes.equals(Buffer.from(intended)), `archive manifest differs from intended fixture: ${target}`)
       assert.deepEqual(contents(await inventory(payload)), contents(expected), `archive contents differ from intended fixture: ${target}`)
@@ -356,12 +366,15 @@ export async function openSmokeStorage({ temp = tmpdir(), archiveRoot = process.
         const { intent, allocated } = current.records
         await directory(root, rootID)
         await directory(intent.fixture_root, allocated.id)
-        checkWindows(intent.fixture_root)
+        checkWindows(intent.fixture_root, "data")
         await log("running", {})
       } catch (error) { throw report(error) }
     },
     finish: async (...args) => {
-      try { return await finish(...args) } catch (error) { throw report(error) }
+      try {
+        await finish(...args)
+        return await dispose()
+      } catch (error) { throw report(error) }
     },
     recover: async () => {
       await refresh()

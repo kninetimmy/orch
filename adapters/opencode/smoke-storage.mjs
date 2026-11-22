@@ -31,18 +31,60 @@ function component(name) {
   `unsafe smoke path component: ${JSON.stringify(name)}`)
 }
 
-// Node lstat covers normal symlinks and junctions. Also reject Windows reparse
-// attributes it may not expose, before walking any fixture or archive payload.
-export function checkWindows(directory, tree = false) {
+// Node does not expose all reparse tags or named data streams. Windows
+// PowerShell's file cmdlets cannot enumerate directory streams on all versions.
+export function checkWindows(file, mode = "path") {
   if (!windows) return
   const result = spawnSync(path.join(process.env.SystemRoot, "System32", "WindowsPowerShell", "v1.0", "powershell.exe"),
-    ["-NoProfile", "-NonInteractive", "-Command", `
+    ["-NoProfile", "-NonInteractive", "-Command", String.raw`
 $ErrorActionPreference = 'Stop'
-function Check($p, $walk) {
+$mode = $env:ORCH_SMOKE_INSPECT_MODE
+if ($mode -ne 'path') {
+  Add-Type -TypeDefinition @'
+using System;
+using System.IO;
+using System.Runtime.InteropServices;
+public static class SmokeStreams {
+  [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
+  private struct StreamData {
+    public long Size;
+    [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 296)] // MAX_PATH + 36
+    public string Name;
+  }
+  [DllImport("kernel32.dll", CharSet = CharSet.Unicode, ExactSpelling = true, SetLastError = true)]
+  private static extern IntPtr FindFirstStreamW(string path, int level, out StreamData data, int flags);
+  [DllImport("kernel32.dll", ExactSpelling = true, SetLastError = true)]
+  private static extern bool FindNextStreamW(IntPtr handle, out StreamData data);
+  [DllImport("kernel32.dll", ExactSpelling = true)]
+  private static extern bool FindClose(IntPtr handle);
+  public static void Check(string path) {
+    StreamData data;
+    IntPtr handle = FindFirstStreamW(@"\\?\" + path, 0, out data, 0);
+    int error;
+    if (handle == new IntPtr(-1)) {
+      error = Marshal.GetLastWin32Error();
+    } else {
+      try {
+        do {
+          if (data.Name != "::$DATA") throw new IOException("Windows named data stream on " + path + ": " + data.Name);
+        } while (FindNextStreamW(handle, out data));
+        error = Marshal.GetLastWin32Error();
+      } finally {
+        FindClose(handle);
+      }
+    }
+    const int ERROR_HANDLE_EOF = 38;
+    if (error != ERROR_HANDLE_EOF) throw new IOException("Cannot enumerate Windows data streams on " + path + ": Win32 error " + error);
+  }
+}
+'@
+}
+function Check($p, $data, $walk) {
   $a = [IO.File]::GetAttributes($p)
   if ($a -band [IO.FileAttributes]::ReparsePoint) { throw "Windows reparse point: $p" }
+  if ($data) { [SmokeStreams]::Check($p) }
   if ($walk -and ($a -band [IO.FileAttributes]::Directory)) {
-    foreach ($child in [IO.Directory]::EnumerateFileSystemEntries($p)) { Check $child $true }
+    foreach ($child in [IO.Directory]::EnumerateFileSystemEntries($p)) { Check $child $true $true }
   }
 }
 $p = $env:ORCH_SMOKE_INSPECT
@@ -53,13 +95,13 @@ for ($dir = $p; $dir -ne $root;) {
   $dir = [IO.Path]::GetDirectoryName($dir)
   $ancestors += ,$dir
 }
-for ($i = $ancestors.Length - 1; $i -ge 0; $i--) { Check $ancestors[$i] $false }
-Check $p ($env:ORCH_SMOKE_INSPECT_TREE -eq '1')
+for ($i = $ancestors.Length - 1; $i -ge 0; $i--) { Check $ancestors[$i] $false $false }
+Check $p ($mode -ne 'path') ($mode -eq 'tree')
 `], {
-      env: { ...process.env, ORCH_SMOKE_INSPECT: directory, ORCH_SMOKE_INSPECT_TREE: tree ? "1" : "0" },
+      env: { ...process.env, ORCH_SMOKE_INSPECT: file, ORCH_SMOKE_INSPECT_MODE: mode },
       encoding: "utf8", windowsHide: true, timeout: 30_000,
     })
-  assert(result.status === 0 && !result.error, `cannot verify local non-redirected path ${directory}: ${result.error?.message ?? result.stderr.trim()}`)
+  assert(result.status === 0 && !result.error, `cannot verify Windows smoke path ${file}: ${result.error?.message ?? result.stderr.trim()}`)
 }
 
 export async function directory(file, expected) {
@@ -83,7 +125,7 @@ export async function externalDirectory(value) {
     const at = path.join(root, ...names.slice(0, i))
     await directory(at)
   }
-  checkWindows(normalized, false)
+  checkWindows(normalized)
   const canonical = await fs.realpath(normalized)
   if (windows) {
     assert.equal(path.parse(canonical).root.toUpperCase(), path.parse(normalized).root.toUpperCase(),
@@ -126,9 +168,12 @@ async function withFile(file, flags, use, links) {
   }
 }
 
-export const readRegular = (file) => withFile(file, constants.O_RDONLY, async (handle, info) => ({
-  bytes: await handle.readFile(), id: identity(info),
-}))
+export function readRegular(file) {
+  checkWindows(file, "data")
+  return withFile(file, constants.O_RDONLY, async (handle, info) => ({
+    bytes: await handle.readFile(), id: identity(info),
+  }))
+}
 
 export async function syncDirectory(dir) {
   // Node cannot open a Windows directory for fsync. Files themselves are flushed
@@ -158,7 +203,7 @@ export async function append(file, previous, bytes) {
 
 export async function inventory(root, rootID) {
   const id = await directory(root, rootID)
-  checkWindows(root, true)
+  checkWindows(root, "tree")
   if (process.platform === "linux") {
     // stat.dev alone misses a bind mount of another directory on the same disk.
     const mounts = (await fs.readFile("/proc/self/mountinfo", "utf8")).trimEnd().split("\n")
