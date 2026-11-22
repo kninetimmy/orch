@@ -43,14 +43,23 @@ function linuxProcesses(matches) {
       // Our smoke children run unprivileged as this UID. Privileged processes
       // with only a matching real UID (e.g. sudo) are not those children.
       if (Number(uid[2]) !== process.geteuid() || ["Z", "X"].includes(state[1])) continue
-      const args = fs.readFileSync(processDir + "/cmdline", "utf8").split("\0")
+      const cmdline = fs.readFileSync(processDir + "/cmdline", "utf8")
       // Linux kernel threads have no executable, cwd or userspace argv.
-      if (!args[0] && /^Kthread:\s+1$/m.test(status)) continue
-      assert(args[0] && args.at(-1) === "", invisible)
+      if (!cmdline) {
+        if (/^Kthread:\s+1$/m.test(status)) continue
+        // exit_mm clears argv before the task necessarily appears as a zombie.
+        // Verify it has no userspace address space, not just an empty command.
+        const stat = fs.readFileSync(processDir + "/stat", "utf8")
+        const close = stat.lastIndexOf(") ")
+        const vsize = close > 0 && stat.slice(close + 2).split(" ")[20] // field 23 (vsize)
+        if (vsize === "0") continue
+        throw new Error("live process has no readable argv")
+      }
+      assert(cmdline.endsWith("\0"), "incomplete Linux argv")
       // Linux exposes argv without the ptrace privileges required for other
       // processes' exe/cwd links. This negative check supplements owned
       // shutdown proof; it is not a search for arbitrary open files or cwd.
-      assert(!args.some(matches), live)
+      assert(!cmdline.split("\0").some(matches), live)
     } catch (error) {
       // A live but unreadable process is not the same as one that exited.
       if (error.message === live) throw error
@@ -59,7 +68,8 @@ function linuxProcesses(matches) {
       } catch (statusError) {
         if (statusError.code === "ENOENT" || statusError.code === "ESRCH") continue
       }
-      throw new Error(`${invisible}: Linux process ${pid} (${error.code ?? error.message})`, { cause: error })
+      const detail = error.code === "ERR_ASSERTION" ? error.message : error.code ?? error.message
+      throw new Error(`${invisible}: Linux process ${pid} (${detail})`, { cause: error })
     }
   }
 }
