@@ -1,6 +1,6 @@
 import assert from "node:assert/strict"
 import { spawnSync } from "node:child_process"
-import { chmod, mkdir, mkdtemp, readFile, realpath, rm, symlink, writeFile } from "node:fs/promises"
+import { chmod, mkdir, mkdtemp, readdir, readFile, realpath, rm, symlink, writeFile } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import path from "node:path"
 import { fileURLToPath } from "node:url"
@@ -87,6 +87,7 @@ test("invalid selections fail the real harness before host discovery or candidat
   assert.match(check.stderr, /ORCH_SMOKE_ADAPTER.*regular directory/)
   assert.doesNotMatch(check.stderr, /No supported OpenCode|ENOENT.*spawn/)
   assert.doesNotMatch(check.stdout, /Isolated smoke|PASS/)
+  assert.deepEqual(await readdir(path.join(f.root, "orch-opencode-smoke")), ["smoke.lock"])
 })
 
 test("real smoke exits nonzero after archiving an isolated module preflight failure", async (t) => {

@@ -4,7 +4,9 @@
   "type": "module",
   "exports": "./src/index.js",
   "scripts": {
+    "pretest": "node smoke-lock.mjs",
     "test": "node --test",
+    "smoke:prepare": "node smoke-lock.mjs",
     "smoke": "node smoke.mjs",
     "smoke:recover": "node smoke-retention.mjs"
   },

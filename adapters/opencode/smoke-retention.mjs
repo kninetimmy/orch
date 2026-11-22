@@ -1,10 +1,10 @@
 import assert from "node:assert/strict"
 import { randomUUID } from "node:crypto"
 import fs from "node:fs/promises"
-import { createServer } from "node:net"
 import { hostname, tmpdir } from "node:os"
 import path from "node:path"
 import { inside } from "./smoke-artifacts.mjs"
+import { acquireSmokeLock, prepareSmokeLockFile } from "./smoke-lock.mjs"
 import { verifyStopped } from "./smoke-shutdown.mjs"
 import {
   append, contents, copyTree, directory, externalDirectory, inventory,
@@ -16,13 +16,14 @@ const recoveryCommand = "npm run smoke:recover --prefix adapters/opencode"
 const digest = /^[a-f0-9]{64}$/
 const uuid = /^[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}$/
 const idPattern = /^\d+:\d+:-?\d+$/
+const journalVersion = 3
 const idle = async () => {}
 const stages = ["intent", "allocated", "running", "finished", "prepared", "archive", "retained"]
 const localName = (root, id) => path.join(root, "run-" + id)
 const evidenceFiles = ["evidence.json", "server.log"]
 const encode = (data, previous = null) => JSON.stringify({ previous, sha256: sha256(JSON.stringify([previous, data])), data }) + "\n"
 
-function decode(bytes, root, rootID) {
+function decode(bytes, root, rootID, lockID) {
   const text = bytes.toString("utf8")
   assert(text.endsWith("\n"), "incomplete pending journal")
   const records = {}
@@ -38,8 +39,9 @@ function decode(bytes, root, rootID) {
     records[record.data.stage] = record.data
   }
   const { intent, allocated, running, finished, prepared, archive, retained } = records
-  assert([1, 2].includes(intent?.version) && uuid.test(intent.run_id) && intent.storage_id === rootID &&
+  assert([1, 2, journalVersion].includes(intent?.version) && uuid.test(intent.run_id) && intent.storage_id === rootID &&
     intent.fixture_root === localName(root, intent.run_id) && intent.hostname === hostname(), "unverifiable pending owner or fixture path")
+  assert(intent.version !== journalVersion || intent.lock_id === lockID, "pending journal was not written under this smoke.lock")
   assert(!allocated || idPattern.test(allocated.id), "invalid allocated fixture identity")
   assert(!running || allocated, "run never proved allocation")
   assert(!finished || (allocated && typeof finished.passed === "boolean" && typeof finished.shutdown === "boolean" &&
@@ -94,15 +96,14 @@ function receipt(evidence, intent, files) {
 
 export async function openSmokeStorage({ temp = tmpdir(), archiveRoot = process.env[archiveVariable], checkpoint = idle } = {}) {
   let pending = typeof temp === "string" ? path.join(temp, "orch-opencode-smoke", "pending.jsonl") : "(unverified temp path)"
-  let baseID, root, rootID, current
+  let root, rootID, current
   const inspectStorage = "Preserve the storage as it is; ask the operator to verify private access and any pending evidence before retrying."
   try {
     const { canonical: base, id } = await externalDirectory(temp)
-    baseID = id
     root = path.join(base, "orch-opencode-smoke")
     pending = path.join(root, "pending.jsonl")
     try {
-      await directory(base, baseID)
+      await directory(base, id)
       await fs.mkdir(root, { mode: 0o700 })
       await syncDirectory(base)
     } catch (error) {
@@ -120,7 +121,7 @@ export async function openSmokeStorage({ temp = tmpdir(), archiveRoot = process.
     await verifyRoot()
     if (!await present(pending)) return undefined
     const entry = await readRegular(pending)
-    return { entry, ...decode(entry.bytes, root, rootID) }
+    return { entry, ...decode(entry.bytes, root, rootID, lock.id) }
   }
 
   function diagnostic(reason, recovery, state = current?.records) {
@@ -129,22 +130,21 @@ export async function openSmokeStorage({ temp = tmpdir(), archiveRoot = process.
     return new Error(`${reason}\nSmoke pending record: ${pending}\nIntended fixture: ${fixture} (${bytes} bytes)\nAction: ${recovery}`)
   }
 
-  // Key the non-stale mutex to physical storage, not cwd, branch, a PID or a
-  // clock. A port collision is a refusal (never evidence of abandonment).
-  const port = 49152 + (parseInt(sha256(baseID).slice(0, 4), 16) % 16384)
-  const socket = createServer((connection) => connection.destroy())
+  let lock, closeLock
   try {
-    await new Promise((resolve, reject) => {
-      socket.once("error", reject)
-      socket.listen({ host: "127.0.0.1", port, exclusive: true }, resolve)
-    })
+    lock = await prepareSmokeLockFile(root, rootID, pending)
+    closeLock = await acquireSmokeLock(lock.file)
+    await lock.check()
   } catch (error) {
+    closeLock?.()
+    throw diagnostic(`Cannot verify or acquire smoke.lock: ${error.message}; no fixture allocated or reclaimed.`, inspectStorage)
+  }
+  if (!closeLock) {
     let state
     try { state = (await load())?.records } catch { /* A live writer can be mid-record. */ }
-    throw diagnostic(`Smoke storage is busy or its local lock is unavailable (${error.code ?? error.message}); no fixture allocated or reclaimed.`,
-      "Wait for an active smoke/recovery to finish, or resolve the local lock error before retrying.", state)
+    throw diagnostic("Smoke storage is busy (smoke.lock held); no fixture allocated or reclaimed.",
+      "Wait for the active smoke or recovery to finish, then retry.", state)
   }
-  socket.unref()
 
   async function refresh() {
     try {
@@ -157,7 +157,7 @@ export async function openSmokeStorage({ temp = tmpdir(), archiveRoot = process.
   }
 
   async function log(stage, data) {
-    await verifyRoot()
+    await lock.check()
     const row = encode({ stage, ...data }, current?.previous)
     if (current) await append(pending, current.entry, row)
     else await writeNew(pending, row)
@@ -166,7 +166,7 @@ export async function openSmokeStorage({ temp = tmpdir(), archiveRoot = process.
   }
 
   async function clear() {
-    await verifyRoot()
+    await lock.check()
     assert.deepEqual(await readRegular(pending), current.entry, "pending journal changed before disposal")
     await fs.unlink(pending)
     await syncDirectory(root)
@@ -175,10 +175,10 @@ export async function openSmokeStorage({ temp = tmpdir(), archiveRoot = process.
 
   function recoveryAction() {
     const { intent, allocated, running, finished, archive } = current.records
+    if (intent.version !== journalVersion) return "Preserve the legacy journal and scratch for operator inspection; this journal was not written under the current storage lock."
     if (running && finished?.shutdown !== true) {
       return `Do not restart or kill by PID. Inspect ${path.join(intent.fixture_root, "state", "opencode", "service.json")} and local logs; ask the responsible operator to verify owned-process shutdown and disposition separately. Automated recovery refuses without proof of shutdown and source ownership.`
     }
-    if (intent.version !== 2) return "Preserve the legacy journal and scratch for operator inspection; this journal cannot prove which entries belonged to the run."
     if (!allocated) return `Run ${recoveryCommand} to verify that scratch was never allocated. If it exists without ownership proof, leave it and the journal for operator inspection.`
     const target = finished?.passed ? path.join(root, `receipt-${intent.run_id}.json`)
       : archive ? path.join(archive.root, "orch-opencode-smoke-" + intent.run_id) : `local storage in ${archiveVariable}`
@@ -187,7 +187,10 @@ export async function openSmokeStorage({ temp = tmpdir(), archiveRoot = process.
 
   async function requireIdle() {
     await refresh()
-    if (current) throw diagnostic("Smoke recovery is required; no fixture allocated.", recoveryAction())
+    if (current) {
+      const reason = current.records.intent.version === journalVersion ? "Smoke recovery is required" : "Legacy smoke journal; activity unknown"
+      throw diagnostic(`${reason}; no fixture allocated.`, recoveryAction())
+    }
   }
 
   async function begin() {
@@ -195,7 +198,7 @@ export async function openSmokeStorage({ temp = tmpdir(), archiveRoot = process.
     const run_id = randomUUID()
     const temp = localName(root, run_id)
     await log("intent", {
-      version: 2, run_id, fixture_root: temp, storage_id: rootID, hostname: hostname(),
+      version: journalVersion, run_id, fixture_root: temp, storage_id: rootID, lock_id: lock.id, hostname: hostname(),
       pid: process.pid, started_at: new Date().toISOString(),
     })
     console.log(`Smoke pending: ${pending}; intended fixture: ${temp}`)
@@ -247,8 +250,8 @@ export async function openSmokeStorage({ temp = tmpdir(), archiveRoot = process.
     // All paths below are derived from validated state under this storage lock.
     const { intent, allocated, running } = current.records
     const { fixture_root: source, run_id: runID } = intent
-    await verifyRoot()
-    assert(intent.version === 2, "legacy pending journal has no trusted source inventory")
+    await lock.check()
+    assert(intent.version === journalVersion, "legacy pending journal was not written under the current storage lock")
     if (!allocated) {
       assert(!await present(source), `scratch exists but allocation ownership was never recorded: ${source}`)
       await clear()
@@ -259,7 +262,7 @@ export async function openSmokeStorage({ temp = tmpdir(), archiveRoot = process.
       // No process can start before the durable running stage.
       await privateDirectory(source, allocated.id, "data")
       assert((await fs.readdir(source)).length === 0, `unexpected data before fixture activity: ${source}`)
-      if (recovering) verifyStopped(source)
+      verifyStopped(source)
       await finish({
         fixture_root: source, passed: false, checks: [], provider_requests: 0,
         error: { message: "smoke interrupted before starting fixture activity" },
@@ -271,7 +274,7 @@ export async function openSmokeStorage({ temp = tmpdir(), archiveRoot = process.
     const { inventory: snapshot } = finished
     let { archive, retained } = current.records
     const rows = await present(source) ? await inventory(source, allocated.id) : []
-    if (recovering && rows.length) {
+    if (recovering) {
       verifyStopped(source)
       assert(!rows.some((row) => row.name === "state/opencode/service.json"), "private service record reappeared")
     }
@@ -349,11 +352,13 @@ export async function openSmokeStorage({ temp = tmpdir(), archiveRoot = process.
     const pointer = { run_id: runID, kind: finished.passed ? "receipt" : "failure-archive", path: target, sha256: proof.sha256 }
     console.log("SMOKE_EVIDENCE " + JSON.stringify(pointer))
 
-    await verifyRoot()
+    await lock.check()
     if (rows.length) {
       // Recheck the complete remainder after verification of the destination,
       // before the first unlink; even a new unrelated entry is a refusal.
       assert.deepEqual(await inventory(source, allocated.id), rows, "source changed during retention")
+      await lock.check()
+      verifyStopped(source)
       await removeTree(source, rows, checkpoint)
     }
     assert(!await present(source), "owned scratch still exists")
@@ -362,36 +367,46 @@ export async function openSmokeStorage({ temp = tmpdir(), archiveRoot = process.
     return pointer
   }
 
+  let active = false
   const report = (error) => current ? diagnostic(`Smoke disposition refused: ${error.message}`, recoveryAction()) : error
+  async function locked(operation) {
+    assert(closeLock && !active, "smoke storage lock is closed or already in use")
+    active = true
+    try {
+      await lock.check()
+      return await operation()
+    } catch (error) {
+      throw report(error)
+    } finally {
+      active = false
+    }
+  }
   return {
-    root, requireIdle,
-    begin: async () => {
-      try { return await begin() } catch (error) { throw report(error) }
-    },
-    markRunning: async () => {
-      try {
-        const { intent, allocated } = current.records
-        await verifyRoot()
-        await privateDirectory(intent.fixture_root, allocated.id, "data")
-        await log("running", {})
-      } catch (error) { throw report(error) }
-    },
-    finish: async (...args) => {
-      try {
-        await finish(...args)
-        return await dispose()
-      } catch (error) { throw report(error) }
-    },
-    recover: async () => {
+    root,
+    requireIdle: () => locked(requireIdle),
+    begin: () => locked(begin),
+    markRunning: () => locked(async () => {
+      const { intent, allocated } = current.records
+      await verifyRoot()
+      await privateDirectory(intent.fixture_root, allocated.id, "data")
+      await log("running", {})
+    }),
+    finish: (...args) => locked(async () => {
+      await finish(...args)
+      return await dispose()
+    }),
+    recover: () => locked(async () => {
       await refresh()
       if (!current) {
         console.log(`No pending smoke at ${pending}; nothing allocated or removed.`)
         return
       }
-      try { return await dispose(true) } catch (error) { throw report(error) }
-    },
+      return await dispose(true)
+    }),
     async [Symbol.asyncDispose]() {
-      await new Promise((resolve) => socket.close(resolve))
+      assert(!active, "cannot close smoke storage during an operation")
+      closeLock?.()
+      closeLock = undefined
     },
   }
 }

@@ -249,8 +249,14 @@ retains the full `evidence.json`. See
 [smoke fixture retention and recovery](../adapters/opencode/README.md#smoke-fixture-retention-and-recovery-issue-539).
 Both smoke entrypoints now verify private local journal storage before reading
 recovery state. The macOS Node tests exercise the normal OS temp aliases without
-running a host. Neither storage check changes the explicit checkout-release or
-Git-removal contract described here.
+running a host. **Before the storage-lock repair:** the smoke-only mutex was
+a localhost socket, which did not exclude another network namespace using
+the same storage. **After:** the Node mutator holds a nonblocking OS lock on
+the permanent private `smoke.lock` throughout journal and scratch operations;
+release on exit allows inspection, not automatic reclamation. The same
+retention boundary refuses incomplete activity observations or macOS resource
+forks it cannot preserve in its archive. These are smoke/recovery safeguards,
+not changes to the explicit checkout-release or Git-removal contracts here.
 Source/isolated success is not installation, current installed cleanup,
 real-model Delivery qualification, full partial-cleanup recovery or proof of
 atomic host quiescence. Unverified runtime versions keep their advisory.

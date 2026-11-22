@@ -5,12 +5,22 @@ import { constants } from "node:fs"
 import fs from "node:fs/promises"
 import path from "node:path"
 import { inside } from "./smoke-artifacts.mjs"
+import { hasResourceFork } from "./smoke-native.mjs"
 
 const windows = process.platform === "win32"
 const mac = process.platform === "darwin"
 export const sha256 = (bytes) => createHash("sha256").update(bytes).digest("hex")
 export const json = (data) => JSON.stringify(data, null, 2) + "\n"
 const noFollow = constants.O_NOFOLLOW ?? 0
+
+function checkMacData(file) {
+  if (!mac) return
+  let present
+  try { present = hasResourceFork(file) } catch (error) {
+    throw new Error(`cannot verify macOS resource fork: ${file}`, { cause: error })
+  }
+  assert(!present, `macOS resource fork on ${file}`)
+}
 
 export async function present(file) {
   try {
@@ -199,6 +209,7 @@ export async function privateDirectory(file, expected, mode = "path") {
   const { root, names } = storagePath(file)
   const id = await checkDirectoryPath(root, names, true, mode)
   assert(expected === undefined || expected === id, `directory ownership changed: ${file}`)
+  if (mode !== "path") checkMacData(file)
   return id
 }
 
@@ -282,9 +293,20 @@ async function withFile(file, flags, use, links, privateEntry = false) {
 
 export function readRegular(file) {
   checkWindows(file, "data")
-  return withFile(file, constants.O_RDONLY, async (handle, info) => ({
-    bytes: await handle.readFile(), id: identity(info),
-  }), undefined, true)
+  return withFile(file, constants.O_RDONLY, async (handle, info) => {
+    checkMacData(file)
+    const bytes = await handle.readFile()
+    checkMacData(file)
+    return { bytes, id: identity(info) }
+  }, undefined, true)
+}
+
+export async function emptyPrivateFile(file) {
+  checkWindows(file, "data")
+  return withFile(file, constants.O_RDONLY, (_, info) => {
+    assert(info.size === 0n, `smoke lock is not empty: ${file}`)
+    return identity(info)
+  }, undefined, true)
 }
 
 export async function syncDirectory(dir) {
@@ -328,6 +350,7 @@ export async function inventory(root, rootID) {
     const info = await present(file)
     assert(info && !info.isSymbolicLink() && String(info.dev) === id.split(":")[0],
       `missing, redirected or off-volume smoke entry: ${file}`)
+    checkMacData(file)
     if (info.isDirectory()) {
       const dirID = identity(info)
       rows.push({ name, id: dirID })
@@ -443,12 +466,14 @@ export async function removeTree(root, remaining, checkpoint) {
     const file = member(root, row.name)
     if (row.bytes === undefined) {
       await directory(file, row.id)
+      checkMacData(file)
       await fs.rmdir(file)
     } else {
       const info = await present(file)
       const count = links.get(row.id)
       assert(regular(info, file, count) === row.id && info.size === BigInt(row.bytes) && String(info.mtimeNs) === row.mtime,
         `source entry changed before removal: ${file}`)
+      checkMacData(file)
       await fs.unlink(file)
       links.set(row.id, count - 1n)
     }

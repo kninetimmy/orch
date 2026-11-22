@@ -12,6 +12,7 @@ import { createInterface } from "node:readline"
 
 import { lookupServer, lookupTools, sameDirectory } from "./src/lookup.js"
 import { checkAdapterModule, copyBinary, fileIdentity, inside, prepareOrch, prepareSourceProbe, selectArtifacts, verifyArtifacts } from "./smoke-artifacts.mjs"
+import { smokeLockEvidenceFiles } from "./smoke-lock.mjs"
 import { openSmokeStorage } from "./smoke-retention.mjs"
 import { present } from "./smoke-storage.mjs"
 import { joined, verifyStopped } from "./smoke-shutdown.mjs"
@@ -125,8 +126,11 @@ const evidence = {
     repository: await realpath(repo),
     revision: command("git", ["rev-parse", "HEAD"], repo).trim(),
     status: command("git", ["status", "--porcelain", "--", "adapters/opencode"], repo).trim(),
-    files: await Promise.all(["smoke.mjs", "smoke-artifacts.mjs", "smoke-retention.mjs", "smoke-storage.mjs", "smoke-shutdown.mjs"]
-      .map((file) => fileIdentity(path.join(harnessAdapter, file)))),
+    files: await Promise.all([
+      ...["smoke.mjs", "smoke-artifacts.mjs", "smoke-retention.mjs", "smoke-storage.mjs", "smoke-shutdown.mjs",
+        "smoke-lock.mjs", "smoke-native.mjs"].map((file) => path.join(harnessAdapter, file)),
+      ...await smokeLockEvidenceFiles(),
+    ].map(fileIdentity)),
   },
   adapter: selection.adapter, lookups: {}, checks: [],
 }
