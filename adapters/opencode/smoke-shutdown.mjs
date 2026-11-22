@@ -47,8 +47,10 @@ function linuxProcesses(matches) {
       // Linux kernel threads have no executable, cwd or userspace argv.
       if (!args[0] && /^Kthread:\s+1$/m.test(status)) continue
       assert(args[0] && args.at(-1) === "", invisible)
-      assert(!args.some(matches) && !matches(fs.readlinkSync(processDir + "/exe")) &&
-        !matches(fs.readlinkSync(processDir + "/cwd")), live)
+      // Linux exposes argv without the ptrace privileges required for other
+      // processes' exe/cwd links. This negative check supplements owned
+      // shutdown proof; it is not a search for arbitrary open files or cwd.
+      assert(!args.some(matches), live)
     } catch (error) {
       // A live but unreadable process is not the same as one that exited.
       if (error.message === live) throw error
@@ -74,5 +76,6 @@ export function verifyStopped(root) {
     assert(!matching, live)
   } else if (process.platform === "linux") linuxProcesses(matches)
   else throw new Error(invisible)
-  return { scope: "invoking user's process executable paths or arguments naming the fixture", matching: 0 }
+  const fields = process.platform === "linux" ? "arguments" : "executable paths or arguments"
+  return { scope: `invoking user's process ${fields} naming the fixture`, matching: 0 }
 }

@@ -686,12 +686,12 @@ or archives it. This is not a backup of arbitrary filesystem metadata.
 **Before the activity repair:** the process scan searched flattened commands
 for a fixture prefix followed by a separator. It missed the exact root
 argument and could treat incomplete process listings as empty. **After:**
-it checks actual executable paths and argv for the exact root and descendants
+it checks actual argv for the exact root and descendants
 without matching similarly named siblings. Windows checks the invoking user's
-processes using WTS and native image/argv queries. macOS uses the invoking
-user's kernel process inventory and checks both admitted temp spellings.
-Linux uses procfs for argv, executable and cwd, and refuses if the initial
-PID/user namespaces or unfiltered procfs are not visible. A separate Linux
+processes using WTS and native image/argv queries. macOS also checks
+executable paths and checks both admitted temp spellings.
+Linux uses procfs for argv without requiring ptrace access; it refuses if
+the initial PID/user namespaces or unfiltered procfs are not visible. A separate Linux
 network namespace is not a different lock or process inventory. An observed
 matching process or unavailable required inventory blocks disposition.
 
@@ -734,7 +734,9 @@ Memhub binary for the isolated qualification checks.
 | This README and `docs/worktree-cleanup.md` | Prior full-evidence behavior is kept as history. Both documents now distinguish full failure archives from pass receipts and isolated qualification from installed behavior. This does not change the checkout-release or removal contract. |
 
 No adapter plugin runtime, Delivery policy, grant lock, other host or
-installation behavior changes. macOS and Linux CI run private storage and
+installation behavior changes. The Go adapter embeds the updated manifest,
+but its version and dependency fields are unchanged, and it does not
+compile or load the smoke binding. macOS and Linux CI run private storage and
 process tests, not live-host qualification.
 
 ### Earlier isolated qualification tuple (2026-11-14)
