@@ -409,9 +409,9 @@ func releaseBelongs(targets []string, directory string) (bool, error) {
 }
 
 func releaseActiveJobs(call releaseCall, targets []string) error {
-	session := func(id string) error {
+	sessionInTarget := func(id string) (bool, error) {
 		if !strings.HasPrefix(id, "ses") {
-			return fmt.Errorf("OpenCode checkout release: malformed activity session identifier")
+			return false, fmt.Errorf("OpenCode checkout release: malformed activity session identifier")
 		}
 		var response struct {
 			Data struct {
@@ -420,12 +420,15 @@ func releaseActiveJobs(call releaseCall, targets []string) error {
 			} `json:"data"`
 		}
 		if err := call("get", "/api/session/"+url.PathEscape(id), &response); err != nil {
-			return err
+			return false, err
 		}
 		if response.Data.ID != id {
-			return fmt.Errorf("OpenCode checkout release: activity session identity mismatch")
+			return false, fmt.Errorf("OpenCode checkout release: activity session identity mismatch")
 		}
-		belongs, err := releaseBelongs(targets, response.Data.Location.Directory)
+		return releaseBelongs(targets, response.Data.Location.Directory)
+	}
+	checkSession := func(id string) error {
+		belongs, err := sessionInTarget(id)
 		if err != nil {
 			return err
 		}
@@ -454,7 +457,7 @@ func releaseActiveJobs(call releaseCall, targets []string) error {
 	}
 	slices.Sort(ids)
 	for _, id := range ids {
-		if err := session(id); err != nil {
+		if err := checkSession(id); err != nil {
 			return err
 		}
 	}
@@ -474,18 +477,37 @@ func releaseActiveJobs(call releaseCall, targets []string) error {
 		return fmt.Errorf("OpenCode checkout release: malformed or oversized background-job inventory")
 	}
 	for _, job := range jobs.Data {
-		if job.ID == "" || job.Status != "running" || !slices.Contains([]string{"shell", "subagent", "image"}, job.Kind) {
-			return fmt.Errorf("OpenCode checkout release: unsupported background-job evidence")
+		if job.ID == "" || job.Status != "running" || job.Kind == "" {
+			return fmt.Errorf("OpenCode checkout release: malformed background-job evidence")
 		}
-		// The owner may be in primary while the actual subagent runs in target.
-		// Both count: owner-side completion/report delivery can also re-enter.
-		if err := session(job.SessionID); err != nil {
-			return err
-		}
-		if job.Kind == "subagent" {
-			if err := session(job.ChildSessionID); err != nil {
+		switch job.Kind {
+		case "codemode":
+			belongs, err := sessionInTarget(job.SessionID)
+			if err != nil {
 				return err
 			}
+			// The inventory has no nested tool destinations. Verifying an
+			// outside owner does not establish where the job's tools work.
+			reason := "its working directories cannot be verified"
+			if belongs {
+				reason = "its owning session is in a target checkout"
+			}
+			return fmt.Errorf("OpenCode checkout release: running Code Mode job prevents removal: %s; "+
+				"let the job finish, then rerun the normal command (for cleanup, `orch run cleanup`) "+
+				"from a standalone foreground terminal at the verified primary checkout when OpenCode is idle", reason)
+		case "shell", "image", "subagent":
+			// The owner may be in primary while the actual subagent runs in target.
+			// Both count: owner-side completion/report delivery can also re-enter.
+			if err := checkSession(job.SessionID); err != nil {
+				return err
+			}
+			if job.Kind == "subagent" {
+				if err := checkSession(job.ChildSessionID); err != nil {
+					return err
+				}
+			}
+		default:
+			return fmt.Errorf("OpenCode checkout release: unsupported background-job evidence")
 		}
 	}
 	return nil

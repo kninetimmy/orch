@@ -188,6 +188,18 @@ func TestReleaseLocation(t *testing.T) {
 			f.bodies["/api/experimental/job?status=running"] = `{"data":[{"id":"job","kind":"shell","status":"running","sessionID":"sesOwner"}]}`
 			f.session("sesOwner", f.target)
 		}, "unfinished background job", 0},
+		{"background shell primary", func(f *releaseFixture) {
+			f.bodies["/api/experimental/job?status=running"] = `{"data":[{"id":"job","kind":"shell","status":"running","sessionID":"sesOwner"}]}`
+			f.session("sesOwner", f.root)
+		}, "", 1},
+		{"background image target", func(f *releaseFixture) {
+			f.bodies["/api/experimental/job?status=running"] = `{"data":[{"id":"job","kind":"image","status":"running","sessionID":"sesOwner"}]}`
+			f.session("sesOwner", f.target)
+		}, "unfinished background job", 0},
+		{"background image primary", func(f *releaseFixture) {
+			f.bodies["/api/experimental/job?status=running"] = `{"data":[{"id":"job","kind":"image","status":"running","sessionID":"sesOwner"}]}`
+			f.session("sesOwner", f.root)
+		}, "", 1},
 		{"background child target owner elsewhere", func(f *releaseFixture) {
 			f.bodies["/api/experimental/job?status=running"] = `{"data":[{"id":"job","kind":"subagent","status":"running","sessionID":"sesOwner","childSessionID":"sesChild"}]}`
 			f.session("sesOwner", f.root)
@@ -203,6 +215,14 @@ func TestReleaseLocation(t *testing.T) {
 			f.session("sesOwner", f.root)
 			f.session("sesChild", f.unrelated)
 		}, "", 1},
+		{"Code Mode owner in target", func(f *releaseFixture) {
+			f.bodies["/api/experimental/job?status=running"] = `{"data":[{"id":"credential-token","kind":"codemode","status":"running","sessionID":"sescredential-token","title":"credential-token"}]}`
+			f.session("sescredential-token", f.target)
+		}, "running Code Mode job prevents removal: its owning session is in a target checkout", 0},
+		{"Code Mode owner in primary", func(f *releaseFixture) {
+			f.bodies["/api/experimental/job?status=running"] = `{"data":[{"id":"credential-token","kind":"codemode","status":"running","sessionID":"sescredential-token","title":"credential-token: uses only primary"}]}`
+			f.session("sescredential-token", f.root)
+		}, "running Code Mode job prevents removal: its working directories cannot be verified", 0},
 		{"running shell", func(f *releaseFixture) {
 			f.bodies["/api/shell?"+f.query()] = f.scoped(f.target, `[{"id":"shell","status":"running","cwd":`+releaseJSON(f.target)+`}]`)
 		}, "running shell or terminal", 0},
@@ -300,8 +320,31 @@ func TestReleaseLocation(t *testing.T) {
 		{"missing active data", func(f *releaseFixture) { f.bodies["/api/session/active"] = `{}` }, "malformed", 0},
 		{"unknown active state", func(f *releaseFixture) { f.bodies["/api/session/active"] = `{"data":{"sesBusy":{"type":"idle"}}}` }, "unsupported", 0},
 		{"unknown job", func(f *releaseFixture) {
-			f.bodies["/api/experimental/job?status=running"] = `{"data":[{"id":"job","kind":"future","status":"running"}]}`
-		}, "unsupported", 0},
+			f.bodies["/api/experimental/job?status=running"] = `{"data":[{"id":"job","kind":"credential-token","status":"running","sessionID":"sesOwner"}]}`
+			f.session("sesOwner", f.root)
+		}, "unsupported background-job evidence", 0},
+		{"malformed job inventory", func(f *releaseFixture) {
+			f.bodies["/api/experimental/job?status=running"] = `{"data":null}`
+		}, "malformed or oversized background-job inventory", 0},
+		{"Code Mode job missing ID", func(f *releaseFixture) {
+			f.bodies["/api/experimental/job?status=running"] = `{"data":[{"kind":"codemode","status":"running","sessionID":"sesOwner","title":"credential-token"}]}`
+			f.session("sesOwner", f.root)
+		}, "malformed background-job evidence", 0},
+		{"Code Mode job wrong status", func(f *releaseFixture) {
+			f.bodies["/api/experimental/job?status=running"] = `{"data":[{"id":"job","kind":"codemode","status":"credential-token","sessionID":"sesOwner"}]}`
+			f.session("sesOwner", f.root)
+		}, "malformed background-job evidence", 0},
+		{"Code Mode owner identifier invalid", func(f *releaseFixture) {
+			f.bodies["/api/experimental/job?status=running"] = `{"data":[{"id":"job","kind":"codemode","status":"running","sessionID":"credential-token"}]}`
+		}, "malformed activity session identifier", 0},
+		{"Code Mode owner identity mismatch", func(f *releaseFixture) {
+			f.bodies["/api/experimental/job?status=running"] = `{"data":[{"id":"job","kind":"codemode","status":"running","sessionID":"sesOwner"}]}`
+			f.bodies["/api/session/sesOwner"] = `{"data":{"id":"sescredential-token","location":{"directory":` + releaseJSON(f.target) + `}}}`
+		}, "activity session identity mismatch", 0},
+		{"Code Mode owner location unverifiable", func(f *releaseFixture) {
+			f.bodies["/api/experimental/job?status=running"] = `{"data":[{"id":"job","kind":"codemode","status":"running","sessionID":"sesOwner"}]}`
+			f.session("sesOwner", filepath.Join(f.root, "credential-token-missing"))
+		}, "host directory identity is unavailable", 0},
 		{"session unavailable", func(f *releaseFixture) {
 			f.bodies["/api/session/active"] = `{"data":{"sesBusy":{"type":"running"}}}`
 			f.fail["/api/session/sesBusy"] = true

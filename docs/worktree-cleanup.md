@@ -1,5 +1,8 @@
 # Truthful checkout removal
 
+If OpenCode reports a running Code Mode job, see the
+[standalone cleanup steps](#code-mode-holds-during-checkout-release-issue-543).
+
 Issue #505 corrects the absence assumption introduced for executor cleanup
 in PR #12 and extended to disposable review cleanup/replacement in PR #97.
 It is a fail-closed safety change, not complete partial-removal recovery.
@@ -732,3 +735,57 @@ It records the pre-commit HEAD `f85aa22` plus modified source status. Its
 `release_terminals.go` hash `77d040011fa1185e13d30807e82949b3fec4c7491f1f8f9c2a62c352b3a488ba`
 identifies the hardened production file, not the old committed version.
 Ambiguous responses were exercised only in deterministic fixtures.
+
+## Code Mode holds during checkout release (issue #543)
+
+**Before #543:** the running-job inventory recognized `shell`, `image` and
+`subagent`. Code Mode, unknown job kinds, and rows with a missing ID, missing
+kind or unexpected status all produced `unsupported background-job evidence`.
+They prevented removal, but the diagnostic did not identify a Code Mode hold.
+
+**After #543:** a running `codemode` job with a verified owner in a target
+checkout prevents removal because the owning session is in the target.
+A job with a verified owner outside all targets also prevents removal, with
+a distinct explanation: its working directories cannot be verified. The
+observed OpenCode 2.3.2 job record lists `kind`, `id`, `sessionID`, `status`,
+`title` and `time`; it does not show where nested tools work. An owner in
+primary, a caller ID matching the owner, or a job title is not proof that the
+job is unrelated. Unknown kinds, malformed inventories or rows, and
+unverifiable owners still refuse with evidence errors, not Code Mode
+diagnostics. No diagnostic repeats the job's title, IDs or raw payload.
+
+### Resume normal cleanup from a standalone terminal
+
+1. Let the job finish and wait for OpenCode to be idle. Keep both issue
+   checkouts unused.
+2. Open a standalone foreground terminal outside OpenCode, not its shell tool
+   or Code Mode. Change to the intended repository's primary checkout. Confirm
+   that `git rev-parse --show-toplevel` matches the first `worktree` entry in
+   `git worktree list --porcelain`, and use `orch run status --json` to check
+   the run, issue number and merged or abandoned phase.
+3. For confirmed cleanup, send the normal request to `orch run cleanup` on
+   stdin. In this PowerShell example, replace `123` with the verified issue number:
+
+   ```powershell
+   '{"schema_version":1,"issue_number":123,"statement":"cleanup-issue"}' | orch run cleanup
+   ```
+
+This starts a separate invocation with the same host, Git and filesystem
+checks. A still-running Code Mode job again stops the operation before
+eviction or Git deletion. If you were replacing a review checkout rather
+than cleaning up an issue, rerun that authorized operation instead. Orch does
+not retry a Code Mode hold, end the job, kill processes, delete paths manually,
+install anything or bypass a check. These remain bounded observations, not a
+guarantee against concurrent host re-entry.
+
+### Touched elements and retained behavior
+
+| Element | Before → after; does its earlier behavior still hold? |
+| --- | --- |
+| `releaseActiveJobs` session lookup (`sessionInTarget`, `checkSession`) and `releaseBelongs` / `releaseDirectory` | Before, the lookup combined identity/location verification and the foreground or legacy job hold. The same session-ID check, authenticated read, exact response ID match and physical/descendant attribution remain. The lookup now returns the location decision separately for Code Mode; foreground and legacy holds keep their old diagnostic and order. |
+| `releaseActiveJobs` running-job inventory and kind dispatch | The same endpoint, running filter, 1,000-row cap and missing/invalid inventory refusals remain. Unknown kinds still refuse as unsupported; malformed rows get a separate evidence error. Shell and image still check the owner. Subagent jobs still check the parent owner and actual child; either can block. Code Mode still blocks, but is now identified after owner verification. The outside-owner restriction applies to **every** running `codemode` record, not just the invoking session or a job with a particular title. |
+| `ReleaseLocations` and `ReleaseLocation` | Both global active/job checks still run before any eviction on a successful preflight, for every requested target (including unloaded ones). The single-target wrapper uses the same gate. Persistent terminals, ordinary shells/PTYs, root and inventory checks, the bounded unrelated-key recheck, exact scoped disposal and final checks are unchanged. No check or retry runs after a Code Mode refusal in the same invocation. |
+| `run.releaseCheckouts`, `checkoutReleaseTarget`, `Cleanup`, `ReviewWorktree` and generic Git teardown | Both confirmed issue cleanup (executor and review) and review replacement inherit the shared Code Mode gate when there is a verified OpenCode target. Ownership, confirmation, eligible phases, clean executor vs. detached review, interior checks, absence/residue handling, Git order, run state and metrics semantics remain. A hold reaches neither eviction nor Git deletion. No new rule applies to other hosts or direct Git, base or bootstrap teardown. |
+| `TestReleaseLocation` / `releaseFixture` | Existing scripted coverage remains. New cases distinguish target and primary Code Mode owners, unsupported and malformed evidence, and invalid or unverifiable owner identity without leaking fixture content. Shell, image and subagent controls confirm their existing policies. No live host is used. |
+| `checkoutHost.Run` / `jobInventory` and `TestOpenCodeCleanupCodeModeHoldThenRetry` | Existing fixture defaults to an empty job inventory; it can now supply running-job responses and look up saved owners. The new test calls ordinary cleanup twice with the same primary-owned job and matching caller ID, preserving both checkouts, registrations, branch refs and state without eviction or an internal retry. A later call with a clean inventory evicts only the fixture targets and removes them normally. The host is scripted and Git uses only disposable repositories. |
+| This guide | The old generic Code Mode refusal is preserved above as before/after. The foreground recovery is for this hold, not new permission to remove residue or to skip lifecycle checks. Previous qualification is historical; these regressions do not qualify new installed or live behavior. |
