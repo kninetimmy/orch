@@ -5,7 +5,8 @@
   "exports": "./src/index.js",
   "scripts": {
     "test": "node --test",
-    "smoke": "node smoke.mjs"
+    "smoke": "node smoke.mjs",
+    "smoke:recover": "node smoke-retention.mjs"
   },
   "dependencies": {
     "@opencode/plugin": "2.2.6",

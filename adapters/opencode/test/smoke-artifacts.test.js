@@ -81,12 +81,40 @@ test("selector validation rejects incomplete, empty, relative, missing and wrong
 test("invalid selections fail the real harness before host discovery or candidate execution", async (t) => {
   const f = await fixture(t)
   const harness = fileURLToPath(new URL("../smoke.mjs", import.meta.url))
-  const env = { ...process.env, ...f.env, PATH: "", ORCH_SMOKE_ADAPTER: f.orch }
+  const env = { ...process.env, ...f.env, TMPDIR: f.root, TEMP: f.root, TMP: f.root, PATH: "", ORCH_SMOKE_ADAPTER: f.orch }
   const check = spawnSync(process.execPath, [harness], { env, encoding: "utf8", timeout: 30_000, windowsHide: true })
   assert.notEqual(check.status, 0)
   assert.match(check.stderr, /ORCH_SMOKE_ADAPTER.*regular directory/)
   assert.doesNotMatch(check.stderr, /No supported OpenCode|ENOENT.*spawn/)
   assert.doesNotMatch(check.stdout, /Isolated smoke|PASS/)
+})
+
+test("real smoke exits nonzero after archiving an isolated module preflight failure", async (t) => {
+  const f = await fixture(t)
+  const harness = fileURLToPath(new URL("../smoke.mjs", import.meta.url))
+  const archive = path.join(f.root, "archive")
+  await mkdir(archive)
+  await writeFile(path.join(f.installed, "src", "index.js"), "export default {}")
+  const env = {
+    ...process.env, ...f.env, TMPDIR: f.root, TEMP: f.root, TMP: f.root, ORCH_SMOKE_ARCHIVE_ROOT: archive,
+  }
+  const check = spawnSync(process.execPath, [harness], { env, encoding: "utf8", timeout: 60_000, windowsHide: true })
+  assert.equal(check.status, 1, check.stderr)
+  assert.match(check.stderr, /ORCH_SMOKE_ADAPTER is unusable/)
+  const line = check.stdout.split(/\r?\n/).find((line) => line.startsWith("SMOKE_EVIDENCE "))
+  assert(line, check.stdout)
+  const pointer = JSON.parse(line.slice("SMOKE_EVIDENCE ".length))
+  assert.equal(pointer.kind, "failure-archive")
+  assert.equal(path.dirname(pointer.path), archive)
+  const manifest = await fileIdentity(path.join(pointer.path, "manifest.json"))
+  assert.equal(manifest.sha256, pointer.sha256)
+  const evidence = JSON.parse(await readFile(path.join(pointer.path, "fixture", "evidence.json"), "utf8"))
+  assert.equal(evidence.passed, false)
+  assert.equal(evidence.provider_requests, 0)
+  assert.equal(evidence.owned_shutdown.method, "no private host started")
+  assert.equal(evidence.owned_shutdown.verified, true)
+  await assert.rejects(readFile(path.join(f.root, "orch-opencode-smoke", "pending.jsonl")), { code: "ENOENT" })
+  await assert.rejects(realpath(evidence.fixture_root), { code: "ENOENT" })
 })
 
 test("unusable manifests, lockfiles, exports and missing skills fail package preflight", async (t) => {
