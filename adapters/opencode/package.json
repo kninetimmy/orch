@@ -4,8 +4,11 @@
   "type": "module",
   "exports": "./src/index.js",
   "scripts": {
+    "pretest": "node smoke-lock.mjs",
     "test": "node --test",
-    "smoke": "node smoke.mjs"
+    "smoke:prepare": "node smoke-lock.mjs",
+    "smoke": "node smoke.mjs",
+    "smoke:recover": "node smoke-retention.mjs"
   },
   "dependencies": {
     "@opencode/plugin": "2.2.6",

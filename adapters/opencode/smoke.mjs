@@ -1,19 +1,21 @@
 import assert from "node:assert/strict"
 import { createHash } from "node:crypto"
 import { existsSync } from "node:fs"
-import { copyFile, cp, lstat, mkdir, mkdtemp, readFile, readlink, realpath, rename, rm, symlink, unlink, writeFile } from "node:fs/promises"
+import { copyFile, cp, lstat, mkdir, readFile, readlink, realpath, rename, rm, symlink, unlink, writeFile } from "node:fs/promises"
 import { spawn, spawnSync } from "node:child_process"
 import { createServer as createSocket } from "node:net"
 import { createServer } from "node:http"
-import { hostname, tmpdir } from "node:os"
+import { hostname } from "node:os"
 import path, { delimiter } from "node:path"
 import { fileURLToPath } from "node:url"
 import { createInterface } from "node:readline"
 
-import { Backend } from "@opencode/protocol/simulation"
-import { pluginID } from "./src/index.js"
 import { lookupServer, lookupTools, sameDirectory } from "./src/lookup.js"
 import { checkAdapterModule, copyBinary, fileIdentity, inside, prepareOrch, prepareSourceProbe, selectArtifacts, verifyArtifacts } from "./smoke-artifacts.mjs"
+import { smokeLockEvidenceFiles } from "./smoke-lock.mjs"
+import { openSmokeStorage } from "./smoke-retention.mjs"
+import { present } from "./smoke-storage.mjs"
+import { joined, verifyStopped } from "./smoke-shutdown.mjs"
 
 const harnessAdapter = path.dirname(fileURLToPath(import.meta.url))
 const repo = path.resolve(harnessAdapter, "../..")
@@ -49,7 +51,7 @@ assert.equal(admittedVersion("opencode v1.18.34"), undefined)
 assert.equal(admittedVersion("opencode v2.2.6 extra"), undefined)
 assert.equal(admittedVersion("opencode v2.02.6"), undefined)
 
-function findOpenCode() {
+function findOpenCode(cwd, env) {
   for (const name of ["opencode2", "opencode"]) {
     const candidates = process.platform === "win32"
       ? (process.env.PATH ?? "").split(delimiter).filter(Boolean).flatMap((directory) => [
@@ -57,9 +59,9 @@ function findOpenCode() {
         ...(existsSync(path.join(directory, name + ".cmd")) || existsSync(path.join(directory, name + ".ps1"))
           ? [path.join(directory, "node_modules", "@opencode", "cli", "bin", "opencode.exe")] : []),
       ]).filter(existsSync)
-      : [name]
+      : result("which", [name], repo).stdout.trim().split(/\r?\n/).filter(Boolean)
     for (const executable of candidates) {
-      const result = spawnSync(executable, ["--version"], { encoding: "utf8", windowsHide: true })
+      const result = spawnSync(executable, ["--version"], { cwd, env, encoding: "utf8", windowsHide: true })
       const version = result.status === 0 && admittedVersion(result.stdout)
       if (!version) continue
       if (version !== baseline) console.log("Advisory: OpenCode " + version + " is unverified; checking the live contracts.")
@@ -101,18 +103,20 @@ async function within(promise, label) {
   }
 }
 
+await using storage = await openSmokeStorage()
+await storage.requireIdle()
 const selection = await selectArtifacts(process.env, harnessAdapter)
-const adapter = selection.adapter.root
-const fixtureBase = existsSync(path.join(tmpdir(), "opencode")) ? path.join(tmpdir(), "opencode") : tmpdir()
-const temp = await realpath(await mkdtemp(path.join(fixtureBase, "orch-opencode-smoke-")))
-assert(!inside(await realpath(repo), temp), "smoke fixtures must be outside the source checkout")
-const ancestry = result("git", ["rev-parse", "--show-toplevel"], temp)
+assert(!inside(await realpath(repo), storage.root), "smoke fixtures must be outside the source checkout")
+const ancestry = result("git", ["rev-parse", "--show-toplevel"], storage.root)
 assert(ancestry.status !== 0 && /not a git repository/i.test(ancestry.stderr), "smoke fixtures must be outside any Git checkout, not just Orch worktrees")
 for (const entry of command("git", ["worktree", "list", "--porcelain"], repo).split(/\r?\n/).filter((line) => line.startsWith("worktree "))) {
-  assert(!inside(await realpath(entry.slice(9)), temp), "smoke fixtures must be outside every source checkout")
+  assert(!inside(await realpath(entry.slice(9)), storage.root), "smoke fixtures must be outside every source checkout")
 }
+const { Backend } = await import("@opencode/protocol/simulation")
+const { pluginID } = await import("./src/index.js")
+const adapter = selection.adapter.root
 const evidence = {
-  fixture_root: temp, mode: selection.mode, node: process.version, sdk: "2.2.6",
+  mode: selection.mode, node: process.version, sdk: "2.2.6",
   invocation: {
     command: "npm run smoke --prefix adapters/opencode",
     selectors: Object.fromEntries(["ORCH_SMOKE_ORCH", "ORCH_SMOKE_ADAPTER", "ORCH_SMOKE_MEMHUB"]
@@ -122,7 +126,11 @@ const evidence = {
     repository: await realpath(repo),
     revision: command("git", ["rev-parse", "HEAD"], repo).trim(),
     status: command("git", ["status", "--porcelain", "--", "adapters/opencode"], repo).trim(),
-    files: await Promise.all(["smoke.mjs", "smoke-artifacts.mjs"].map((file) => fileIdentity(path.join(harnessAdapter, file)))),
+    files: await Promise.all([
+      ...["smoke.mjs", "smoke-artifacts.mjs", "smoke-retention.mjs", "smoke-storage.mjs", "smoke-shutdown.mjs",
+        "smoke-lock.mjs", "smoke-native.mjs"].map((file) => path.join(harnessAdapter, file)),
+      ...await smokeLockEvidenceFiles(),
+    ].map(fileIdentity)),
   },
   adapter: selection.adapter, lookups: {}, checks: [],
 }
@@ -130,6 +138,7 @@ function pass(message) {
   console.log("PASS " + message)
   evidence.checks.push(message)
 }
+const temp = evidence.fixture_root = await storage.begin()
 const root = path.join(temp, process.platform === "win32" ? "repo & (native) % ! ^" : "repo")
 const bin = path.join(temp, "bin")
 const state = path.join(temp, "state")
@@ -141,6 +150,7 @@ let controller
 let headers
 let baseURL
 let stopHost
+let failure
 let requests = 0
 const provider = createServer((_, response) => {
   requests++
@@ -152,8 +162,9 @@ provider.on("connect", (_, socket) => {
   socket.end("HTTP/1.1 503 Service Unavailable\r\n\r\n")
 })
 let logs = ""
+await storage.markRunning()
 try {
-  await new Promise((resolve) => provider.listen(0, "127.0.0.1", resolve))
+  await new Promise((resolve, reject) => provider.listen(0, "127.0.0.1", resolve).once("error", reject))
   const trapURL = "http://127.0.0.1:" + provider.address().port
   const providerURL = "https://api.openai.com/v1"
   await mkdir(bin)
@@ -168,7 +179,7 @@ try {
   const orchBinary = path.join(bin, process.platform === "win32" ? "orch.exe" : "orch")
   const git = command(process.platform === "win32" ? "where.exe" : "which", ["git"], repo).trim().split(/\r?\n/)[0]
   const env = Object.fromEntries(Object.entries(process.env)
-    .filter(([name]) => !/API_KEY|TOKEN|SECRET|CREDENTIAL|ACCESS_KEY|PASSWORD|COOKIE|^GIT_|^MEMHUB_|^HF_|^FASTEMBED_|^(HTTP|HTTPS|ALL|NO)_PROXY$/i.test(name))
+    .filter(([name]) => !/API_KEY|TOKEN|SECRET|CREDENTIAL|ACCESS_KEY|PASSWORD|COOKIE|^GIT_|^MEMHUB_|^HF_|^FASTEMBED_|^NODE_COMPILE_CACHE$|^(HTTP|HTTPS|ALL|NO)_PROXY$/i.test(name))
     .map(([name, value]) => [process.platform === "win32" ? name.toUpperCase() : name, value]))
   Object.assign(env, {
     PATH: [bin, path.dirname(git), ...(process.platform === "win32" ? [path.join(process.env.SystemRoot, "System32")] : ["/usr/bin", "/bin"])].join(delimiter),
@@ -190,6 +201,7 @@ try {
     TMP: path.join(temp, "tmp"),
     TEMP: path.join(temp, "tmp"),
     TMPDIR: path.join(temp, "tmp"),
+    NODE_DISABLE_COMPILE_CACHE: "1",
     OPENCODE_DB: ":memory:",
     OPENCODE_DRIVE: "orch-smoke",
     OPENCODE_SIMULATE: "1",
@@ -205,9 +217,9 @@ try {
   delete env.OPENCODE_CLI_CONFIG_CONTENT
   for (const key of ["HOME", "APPDATA", "LOCALAPPDATA", "HF_HOME", "HF_HUB_CACHE", "FASTEMBED_CACHE_PATH"]) await mkdir(env[key], { recursive: true })
   checkAdapterModule(selection.adapter, temp, env)
-  const opencode = findOpenCode()
+  const opencode = findOpenCode(temp, env)
   evidence.runtime = command(opencode, ["--version"], temp, env).trim()
-  evidence.selected_runtime_binary = await fileIdentity(process.platform === "win32" ? opencode : command("which", [opencode], repo).trim())
+  evidence.selected_runtime_binary = await fileIdentity(opencode)
   const privateOpenCode = process.platform === "win32"
     ? path.join(bin, "node_modules", "@opencode", "cli", "bin", "opencode.exe")
     : path.join(bin, "opencode2")
@@ -229,7 +241,7 @@ try {
       selected_native: await fileIdentity(privateOpenCode),
       qualification: "source/isolated fixture only; not the installed default PATH or manual Delivery",
     }
-  } else await symlink(command("which", [opencode], repo).trim(), privateOpenCode)
+  } else await copyFile(evidence.selected_runtime_binary.path, privateOpenCode)
   evidence.runtime_binary = await fileIdentity(privateOpenCode)
   assert.equal(evidence.runtime_binary.sha256, evidence.selected_runtime_binary.sha256)
   evidence.orch = await prepareOrch(selection, orchBinary, (destination) => command("go", ["build", "-o", destination, "./cmd/orch"], repo))
@@ -302,10 +314,7 @@ try {
   })
   server.stdout.on("data", (data) => (logs += data))
   server.stderr.on("data", (data) => (logs += data))
-  serverExit = new Promise((resolve, reject) => {
-    server.once("exit", resolve)
-    server.once("error", reject)
-  })
+  serverExit = joined(server)
 
   async function eventually(read, label) {
     for (let attempt = 0; attempt < 80; attempt++) {
@@ -931,7 +940,8 @@ func check(ok bool) { if !ok { fmt.Fprintln(os.Stderr, "native command-boundary 
   })
   let probeLog = ""
   probe.stderr.on("data", (data) => (probeLog += data))
-  const probeExit = new Promise((resolve, reject) => { probe.once("exit", resolve); probe.once("error", reject) })
+  const probeExit = joined(probe)
+  evidence.direct_memhub_shutdown = { pid: probe.pid, verified: false }
   const reader = createInterface({ input: probe.stdout })
   const pending = new Map()
   reader.on("line", (line) => {
@@ -964,10 +974,13 @@ func check(ok bool) { if !ok { fmt.Fprintln(os.Stderr, "native command-boundary 
   } finally {
     probe.stdin.end()
     try {
-      await within(probeExit, "owned direct Memhub shutdown")
+      const exit = await within(probeExit, "owned direct Memhub shutdown")
+      Object.assign(evidence.direct_memhub_shutdown, exit)
+      assert(exit.code === 0 && !exit.signal && !exit.error, "direct Memhub did not shut down normally")
+      evidence.direct_memhub_shutdown.verified = true
     } catch (error) {
-      probe.kill()
-      await probeExit
+      if (probe.exitCode === null && probe.signalCode === null) probe.kill()
+      await within(probeExit, "owned direct Memhub exit after shutdown failure")
       throw error
     } finally {
       reader.close()
@@ -1529,48 +1542,74 @@ func check(ok bool) { if !ok { fmt.Fprintln(os.Stderr, "native command-boundary 
   assert.equal(requests, 0)
   evidence.behavior_checks_passed = true
 } catch (error) {
-  evidence.error = { message: error.message, stack: error.stack }
-  throw error
+  failure = error
 } finally {
   controller?.socket.close()
-  let shutdownError
+  const shutdown = evidence.owned_shutdown = { verified: false }
   try {
-    if (server?.pid && server.exitCode === null) {
+    if (server?.pid && server.exitCode === null && server.signalCode === null) {
       if (stopHost) {
         const stopped = await stopHost()
-        evidence.owned_shutdown = { method: "native service stop with isolated record identity verified", exit: stopped.status }
+        shutdown.method = "native service stop with isolated record identity verified"
+        shutdown.exit = stopped.status
         assert.equal(stopped.status, 0, "could not stop owned private server")
       } else if (process.platform === "win32") {
         // Startup failed before authenticated discovery. Only our just-spawned
         // process tree is eligible; never invoke managed discovery as fallback.
         const stopped = spawnSync("taskkill", ["/pid", String(server.pid), "/t", "/f"], { encoding: "utf8", windowsHide: true })
-        evidence.owned_shutdown = { method: "owned startup-failure process tree", exit: stopped.status }
+        shutdown.method = "owned startup-failure process tree"
+        shutdown.exit = stopped.status
         assert.equal(stopped.status, 0, "could not stop owned startup-failure process tree")
       } else server.kill("SIGTERM")
     }
-    if (serverExit) await within(serverExit, "owned server shutdown")
+    if (serverExit) {
+      shutdown.process = { pid: server.pid, ...await within(serverExit, "owned server shutdown") }
+      assert(shutdown.method === "native service stop with isolated record identity verified" &&
+        !shutdown.process.error && (shutdown.process.code !== null || shutdown.process.signal),
+      "owned native shutdown could not be confirmed")
+      assert(!await present(path.join(state, "opencode", "service.json")), "owned private service record still exists")
+      shutdown.service_record_removed = true
+    } else shutdown.method = "no private host started"
+    assert(evidence.direct_memhub_shutdown?.verified !== false, "owned direct Memhub shutdown is unconfirmed")
+    shutdown.process_inventory = verifyStopped(temp)
+    shutdown.verified = true
   } catch (error) {
-    shutdownError = error
     evidence.shutdown_error = { message: error.message, stack: error.stack }
+    failure ??= error
   }
-  await new Promise((resolve, reject) => provider.close((error) => error ? reject(error) : resolve()))
-  assert(inside(await realpath(tmpdir()), temp) && !inside(await realpath(repo), temp), "cleanup must stay in the owned OS-temp fixture")
+  try {
+    if (provider.listening) await within(new Promise((resolve, reject) =>
+      provider.close((error) => error ? reject(error) : resolve())), "isolated provider trap shutdown")
+  } catch (error) {
+    shutdown.verified = false
+    failure ??= error
+  }
   evidence.provider_requests = requests
-  evidence.owned_server_stopped = !server || server.exitCode !== null || server.signalCode !== null
+  evidence.owned_server_stopped = shutdown.verified
   try {
     if (evidence.orch && evidence.memhub) {
       evidence.artifacts_after = await verifyArtifacts(selection, evidence.orch, evidence.memhub)
       pass("selected adapter identity files and binaries unchanged; private Memhub restored")
     }
-    evidence.passed = evidence.behavior_checks_passed === true && requests === 0 && evidence.owned_server_stopped && !shutdownError && evidence.artifacts_after?.unchanged === true
-  } finally {
-    await writeFile(path.join(temp, "evidence.json"), JSON.stringify(evidence, null, 2))
-    await writeFile(path.join(temp, "server.log"), logs)
-    console.log("Isolated smoke evidence and synthetic fixtures: " + temp)
+  } catch (error) {
+    evidence.artifact_error = { message: error.message, stack: error.stack }
+    failure ??= error
   }
-  if (shutdownError && !evidence.error) throw shutdownError
+  evidence.passed = !failure && evidence.behavior_checks_passed === true && requests === 0 &&
+    shutdown.verified && evidence.artifacts_after?.unchanged === true
+  if (!evidence.passed) {
+    failure ??= new Error("smoke qualification did not complete")
+    evidence.error = { message: failure.message, stack: failure.stack }
+  }
+  try {
+    await storage.finish(evidence, logs)
+  } catch (error) {
+    if (failure) throw new AggregateError([failure, error], "Smoke failed and its pending fixture was not disposed")
+    throw error
+  }
 }
 
+if (failure) throw failure
 console.log("OpenCode V2 smoke passed; no real provider requests")
 
 async function simulation(endpoint) {

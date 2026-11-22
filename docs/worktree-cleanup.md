@@ -240,9 +240,23 @@ Memhub executor, not just a service literally named `memhub`.
 
 Run all four Go gates above, plus `npm test --prefix adapters/opencode` and
 the required **local Windows** `npm run smoke --prefix adapters/opencode`.
-Hosted CI does **not** run the latter. Its retained `evidence.json` records
-source/selected artifact identities, native lookup bindings/hash evidence,
-refusals, lifecycle outcomes, provider count and owned-host shutdown.
+Hosted CI does **not** run the latter. Before #539 its retained `evidence.json`
+recorded source/selected artifact identities, native lookup bindings/hash
+evidence, refusals, lifecycle outcomes, provider count and owned-host shutdown.
+The same checks still run. After #539 a pass retains a verified receipt of
+identities, checks, provider count and shutdown; a verified failure archive
+retains the full `evidence.json`. See
+[smoke fixture retention and recovery](../adapters/opencode/README.md#smoke-fixture-retention-and-recovery-issue-539).
+Both smoke entrypoints now verify private local journal storage before reading
+recovery state. The macOS Node tests exercise the normal OS temp aliases without
+running a host. **Before the storage-lock repair:** the smoke-only mutex was
+a localhost socket, which did not exclude another network namespace using
+the same storage. **After:** the Node mutator holds a nonblocking OS lock on
+the permanent private `smoke.lock` throughout journal and scratch operations;
+release on exit allows inspection, not automatic reclamation. The same
+retention boundary refuses incomplete activity observations or macOS resource
+forks it cannot preserve in its archive. These are smoke/recovery safeguards,
+not changes to the explicit checkout-release or Git-removal contracts here.
 Source/isolated success is not installation, current installed cleanup,
 real-model Delivery qualification, full partial-cleanup recovery or proof of
 atomic host quiescence. Unverified runtime versions keep their advisory.
@@ -578,9 +592,11 @@ records bound status/locate evidence, connected Memhub before release, completed
 session assignments and before/after history hashes. Its cleanup evidence must
 show both checkout directories/registrations and local/remote branch refs
 absent, with primary/unrelated locations, exact alias keys and live unrelated
-PTYs still usable. Source-file/binary/OpenAPI hashes and zero provider requests
-belong to the retained isolated `evidence.json`, not an installed qualification
-claim.
+PTYs still usable. Before #539 the full isolated `evidence.json` was retained
+on pass. Now the pass receipt keeps source-file/binary/OpenAPI hashes, check
+outcomes, zero provider requests and shutdown proof, not the raw cleanup
+payloads; the full file remains part of a verified failure archive. Neither
+format is an installed qualification claim.
 
 The final **2026-11-19 Windows source-build smoke passed all 35 checks** on
 OpenCode `2.3.2` (the unverified-version advisory remains), Node `v24.15.0`,

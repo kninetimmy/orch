@@ -190,6 +190,8 @@ There is no `go get`, dependency upgrade/download or tracked module-file change.
 boundary files, helper graph/source/binary and transport observations separately
 from the qualified Orch/adapter artifacts. This helper is source-build-only;
 it is not evidence about an independently selected installed Orch binary.
+Before #539 this whole file was kept on pass. The pass receipt now keeps the
+identities and check outcomes, not the raw session pages.
 
 | Element touched by issue 513 | Before → after; retained behavior |
 | --- | --- |
@@ -202,7 +204,7 @@ it is not evidence about an independently selected installed Orch binary.
 | `ReleaseLocation` / `releaseActivity` and other release helpers | Implementations are unchanged; they inherit the same native path for every request. Encoded exact cache keys, ownership/root/alias preservation, all activity domains, pagination/deadline bounds, destructive-operation gates and all refusal paths remain. No shared restart, session deletion or process-kill fallback. |
 | Windows test process/fixtures (`TestMain`, `nativeState`, `nativeCall`, `nativeFixture`, `npmNativeShim`, `fixtureWrite`, `nativeInstallation`, `fixtureState`, `fixtureCalls`, `makeRuntimeJunction`) | New fixture-only native process, state/call recording, supported layouts and owned junction construction use the production resolver/runner. No real/shared host is touched; existing scripted tests remain. |
 | Windows binding/rejection/old-boundary/cancellation/pagination tests | Add four real direct/npm × command-name combinations, later-PATH-change pinning, unsafe installation refusals without native execution, the fixed old-failure/native-success discriminator and valid/refused page sequences. Existing floors, catalog/release safety and general runner regressions remain. |
-| `smoke.mjs` fixture root, `privateOpenCode`, private PATH and runtime identity evidence | Before, a top-level private `opencode2.exe` hid the shim gap. After, Windows uses a metacharacter project path and an intact private npm layout without that mask. Source/explicit selection, byte-identical runtime copy, owned native server management, provider trap, guards, lookup/lifecycle/refusal probes and normal owned shutdown remain. Non-Windows retains its native symlink layout. |
+| `smoke.mjs` fixture root, `privateOpenCode`, private PATH and runtime identity evidence | Before, a top-level private `opencode2.exe` hid the shim gap. After, Windows uses a metacharacter project path and an intact private npm layout without that mask. Source/explicit selection, byte-identical runtime copy, owned native server management, provider trap, guards, lookup/lifecycle/refusal probes and normal owned shutdown remain. Non-Windows retained its native symlink layout until #539; it now uses a byte-identical private copy so retention does not follow that link. |
 | Smoke source-boundary consumer / `command_binding.transport` | New source-only real-host two-page evidence uses production Resolve/Local, not a competing resolver or HTTP relay. Catalog/root evidence comes from actual Orch doctor and lifecycle calls. It does not certify installed/manual behavior or replace the retained refusal probes. |
 | `prepareSourceProbe` / deterministic graph-preservation test | New harness-only preparation copies the existing source graph/checksums into fresh external fixtures and records identities. It cannot clobber an existing fixture directory; offline read-only builds cannot silently repair/update the graph. Existing artifact selection/copy/verification helpers remain. |
 | This README and `docs/worktree-cleanup.md` | Retain historical statements with explicit corrections, supported layouts, refusal guidance, scope and qualification limits. No dependency/pin, runtime baseline, role/permission/configuration, installation, publication, shared-host or unrelated warning-channel change. |
@@ -253,11 +255,14 @@ fixture exercises both real tool sets with simulated model identities.
 The smoke is a required **local Windows** check. It starts its own localhost
 server with isolated configuration/database paths and OS-temp repositories,
 attaches simulation before any session action, and stops/joins that server.
-Before issue 495 it deleted its own fixtures; now it retains synthetic fixtures
-and `evidence.json` outside every source checkout for inspection. Its synthetic Delivery state does not
-represent a real approved Orch run. Hosted CI runs Node and Go checks on
-Windows, Linux and macOS; it **does not run this live-host smoke**. Other
-platforms and installed manual Delivery operations require separate qualification.
+Before issue 495 it deleted its own fixtures; from #495 until #539 it retained
+synthetic fixtures and `evidence.json` outside every source checkout. After #539
+it keeps a verified receipt on pass or a verified failure archive, and preserves
+unresolved scratch. See [smoke fixture retention and recovery](#smoke-fixture-retention-and-recovery-issue-539).
+Its synthetic Delivery state does not represent a real approved Orch run.
+Hosted CI runs Node and Go checks on Windows, Linux and macOS; it **does not run
+this live-host smoke**. Other platforms and installed manual Delivery operations
+require separate qualification.
 
 ## Explicit checkout lifecycle (issue 506)
 
@@ -345,7 +350,7 @@ not a promise that every V2 version accepts every possible path alias.
 | Non-target preservation in `ReleaseLocation` | Before, another alias with equal physical identity could conceal a missing cache. **Before #523:** each prior exact key **and** its physical identity had to survive the pre-disposal re-read and post-disposal inventory; any missing/replaced key refused. **After #523:** one unrelated pre-disposal disappearance with unchanged physical identity permits one full read-only recheck under the original deadline, never a scoped read/reload of that missing key. Repeated churn, rebound/unverifiable directories, target re-entry or incomplete evidence still refuse. Every non-target exact key in the final pre-disposal inventory must still survive afterward with its physical identity; an alternate alias never substitutes for it. Only the proven target is exempt. See the [complete #523 boundary inventory](../../docs/worktree-cleanup.md#issue-523-touched-elements-and-retained-behavior). |
 | Activity/directory helpers | `releaseActiveJobs`, `releaseActivity`, `releaseBelongs` and `releaseDirectory` retain foreground, job owner/child, paginated persistent-terminal owner/cwd, filesystem and bound/refusal checks. Physical identity remains appropriate for attributing activity to the target, but never for merging cache owners. |
 | Deterministic release fixtures/tests | Existing release/refusal cases remain; distinct aliases now discriminate independent success, per-alias activity, wrong-cache responses despite equal physical identity, key loss/replacement, physical replacement, exact duplicate keys and ambiguous/unsupported target attribution. Windows uses casing aliases; Unix CI uses filesystem-equivalent symlink keys. |
-| Isolated `smoke.mjs` lifecycle exercise | Existing source/selected-artifact, containment, native lookup, lifecycle refusal and shutdown probes remain. Windows additionally loads owned casing aliases, retains returned keys and native IDs, proves independent live PTY ownership across single-target retirement, checks exact-key/identity preservation and native lookups, and refuses real ambiguous target aliases without disposing them. Runtime/OpenAPI/source/binary identities and observations are retained in `evidence.json` plus the OpenAPI artifact. |
+| Isolated `smoke.mjs` lifecycle exercise | Existing source/selected-artifact, containment, native lookup, lifecycle refusal and shutdown probes remain. Windows additionally loads owned casing aliases, observes returned keys and native IDs, proves independent live PTY ownership across single-target retirement, checks exact-key/identity preservation and native lookups, and refuses real ambiguous target aliases without disposing them. Before #539, `evidence.json` and the OpenAPI artifact retained the identities and raw observations on pass. The pass receipt now keeps identities and check outcomes only. |
 | Callers, adapter runtime and qualification | Explicit executor/review engine entry points, generic teardown and `docs/worktree-cleanup.md` are not changed here. No adapter runtime code, version admission/advisory, model routing, dependencies or host/role configuration changes. Required local smoke is still absent from hosted CI. Source/isolated results are **not installed/manual qualification**; no real shared-host cache is created, evicted or restarted. |
 
 The existing two-minute/inventory limits and observation races remain. These
@@ -453,6 +458,9 @@ smoke always built Orch from its checkout, loaded that checkout's adapter and
 required an explicitly selected source-built Memhub. Now that **source-build
 mode** remains the default when both artifact selectors are unset:
 
+Prepare the [smoke-only native binding](#smoke-fixture-retention-and-recovery-issue-539)
+in the harness checkout before either invocation.
+
 ```powershell
 Remove-Item Env:ORCH_SMOKE_ORCH, Env:ORCH_SMOKE_ADAPTER -ErrorAction SilentlyContinue
 $env:ORCH_SMOKE_MEMHUB = 'C:\path\to\compatible\memhub.exe'
@@ -486,8 +494,19 @@ repairs them. Its server export must be a local string export, `.` or `./server`
 The fixture isolates homes, user configuration, caches, registry/sync discovery
 and temporary storage, launches only owned processes, and uses synthetic memory
 and simulated model responses. The localhost provider trap must receive zero
-requests. Native MCP lifecycle owns service cancellation/shutdown. Evidence and
-fixtures are retained externally after the private process tree is stopped.
+requests. Native MCP lifecycle owns service cancellation/shutdown. Before #539
+the full evidence and fixtures were retained externally after the private
+process tree was stopped. After #539, see the [retention rules below](#smoke-fixture-retention-and-recovery-issue-539).
+
+Before #539, the isolated child environment inherited `NODE_COMPILE_CACHE`,
+so a child could write to a caller-selected cache outside the fixture. Now
+every child given that environment, including the adapter-import check and
+runtime version probes, has `NODE_COMPILE_CACHE` removed and
+`NODE_DISABLE_COMPILE_CACHE=1` set. This does not change the caller's npm/Node
+environment or the installed adapter. Before #539, the Unix fixture's
+`bin/opencode2` was a symlink to the selected executable; it is now a regular
+byte-identical executable copy at the same private path. The Windows private
+npm shim layout and runtime byte-identity checks remain.
 
 `evidence.json` records the mode, harness Git revision/status and harness-file
 hashes separately from the selected canonical adapter path and SHA-256 identities
@@ -510,7 +529,255 @@ shared service nor constitutes a real model-driven Delivery trial. Those require
 separate approval and evidence. No shared service, installation or user configuration
 is modified by this gate.
 
-Isolated qualification tuple used on 2026-11-14:
+### Smoke fixture retention and recovery (issue 539)
+
+**Before:** the harness made a new OS-temp fixture before it had a record to
+recover. It wrote `evidence.json` and `server.log` at the end and left the entire
+fixture behind even on success. An interrupted run could leave gigabytes of
+scratch without a record; a second invocation could allocate more.
+
+**After:** `<Node OS temp>/orch-opencode-smoke/` is shared across worktrees
+using the same temp storage. The harness flushes `pending.jsonl` with the
+intended `run-<id>/` path **before** allocating it.
+
+**Before the storage-lock repair:** a localhost socket serialized smoke and
+recovery only within one network namespace. The message `busy or its local
+lock is unavailable` did not distinguish an active owner from a lock error.
+**After:** both entrypoints take a nonblocking exclusive OS lock on the same
+permanent `smoke.lock` in the verified private directory (`flock` on Linux
+and macOS, `LockFileEx` on Windows). The Node process doing the journal and
+scratch work holds the handle through final disposition. The handle is not
+inherited by children and releases on close or process exit. The file itself
+is never unlinked, replaced or used as a stale marker; taking the lock is
+permission to inspect, not proof that a fixture is idle.
+
+- `Smoke storage is busy (smoke.lock held)`: wait for the holder. Neither
+  entrypoint allocates or reclaims anything or declares the run abandoned.
+- `Cannot verify or acquire smoke.lock`: preserve the storage and inspect
+  the reported error. Do not replace or remove the lock file.
+- `Smoke recovery is required`: the lock was acquired, but pending state
+  still blocks allocation. Check the record, intended path, recorded bytes
+  if known and recovery action. A legacy record may belong to an older runner,
+  so its activity is unknown and automated recovery refuses.
+
+Use compatible harnesses in **all** worktrees sharing the storage. Stop using
+the earlier socket-lock harness before switching; it cannot observe the file
+lock. Do not change temp storage to evade an unresolved run.
+
+Prepare the smoke-only native binding once (repeat after changing its source,
+OS or architecture; matching worktrees use the same prepared bytes):
+
+```sh
+npm run smoke:prepare --prefix adapters/opencode
+```
+
+This needs a preinstalled C compiler (`/usr/bin/cc` on Linux/macOS or native
+MinGW `gcc` on Windows) and builds into the private `~/.orch-smoke-native/`
+directory (`%LOCALAPPDATA%\.orch-smoke-native\` on Windows). No npm package, Node SDK download
+or selected Orch build is required for preparation. `npm test` prepares it
+automatically. Smoke and recovery use the prepared binding without compiling
+or downloading anything as part of lock acquisition. It is not loaded by the
+adapter plugin or the installed engine.
+
+**#539 review fix — storage access and macOS temp paths:** The first journal
+implementation checked storage type and identity, but those do not prove who
+can write recovery state. Startup and recovery now verify private control of
+the journal directory and `pending.jsonl` before reading or trusting a record,
+including for busy-lock diagnostics. On Linux and macOS the directory and file
+must belong to the effective user with no group/other access. Ancestors must be
+owned by that user or root, and shared writable ancestors must be sticky
+(so other users cannot replace an owned child). On macOS granting or unreadable
+ACLs also refuse. The check requires local APFS/HFS ownership enforcement on
+macOS, and Linux storage on ext, XFS, btrfs, tmpfs, overlayfs or f2fs.
+The initial implementation rejected ordinary `/var/folders`
+and `/tmp` temp paths on macOS. Only the root-owned system links from `/var`
+and `/tmp` to their matching `/private` paths are now recognized; every
+component below them still has to pass the normal checks. Verified spellings
+of the same physical temp storage use the same lock and record.
+
+On Windows, Node modes and the location of a user profile do not prove private
+access. Local NTFS/ReFS storage must have readable access control lists. For
+private entries, only the invoking account and trusted Windows administrative
+principals may control or access them. Ancestors must not grant other principals
+rights to replace or redirect existing entries or change their access control.
+These checks also cover the configured archive and retained evidence; they do
+not change permissions on existing paths. If Windows temp is not suitable,
+configure `TEMP` and `TMP` for the smoke process to an existing private local
+directory with safe ancestry. Use that same storage for recovery and across
+worktrees. If there might already be pending state, preserve its location and
+have the operator verify access and provenance before retrying. Tightening
+permissions does not make previously untrusted journal contents trustworthy.
+
+- **Pass:** `receipt-<id>.json` in the shared storage is readable on its own.
+  It contains harness, selected/executed artifact and probe identities, the
+  passed checks, provider count and owned shutdown proof. It does not contain
+  the raw OpenAPI document, host responses, full logs or databases. The
+  harness reads back and verifies the receipt before deleting its scratch.
+- **Failure with verified shutdown:** explicitly configure an **existing,
+  owner-controlled local directory**, for example:
+
+  ```powershell
+  $env:ORCH_SMOKE_ARCHIVE_ROOT = 'E:\OrchSmokeArchives'
+  ```
+
+  No drive or default archive is hardcoded. The directory must be outside
+  Git checkouts/repositories and separate from the smoke storage tree. The
+  harness retains `orch-opencode-smoke-<id>/` there as a directory archive:
+  `fixture/` preserves file data and directory layout (including
+  `evidence.json` and `server.log`), and `manifest.json` lists expected paths,
+  sizes and SHA-256 hashes. It is not a copy of filesystem metadata or link
+  topology. Extra, missing or changed file data fails verification.
+  The size counts logical bytes at each path. For example, OpenCode's Windows
+  service links its private executable into the fixture cache; a linked file
+  is allowed only when every name for it is verified inside the fixture.
+  Archives never overwrite existing evidence, and the failed smoke still
+  exits nonzero. The archive root is pinned once selected for that run.
+- **Recovery:** run `npm run smoke:recover --prefix adapters/opencode` in a
+  checkout with this harness and the same OS temp storage. The command needs
+  neither artifact selectors nor Memhub. It never runs a new smoke or stops
+  processes. It can clear an intent with no allocated directory, archive a
+  proven empty allocation interrupted before activity, or finish a disposition
+  backed by durable shutdown and source ownership evidence. It checks
+  for fresh process activity before resuming a recorded allocation. It
+  re-verifies retained evidence after partial removal or if scratch is
+  already gone; with no pending record a second retry does nothing.
+  If the archive is unavailable or full,
+  set the archive selector if none was pinned, or restore/free space on the
+  pinned storage. If interrupted copying left an incomplete archive, inspect
+  and preserve it separately before retrying into the now-vacant archive name.
+  A verified archive/receipt that later fails verification is not recreated.
+
+**Before the directory-sync repair:** POSIX synced the parents of newly made
+storage and archive directories only on the creation path. On restart, readable
+entries were not proof that the interrupted process had synced them.
+**After:** both entrypoints verify and sync the parent of the shared store
+before relying on it, including when adopting a store already visible on disk.
+Before recording retention or removing scratch, including on retry after the
+manifest write or a retained record, POSIX syncs the verified receipt and its
+directory or the archive payload, manifest, run directory and configured archive
+root. Recovery flushes the observed journal before acting on it. After scratch
+removal, both the fresh and retry paths sync its absence before clearing the
+journal. A failed pre-removal sync leaves scratch and pending in place; if
+removal already completed, failure to sync that removal leaves pending.
+These barriers rely on provisioned storage and the filesystem honoring `fsync`.
+Volatile storage such as tmpfs does not survive power loss. Windows flushes files
+but does not qualify directory durability across power loss.
+
+**Before the archive-separation repair:** canonical path spelling was used to
+rule out overlap, and a configured root could be pinned before checking the run
+name. **After:** neither root may be inside or physically alias the other, even
+through an ancestor. Archive ancestors are checked against the source inventory;
+the archive wrapper, manifest and every payload entry must be physically
+distinct from the smoke storage ancestry and all recorded source entries, even
+if scratch has already been removed. Linux also checks mount topology: a subtree
+or overlay mount on the path to either storage root, an interior archive mount
+or unavailable topology refuses the archive rather than assuming disjointness.
+This is a restriction on every failure archive, new or resumed, not on pass
+receipts or other commands. Ordinary disjoint paths on the same or separate
+supported volumes remain eligible. No claim is made about separate physical
+media behind the filesystems or a topology that changes mid-run.
+
+An unsafe root or an existing unpinned run name refuses before the harness
+pins a new destination, creates an archive, or removes scratch. Recovery of an
+empty pre-activity allocation checks the destination before writing evidence
+to it. The original smoke still records its own shutdown and final evidence
+before disposition, so an operator can correct an unpinned destination and
+retry without rerunning smoke. Do not change the spelling to work around a
+physical overlap refusal; use separate verified storage.
+
+**#539 review fix — source ownership:** The first version wrote shutdown and
+evidence-file hashes to `finished`, then built the first source inventory
+later. A retry could mistake a newly arrived regular file for owned scratch.
+The version-2 journal now flushes shutdown and the source inventory together,
+before any retention or removal. Before verified retention, recovery
+requires the exact recorded tree. After verification it may finish removing
+only a matching remainder. If interrupted before the proof was logged, the
+evidence files alone cannot authorize removal. A verified empty allocation can
+still be recovered; its first inventory must contain only the root and the
+two recovery evidence files. Version-1 journals (including those with a later
+`prepared` inventory) are diagnostic only and must be left for the operator.
+**After the storage-lock repair:** the version-3 journal keeps the version-2
+shutdown and inventory checkpoint and additionally binds its intent to the
+physical `smoke.lock`. Both previous versions are now diagnostic only; their
+records were not written with the current storage exclusion. A missing or
+substituted lock for pending evidence is a refusal, not a recovery technique.
+
+**#539 review fix — Windows data streams:** The first version compared only
+unnamed file data, so a byte-matching archive could omit named streams. Now
+native stream enumeration must find no named data streams on **any** fixture
+or archived payload file or directory, including both tree roots, or on the
+archive wrapper, manifest, pass receipt or pending journal. This applies to
+initial disposition and recovery. A named stream, an enumeration error or
+an unsupported filesystem refuses disposition; no stream is copied or
+stripped by the harness. Preserve the source and evidence and ask the
+operator to inspect the reported path. Windows uses the existing system
+PowerShell and Win32 APIs, with no new npm dependency.
+
+**Before the macOS fork repair:** archive comparison covered the ordinary
+data fork only; a matching SHA-256 did not account for a resource fork.
+**After:** the native read-only `getxattr` probe must verify absence of
+`com.apple.ResourceFork` on every source and archived payload entry (including
+directories), archive wrapper, manifest, pending journal and pass receipt.
+A present or unverifiable fork refuses disposition; the harness never strips
+or archives it. This is not a backup of arbitrary filesystem metadata.
+
+**Before the activity repair:** the process scan searched flattened commands
+for a fixture prefix followed by a separator. It missed the exact root
+argument and could treat incomplete process listings as empty. **After:**
+it checks actual argv for the exact root and descendants
+without matching similarly named siblings. Windows checks the invoking user's
+processes using WTS and native image/argv queries. macOS also checks
+executable paths and checks both admitted temp spellings.
+Linux uses procfs for argv without requiring ptrace access; it refuses if
+the initial PID/user namespaces or unfiltered procfs are not visible. A separate Linux
+network namespace is not a different lock or process inventory. An observed
+matching process or unavailable required inventory blocks disposition.
+
+If shutdown or ownership is unconfirmed, or the journal or paths cannot be
+verified, leave both the journal and scratch in place. Inspect the pending path,
+the fixture's `state/opencode/service.json` and available logs; escalate for
+separately authorized owned-process verification and disposition. A missing
+process or service record alone is not proof of shutdown. If the Node runner
+dies after the durable `running` stage without a durable `finished` shutdown
+proof, neither entrypoint can infer that its children died too. Do not kill a PID,
+remove the journal to proceed, or sweep historical fixtures. Use private storage
+and leave it unmodified during smoke/recovery. The active runner's existing
+startup-failure stop attempt alone does not prove shutdown. These checks cover process
+interruption and observed path redirects, not power loss on Windows or atomic
+protection against unrelated same-user use, privileged interference or concurrent
+filesystem replacement. The process inventory is a refusal check, not proof
+about every process's open files, aliases or future activity.
+
+The harness emits `SMOKE_EVIDENCE` with the run ID, kind, path and receipt or
+manifest SHA-256. For a failure, the responsible agent sends that pointer and
+the exit/error to the Architect to record in a repo Memhub session note during
+review or wrap-up. If disposition was refused, send the pending record, fixture path,
+known size and refusal reason instead. The project Memhub service and database
+are not needed to start, inspect or recover a run; the local evidence is
+authoritative. A smoke still requires its explicitly selected compatible
+Memhub binary for the isolated qualification checks.
+
+| Touched element | Before → after / retained behavior |
+|---|---|
+| `smoke.mjs` startup, fixture paths and invocation evidence | Three artifact selectors and both qualification modes retain their existing preflight and checks. Before, `mkdtemp` allocated immediately in OS temp (or its `opencode/` directory). Now the shared journal reserves one named run first; Git-ancestry and filesystem checks precede allocation. Verified macOS `/var/folders` and `/tmp` aliases remain. In addition to the retention, path and shutdown helpers, harness evidence hashes `smoke-lock.mjs`, `smoke-native.mjs`, `smoke-lock.c` and the prepared binding. |
+| `openSmokeStorage`, `decode`, `load`/`refresh`, `requireIdle`, `begin`, `log`/`clear`, `markRunning`, `finish`, `dispose`, `recover`, `recoveryAction` and `Symbol.asyncDispose` | The socket and version-2 authority are replaced by the stable lock and intent binding described above. The lock is checked before journal writes/clearing and scratch removal; it cannot be disposed during an in-flight operation. Existing intent-before-allocation, stage/readback, shutdown plus source inventory and retry gates remain. Existing stores now also require the POSIX parent sync, recovery flushes the journal, and clearing must follow the sync of scratch absence. No historical discovery or cleanup. Both entrypoints and all qualified worktrees and selection modes using that storage share these restrictions. |
+| `smoke-lock.mjs` (`prepare`, `createBuildDirectory`, `smokeLockBinary`, `checkBinary`, `smokeLockEvidenceFiles`, `prepareSmokeLockFile`, `acquireSmokeLock`) and `smoke-native.mjs` | New smoke-only preparation, private binding load, lock creation/check and evidence-path helpers. The wrapper exposes in-process lock and read-only OS probes; it supplies no sidecar or permission handoff. Preparation cannot replace a lock or operate on pending scratch. |
+| `smoke-lock.c` (`napi_register_module_v1`, `acquire`, `take_lock`, `close_lock`, `release`, `finalize`) | New Node-API binding uses non-inheritable handles, open-existing-only native acquisition, explicit busy/error results and release on close or exit. Unix uses no-follow nonblocking `flock`; Windows uses no-reparse and no-delete-sharing `LockFileEx`. This is not the grant/Delivery lock or an adapter runtime feature. |
+| `externalDirectory`, `privateDirectory`, `checkWindows`, `checkMacData`, `emptyPrivateFile`, `archiveSeparation`, `readRegular`, `syncDirectory`, `inventory`, `copyTree` and `removeTree` | Verified local paths and identities, non-overwriting copy, readback and removal by recorded name remain. Windows ACL/named-stream checks remain. macOS refuses forks through both payload trees and managed evidence and rechecks each removal. `emptyPrivateFile` checks the lock's identity/private regular-file status without reading its locked byte. Archive separation compares physical identities and checks Linux mount topology; the archive inventory also flushes on POSIX, which used to sync payload directories only during copy. Source inventories remain read-only. `syncDirectory` verifies the identity it flushes; the post-removal sync now also covers retry after the source is already absent. Redirect, external hard-link, type, identity and content checks are not limited to one named member. |
+| `findOpenCode`, `privateOpenCode` and private PATH | The candidate order, version admission and private binary identity checks remain. Before, the first `--version` probe inherited the caller's environment; now it uses the isolated environment too. The Unix private executable is now a copy instead of a symlink; Windows retains its npm shim layout. |
+| Isolated child environment | Before, it inherited the caller's Node compile-cache setting. Now it removes `NODE_COMPILE_CACHE` and sets `NODE_DISABLE_COMPILE_CACHE=1` for every child receiving the isolated environment, not the invoking npm/Node process or other adapter invocations. Other home/cache, credential, proxy and simulation isolation rules remain. |
+| `joined`, `verifyStopped`, `namesFixture`, `linuxProcesses`, the native process/fork probes and final host/provider/direct Memhub cleanup | The isolated native stop, provider trap, joins, service-record binding, direct probe and owned startup fallback remain. Before, joining the host was enough. Now durable verified shutdown (or proof activity could not start) is also required for removal. Native Windows `windowsProcessPaths`, macOS `macProcessPaths`/`hasResourceFork` and Linux `linuxProcessScope` provide the platform observations above. Neither overlapping recovery nor process termination is a fallback for incomplete activity proof. |
+| `pass`, final evidence, `receipt`, `archivePath`, `dispose` and `SMOKE_EVIDENCE` | Every existing success label and post-run selected/private artifact check remains. `evidence.json` and `server.log` were retained with every fixture; now only failures with verified shutdown and source ownership archive them together with scratch. Pass keeps verified identities/check outcomes separately. The shared retention path syncs verified destinations on POSIX including retries, and a failure archive needs verified disjointness before pinning or creation. Ambiguous or incomplete evidence keeps pending scratch. The pointer identifies local evidence; only the Architect records it in Memhub. |
+| `test/smoke-retention.test.js`, `test/smoke-artifacts.test.js`, `package.json` and `.github/workflows/ci.yml` | Existing selectors, permissions, interruption, ownership, archive/receipt, Windows streams and macOS aliases remain covered. Tests verify same-process and cross-worktree contention, stable identity, refusal on unsafe lock and legacy records, holder death with pending or surviving child, exact/descendant/unrelated argv and actual macOS forks. New tests inject POSIX sync failures, verify ordering on restart, and model shared identities and Linux topology with ordinary private directories, not attached volumes or mount changes. Linux CI requires a real network/PID namespace test with `unshare`, `setpriv` and noninteractive `sudo`; unavailable tooling fails that lane. `pretest`/`smoke:prepare` build the binding outside the checkout. The existing CI matrix and smoke commands remain; live smoke is not run by CI and npm dependency pins do not change. |
+| This README and `docs/worktree-cleanup.md` | Prior full-evidence behavior is kept as history. Both documents now distinguish full failure archives from pass receipts and isolated qualification from installed behavior. This does not change the checkout-release or removal contract. |
+
+No adapter plugin runtime, Delivery policy, grant lock, other host or
+installation behavior changes. The Go adapter embeds the updated manifest,
+but its version and dependency fields are unchanged, and it does not
+compile or load the smoke binding. macOS and Linux CI run private storage and
+process tests, not live-host qualification.
+
+### Earlier isolated qualification tuple (2026-11-14)
 
 | Element | Exact identity |
 |---|---|
@@ -566,7 +833,7 @@ separate gates after explicit publication/installation approval.
 | `selectArtifacts`, `adapterIdentity`, `checkAdapterModule` in `smoke-artifacts.mjs` | New harness-only preflight. Both optional selectors are paired, and every selector has the same nonempty/absolute/type restrictions. Containment applies to every identity file under the selected package, not just `src/index.js` or one named skill. Module import uses isolated homes/caches and does not call plugin setup. |
 | `prepareOrch`, `copyBinary` and private PATH | Default source building remains. Explicit Orch never builds; both Memhub modes retain a private copy, now verified byte-for-byte before use. Native resolution and direct commands name the same private binaries. Only that Memhub copy is renamed/replaced in negative tests. |
 | Fixture plugin/skills configuration, active-plugin and initial/reload catalog checks | Existing real package-directory loading and unload/reload enforcement remain. Both load stages now verify the selected local plugin path and every selected `SKILL.md` path/hash, not only `orch-architect`. Fixture configuration alone is edited. |
-| `pass`, evidence creation and `verifyArtifacts` | Existing retained synthetic evidence remains; every successful check is now recorded, with separate harness/selected/executed identities and post-shutdown payload checks. Lockfile evidence does not certify installed dependencies. |
+| `pass`, evidence creation and `verifyArtifacts` | Every successful check is recorded, with separate harness/selected/executed identities and post-shutdown payload checks. The full synthetic evidence was retained on pass before #539; the verified pass receipt now retains the identities and check outcomes. Lockfile evidence does not certify installed dependencies. |
 | Host/simulation lifecycle, synthetic memory, role/root/mode/collision/guard checks | Preserved: the same isolated server, provider trap, real tools and all five roles run both modes. Shutdown targets only owned processes; no permission, approval or shared-service behavior changes. |
 | `test/smoke-artifacts.test.js`, README and existing test entrypoints | Adds deterministic selector, module, containment, source/copy and evidence checks plus both invocation contracts. Existing tests and local-only smoke entrypoint remain; CI configuration, dependency pins, runtime product code, other hosts and Delivery policy are untouched. |
 
@@ -583,7 +850,7 @@ separate gates after explicit publication/installation approval.
 | Status-first assignment guidance and per-call evidence | New. Each child is instructed to validate status against its assignment before lookup; every executor independently verifies session/root context and each result's binding, without a transient authorization cache that could disappear on native reload. Prompt assignment/revision comparison remains instructional, not invented authorization or an atomic snapshot. |
 | Five canonical OpenCode agent files and generated outputs | Before, no explicit four-tool allowance and blanket no-write prose. After, all five get the same lookup exception and maintenance distinction. Existing scope, review independence, native read-only roles, routed models, branch/ref guidance and no-delegation rules remain. `internal/agents.Render` still substitutes routing fields only. |
 | OpenCode Architect/Delivery skills | Before, children never invoked Memhub and every Memhub process used main as cwd. After, explicit bound child reads use assigned code cwd; Architect full/CLI operations and semantic/admin writes remain primary-only. Approval gates, engine routing, issue-context observations, review independence and wrap-up obligations are unchanged. |
-| Existing isolated smoke and provider simulation | Existing guard/catalog/reload/containment checks remain; explicit parent-report handling keeps native child notifications from being mistaken for another test's turn. Adds real four-tool processes/roles and dirty implementation/pinned-review bindings. Before fixtures were deleted; after they and evidence remain outside all checkouts after owned services stop. |
+| Existing isolated smoke and provider simulation | Existing guard/catalog/reload/containment checks remain; explicit parent-report handling keeps native child notifications from being mistaken for another test's turn. Adds real four-tool processes/roles and dirty implementation/pinned-review bindings. Before #495 fixtures were deleted; from #495 through #538 they and evidence remained outside all checkouts after owned services stopped. #539 retains receipts or failure archives there instead of keeping every fixture. |
 | Go/Node deterministic tests | Existing checks remain; new fixture tests exercise strict context, modes, collision preservation, permissions, per-call evidence and executor denials without project-memory access. |
 | SDK, dependency graph, shared write guard, other hosts and Delivery engine | Unchanged; no dependency/pin, scheduler, lifecycle wire, approval, shell/edit grant or Claude/Codex access expansion. Source checks do not certify an installed adapter. |
 
