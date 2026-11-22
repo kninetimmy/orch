@@ -29,6 +29,7 @@ type checkoutHost struct {
 	root          string
 	loaded        map[string]bool
 	active        string
+	jobInventory  string
 	disposalFails bool
 	calls         []execx.Cmd
 	deleted       []string
@@ -117,6 +118,9 @@ func (h *checkoutHost) Run(ctx context.Context, cmd execx.Cmd) (execx.Result, er
 	case "/api/session/sesBusy":
 		return body(map[string]any{"data": map[string]any{"id": "sesBusy", "location": map[string]string{"directory": h.active}}})
 	case "/api/experimental/job":
+		if h.jobInventory != "" {
+			return execx.Result{Stdout: h.jobInventory}, nil
+		}
 		return execx.Result{Stdout: `{"data":[]}`}, nil
 	case "/api/session":
 		sessions := []map[string]any{}
@@ -145,6 +149,11 @@ func (h *checkoutHost) Run(ctx context.Context, cmd execx.Cmd) (execx.Result, er
 		return body(map[string]any{"directory": target, "project": map[string]string{"directory": target, "canonical": h.root}})
 	case "/api/shell", "/api/pty":
 		return body(map[string]any{"location": map[string]string{"directory": target}, "data": []any{}})
+	}
+	if id, ok := strings.CutPrefix(endpoint.Path, "/api/session/"); ok {
+		if directory, ok := h.sessions[id]; ok {
+			return body(map[string]any{"data": map[string]any{"id": id, "location": map[string]string{"directory": directory}}})
+		}
 	}
 	if strings.HasPrefix(endpoint.Path, "/api/experimental/session/") && strings.HasSuffix(endpoint.Path, "/terminal") {
 		id := strings.TrimSuffix(strings.TrimPrefix(endpoint.Path, "/api/experimental/session/"), "/terminal")
@@ -449,6 +458,70 @@ func TestOpenCodeCleanupReleaseAndPartialRetry(t *testing.T) {
 				t.Fatal("primary location was evicted")
 			}
 		})
+	}
+}
+
+func TestOpenCodeCleanupCodeModeHoldThenRetry(t *testing.T) {
+	root, _, _, host, env := openCodeCheckoutFixture(t, state.PhaseAbandoned)
+	executor, review := worktreeAbs(root, 1), reviewWorktreeAbs(root, 1)
+	branch := loadRun(t, root).Run.Issues[0].Branch
+	rawGit(t, root, "push", "origin", branch)
+	before := stateBytes(t, root)
+	registrations := rawGit(t, root, "worktree", "list", "--porcelain")
+	local := rawGit(t, root, "rev-parse", "refs/heads/"+branch)
+	remote := rawGit(t, root, "ls-remote", "--heads", "origin", branch)
+
+	const caller = "sesCleanupCaller"
+	t.Setenv("OPENCODE_SESSION_ID", caller)
+	host.sessions = map[string]string{caller: root}
+	host.jobInventory = `{"data":[{"id":"jobCodeMode","kind":"codemode","status":"running","sessionID":"` + caller + `","title":"claims only primary"}]}`
+	req := []byte(`{"schema_version":1,"issue_number":1,"statement":"cleanup-issue"}`)
+	for attempt := range 2 {
+		firstCall := len(host.calls)
+		res, err := Cleanup(t.Context(), env, req)
+		if err == nil || res != nil {
+			t.Fatalf("cleanup attempt %d did not refuse: %+v %v", attempt+1, res, err)
+		}
+		for _, want := range []string{"running Code Mode job", "working directories cannot be verified", "let the job finish",
+			"when OpenCode is idle", "standalone foreground terminal", "verified primary checkout", "orch run cleanup"} {
+			if !strings.Contains(err.Error(), want) {
+				t.Fatalf("cleanup refusal %q missing %q", err, want)
+			}
+		}
+		jobReads := 0
+		for _, cmd := range host.calls[firstCall:] {
+			if cmd.Name == "opencode2" && slices.Equal(cmd.Args, []string{"api", "get", "/api/experimental/job?status=running"}) {
+				jobReads++
+			}
+			if cmd.Name == "opencode2" && slices.Contains(cmd.Args, "delete") ||
+				cmd.Name == "git" && (slices.Contains(cmd.Args, "remove") || slices.Contains(cmd.Args, "push") ||
+					slices.Contains(cmd.Args, "prune") || slices.Contains(cmd.Args, "-D")) {
+				t.Fatalf("Code Mode hold reached mutation: %+v", cmd)
+			}
+		}
+		if jobReads != 1 || len(host.deleted) != 0 || !host.loaded[executor] || !host.loaded[review] {
+			t.Fatalf("hold evicted a target or retried internally: job reads=%d, deleted=%v", jobReads, host.deleted)
+		}
+		if !bytes.Equal(before, stateBytes(t, root)) || registrations != rawGit(t, root, "worktree", "list", "--porcelain") ||
+			local != rawGit(t, root, "rev-parse", "refs/heads/"+branch) || remote != rawGit(t, root, "ls-remote", "--heads", "origin", branch) {
+			t.Fatal("Code Mode hold changed state, registrations or branch refs")
+		}
+		for _, target := range []string{executor, review} {
+			if _, err := os.Stat(target); err != nil {
+				t.Fatalf("Code Mode hold lost a checkout: %v", err)
+			}
+		}
+	}
+
+	host.jobInventory = `{"data":[]}`
+	res, err := Cleanup(t.Context(), env, req)
+	if err != nil || res == nil || res.Phase != state.PhaseCleaned || !slices.Equal(host.deleted, []string{executor, review}) || !host.loaded[root] {
+		t.Fatalf("clean inventory did not allow normal cleanup: %+v %v deleted=%v", res, err, host.deleted)
+	}
+	for _, target := range []string{executor, review} {
+		if _, err := os.Lstat(target); !os.IsNotExist(err) {
+			t.Fatalf("cleanup retained checkout: %v", err)
+		}
 	}
 }
 
