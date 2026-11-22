@@ -50,7 +50,7 @@ assert.equal(admittedVersion("opencode v1.18.34"), undefined)
 assert.equal(admittedVersion("opencode v2.2.6 extra"), undefined)
 assert.equal(admittedVersion("opencode v2.02.6"), undefined)
 
-function findOpenCode() {
+function findOpenCode(cwd, env) {
   for (const name of ["opencode2", "opencode"]) {
     const candidates = process.platform === "win32"
       ? (process.env.PATH ?? "").split(delimiter).filter(Boolean).flatMap((directory) => [
@@ -58,9 +58,9 @@ function findOpenCode() {
         ...(existsSync(path.join(directory, name + ".cmd")) || existsSync(path.join(directory, name + ".ps1"))
           ? [path.join(directory, "node_modules", "@opencode", "cli", "bin", "opencode.exe")] : []),
       ]).filter(existsSync)
-      : [name]
+      : result("which", [name], repo).stdout.trim().split(/\r?\n/).filter(Boolean)
     for (const executable of candidates) {
-      const result = spawnSync(executable, ["--version"], { encoding: "utf8", windowsHide: true })
+      const result = spawnSync(executable, ["--version"], { cwd, env, encoding: "utf8", windowsHide: true })
       const version = result.status === 0 && admittedVersion(result.stdout)
       if (!version) continue
       if (version !== baseline) console.log("Advisory: OpenCode " + version + " is unverified; checking the live contracts.")
@@ -175,7 +175,7 @@ try {
   const orchBinary = path.join(bin, process.platform === "win32" ? "orch.exe" : "orch")
   const git = command(process.platform === "win32" ? "where.exe" : "which", ["git"], repo).trim().split(/\r?\n/)[0]
   const env = Object.fromEntries(Object.entries(process.env)
-    .filter(([name]) => !/API_KEY|TOKEN|SECRET|CREDENTIAL|ACCESS_KEY|PASSWORD|COOKIE|^GIT_|^MEMHUB_|^HF_|^FASTEMBED_|^(HTTP|HTTPS|ALL|NO)_PROXY$/i.test(name))
+    .filter(([name]) => !/API_KEY|TOKEN|SECRET|CREDENTIAL|ACCESS_KEY|PASSWORD|COOKIE|^GIT_|^MEMHUB_|^HF_|^FASTEMBED_|^NODE_COMPILE_CACHE$|^(HTTP|HTTPS|ALL|NO)_PROXY$/i.test(name))
     .map(([name, value]) => [process.platform === "win32" ? name.toUpperCase() : name, value]))
   Object.assign(env, {
     PATH: [bin, path.dirname(git), ...(process.platform === "win32" ? [path.join(process.env.SystemRoot, "System32")] : ["/usr/bin", "/bin"])].join(delimiter),
@@ -197,6 +197,7 @@ try {
     TMP: path.join(temp, "tmp"),
     TEMP: path.join(temp, "tmp"),
     TMPDIR: path.join(temp, "tmp"),
+    NODE_DISABLE_COMPILE_CACHE: "1",
     OPENCODE_DB: ":memory:",
     OPENCODE_DRIVE: "orch-smoke",
     OPENCODE_SIMULATE: "1",
@@ -212,9 +213,9 @@ try {
   delete env.OPENCODE_CLI_CONFIG_CONTENT
   for (const key of ["HOME", "APPDATA", "LOCALAPPDATA", "HF_HOME", "HF_HUB_CACHE", "FASTEMBED_CACHE_PATH"]) await mkdir(env[key], { recursive: true })
   checkAdapterModule(selection.adapter, temp, env)
-  const opencode = findOpenCode()
+  const opencode = findOpenCode(temp, env)
   evidence.runtime = command(opencode, ["--version"], temp, env).trim()
-  evidence.selected_runtime_binary = await fileIdentity(process.platform === "win32" ? opencode : command("which", [opencode], repo).trim())
+  evidence.selected_runtime_binary = await fileIdentity(opencode)
   const privateOpenCode = process.platform === "win32"
     ? path.join(bin, "node_modules", "@opencode", "cli", "bin", "opencode.exe")
     : path.join(bin, "opencode2")
