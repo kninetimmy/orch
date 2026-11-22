@@ -498,7 +498,7 @@ test("corrupt journals/evidence, substituted roots, and interior links fail clos
 
   const originalSource = path.join(f.base, "original-source")
   await fs.rename(source, originalSource)
-  await fs.mkdir(source)
+  await fs.mkdir(source, { mode: 0o700 })
   await fs.writeFile(path.join(source, "external-sentinel"), "unowned fixture replacement")
   await blocked(f, source, recovery, /directory ownership changed/)
   assert.equal(await fs.readFile(path.join(source, "external-sentinel"), "utf8"), "unowned fixture replacement")
