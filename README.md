@@ -5,7 +5,7 @@
 <p align="center">
   <img src="https://img.shields.io/badge/License-MIT-2E7D32?style=flat&logo=opensourceinitiative&logoColor=white" alt="License: MIT"/>
   <img src="https://img.shields.io/badge/Go-1.26%2B-00ADD8?style=flat&logo=go&logoColor=white" alt="Go 1.26+"/>
-  <img src="https://img.shields.io/badge/Release-v0.15.2-24292F?style=flat&logo=github&logoColor=white" alt="Release: v0.15.2"/>
+  <img src="https://img.shields.io/badge/Release-v0.16.0-24292F?style=flat&logo=github&logoColor=white" alt="Release: v0.16.0"/>
   <br/>
   <img src="https://img.shields.io/badge/Platform-Linux%20%C2%B7%20macOS%20%C2%B7%20Windows-607D8B?style=flat" alt="Platform: Linux, macOS, Windows"/>
   <img src="https://img.shields.io/badge/Hosts-Claude%20Code%20%C2%B7%20Codex%20CLI%20%C2%B7%20OpenCode%20V2-6E56CF?style=flat" alt="Hosts: Claude Code, Codex CLI, and OpenCode V2"/>
@@ -279,9 +279,9 @@ adapters/opencode` again; see its README for the exact commands and
 project-scoped plugin-health check. Restart Claude Code/Codex CLI or reload the
 affected OpenCode V2 location after upgrading so the new hooks and skills are loaded.
 
-**Engine and adapter compatibility.** At the unpublished **v0.16.0** preparation
-checkpoint, OpenCode and the Claude/Codex manual adapters were labeled
-**0.13.0**. The SDK, guard and bound-lookup changes were in the OpenCode package;
+**Engine and adapter compatibility.** Published **v0.16.0** pairs with OpenCode
+and Claude/Codex manual adapters **0.13.0**. The SDK, guard and bound-lookup
+changes were in the OpenCode package;
 Claude/Codex executable guidance had not changed since v0.15.2 at that point.
 Repair raised approval/execution contract **1 → 2**; the contracts were
 incompatible in both directions despite retaining state schema 6. That
@@ -293,8 +293,9 @@ manual wire versions: Gate **4**, Status **4**, Activation **3**, Dispatch **4**
 Review **4**, Escalate **2**, Block **2**, Resume **2**, Resolve Block **1** and
 Repair **1**. State schema 6, metrics document schema 2 and SDK/util/protocol
 pins 2.2.6 are unchanged. The source adapters and marketplace are labeled
-**0.13.1** after #522; match the engine and adapter content, not just those
-labels. Inspection does not authorize continuation or migrate an older run.
+**0.13.2** for the pending **v0.17.0** candidate, following the 0.13.1 source
+bump in #522; match the engine and adapter content, not just those labels.
+Inspection does not authorize continuation or migrate an older run.
 OpenCode child lookup additionally requires **lookup-context schema 2** and a
 Memhub build supporting explicit `--memory-root`, `--code-root` and
 `--profile lookup-only` serving. Old/missing interfaces are unavailable lookup,
@@ -386,9 +387,10 @@ go install github.com/kninetimmy/orch/cmd/orch@latest
 
 ## Codex parity
 
-Released engine **v0.15.2** paired with Claude/Codex manual adapter **0.13.0**
-and OpenCode package **0.12.0**. The prepared **v0.16.0** target pairs with
-**0.13.0** on all three hosts; that does not qualify new Codex/Claude behavior.
+Published engine **v0.16.0** pairs with **0.13.0** on all three hosts. The pending
+**v0.17.0** candidate pairs with **0.13.2**; that does not qualify new
+Codex/Claude behavior. Historically, v0.15.2 paired with Claude/Codex manual
+adapter 0.13.0 and OpenCode package 0.12.0.
 Codex shares the manual Delivery engine with Claude, but automation parity is
 unfinished.
 
@@ -413,7 +415,7 @@ not fire. Historically the v0.15.2 beta-only parser rejected stable OpenCode
 output (`opencode v2.2.6`). Current diagnostics admit stable V2 versions and
 verify active/server/project plugin state. Windows OpenCode 2.3.0 has since
 been exercised with isolated smoke and a separately installed prerelease
-candidate; see [candidate qualification](#v0160-release-target-not-published).
+candidate; see [historical v0.16.0 qualification](#v0160-release).
 That is neither all-platform nor all-role model-driven qualification. Selected
 Codex/Claude doctor checks passed with advisories; full host parity and an
 all-host healthy result are not claimed.
@@ -786,12 +788,98 @@ unmanaged scope. See the [OpenCode binding and qualification guide](adapters/ope
 
 ## Unreleased
 
-### v0.16.0 release target (not published)
+### v0.17.0 release target (not published)
 
-Latest published release remains **v0.15.2**. These notes prepare v0.16.0 from
-the merged range after that tag through `f57fc37` (PR #500), plus this final
-OpenCode 0.13.0 metadata/documentation change. They do not announce a tag,
-GitHub release or npm publication.
+Latest published release is **[v0.16.0](https://github.com/kninetimmy/orch/releases/tag/v0.16.0)**,
+tagged at `18fd5032c35253d58b11963777bb002d9acdde79`. This pending candidate
+covers the merged changes after that tag through `e86ff7058cd80662df32eec36b97297fc2947d5e`
+(PR #544), plus this final release-notes and **0.13.2** adapter/marketplace bump.
+It does not announce a tag, GitHub release or npm publication.
+
+- Safer checkout cleanup refuses success while worktree residue remains and
+  releases finished OpenCode locations before Git removal. Alias identity,
+  cache-eviction rechecks, teardown holds and concurrent saved-session checks
+  protect active sessions and terminals. Unknown or running Code Mode jobs
+  block cleanup with specific recovery guidance, not a forced removal. See
+  [cleanup and recovery](docs/worktree-cleanup.md) (#507, #508, #511, #512,
+  #524, #526, #538, #544).
+- Windows OpenCode uses the native CLI behind npm shims without shell
+  invocation. Deterministic fixtures preserve the source dependency graph;
+  private smoke runtime copies retain byte-identity checks (#520).
+- Audited, explicit human CI exceptions can accept observed incomplete checks
+  for one independently reviewed head; a separate acknowledgment can recover
+  an already-merged run. Neither supplies prior merge approval, authenticates
+  the human, bypasses GitHub protection or makes a failed probe successful.
+  See [manual CI recovery](docs/manual-ci-exceptions.md) (#518).
+- Evidence-only review adds non-approving `needs-evidence` / `unverified`
+  outcomes, durable per-criterion receipts and fresh independent review on the
+  same head without a fabricated fix commit. Merge remains pinned to the
+  successfully reviewed head. See [review evidence](docs/review-evidence.md)
+  (#530).
+- Plan approval binds the verified primary checkout and GitHub selector plus
+  repository ID. Current approval/execution contract **4**, Gate **4** and
+  Activation **3** refuse old authorization rather than migrating it; Review
+  remains **4** and state remains **6** (#535). Status from linked worktrees
+  reports the clone's active Delivery run (#529).
+- OpenCode Delivery guidance prefers native MCP dispatch, with CLI fallback
+  only when that Orch lifecycle tool is unavailable; dispatch still does not
+  launch an agent. This is not a fallback permission for native `orch_memhub`
+  child lookups (#542).
+- CI's Go suite now has an explicit 20-minute timeout (#516). The local-only
+  OpenCode smoke bounds fixture retention with verified pass receipts, failure
+  archives and recovery-before-new-run refusal; its native storage lock is
+  harness-only, not a new adapter dependency (#540). SDK/util/protocol pins
+  remain **2.2.6**, with no dependency or resolved-package changes in this bump.
+
+**Qualification and limits.** Earlier Windows source/explicit-artifact smoke
+and installed observations in these guides qualify only their recorded
+commits and bytes, not this v0.17.0 candidate or its eventual merged binary.
+Source tests and hosted CI do not replace the local Windows OpenCode smoke,
+prove shared-service activation or qualify a model-driven five-role trial,
+other platforms, Claude/Codex direct child memory or complete host parity.
+
+**Operator upgrade and release handoff.**
+
+1. **Finish active Delivery runs on their original engine and matching adapters
+   before upgrading.** Update only between runs in **Assist**. If a run cannot
+   be finished, explicitly abort it and obtain fresh plan approval; never
+   replace its engine to continue. State schema 6 does not make approval
+   contracts 2, 3 and 4 compatible. Preserve the prior verified engine,
+   adapter/skills, compatible Memhub and configuration with paths, commits and
+   hashes. Upgrade the engine and matching adapters as a unit, not labels alone.
+2. After separately approved installation, verify downloaded binaries against
+   the trusted release's published `SHA256SUMS` **before execution**. No final
+   v0.17.0 artifact is published yet. Reload the affected OpenCode location or
+   restart Claude/Codex, refresh stale/changed agent definitions, run selected-host
+   doctor and verify loaded source/hashes. Exercise a fresh bounded approved
+   workflow. Rollback is also Assist-only and restores the recorded compatible
+   engine/adapter/Memhub/configuration pair, never a live-run migration.
+3. **Separate post-merge gate:** after independent review, CI and merge, fetch
+   and verify the exact clean main commit containing this final bump and the
+   reviewed content. Record its full OID. Build and identify the candidate
+   executable and matching adapter checkout from that commit. Qualify the local
+   Windows OpenCode smoke in both source-build and **explicit-artifact** modes:
+   select that candidate with `ORCH_SMOKE_ORCH` and `ORCH_SMOKE_ADAPTER`, plus a
+   compatible `ORCH_SMOKE_MEMHUB`. Follow the [smoke qualification and evidence
+   rules](adapters/opencode/README.md#qualification-not-installation), retaining
+   artifact hashes, runtime identities and receipts. A source-only pass is not
+   explicit candidate-artifact qualification.
+4. Only after that qualification and separate explicit approval, tag **that same
+   verified main commit**, not a later content commit. The version bump must
+   remain the final content-bearing release-preparation commit; further content
+   changes require a fresh bump and qualification, not different bytes under
+   0.13.2. Tagging, publication, installation and workflow changes are outside
+   this preparation. Verify eventual published binary/checksums and installed
+   adapter content separately; OpenCode remains unpublished to npm.
+
+## v0.16.0 release
+
+Published **2026-11-15** as
+[v0.16.0](https://github.com/kninetimmy/orch/releases/tag/v0.16.0) at
+`18fd5032c35253d58b11963777bb002d9acdde79` (PR #502), with adapter identities
+**0.13.0**. These historical notes cover v0.15.2 through `f57fc37` (PR #500)
+and that release's final metadata/documentation change; the qualification
+checkpoint below predates the tagged artifacts.
 
 - Local stdio MCP now exposes **17 tools, four fixed resources and one
   issue-context template**: status/next/readiness, structured doctor,
@@ -831,21 +919,23 @@ GitHub release or npm publication.
   grant support nor committed-config integrity. This behavior is absent from
   the released v0.15.2 binary.
 
-**Qualification and limits.** The 2026-11-14 Windows checkpoint used OpenCode
+**Historical qualification and limits.** The 2026-11-14 Windows checkpoint used OpenCode
 2.3.0 (with the existing unverified-version advisory), Node 24.15.0 and Go
 1.26.5, with SDK/util/protocol 2.2.6 and Memhub source `eec177f5`.
 Source and explicit-artifact smoke each passed 25 checks with zero provider
 requests and owned-host shutdown. Separately approved installation activated
 engine **v0.16.0-prep.f57fc37** and adapter/skills from `f57fc37` (still labelled
-**0.12.0**), not this final 0.13.0 package. Installed CLI/live-MCP doctor,
+**0.12.0**), not the released 0.13.0 package. Installed CLI/live-MCP doctor,
 17/4/1 discovery, active plugin path, an Assist guard denial and unmanaged-scope
-observation were checked. Those observations are distinct from this issue's
-source checks and native executor/reviewer lookup evidence in the PR audit.
+observation were checked. Those observations are distinct from the original
+release-preparation source checks and native executor/reviewer lookup evidence
+in that PR's audit, and are not v0.17.0 qualification.
 All-five-role simulation is not a model-driven five-role trial; other platforms,
 Claude/Codex direct child reads and complete host parity remain unqualified.
-Guide search, wrap-up integration and broader rollout tasks 319/331 remain open.
+At that checkpoint, guide search, wrap-up integration and broader rollout
+tasks 319/331 remained open.
 
-**Upgrade, rollback and publication gates.**
+**Historical upgrade, rollback and publication gates.**
 
 1. Update only between runs in **Assist**. Preserve the previous verified
    engine, adapter/package/skills content, Memhub and configuration provenance
@@ -855,8 +945,8 @@ Guide search, wrap-up integration and broader rollout tasks 319/331 remain open.
    approval; state schema 6 alone did not make contracts 1 and 2 compatible at
    this checkpoint and does not make later contracts compatible either.
 2. A downloaded release binary must match that trusted release's published
-   `SHA256SUMS` **before execution**. v0.16.0 has no published final artifact
-   yet. Reload the affected OpenCode location (or restart Claude/Codex), refresh
+   `SHA256SUMS` **before execution**, including for published v0.16.0 artifacts.
+   Reload the affected OpenCode location (or restart Claude/Codex), refresh
    agents when definitions changed or are stale, run selected-host doctor and
    verify actual loaded source/content, not just version labels. Exercise a
    fresh bounded approved workflow; source tests alone do not verify installation.
@@ -866,12 +956,11 @@ Guide search, wrap-up integration and broader rollout tasks 319/331 remain open.
    paths, reload, compare hashes/provenance and repeat doctor and bounded checks.
    Downloaded rollback binaries require the previous release's trusted checksums.
    Never migrate a live run, change a methodology number or bypass a gate.
-4. The version bump is the final content-bearing release-preparation change.
-   After review/CI/merge, any tag must name this bump's **merge commit**, not a
-   later content commit. Tag/release publication requires separate explicit
-   approval. Verify the final published binary/checksums and checkout-backed
-   adapter content separately before claiming final-artifact or installed-release
-   qualification. OpenCode remains unpublished to npm.
+4. The final metadata/documentation bump merged at `18fd503`, the commit tagged
+   v0.16.0. The earlier checkpoint above does not verify that published binary,
+   its checksums or its checkout-backed adapter content. Those require separate
+   final-artifact and installed-release verification; publication does not
+   retroactively qualify them. OpenCode remains unpublished to npm.
 
 ## v0.15.2 release
 
