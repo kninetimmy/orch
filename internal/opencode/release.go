@@ -280,19 +280,31 @@ func ReleaseLocations(ctx context.Context, runner execx.Runner, primary string, 
 		if err := verify(ctx); err != nil {
 			return err
 		}
-		// The ordinary cwd scans and ownership probes take time. A new drain
-		// or job must still pass the same gate, without caller exemptions.
-		if err := releaseActiveJobs(call, targets); err != nil {
-			return err
+		checkInventory := func() ([]releaseLocation, error) {
+			current, currentKeys, err := inventory()
+			if err != nil {
+				return nil, err
+			}
+			if !slices.Equal(loaded, currentKeys) || len(current) != len(before) {
+				return nil, fmt.Errorf("OpenCode checkout release: inventory changed before disposal; preserve the checkouts")
+			}
+			_, err = preserve(before, current, false)
+			return current, err
 		}
-		current, currentKeys, err := inventory()
+		// A primary-owned shell or PTY can start in a target cwd during
+		// ownership checks without appearing in session/job inventories.
+		// Probe only verified loaded keys and finish with a non-loading read.
+		current, err := checkInventory()
 		if err != nil {
 			return err
 		}
-		if !slices.Equal(loaded, currentKeys) || len(current) != len(before) {
-			return fmt.Errorf("OpenCode checkout release: inventory changed before disposal; preserve the checkouts")
+		if err := releaseOrdinaryProcesses(call, targets, current); err != nil {
+			return err
 		}
-		if _, err := preserve(before, current, false); err != nil {
+		if err := releaseActiveJobs(call, targets); err != nil {
+			return err
+		}
+		if _, err := checkInventory(); err != nil {
 			return err
 		}
 		for _, target := range targetInfos {

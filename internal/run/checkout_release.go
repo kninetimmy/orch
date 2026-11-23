@@ -18,7 +18,7 @@ import (
 // gitops still refuses residue and verifies absence independently.
 // Before #510 other hosts bypassed all interior preflight. Now Windows checks
 // every requested checkout before host release or the first branch deletion.
-func (c *verbCtx) releaseCheckouts(ctx context.Context, git *gitops.Git, bound *[2]cleanupCheckout, reviews ...bool) error {
+func (c *verbCtx) releaseCheckouts(ctx context.Context, git *gitops.Git, bound *cleanupBinding, reviews ...bool) error {
 	for _, review := range reviews {
 		target := c.worktreeAbs()
 		if review {
@@ -46,9 +46,12 @@ func (c *verbCtx) releaseCheckouts(ctx context.Context, git *gitops.Git, bound *
 				}
 			}
 			if review {
-				bound[1] = target
+				bound.checkouts[1] = target
 			} else {
-				bound[0] = target
+				if bound.approvedHead != "" && target.registration != nil && target.registration.Head != bound.approvedHead {
+					return fmt.Errorf("OpenCode cleanup: executor HEAD differs from the approved PR head; preserve the checkout")
+				}
+				bound.checkouts[0] = target
 			}
 		}
 		if target.registration != nil {
@@ -57,8 +60,21 @@ func (c *verbCtx) releaseCheckouts(ctx context.Context, git *gitops.Git, bound *
 	}
 	var verify func(context.Context) error
 	if bound != nil {
+		if bound.approvedHead != "" {
+			branch := c.issue().Branch
+			// A retry with an absent executor still must preserve unexpected refs.
+			if _, err := git.LocalBranchAtHead(ctx, branch, bound.approvedHead); err != nil {
+				return err
+			}
+			if err := git.RequireBranchIdle(ctx, branch, bound.checkouts[0].canonical); err != nil {
+				return err
+			}
+			if _, err := git.RemoteBranchAtHead(ctx, "origin", branch, bound.approvedHead); err != nil {
+				return err
+			}
+		}
 		verify = func(ctx context.Context) error {
-			return c.verifyCleanupCheckouts(ctx, git, bound[:]...)
+			return c.verifyCleanupCheckouts(ctx, git, bound.checkouts[:]...)
 		}
 	}
 	// Before #525 a later target's host preflight could reopen an earlier one.

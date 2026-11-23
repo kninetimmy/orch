@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 
 	"github.com/kninetimmy/orch/internal/gitops"
 	"github.com/kninetimmy/orch/internal/metrics"
@@ -78,12 +79,19 @@ func Cleanup(ctx context.Context, env Env, reqJSON []byte) (*CleanupResult, erro
 		return nil, err
 	}
 	confirm := gitops.ExplicitConfirmation()
-	var bound *[2]cleanupCheckout
+	var bound *cleanupBinding
+	var approvedHead string
 	if req.RunID != nil {
 		if err := git.RequirePrimary(ctx); err != nil {
 			return nil, err
 		}
-		bound = new([2]cleanupCheckout)
+		if issue.Phase == state.PhaseMerged {
+			if !headOIDPattern.MatchString(issue.ApprovedHeadOID) {
+				return nil, fmt.Errorf("OpenCode cleanup: merged issue has no verifiable approved PR head; preserve the checkouts and branches")
+			}
+			approvedHead = strings.ToLower(issue.ApprovedHeadOID)
+		}
+		bound = &cleanupBinding{approvedHead: approvedHead}
 	}
 
 	// Before #506, checkout-scoped OpenCode services could keep Windows paths
@@ -98,21 +106,31 @@ func Cleanup(ctx context.Context, env Env, reqJSON []byte) (*CleanupResult, erro
 	}
 
 	// 1. Remote branch (idempotent: only delete when present).
-	exists, err := git.RemoteBranchExists(ctx, "origin", issue.Branch)
+	var exists bool
+	if approvedHead != "" {
+		exists, err = git.RemoteBranchAtHead(ctx, "origin", issue.Branch, approvedHead)
+	} else {
+		exists, err = git.RemoteBranchExists(ctx, "origin", issue.Branch)
+	}
 	if err != nil {
 		return nil, err
 	}
 	if bound != nil {
-		if err := c.verifyCleanupCheckouts(ctx, git, bound[:]...); err != nil {
+		if err := c.verifyCleanupCheckouts(ctx, git, bound.checkouts[:]...); err != nil {
 			return nil, err
 		}
 	}
 	if exists {
-		if err := git.DeleteRemoteBranch(ctx, "origin", issue.Branch, confirm); err != nil {
+		if approvedHead != "" {
+			err = git.DeleteRemoteBranchAtHead(ctx, "origin", issue.Branch, approvedHead, confirm)
+		} else {
+			err = git.DeleteRemoteBranch(ctx, "origin", issue.Branch, confirm)
+		}
+		if err != nil {
 			return nil, err
 		}
 		if bound != nil {
-			if err := c.verifyCleanupCheckouts(ctx, git, bound[0]); err != nil {
+			if err := c.verifyCleanupCheckouts(ctx, git, bound.checkouts[0]); err != nil {
 				return nil, err
 			}
 		}
@@ -133,7 +151,7 @@ func Cleanup(ctx context.Context, env Env, reqJSON []byte) (*CleanupResult, erro
 	// derives its path exactly as the verb that created it does rather
 	// than reading state that was never written.
 	if bound != nil {
-		if err := c.verifyCleanupCheckouts(ctx, git, bound[1]); err != nil {
+		if err := c.verifyCleanupCheckouts(ctx, git, bound.checkouts[1]); err != nil {
 			return nil, err
 		}
 	}
@@ -143,7 +161,11 @@ func Cleanup(ctx context.Context, env Env, reqJSON []byte) (*CleanupResult, erro
 
 	// 4. Local branch (idempotent: only force-delete when it still
 	// resolves — a squash merge leaves it unmerged by design).
-	if _, err := git.RevParse(ctx, issue.Branch); err == nil {
+	if approvedHead != "" {
+		if err := git.ForceDeleteBranchAtHead(ctx, issue.Branch, approvedHead, confirm); err != nil {
+			return nil, err
+		}
+	} else if _, err := git.RevParse(ctx, issue.Branch); err == nil {
 		if err := git.ForceDeleteBranch(ctx, issue.Branch, confirm); err != nil {
 			return nil, err
 		}

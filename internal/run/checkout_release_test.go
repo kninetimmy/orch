@@ -35,10 +35,12 @@ type checkoutHost struct {
 	deleted       []string
 	partial       string
 	beforeAPI     func(*url.URL)
+	beforeGit     func(execx.Cmd)
 	beforeVersion func()
 	inventories   int
 	sessions      map[string]string
 	terminalCwds  map[string]string
+	ordinaryCwds  map[string]map[string]string
 	reactivated   []string
 }
 
@@ -47,6 +49,9 @@ func (h *checkoutHost) Run(ctx context.Context, cmd execx.Cmd) (execx.Result, er
 	defer h.mu.Unlock()
 	h.calls = append(h.calls, cmd)
 	if cmd.Name == "git" {
+		if h.beforeGit != nil {
+			h.beforeGit(cmd)
+		}
 		res, err := (execx.Local{}).Run(ctx, cmd)
 		if len(cmd.Args) >= 3 && cmd.Args[0] == "worktree" && cmd.Args[1] == "remove" && cmd.Args[len(cmd.Args)-1] == h.partial && err == nil && res.ExitCode == 0 {
 			// Model Windows Git deregistration followed by leftover path and
@@ -152,7 +157,11 @@ func (h *checkoutHost) Run(ctx context.Context, cmd execx.Cmd) (execx.Result, er
 	case "/api/location":
 		return body(map[string]any{"directory": target, "project": map[string]string{"directory": target, "canonical": h.root}})
 	case "/api/shell", "/api/pty":
-		return body(map[string]any{"location": map[string]string{"directory": target}, "data": []any{}})
+		processes := []map[string]string{}
+		if cwd, ok := h.ordinaryCwds[endpoint.Path][target]; ok {
+			processes = append(processes, map[string]string{"id": "ordinary", "status": "running", "cwd": cwd})
+		}
+		return body(map[string]any{"location": map[string]string{"directory": target}, "data": processes})
 	}
 	if id, ok := strings.CutPrefix(endpoint.Path, "/api/session/"); ok {
 		if directory, ok := h.sessions[id]; ok {
@@ -293,6 +302,9 @@ func TestBoundOpenCodeCleanupRefusesStaleOrActiveTargets(t *testing.T) {
 		{"wrong phase", "in-review", state.PhaseInReview},
 		{"second job", "working directories cannot be verified", state.PhaseAbandoned},
 		{"late target work", "active session or unfinished background job", state.PhaseAbandoned},
+		{"late shell", "running shell or terminal prevents removal", state.PhaseAbandoned},
+		{"late PTY", "running shell or terminal prevents removal", state.PhaseAbandoned},
+		{"late unverifiable PTY", "host directory identity is unavailable", state.PhaseAbandoned},
 		{"changed review HEAD", "checkout identity changed", state.PhaseAbandoned},
 		{"replaced review directory", "checkout identity changed", state.PhaseAbandoned},
 		{"unregistered residue", "unregistered checkout", state.PhaseAbandoned},
@@ -318,6 +330,28 @@ func TestBoundOpenCodeCleanupRefusesStaleOrActiveTargets(t *testing.T) {
 				host.beforeAPI = func(endpoint *url.URL) {
 					if endpoint.Path == "/api/pty" {
 						host.active = executor
+					}
+				}
+			case "late shell", "late PTY", "late unverifiable PTY":
+				endpoint, cwd := "/api/pty", review
+				if tc.name == "late shell" {
+					endpoint, cwd = "/api/shell", executor
+				}
+				if tc.name == "late unverifiable PTY" {
+					cwd = filepath.Join(root, "missing-cwd")
+				}
+				var sawFirstScan bool
+				host.beforeAPI = func(request *url.URL) {
+					if request.Path == endpoint && request.Query().Get("location[directory]") == root {
+						sawFirstScan = true
+					}
+				}
+				// Start a primary-owned process during the Git ownership recheck,
+				// after the first ordinary scan. It has no active session or job.
+				host.beforeGit = func(cmd execx.Cmd) {
+					if sawFirstScan && slices.Contains(cmd.Args, "--porcelain=v1") {
+						host.ordinaryCwds = map[string]map[string]string{endpoint: {root: cwd}}
+						host.beforeGit = nil
 					}
 				}
 			case "changed review HEAD":
@@ -421,6 +455,9 @@ func checkoutFixture(t *testing.T, phase state.Phase, hostName string) (string, 
 		t.Fatal(err)
 	}
 	st.Run.Issues = []state.Issue{fixtureIssue("synthetic", 1, phase)}
+	if phase == state.PhaseMerged {
+		st.Run.Issues[0].ApprovedHeadOID = second
+	}
 	if err := state.Save(root, st); err != nil {
 		t.Fatal(err)
 	}

@@ -292,9 +292,10 @@ and approval/execution to 3.
 manual wire versions: Gate **4**, Status **4**, Activation **3**, Dispatch **4**,
 Review **4**, Escalate **2**, Block **2**, Resume **2**, Resolve Block **1** and
 Repair **1**. State schema 6, metrics document schema 2 and SDK/util/protocol
-pins 2.2.6 are unchanged. Published **v0.17.0** pairs with **0.13.2**
-adapters and marketplace, following the 0.13.1 source bump in #522.
-Match the engine and adapter content, not just those labels.
+pins 2.2.6 are unchanged. The **v0.17.0** candidate paired with **0.13.2**
+adapters and marketplace, following the 0.13.1 source bump in #522. The
+published release retained that pairing; match the engine and adapter
+content, not just those labels.
 Inspection does not authorize continuation or migrate an older run.
 OpenCode child lookup additionally requires **lookup-context schema 2** and a
 Memhub build supporting explicit `--memory-root`, `--code-root` and
@@ -387,10 +388,10 @@ go install github.com/kninetimmy/orch/cmd/orch@latest
 
 ## Codex parity
 
-Published engine **v0.16.0** pairs with **0.13.0** on all three hosts. Published
-**v0.17.0** pairs with **0.13.2**; that does not qualify new
-Codex/Claude behavior. Historically, v0.15.2 paired with Claude/Codex manual
-adapter 0.13.0 and OpenCode package 0.12.0.
+Published engine **v0.16.0** pairs with **0.13.0** on all three hosts. The
+**v0.17.0** candidate paired with **0.13.2**, as did the published release.
+That does not qualify new Codex/Claude behavior. Historically, v0.15.2 paired
+with Claude/Codex manual adapter 0.13.0 and OpenCode package 0.12.0.
 Codex shares the manual Delivery engine with Claude, but automation parity is
 unfinished.
 
@@ -796,8 +797,10 @@ to finish, then rerunning the confirmed cleanup from a standalone terminal.
 
 **After:** the matching engine and OpenCode adapter run confirmed cleanup
 through the direct `orch_cleanup` tool from the verified primary session,
-outside Code Mode. An isolated Windows OpenCode 2.3.2 smoke exercises that
-path; it is not installed qualification or a new engine version baseline.
+outside Code Mode. An isolated Windows OpenCode **2.4.0** source smoke
+verified that path. The earlier Windows **2.3.2** observation established the
+Code Mode hold, not direct-tool qualification. Neither is installed
+qualification or a new engine runtime baseline.
 Running Code Mode jobs still block removal, including jobs owned by primary
 sessions. For a genuine hold, keep the checkouts unused, let the job finish,
 then retry the confirmed action. See the [cleanup guide](docs/worktree-cleanup.md)
@@ -813,7 +816,8 @@ Published **2026-11-23 UTC** as
 at `18fd5032c35253d58b11963777bb002d9acdde79` was the latest release.
 v0.17.0 includes changes through PR #544
 (`e86ff7058cd80662df32eec36b97297fc2947d5e`), plus the final release notes and
-**0.13.2** adapter/marketplace bump. OpenCode is not published to npm.
+**0.13.2** adapter/marketplace bump. The preparation itself did not publish
+a tag, GitHub release or npm package. OpenCode remains unpublished to npm.
 
 - Safer checkout cleanup refuses success while worktree residue remains and
   releases finished OpenCode locations before Git removal. Alias identity,
@@ -850,14 +854,17 @@ v0.17.0 includes changes through PR #544
   harness-only, not a new adapter dependency (#540). SDK/util/protocol pins
   remain **2.2.6**, with no dependency or resolved-package changes in this bump.
 
-**Qualification and limits.** v0.17.0 passed isolated Windows OpenCode smoke in
-source-build and explicit-artifact modes. Earlier smoke and installed
-observations qualify only their recorded commits and bytes, not v0.17.0 or
-later source. Source tests and hosted CI do not replace the local Windows smoke,
-prove shared-service activation or qualify a model-driven five-role trial,
-other platforms, Claude/Codex direct child memory or complete host parity.
+**Qualification and limits.** Earlier Windows source/explicit-artifact smoke
+and installed observations in these guides qualify only their recorded
+commits and bytes, not the v0.17.0 candidate, its eventual merged binary or
+later source. Separately, v0.17.0 passed isolated Windows OpenCode smoke in
+source-build and explicit-artifact modes. Source tests and hosted CI do not
+replace the local Windows OpenCode smoke, prove shared-service activation
+or qualify a model-driven five-role trial, other platforms, Claude/Codex
+direct child memory or complete host parity.
 
-**Operator upgrade and release handoff.**
+**Operator upgrade and release handoff.** No final v0.17.0 artifact was
+published at the preparation stage described here.
 
 1. **Finish active Delivery runs on their original engine and matching adapters
    before upgrading.** Update only between runs in **Assist**. If a run cannot
@@ -868,13 +875,13 @@ other platforms, Claude/Codex direct child memory or complete host parity.
    hashes. Upgrade the engine and matching adapters as a unit, not labels alone.
 2. After separately approved installation, verify downloaded binaries against
    the trusted release's published `SHA256SUMS` **before execution**.
-   Reload the affected OpenCode location or
-   restart Claude/Codex, refresh stale/changed agent definitions, run selected-host
-   doctor and verify loaded source/hashes. Exercise a fresh bounded approved
-   workflow. Rollback is also Assist-only and restores the recorded compatible
+   Reload the affected OpenCode location or restart Claude/Codex, refresh
+   stale/changed agent definitions, run selected-host doctor and verify loaded
+   source/hashes. Exercise a fresh bounded approved workflow. Rollback is also
+   Assist-only and restores the recorded compatible
    engine/adapter/Memhub/configuration pair, never a live-run migration.
 3. **Separate post-merge gate:** after independent review, CI and merge, fetch
-   and verify the exact clean main commit containing the final bump and the
+   and verify the exact clean main commit containing this final bump and the
    reviewed content. Record its full OID. Build and identify the candidate
    executable and matching adapter checkout from that commit. Qualify the local
    Windows OpenCode smoke in both source-build and **explicit-artifact** modes:
@@ -887,10 +894,9 @@ other platforms, Claude/Codex direct child memory or complete host parity.
    verified main commit**, not a later content commit. The version bump must
    remain the final content-bearing release-preparation commit; further content
    changes require a fresh bump and qualification, not different bytes under
-   an already released version. Tagging, publication, installation and
-   workflow changes are separate from preparation. Verify published binaries
-   against the checksums, and verify installed adapter content separately.
-   OpenCode remains unpublished to npm.
+   0.13.2. Tagging, publication, installation and workflow changes are outside
+   this preparation. Verify eventual published binary/checksums and installed
+   adapter content separately; OpenCode remains unpublished to npm.
 
 ## v0.16.0 release
 

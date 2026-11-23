@@ -10,6 +10,11 @@ import (
 	"github.com/kninetimmy/orch/internal/paths"
 )
 
+type cleanupBinding struct {
+	checkouts    [2]cleanupCheckout
+	approvedHead string // Only merged issues have an authoritative delivered PR head.
+}
+
 type cleanupCheckout struct {
 	path         string
 	canonical    string
