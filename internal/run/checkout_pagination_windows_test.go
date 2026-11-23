@@ -3,6 +3,7 @@ package run
 import (
 	"bytes"
 	"fmt"
+	"net/url"
 	"os"
 	"slices"
 	"strings"
@@ -74,6 +75,9 @@ func TestWindowsOpenCodeCheckoutReleasePastFirstThousand(t *testing.T) {
 				}
 
 				reads := make(map[string]int)
+				lateOrdinary := make(map[string]bool)
+				primaryQuery := url.Values{"location[directory]": {root}}.Encode()
+				shell, pty := "/api/shell?"+primaryQuery, "/api/pty?"+primaryQuery
 				evicting := false
 				for _, cmd := range host.calls {
 					if cmd.Name != "opencode2" || len(cmd.Args) != 3 {
@@ -83,11 +87,19 @@ func TestWindowsOpenCodeCheckoutReleasePastFirstThousand(t *testing.T) {
 					if cmd.Args[1] == "delete" {
 						evicting = true
 					} else if evicting && endpoint != "/api/debug/location" {
-						t.Fatalf("loading request after first eviction: %s", endpoint)
+						// Cleanup alone may recheck ordinary processes, and only
+						// under the already-loaded primary key in this fixture.
+						if replace || cmd.Args[1] != "get" || (endpoint != shell && endpoint != pty) {
+							t.Fatalf("loading request after first eviction: %s", endpoint)
+						}
+						lateOrdinary[endpoint] = true
 					}
 					if strings.HasSuffix(endpoint, "/terminal") {
 						reads[endpoint]++
 					}
+				}
+				if !replace && activity == "idle" && (!lateOrdinary[shell] || !lateOrdinary[pty]) {
+					t.Fatal("cleanup did not recheck the loaded primary shell and PTY inventories")
 				}
 				if len(reads) != 1001 {
 					t.Fatalf("read %d terminal inventories, want 1001", len(reads))
