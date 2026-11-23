@@ -306,12 +306,21 @@ try {
   await mkdir(unmanagedNested, { recursive: true })
   await mkdir(unmanagedNonGit)
   command("git", ["init", "-b", "main"], unmanagedGit, env)
-  command(memhubBinary, ["init"], unmanagedGit, env)
+  // The user's unrelated full server runs its own byte-identical copy. The
+  // managed negative tests later rename, replace and delete bin/memhub, and a
+  // location reload also relaunches these unmanaged servers. With a shared
+  // path they ran the simulated legacy executable and, on Windows, could still
+  // have it mapped when the test deleted it (EPERM).
+  const unmanagedBin = path.join(temp, "unmanaged-bin")
+  await mkdir(unmanagedBin)
+  const unmanagedMemhub = path.join(unmanagedBin, path.basename(memhubBinary))
+  evidence.unmanaged_memhub = await copyBinary(selection.memhub, unmanagedMemhub)
+  command(unmanagedMemhub, ["init"], unmanagedGit, env)
   // The same loaded adapter, but only the user's ordinary full connection.
   // This synthetic memory is not an Orch-managed project or a child fallback.
   const unmanagedConfiguration = {
     ...configuration,
-    mcp: { servers: { memhub: { type: "local", command: [memhubBinary, "serve"], cwd: unmanagedGit } } },
+    mcp: { servers: { memhub: { type: "local", command: [unmanagedMemhub, "serve"], cwd: unmanagedGit } } },
   }
   for (const directory of [unmanagedGit, unmanagedNonGit]) {
     await writeFile(path.join(directory, "opencode.json"), JSON.stringify(unmanagedConfiguration))
