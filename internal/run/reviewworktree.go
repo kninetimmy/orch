@@ -131,7 +131,7 @@ func ReviewWorktree(ctx context.Context, env Env, reqJSON []byte) (*ReviewWorktr
 	abs := reviewWorktreeAbs(env.RepoRoot, issue.Number)
 	// Before #506, Git removal could race retained OpenCode services/watchers.
 	// Now replacement inspects the interior and releases a verified idle target.
-	if err := c.releaseCheckouts(ctx, git, nil, true); err != nil {
+	if _, err := c.releaseCheckouts(ctx, git, nil, true); err != nil {
 		return nil, err
 	}
 	if err := git.RemoveDetachedWorktree(ctx, abs); err != nil && !errors.Is(err, gitops.ErrUnknownWorktree) {

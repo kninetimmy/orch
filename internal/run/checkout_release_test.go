@@ -229,11 +229,13 @@ func TestOpenCodeCleanupDoesNotReactivateReleasedCheckouts(t *testing.T) {
 					}
 					if cmd.Args[1] == "delete" {
 						released = true
-					} else if released && endpoint.Path != "/api/debug/location" {
+					} else if released && endpoint.Path != "/api/debug/location" &&
+						!((endpoint.Path == "/api/shell" || endpoint.Path == "/api/pty") &&
+							endpoint.Query().Get("location[directory]") == root) {
 						t.Fatalf("loading host probe after release: %+v", cmd)
 					}
 				}
-				t.Log("batched cleanup has no loading host probes after the first release")
+				t.Log("late cleanup probes use only inventory and ordinary reads scoped to the loaded primary")
 			}
 			if len(host.sessions) != len(sessions) {
 				t.Fatal("cleanup deleted completed session history")

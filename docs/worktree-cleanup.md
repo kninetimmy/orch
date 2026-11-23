@@ -501,9 +501,12 @@ scoped DELETEs alone did not establish a usable Git handoff.
 `ReleaseLocations` call. Global foreground/jobs, paginated persistent terminals,
 each loaded target's project roots and every loaded exact key's ordinary
 shell/PTY inventories are checked against **all** targets before either
-eviction. No cleanup-owned session, terminal, location-root or ordinary-process
-probe runs after the first eviction. Only exact scoped DELETEs and a final,
-non-loading `GET /api/debug/location` remain. That inventory must show neither
+eviction. **Before the #547 review fix:** no cleanup-owned session, terminal,
+location-root or ordinary-process probe ran after the first eviction; only
+exact scoped DELETEs and a final, non-loading `GET /api/debug/location`
+remained. **After:** the handoff still ends that way, but issue cleanup adds
+[late checks of surviving cache keys](#direct-opencode-cleanup-issue-547).
+The final handoff inventory must show neither
 target nor descendants and preserve every unrelated exact cache key and its
 physical identity. Both original target identities must still match.
 
@@ -659,8 +662,11 @@ release**, across all requested checkouts. Pages are fetched one at a time;
 workers finish or are canceled and joined before the next page, a refusal,
 or any eviction. A deadline expiring during a host command is reported as a
 timeout, not an unsupported request. The one allowed preflight recheck still
-uses the remaining time on the original two-minute deadline. Only the exact
-scoped evictions and non-loading debug inventory may run after eviction starts.
+uses the remaining time on the original two-minute deadline. **Before the
+#547 review fix:** only exact scoped evictions and non-loading debug inventory
+could run after eviction started. **After:** issue cleanup can additionally
+read ordinary shell/PTY inventories under verified surviving keys; it does not
+repeat the persistent-terminal scan or probe released targets.
 
 ### Touched elements and retained behavior
 
@@ -839,10 +845,40 @@ to rerun the standalone command. This head requirement applies to bound
 **merged** cleanup, not abandoned issues, standalone cleanup or review
 replacement.
 
-These observations do not lock out new host work or external Git/filesystem
-changes. As before, a late failure can follow an idle-cache eviction or an
-earlier Git deletion; there is no automatic rollback. Observed active work
-or changed identity stops the operation before the corresponding removal.
+**Before the #547 review fix:** the last host activity checks preceded
+eviction. A primary-owned shell or PTY could start in a target cwd during the
+subsequent Git lookup or push without loading that target. **After:** confirmed
+OpenCode cleanup (direct or standalone) checks ordinary shells and PTYs under
+every verified surviving cache key after the remote lookup, after a successful
+push, and again before removing a remaining review checkout. Each scan is
+bracketed by non-loading inventories: a reactivated target, changed inventory,
+running work in a remaining target, or unverifiable cwd is a refusal. The
+same release deadline, original filesystem identities and Windows delete-access
+checks apply. There is no second session-history scan, no target-scoped probe
+and no new eviction in this late check. All original pre-eviction foreground,
+job, persistent-terminal and shell/PTY holds still apply.
+
+**Before the #547 review fix:** bound merged cleanup compared the fetch and
+push URLs, but the leased push still resolved `origin` again. Matching branch
+OIDs in two repositories did not make that safe. **After:** both remote ref
+reads and the leased push use the same verified effective URL. Observed
+destination drift refuses before eviction or the next Git mutation; a
+configuration change racing the push cannot redirect it to a different
+`origin`. The Git commands use a private invocation-scoped URL mapping, not a
+repository config write; they do not expose credentials in their diagnostics
+or push other refs. The local branch guard still checks **every registered
+worktree**, including unrelated worktrees: unexpected attachments and
+observed or unverifiable rebase, am or bisect state refuse branch deletion.
+
+The deletion order is unchanged: remote → executor → review → local. A hold
+found after the remote lookup prevents the push and both checkout removals.
+If it is first observed after a successful push, either cache may already have
+been evicted and the remote ref is already gone, but both checkouts and the
+local ref are preserved. A hold found before review removal after executor
+removal preserves the review checkout and local ref. None of these refusals
+reports or saves `cleaned`, and there is no automatic rollback. These are
+bounded observations, not atomic exclusion of new host work or external
+Git/filesystem changes. Keep both checkouts unused throughout cleanup.
 
 ### Windows source evidence
 
@@ -850,14 +886,18 @@ The final source smoke uses the real isolated Windows OpenCode **2.4.0**
 server with simulated model responses and a synthetic confirmed merge in a
 private Git repository. The earlier Windows **2.3.2**
 [observation](#code-mode-holds-during-checkout-release-issue-543) identified
-the Code Mode hold; it was not direct-tool qualification. With Full Code Mode
-enabled only in the fixture, the final smoke observes
+the Code Mode hold; it was not direct-tool qualification. The Windows fixture
+enables Full Code Mode only when the host advertises the Code Mode job
+contract; otherwise the historical control is skipped, not the direct-tool
+check. With that contract present, the smoke observes
 a real detached script job while its nested fixture tool invokes the old CLI
 path. The engine refuses and preserves the paths, caches and phase. The
 smoke observes the job leave the running inventory and receives the native
 completion notification. It then calls the top-level `orch_cleanup` tool
-from primary, verifies no new Code Mode job and proves both checkout paths and
-registrations, plus both issue-branch refs, are gone with phase `cleaned`.
+from primary, allowing up to 180 seconds for that simulated tool invocation;
+other simulation waits are unchanged. It verifies no new Code Mode job and
+proves both checkout paths and registrations, plus both issue-branch refs,
+are gone with phase `cleaned`.
 The smoke receipt retains these outcomes. The engine's verified host
 baselines and advisory do not change. This is not installed, shared-host,
 other-platform or real-model qualification.
@@ -887,10 +927,11 @@ refuse. Other API calls and owned shutdown checks keep their prior behavior.
 | Direct `orch_cleanup` executor and `runCleanup` | Before, the OpenCode skill called the CLI through its ordinary execution path. Now this one named tool is outside Code Mode; it checks the actual primary, non-child session and native permission, passes only the confirmed JSON by stdin, and waits asynchronously for the existing engine. The primary/child restriction applies to **every** caller of the tool, including a child in primary. No other tool becomes direct, no shell is spawned and no background cleanup is scheduled. |
 | `run.CleanupRequest` / `Cleanup` | The exact `cleanup-issue` confirmation, consistent current run/configuration and merged/abandoned phase gates, deletion order, final save, metrics and schema-1 result remain. All requests now reject nonpositive issues. The optional `run_id` binds the new path to the matching OpenCode run and Git-verified primary; omitting it retains the standalone request. The direct tool always sends it. |
 | `run.releaseCheckouts`, `checkoutReleaseTarget`, `cleanupBinding` / `cleanupCheckout`, `verifyCleanupCheckouts` and `verifyCheckoutCommon` | Both disposables still require their derived paths and normal ownership, common-directory and interior checks. The bound path records original physical identity and Git registration/HEAD or verified absence for **both** checkouts; unknown residue refuses before eviction/Git, and revalidation cannot adopt a replacement. A bound merged executor must also match the delivered head before the snapshot. Executor cleanliness applies to the branch worktree; detached-only and disposable scratch apply to review. Rechecks also precede Git removal. |
-| `opencode.ReleaseLocations`, `ReleaseLocation`, `releaseOrdinaryProcesses` and `releaseActiveJobs` | The bound path adds an ownership recheck, repeats ordinary shell/PTY attribution across the verified loaded keys, rechecks sessions/jobs, and compares the cache inventory before the first eviction (no extra retry). Owner and independent cwd still both count for **every** running ordinary shell and PTY, including primary-owned processes. Existing activity rules, deadline and bounds, one unrelated-cache recheck, scoped eviction, postchecks and the ban on loading probes after eviction remain. There is no caller/job exemption. The extra final gate is not used by the standalone request or the single-target review wrapper. |
-| `gitops.LocalBranchAtHead`, `RemoteBranchAtHead`, `RequireBranchIdle`, `DeleteRemoteBranchAtHead` and `ForceDeleteBranchAtHead` | Before, branch deletion used unconditional push deletion and `git branch -D` after preflight. Bound merged cleanup now verifies exact refs, requires the read URL to match the single push URL, and uses conditional Git deletion against the delivered OID for both refs. Only the owned executor may initially hold the local branch; an attached worktree at deletion or observed or unverifiable rebase, am or bisect state refuses. Local conditional deletion leaves branch config alone instead of removing a section that may now belong to a recreated branch. Ordinary Git branch deletion is unchanged. |
+| `opencode.ReleaseLocations`, `ReleaseLocation`, `releaseOrdinaryProcesses` and `releaseActiveJobs` | The bound path adds an ownership recheck, repeats ordinary shell/PTY attribution across the verified loaded keys, rechecks sessions/jobs, and compares the cache inventory before the first eviction (no extra retry). Owner and independent cwd still both count for **every** running ordinary shell and PTY, including primary-owned processes. Existing activity rules, deadline and bounds, one unrelated-cache recheck, scoped eviction and handoff postchecks remain. There is no caller/job exemption. The extra pre-eviction gate is not used by the standalone request or the single-target review wrapper. |
+| `ReleaseCheck`, `recheckReleasedLocations`, `checkReleaseIdentity` and `checkReleaseDeleteAccess` | No later activity gate existed before this review fix. It now reuses the same runtime, deadline, original target identities, scoped ordinary attribution, debug inventory and Windows access checks. OpenCode issue cleanup uses it at the Git boundaries above; review replacement does not. No late request intentionally loads a released key. |
+| `gitops.LocalBranchAtHead`, `RequireBranchIdle`, `ForceDeleteBranchAtHead` and `RemoteBranchBinding` | Before, branch deletion used unconditional push deletion and `git branch -D` after preflight. The first bound merged path verified exact refs and used conditional Git deletion but `RemoteBranchAtHead` and `DeleteRemoteBranchAtHead` still used the mutable remote name. Now `BindRemoteBranchAtHead` checks and retains the destination for `Exists` and the single leased `Delete`; `VerifyDestination` refuses observed changes. Both ref deletions still require the approved OID. Branch-operation guards apply across all registered worktrees, with only the owned executor allowed to hold the branch during preflight. Conditional local deletion still leaves branch config alone. Ordinary Git branch deletion is unchanged. |
 | `ReviewWorktree`, generic worktree removers and other hosts | Review replacement still uses its existing release path and Code Mode hold. Generic removers, base/bootstrap worktrees, and other hosts do not receive a new entry point or activity policy. No services are restarted and no sessions or processes are terminated. |
-| `checkoutHost`, `TestBoundOpenCodeCleanupRefusesStaleOrActiveTargets`, `cleanup_binding_test.go` and `test/cleanup.test.js` | Retain the scripted hold-then-foreground-retry regression. Add an independent second job, a drain and primary-owned ordinary shell/PTY starting late (including unverifiable cwd), changed review commit and directory identity, stale run, ineligible phase and residue checks. With disposable real Git, cover initially advanced local/remote refs, drift at deletion, unrelated push destination, a Git operation in progress, and an already-absent remote. Tool tests verify scope, permissions and refusal/waiting results. |
+| `checkoutHost`, `TestBoundOpenCodeCleanupRefusesStaleOrActiveTargets`, `cleanup_binding_test.go`, `branch_head_test.go` and `test/cleanup.test.js` | Retain the scripted hold-then-foreground-retry regression. Add an independent second job, a drain and ordinary shell/PTY starting late (including unverifiable cwd during lookup or push), changed review commit and directory identity, stale run, ineligible phase and residue checks. Disposable real Git covers advanced refs, origin rename or retargeting and URL rewrites, unrelated refs and repositories, branch-operation guards and an absent remote ref. Test failures with synthetic credential-bearing URLs confirm sanitized diagnostics. Tool tests verify scope, permissions and refusal/waiting results. |
 | `smoke.mjs` readiness and `test/smoke-startup.test.js` | The startup before/after above is harness-only. The test replays the production harness block with a controlled clock and checks 503, the shared deadline, record/child drift, and response/identity errors without launching a host. |
-| `smoke.mjs` cleanup scenario and `smoke-retention.mjs` | Before, success invoked the CLI out of band. Now the fixture retains a real Code Mode refusal and uses the actual direct tool for success on the merged fixture. The old-path comparison requests background execution only when the host advertises it; the default simulation waits remain unchanged and only the direct call opts into a longer bounded wait. The source receipt also hashes the cleanup/branch code and retains the cleanup outcomes; existing isolation, archive/recovery, cache survival, artifact identity, zero-provider and owned-shutdown checks remain. |
+| `smoke.mjs` cleanup scenario and `smoke-retention.mjs` | Before, success invoked the CLI out of band. Now the fixture runs the real Code Mode refusal control only on Windows hosts advertising its job contract, requests background execution only when advertised, and still uses the actual direct tool for success. Only that direct invocation opts into a longer bounded wait. The source receipt also hashes the branch binding and late release check code and retains the cleanup outcomes; existing isolation, archive/recovery, cache survival, artifact identity, zero-provider and owned-shutdown checks remain. |
 | README, Delivery skill and this guide | Record the prior manual recovery and direct path side by side. Existing standalone CLI, release approvals and installed-qualification boundaries remain. Adapter changes precede the separate final version bump; no dependency, runtime baseline, install or publication changes here. |

@@ -18,18 +18,18 @@ import (
 // gitops still refuses residue and verifies absence independently.
 // Before #510 other hosts bypassed all interior preflight. Now Windows checks
 // every requested checkout before host release or the first branch deletion.
-func (c *verbCtx) releaseCheckouts(ctx context.Context, git *gitops.Git, bound *cleanupBinding, reviews ...bool) error {
+func (c *verbCtx) releaseCheckouts(ctx context.Context, git *gitops.Git, bound *cleanupBinding, reviews ...bool) (opencode.ReleaseCheck, error) {
 	for _, review := range reviews {
 		target := c.worktreeAbs()
 		if review {
 			target = reviewWorktreeAbs(c.env.RepoRoot, c.issue().Number)
 		}
 		if err := gitops.CheckWorktreeRemoval(ctx, target); err != nil {
-			return err
+			return nil, err
 		}
 	}
 	if c.st.Run.Host != "opencode" {
-		return nil
+		return nil, nil
 	}
 	// Validate every target before releasing any services: a dangerous review
 	// interior must also prevent executor disposal during cleanup.
@@ -37,19 +37,19 @@ func (c *verbCtx) releaseCheckouts(ctx context.Context, git *gitops.Git, bound *
 	for _, review := range reviews {
 		target, err := c.checkoutReleaseTarget(ctx, git, review)
 		if err != nil {
-			return err
+			return nil, err
 		}
 		if bound != nil {
 			if target.registration == nil {
 				if _, err := os.Lstat(target.path); !os.IsNotExist(err) {
-					return fmt.Errorf("checkout release: unregistered checkout or absence cannot be verified; preserve it and inspect ownership")
+					return nil, fmt.Errorf("checkout release: unregistered checkout or absence cannot be verified; preserve it and inspect ownership")
 				}
 			}
 			if review {
 				bound.checkouts[1] = target
 			} else {
 				if bound.approvedHead != "" && target.registration != nil && target.registration.Head != bound.approvedHead {
-					return fmt.Errorf("OpenCode cleanup: executor HEAD differs from the approved PR head; preserve the checkout")
+					return nil, fmt.Errorf("OpenCode cleanup: executor HEAD differs from the approved PR head; preserve the checkout")
 				}
 				bound.checkouts[0] = target
 			}
@@ -64,33 +64,42 @@ func (c *verbCtx) releaseCheckouts(ctx context.Context, git *gitops.Git, bound *
 			branch := c.issue().Branch
 			// A retry with an absent executor still must preserve unexpected refs.
 			if _, err := git.LocalBranchAtHead(ctx, branch, bound.approvedHead); err != nil {
-				return err
+				return nil, err
 			}
 			if err := git.RequireBranchIdle(ctx, branch, bound.checkouts[0].canonical); err != nil {
-				return err
+				return nil, err
 			}
-			if _, err := git.RemoteBranchAtHead(ctx, "origin", branch, bound.approvedHead); err != nil {
-				return err
+			remote, err := git.BindRemoteBranchAtHead(ctx, "origin", branch, bound.approvedHead)
+			if err != nil {
+				return nil, err
 			}
+			bound.remote = remote
 		}
 		verify = func(ctx context.Context) error {
-			return c.verifyCleanupCheckouts(ctx, git, bound.checkouts[:]...)
+			if err := c.verifyCleanupCheckouts(ctx, git, bound.checkouts[:]...); err != nil {
+				return err
+			}
+			if bound.remote != nil {
+				return bound.remote.VerifyDestination(ctx)
+			}
+			return nil
 		}
 	}
 	// Before #525 a later target's host preflight could reopen an earlier one.
 	// Batch every loading probe before either eviction; final host inventory and
 	// Windows delete-access observations must pass for both before Git mutation.
-	if err := opencode.ReleaseLocations(ctx, c.env.Runner, c.env.RepoRoot, verify, targets...); err != nil {
-		return err
+	check, err := opencode.ReleaseLocations(ctx, c.env.Runner, c.env.RepoRoot, verify, targets...)
+	if err != nil {
+		return nil, err
 	}
 	// Releasing locks makes Git traversal more reachable. Refuse newly observed
 	// hazards too; this is still not atomic exclusion of filesystem re-entry.
 	for _, target := range targets {
 		if err := gitops.InspectWorktree(ctx, target); err != nil {
-			return err
+			return nil, err
 		}
 	}
-	return nil
+	return check, nil
 }
 
 func (c *verbCtx) checkoutReleaseTarget(ctx context.Context, git *gitops.Git, review bool) (cleanupCheckout, error) {

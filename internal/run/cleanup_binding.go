@@ -13,6 +13,7 @@ import (
 type cleanupBinding struct {
 	checkouts    [2]cleanupCheckout
 	approvedHead string // Only merged issues have an authoritative delivered PR head.
+	remote       *gitops.RemoteBranchBinding
 }
 
 type cleanupCheckout struct {

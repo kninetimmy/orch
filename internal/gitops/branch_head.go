@@ -2,10 +2,14 @@ package gitops
 
 import (
 	"context"
+	"crypto/rand"
 	"fmt"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
+
+	"github.com/kninetimmy/orch/internal/execx"
 )
 
 // LocalBranchAtHead treats a missing exact branch as absent, but not a
@@ -32,40 +36,114 @@ func (g *Git) LocalBranchAtHead(ctx context.Context, branch, head string) (bool,
 	return false, nil
 }
 
-// RemoteBranchAtHead accepts only absence or the expected exact remote ref.
-func (g *Git) RemoteBranchAtHead(ctx context.Context, remote, branch, head string) (bool, error) {
-	// A fetch-side absence is not evidence about a different push destination.
-	readURL, err := g.git(ctx, g.root, "remote", "get-url", "--", remote)
+// RemoteBranchBinding keeps the verified endpoint as well as the approved
+// ref/OID. A lease pins the ref value, not the repository it is sent to.
+type RemoteBranchBinding struct {
+	g                           *Git
+	remote, endpoint, transport string
+	ref, head                   string
+}
+
+// BindRemoteBranchAtHead verifies the single effective deletion destination
+// against the fetch destination, then checks the exact ref at that endpoint.
+func (g *Git) BindRemoteBranchAtHead(ctx context.Context, remote, branch, head string) (*RemoteBranchBinding, error) {
+	endpoint, err := g.branchDestination(ctx, remote)
 	if err != nil {
-		return false, err
+		return nil, err
 	}
-	pushURL, err := g.git(ctx, g.root, "remote", "get-url", "--push", "--all", "--", remote)
+	binding := &RemoteBranchBinding{g: g, remote: remote, endpoint: endpoint, transport: "orch-cleanup://" + rand.Text(),
+		ref: "refs/heads/" + branch, head: head}
+	if _, err := binding.Exists(ctx); err != nil {
+		return nil, err
+	}
+	return binding, nil
+}
+
+func (g *Git) branchDestination(ctx context.Context, remote string) (string, error) {
+	read, readErr := g.runBranchTransport(ctx, nil, "remote", "get-url", "--", remote)
+	push, pushErr := g.runBranchTransport(ctx, nil, "remote", "get-url", "--push", "--all", "--", remote)
+	// Strip one output terminator; trimming whitespace could change the
+	// destination. Git expands URL rewrites in get-url.
+	line := func(s string) string { return strings.TrimSuffix(s, "\n") }
+	endpoint := line(read.Stdout)
+	if readErr != nil || pushErr != nil || read.ExitCode != 0 || push.ExitCode != 0 ||
+		strings.TrimSpace(endpoint) == "" || strings.ContainsAny(endpoint, "\r\n\x00") || endpoint != line(push.Stdout) {
+		return "", fmt.Errorf("remote read and deletion destinations could not be matched; preserve the branch")
+	}
+	return endpoint, nil
+}
+
+// VerifyDestination refuses observed changes, but is not the deletion
+// authority: both transfers still use the pinned endpoint, not the alias.
+func (b *RemoteBranchBinding) VerifyDestination(ctx context.Context) error {
+	endpoint, err := b.g.branchDestination(ctx, b.remote)
 	if err != nil {
-		return false, err
+		return err
 	}
-	if readURL == "" || pushURL != readURL || strings.ContainsAny(pushURL, "\r\n") {
-		return false, fmt.Errorf("remote read and deletion destinations could not be matched; preserve the branch")
+	if endpoint != b.endpoint {
+		return fmt.Errorf("remote destination changed since cleanup preflight; preserve the branch")
 	}
-	ref := "refs/heads/" + branch
-	out, err := g.git(ctx, g.root, "ls-remote", "--heads", "--refs", "--", remote, ref)
-	if err != nil || out == "" {
-		return false, err
+	return nil
+}
+
+// Exists accepts only absence or the exact approved remote ref at the pin.
+func (b *RemoteBranchBinding) Exists(ctx context.Context) (bool, error) {
+	res, err := b.run(ctx, "ls-remote", "--heads", "--refs", "--", b.transport, b.ref)
+	if err != nil || res.ExitCode != 0 {
+		return false, fmt.Errorf("could not verify the approved remote branch; preserve it and inspect Git")
 	}
-	if out != head+"\t"+ref {
+	out := strings.TrimSpace(res.Stdout)
+	if out == "" {
+		return false, nil
+	}
+	if out != b.head+"\t"+b.ref {
 		return false, fmt.Errorf("remote branch differs from the approved PR head or could not be verified; preserve it")
 	}
 	return true, nil
 }
 
-// DeleteRemoteBranchAtHead compares the approved OID at the push, not the
-// tracking ref or a lease inferred from the earlier remote observation.
-func (g *Git) DeleteRemoteBranchAtHead(ctx context.Context, remote, branch, head string, c Confirmation) error {
+// Delete uses an explicit lease and sends only the approved ref deletion.
+func (b *RemoteBranchBinding) Delete(ctx context.Context, c Confirmation) error {
 	if !c.ok {
-		return fmt.Errorf("%w: delete remote branch %s/%s", ErrNotConfirmed, remote, branch)
+		return fmt.Errorf("%w: delete the bound remote branch", ErrNotConfirmed)
 	}
-	ref := "refs/heads/" + branch
-	_, err := g.git(ctx, g.root, "push", "--force-with-lease="+ref+":"+head, "--", remote, ":"+ref)
-	return err
+	res, err := b.run(ctx, "push", "--no-follow-tags", "--no-recurse-submodules", "--force-with-lease="+b.ref+":"+b.head,
+		"--", b.transport, ":"+b.ref)
+	if err != nil || res.ExitCode != 0 {
+		// Even Git's failure output can contain credentials or raw URLs.
+		return fmt.Errorf("approved remote branch deletion was refused or could not be verified; preserve remaining work and inspect Git")
+	}
+	return nil
+}
+
+func (b *RemoteBranchBinding) run(ctx context.Context, args ...string) (execx.Result, error) {
+	// Git rewrites even a literal URL passed to push. A fresh opaque token
+	// maps directly to the already-expanded endpoint in Git's single rewrite
+	// pass, without alias lookup, a second user rewrite or a config write.
+	// Keep URL bytes out of argv and append to any inherited config entries.
+	var count uint64
+	if raw := os.Getenv("GIT_CONFIG_COUNT"); raw != "" {
+		var err error
+		count, err = strconv.ParseUint(raw, 10, 31)
+		if err != nil || count > (1<<31)-3 {
+			return execx.Result{}, fmt.Errorf("could not bind the Git transport configuration")
+		}
+	}
+	return b.g.runBranchTransport(ctx, []string{
+		"GIT_CONFIG_COUNT=" + strconv.FormatUint(count+2, 10),
+		fmt.Sprintf("GIT_CONFIG_KEY_%d=url.%s.insteadOf", count, b.endpoint),
+		fmt.Sprintf("GIT_CONFIG_VALUE_%d=%s", count, b.transport),
+		fmt.Sprintf("GIT_CONFIG_KEY_%d=url.%s.pushInsteadOf", count+1, b.endpoint),
+		fmt.Sprintf("GIT_CONFIG_VALUE_%d=%s", count+1, b.transport),
+	}, args...)
+}
+
+func (g *Git) runBranchTransport(ctx context.Context, config []string, args ...string) (execx.Result, error) {
+	// A trace can contain a credential-bearing URL even when the argv here
+	// does not, for example in Git's own transport helper invocation.
+	env := append([]string{"GIT_TRACE=0", "GIT_TRACE_CURL=0", "GIT_TRACE_PACKET=0",
+		"GIT_TRACE2=0", "GIT_TRACE2_EVENT=0", "GIT_TRACE2_PERF=0"}, gitEnv...)
+	return g.r.Run(ctx, execx.Cmd{Name: "git", Args: args, Dir: g.root, Env: append(env, config...)})
 }
 
 // RequireBranchIdle permits attachment only in allowedWorktree, if provided.

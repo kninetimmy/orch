@@ -101,38 +101,62 @@ func Cleanup(ctx context.Context, env Env, reqJSON []byte) (*CleanupResult, erro
 	// an earlier successful release may already have unloaded an idle cache.
 	// Before #510 other hosts skipped this boundary; now Windows checks both
 	// raw checkout paths/interiors before any branch deletion on every host.
-	if err := c.releaseCheckouts(ctx, git, bound, false, true); err != nil {
+	check, err := c.releaseCheckouts(ctx, git, bound, false, true)
+	if err != nil {
 		return nil, err
+	}
+	var remote *gitops.RemoteBranchBinding
+	if bound != nil {
+		remote = bound.remote
+	}
+	// A primary-owned shell or PTY can start in a target cwd during Git I/O
+	// without reloading that target. Recheck this activity and then the original
+	// ownership, not a replacement checkout.
+	beforeRemoval := func(removed string) error {
+		if check != nil {
+			if err := check(ctx, removed); err != nil {
+				return err
+			}
+		}
+		if bound != nil {
+			targets := bound.checkouts[:]
+			if removed != "" {
+				targets = targets[1:]
+			}
+			return c.verifyCleanupCheckouts(ctx, git, targets...)
+		}
+		return nil
 	}
 
 	// 1. Remote branch (idempotent: only delete when present).
 	var exists bool
-	if approvedHead != "" {
-		exists, err = git.RemoteBranchAtHead(ctx, "origin", issue.Branch, approvedHead)
+	if remote != nil {
+		exists, err = remote.Exists(ctx)
 	} else {
 		exists, err = git.RemoteBranchExists(ctx, "origin", issue.Branch)
 	}
 	if err != nil {
 		return nil, err
 	}
-	if bound != nil {
-		if err := c.verifyCleanupCheckouts(ctx, git, bound.checkouts[:]...); err != nil {
+	if err := beforeRemoval(""); err != nil {
+		return nil, err
+	}
+	if remote != nil {
+		if err := remote.VerifyDestination(ctx); err != nil {
 			return nil, err
 		}
 	}
 	if exists {
-		if approvedHead != "" {
-			err = git.DeleteRemoteBranchAtHead(ctx, "origin", issue.Branch, approvedHead, confirm)
+		if remote != nil {
+			err = remote.Delete(ctx, confirm)
 		} else {
 			err = git.DeleteRemoteBranch(ctx, "origin", issue.Branch, confirm)
 		}
 		if err != nil {
 			return nil, err
 		}
-		if bound != nil {
-			if err := c.verifyCleanupCheckouts(ctx, git, bound.checkouts[0]); err != nil {
-				return nil, err
-			}
+		if err := beforeRemoval(""); err != nil {
+			return nil, err
 		}
 	}
 
@@ -140,7 +164,8 @@ func Cleanup(ctx context.Context, env Env, reqJSON []byte) (*CleanupResult, erro
 	// registration alone; now gitops returns it only for an absent path.
 	// Existing unregistered residue is preserved and fails cleanup.
 	// RemoveWorktree verifies removal and prunes stale metadata itself.
-	if err := git.RemoveWorktree(ctx, c.worktreeAbs(), confirm); err != nil && !errors.Is(err, gitops.ErrUnknownWorktree) {
+	executor := c.worktreeAbs()
+	if err := git.RemoveWorktree(ctx, executor, confirm); err != nil && !errors.Is(err, gitops.ErrUnknownWorktree) {
 		return nil, err
 	}
 
@@ -150,10 +175,8 @@ func Cleanup(ctx context.Context, env Env, reqJSON []byte) (*CleanupResult, erro
 	// ReviewWorktree for why that absence is deliberate — so cleanup
 	// derives its path exactly as the verb that created it does rather
 	// than reading state that was never written.
-	if bound != nil {
-		if err := c.verifyCleanupCheckouts(ctx, git, bound.checkouts[1]); err != nil {
-			return nil, err
-		}
+	if err := beforeRemoval(executor); err != nil {
+		return nil, err
 	}
 	if err := git.RemoveDetachedWorktree(ctx, reviewWorktreeAbs(env.RepoRoot, issue.Number)); err != nil && !errors.Is(err, gitops.ErrUnknownWorktree) {
 		return nil, err

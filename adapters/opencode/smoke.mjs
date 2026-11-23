@@ -1166,6 +1166,7 @@ func check(ok bool) { if !ok { fmt.Fprintln(os.Stderr, "native command-boundary 
     releaseEvidence.source_files = await Promise.all([
       "internal/opencode/release.go", "internal/opencode/release_terminals.go", "internal/opencode/release_test.go", "internal/opencode/release_terminals_windows_test.go",
       "internal/opencode/release_access_windows.go", "internal/opencode/release_access_other.go",
+      "internal/opencode/release_removal.go",
       "internal/gitops/branch_head.go",
       "internal/run/cleanup.go", "internal/run/cleanup_binding.go", "internal/run/checkout_release.go",
       "internal/run/cleanup_binding_test.go", "internal/run/checkout_release_test.go", "internal/run/checkout_release_windows_test.go",
