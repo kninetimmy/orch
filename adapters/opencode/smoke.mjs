@@ -52,6 +52,14 @@ assert.equal(admittedVersion("opencode v1.18.34"), undefined)
 assert.equal(admittedVersion("opencode v2.2.6 extra"), undefined)
 assert.equal(admittedVersion("opencode v2.02.6"), undefined)
 
+function baselineCleanupInput(code, parameters) {
+  return parameters?.properties?.background?.type === "boolean" ? { code, background: true } : { code }
+}
+
+assert.deepEqual(baselineCleanupInput("return 1", { properties: { code: { type: "string" } } }), { code: "return 1" })
+assert.deepEqual(baselineCleanupInput("return 1", { properties: { background: { type: "boolean" } } }),
+  { code: "return 1", background: true })
+
 function findOpenCode(cwd, env) {
   for (const name of ["opencode2", "opencode"]) {
     const candidates = process.platform === "win32"
@@ -1558,6 +1566,10 @@ func check(ok bool) { if !ok { fmt.Fprintln(os.Stderr, "native command-boundary 
   }
   if (codeModeJobs) {
     const baseline = await start(root)
+    const execute = baseline.turn.body.tools.find((entry) => entry.function?.name === "execute")
+    assert(execute, "baseline turn must advertise Code Mode execute")
+    const input = baselineCleanupInput(`return await tools.${baselineTool}({})`, execute.function.parameters)
+    const refusalPattern = /running Code Mode job prevents removal/
     const stateBeforeHold = await readFile(stateFile)
     // Keep an actual host Code Mode job alive while its nested simulation tool
     // runs the old CLI path. No dependence on the model's shell tool catalog.
@@ -1566,20 +1578,27 @@ func check(ok bool) { if !ok { fmt.Fprintln(os.Stderr, "native command-boundary 
       assert.equal(call.name, baselineTool)
       assert.equal(call.context.sessionID, baseline.session.id)
       const job = await eventually(async () => codeJobs(await jobs("?status=running"), baseline.session.id)[0], "running cleanup Code Mode job")
+      assert.equal(job.status, "running")
+      assert(typeof job.id === "string" && job.id, "running cleanup job must have an ID")
       const refusal = await runResult("cleanup", cleanupRequest)
       assert.equal(refusal.status, 1)
       assert.equal(refusal.stdout, "")
-      assert.match(refusal.stderr, /running Code Mode job prevents removal/)
+      assert.match(refusal.stderr, refusalPattern)
       await controller.request("tool.finish", {
         id: call.id, output: { structured: refusal.stderr, content: [{ type: "text", text: refusal.stderr }] },
       })
       return job
     }
     const [blockedTurn, runningJob] = await Promise.all([
-      tool(baseline.turn, "execute", { code: `return await tools.${baselineTool}({})` }),
+      tool(baseline.turn, "execute", input),
       observeHold(),
     ])
-    assert.match(evidence.last_tool.content, /is still running/)
+    if (input.background) {
+      assert(evidence.last_tool.content.includes(runningJob.id), "background acknowledgement must identify the observed job")
+    } else {
+      assert.match(evidence.last_tool.content, /is still running/)
+    }
+    assert.doesNotMatch(JSON.stringify(blockedTurn.body.messages), refusalPattern, "the refusal must arrive in the completion turn")
     const ended = await eventually(async () => {
       const job = codeJobs(await jobs(), baseline.session.id).find((entry) => entry.id === runningJob.id)
       return job?.status !== "running" && { status: job?.status ?? "not listed" }
@@ -1589,7 +1608,7 @@ func check(ok bool) { if !ok { fmt.Fprintln(os.Stderr, "native command-boundary 
     await controller.request("llm.chunk", { id: blockedTurn.id, items: [{ type: "textDelta", text: "waiting for the script" }] })
     await controller.request("llm.finish", { id: blockedTurn.id, reason: "stop" })
     const notification = await nextTurn()
-    assert.match(JSON.stringify(notification.body.messages), /running Code Mode job prevents removal/)
+    assert.match(JSON.stringify(notification.body.messages), refusalPattern)
     await finish(baseline.session, notification)
     assert.deepEqual(await readFile(stateFile), stateBeforeHold)
     assert(existsSync(writable) && existsSync(reviewPath))
