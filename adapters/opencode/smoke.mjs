@@ -9,6 +9,7 @@ import { hostname } from "node:os"
 import path, { delimiter } from "node:path"
 import { fileURLToPath } from "node:url"
 import { createInterface } from "node:readline"
+import { setTimeout as delay } from "node:timers/promises"
 
 import { lookupServer, lookupTools, sameDirectory } from "./src/lookup.js"
 import { checkAdapterModule, copyBinary, fileIdentity, inside, prepareOrch, prepareSourceProbe, selectArtifacts, verifyArtifacts } from "./smoke-artifacts.mjs"
@@ -330,9 +331,17 @@ try {
     throw new Error("timed out waiting for " + label + ": " + logs.slice(-4000))
   }
 
-  const service = await eventually(async () => JSON.parse(await readFile(path.join(state, "opencode", "service.json"), "utf8")), "private service record")
-  assert.equal(service.pid, server.pid, "service discovery must name our own process")
-  assert.equal(service.url, baseURL)
+  const serviceFile = path.join(state, "opencode", "service.json")
+  const record = await eventually(() => readFile(serviceFile), "private service record")
+  let service
+  try {
+    service = JSON.parse(record.toString("utf8"))
+  } catch {
+    throw new Error("private service record is not valid JSON")
+  }
+  assert(server.pid && service?.pid === server.pid, "service discovery must name our own process")
+  assert(service.url === baseURL, "private service record does not name the expected loopback endpoint")
+  assert(typeof service.password === "string" && service.password.length > 0, "private service record is missing authentication")
   headers = { authorization: "Basic " + Buffer.from("opencode:" + service.password).toString("base64"), "content-type": "application/json" }
   async function api(endpoint, options = {}) {
     let response
@@ -347,9 +356,64 @@ try {
   async function plugins(directory = root) {
     return (await api("/api/plugin?" + query(directory))).data.filter((entry) => entry.id === pluginID)
   }
-  const info = await api("/api/info")
-  assert.equal(info.pid, server.pid)
-  assert(inside(temp, path.resolve(info.paths.tmp)), "runtime temporary files must stay in the isolated fixture")
+  // The service record can appear before /api/info is ready. Bound only this
+  // startup probe, including in-flight bodies, to one shared retry budget.
+  {
+    const budget = 20_000
+    const started = performance.now()
+    const signal = AbortSignal.timeout(budget)
+    let attempts = 0
+    let lastStatus = "none"
+    const checkDeadline = () => {
+      const elapsed = performance.now() - started
+      if (signal.aborted || elapsed >= budget) {
+        throw new Error(`startup /api/info timed out after ${Math.round(elapsed)} ms (${attempts} attempts, last status ${lastStatus})`)
+      }
+    }
+    const checkChild = () => {
+      assert(server.pid === service.pid && server.exitCode === null && server.signalCode === null, "private server exited during startup")
+    }
+    const checkRecord = async () => {
+      checkChild()
+      const current = await readFile(serviceFile, { signal }).catch(() => {
+        throw new Error("private service record could not be read during startup")
+      })
+      checkChild()
+      assert(record.equals(current), "private service record changed during startup")
+    }
+    try {
+      for (;;) {
+        await checkRecord()
+        checkDeadline()
+        attempts++
+        const response = await fetch(baseURL + "/api/info", { method: "GET", headers, redirect: "error", signal }).catch(() => {
+          throw new Error("startup /api/info transport failed")
+        })
+        lastStatus = response.status
+        checkChild()
+        checkDeadline()
+        if (!response.ok) {
+          await response.body?.cancel()
+          if (lastStatus !== 503) throw new Error("startup /api/info returned HTTP " + lastStatus)
+          await delay(250, undefined, { signal })
+          continue
+        }
+        const info = await response.json().catch(() => {
+          throw new Error("startup /api/info response could not be read as JSON")
+        })
+        await checkRecord()
+        checkDeadline()
+        assert(info?.pid === service.pid, "startup /api/info must name our own process")
+        assert(typeof info.paths?.tmp === "string" && inside(temp, path.resolve(info.paths.tmp)),
+          "runtime temporary files must stay in the isolated fixture")
+        break
+      }
+    } catch (error) {
+      checkChild()
+      checkDeadline()
+      throw error
+    }
+  }
   stopHost = async () => {
     const current = JSON.parse(await readFile(path.join(state, "opencode", "service.json"), "utf8"))
     assert.equal(current.pid, server.pid, "shutdown must still name our owned server")
