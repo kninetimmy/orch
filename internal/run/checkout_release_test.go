@@ -35,6 +35,7 @@ type checkoutHost struct {
 	deleted       []string
 	partial       string
 	beforeAPI     func(*url.URL)
+	beforeVersion func()
 	inventories   int
 	sessions      map[string]string
 	terminalCwds  map[string]string
@@ -66,6 +67,9 @@ func (h *checkoutHost) Run(ctx context.Context, cmd execx.Cmd) (execx.Result, er
 		return execx.Result{}, fmt.Errorf("unexpected fixture command")
 	}
 	if slices.Equal(cmd.Args, []string{"--version"}) {
+		if h.beforeVersion != nil {
+			h.beforeVersion()
+		}
 		return execx.Result{Stdout: "opencode v2.3.0"}, nil
 	}
 	if len(cmd.Args) != 3 || cmd.Args[0] != "api" || cmd.Dir != h.root {
@@ -278,6 +282,106 @@ func TestOpenCodeCleanupFinalReactivationRefusesBeforeGit(t *testing.T) {
 func openCodeCheckoutFixture(t *testing.T, phase state.Phase) (string, string, string, *checkoutHost, Env) {
 	t.Helper()
 	return checkoutFixture(t, phase, "opencode")
+}
+
+func TestBoundOpenCodeCleanupRefusesStaleOrActiveTargets(t *testing.T) {
+	for _, tc := range []struct {
+		name, want string
+		phase      state.Phase
+	}{
+		{"stale run", "does not match the active run", state.PhaseAbandoned},
+		{"wrong phase", "in-review", state.PhaseInReview},
+		{"second job", "working directories cannot be verified", state.PhaseAbandoned},
+		{"late target work", "active session or unfinished background job", state.PhaseAbandoned},
+		{"changed review HEAD", "checkout identity changed", state.PhaseAbandoned},
+		{"replaced review directory", "checkout identity changed", state.PhaseAbandoned},
+		{"unregistered residue", "unregistered checkout", state.PhaseAbandoned},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			root, reviewHead, otherHead, host, env := openCodeCheckoutFixture(t, tc.phase)
+			executor, review := worktreeAbs(root, 1), reviewWorktreeAbs(root, 1)
+			st := loadRun(t, root)
+			branch, runID := st.Run.Issues[0].Branch, st.Run.ID
+			rawGit(t, root, "push", "origin", branch)
+			switch tc.name {
+			case "stale run":
+				runID = "previous-run"
+			case "second job":
+				host.sessions = map[string]string{"sesCaller": root, "sesOther": root}
+				host.jobInventory = `{"data":[
+					{"id":"jobOwn","kind":"shell","sessionID":"sesCaller","status":"running"},
+					{"id":"jobOther","kind":"codemode","sessionID":"sesOther","status":"running"}
+				]}`
+			case "late target work":
+				// Both original active/job probes see no work. Start a target
+				// drain while the ordinary cwd inventory is being collected.
+				host.beforeAPI = func(endpoint *url.URL) {
+					if endpoint.Path == "/api/pty" {
+						host.active = executor
+					}
+				}
+			case "changed review HEAD":
+				host.beforeAPI = func(endpoint *url.URL) {
+					if endpoint.Path == "/api/pty" && reviewHead != otherHead {
+						rawGit(t, review, "checkout", "--detach", otherHead)
+						reviewHead = otherHead
+					}
+				}
+			case "replaced review directory":
+				// Change identity after engine ownership checks, before the
+				// host starts its own directory observations.
+				host.beforeVersion = func() {
+					host.beforeVersion = nil
+					gitPointer, err := os.ReadFile(filepath.Join(review, ".git"))
+					if err != nil {
+						t.Fatal(err)
+					}
+					if err := os.Rename(review, filepath.Join(root, "preserved-review")); err != nil {
+						t.Fatal(err)
+					}
+					if err := os.Mkdir(review, 0o755); err != nil {
+						t.Fatal(err)
+					}
+					if err := os.WriteFile(filepath.Join(review, ".git"), gitPointer, 0o644); err != nil {
+						t.Fatal(err)
+					}
+				}
+			case "unregistered residue":
+				rawGit(t, root, "worktree", "remove", "--force", review)
+				if err := os.Mkdir(review, 0o755); err != nil {
+					t.Fatal(err)
+				}
+				delete(host.loaded, review)
+			}
+			installedBefore := stateBytes(t, root)
+			refsBefore := rawGit(t, root, "ls-remote", "--heads", "origin", branch)
+			request := fmt.Appendf(nil, `{"schema_version":1,"issue_number":1,"statement":"cleanup-issue","run_id":%q}`, runID)
+			result, err := Cleanup(t.Context(), env, request)
+			if result != nil || err == nil || !strings.Contains(err.Error(), tc.want) {
+				t.Fatalf("wanted %q refusal, got result=%+v err=%v", tc.want, result, err)
+			}
+			if len(host.deleted) != 0 || !bytes.Equal(stateBytes(t, root), installedBefore) {
+				t.Fatal("refusal evicted a cache or changed the run")
+			}
+			for _, path := range []string{executor, review} {
+				if info, err := os.Stat(path); err != nil || !info.IsDir() {
+					t.Fatalf("refusal lost checkout %s: %v", path, err)
+				}
+			}
+			if rawGit(t, root, "ls-remote", "--heads", "origin", branch) != refsBefore ||
+				strings.TrimSpace(rawGit(t, root, "branch", "--list", branch)) == "" {
+				t.Fatal("refusal changed branch ownership")
+			}
+			if tc.name != "unregistered residue" {
+				detachedHeadAt(t, review, reviewHead)
+			}
+			if tc.name == "replaced review directory" {
+				if _, err := os.Stat(filepath.Join(root, "preserved-review")); err != nil {
+					t.Fatalf("original review path was not preserved: %v", err)
+				}
+			}
+		})
+	}
 }
 
 func checkoutFixture(t *testing.T, phase state.Phase, hostName string) (string, string, string, *checkoutHost, Env) {

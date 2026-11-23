@@ -33,7 +33,7 @@ type releaseParameter struct {
 
 // ReleaseLocation retains the single-checkout handoff for review replacement.
 func ReleaseLocation(ctx context.Context, runner execx.Runner, primary, target string) error {
-	return ReleaseLocations(ctx, runner, primary, target)
+	return ReleaseLocations(ctx, runner, primary, nil, target)
 }
 
 // ReleaseLocations is called only after the run engine verifies disposable
@@ -44,7 +44,8 @@ func ReleaseLocation(ctx context.Context, runner execx.Runner, primary, target s
 // On Windows the runner must support concurrent persistent-terminal reads.
 // Before #525 sequential handoffs could reload an earlier target through later
 // session/terminal probes. Now ALL loading probes precede the first eviction.
-func ReleaseLocations(ctx context.Context, runner execx.Runner, primary string, targets ...string) error {
+// Bound cleanup supplies verify to recheck engine ownership before disposal.
+func ReleaseLocations(ctx context.Context, runner execx.Runner, primary string, verify func(context.Context) error, targets ...string) error {
 	if len(targets) == 0 {
 		return nil
 	}
@@ -274,6 +275,31 @@ func ReleaseLocations(ctx context.Context, runner execx.Runner, primary string, 
 		before = currentLocations
 		loaded = stillLoaded
 		break
+	}
+	if verify != nil {
+		if err := verify(ctx); err != nil {
+			return err
+		}
+		// The ordinary cwd scans and ownership probes take time. A new drain
+		// or job must still pass the same gate, without caller exemptions.
+		if err := releaseActiveJobs(call, targets); err != nil {
+			return err
+		}
+		current, currentKeys, err := inventory()
+		if err != nil {
+			return err
+		}
+		if !slices.Equal(loaded, currentKeys) || len(current) != len(before) {
+			return fmt.Errorf("OpenCode checkout release: inventory changed before disposal; preserve the checkouts")
+		}
+		if _, err := preserve(before, current, false); err != nil {
+			return err
+		}
+		for _, target := range targetInfos {
+			if err := unchanged(target); err != nil {
+				return err
+			}
+		}
 	}
 	// From the first eviction onward, ONLY exact evictions and non-loading
 	// debug inventories are allowed. Session/terminal reads can load locations.

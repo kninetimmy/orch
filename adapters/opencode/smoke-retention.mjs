@@ -86,6 +86,7 @@ function receipt(evidence, intent, files) {
     },
     checkout_release: evidence.checkout_release && {
       source_files: evidence.checkout_release.source_files, openapi_artifact: evidence.checkout_release.contract?.artifact,
+      open_code_cleanup: evidence.checkout_release.open_code_cleanup,
     },
     artifacts_unchanged: true, checks: evidence.checks, provider_requests: evidence.provider_requests,
     owned_server_stopped: true, owned_shutdown: evidence.owned_shutdown, direct_memhub_shutdown: evidence.direct_memhub_shutdown,

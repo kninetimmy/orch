@@ -4,6 +4,7 @@ import { Plugin } from "@opencode/plugin"
 import { FSUtil } from "@opencode/util/fs-util"
 import { Patch } from "@opencode/util/patch"
 import { installLookup } from "./lookup.js"
+import { installCleanup } from "./cleanup.js"
 
 export const pluginID = "orch.delivery"
 export const mutationTools = new Set(["edit", "write", "patch"])
@@ -55,6 +56,7 @@ export function definePlugin(run = runOrch) {
     id: pluginID,
     setup: async (ctx) => {
       const lookupContext = await installLookup(ctx, run)
+      await installCleanup(ctx, run)
       await ctx.tool.hook("execute.before", async (event) => {
         const paths = mutationPaths(event.tool, event.input)
         if (paths.length === 0) return

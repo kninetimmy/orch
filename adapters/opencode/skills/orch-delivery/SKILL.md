@@ -567,9 +567,18 @@ parent-session usage.
    returned (drift is rejected — re-run `merge-report`). `statement` is
    the exact literal `approve-merge`.
 
-10. **Cleanup** — `orch run cleanup` with
+10. **Cleanup** — **Before #547 (including v0.17.0):** `orch run cleanup` with
     `{"schema_version": 1, "issue_number": N, "statement": "cleanup-issue"}`
-    removes the remote branch, worktree, and local branch as one act.
+    removes the remote branch, executor and review worktrees, and local
+    branch as one act. A running Code Mode invocation can block itself.
+    **After #547:** from the verified primary checkout, confirm the run ID and
+    merged or abandoned issue from fresh `orch run status --json`. With cleanup
+    confirmed, call `orch_cleanup` **directly**, not inside `execute`, with
+    `{"schema_version":1,"run_id":"<confirmed run>","issue_number":N,"statement":"cleanup-issue"}`.
+    Wait for the engine result `phase: "cleaned"` before continuing. If the tool
+    is unavailable or the host reports a genuine hold, keep both checkouts
+    unused and follow [standalone recovery](../../../../docs/worktree-cleanup.md#resume-normal-cleanup-from-a-standalone-terminal)
+    after the job finishes. A refusal is not completion.
 
 11. **Complete** — once every issue is cleaned, call `orch run
     complete` with `{"schema_version": 1}` (run-level, no issue

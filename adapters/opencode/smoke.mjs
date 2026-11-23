@@ -91,12 +91,12 @@ async function availablePort() {
   return port
 }
 
-async function within(promise, label) {
+async function within(promise, label, timeout = 30_000) {
   let timer
   try {
     return await Promise.race([
       promise,
-      new Promise((_, reject) => (timer = setTimeout(() => reject(new Error("timed out waiting for " + label)), 30_000))),
+      new Promise((_, reject) => (timer = setTimeout(() => reject(new Error("timed out waiting for " + label)), timeout))),
     ])
   } finally {
     clearTimeout(timer)
@@ -410,8 +410,8 @@ try {
   controller = await simulation("ws://127.0.0.1:" + backendPort)
   pass("deterministic simulation handshake and attachment; no session has run yet")
   let callID = 0
-  async function nextTurn() {
-    const turn = await within(controller.next("llm.request"), "simulated model request")
+  async function nextTurn(timeout) {
+    const turn = await within(controller.next("llm.request"), "simulated model request", timeout)
     evidence.last_request = turn.body
     assert.equal(turn.url, "https://api.openai.com/v1/chat/completions", "model must use the registered simulation destination")
     return turn
@@ -441,11 +441,11 @@ try {
     await api("/api/session/" + session.id + "/prompt", { method: "POST", body: JSON.stringify({ text: "Execute the deterministic smoke tool calls." }) })
     return { session, turn: await nextTurn() }
   }
-  async function tool(turn, name, input, denial) {
+  async function tool(turn, name, input, denial, timeout) {
     const id = "smoke-" + ++callID
     await controller.request("llm.chunk", { id: turn.id, items: [{ type: "toolCall", index: 0, id, name, input }] })
     await controller.request("llm.finish", { id: turn.id, reason: "tool-calls" })
-    const next = await nextTurn()
+    const next = await nextTurn(timeout)
     const entry = next.body.messages.findLast((message) => message.tool_call_id === id)
     assert(entry, "real tool execution must return the requested call identity")
     const body = JSON.stringify(entry)
@@ -1075,7 +1075,17 @@ func check(ok bool) { if !ok { fmt.Fprintln(os.Stderr, "native command-boundary 
   pass("normalized MCP collision preserves user server and existing write guard")
   // Lifecycle probes use only this server and owned synthetic checkouts.
   // Never manually evict a location or kill a process to make Git removal pass.
+  const releaseSpec = await api("/openapi.json")
+  const codeModeJobs = process.platform === "win32" &&
+    releaseSpec.components?.schemas?.["Job.CodeMode"]?.properties?.kind?.enum?.includes("codemode")
   delete configuration.mcp.servers["orch.memhub"]
+  if (codeModeJobs) {
+    // 2.3.2 exposes script jobs only with this opt-in. Apply it before the
+    // lifecycle probes start their alias PTYs, not during cleanup.
+    configuration.experimental = { ...configuration.experimental, full_codemode: true }
+  } else if (process.platform === "win32") {
+    console.log("No advertised Windows Code Mode job contract; testing the direct tool without the historical job control.")
+  }
   await writeFile(configFile, JSON.stringify(configuration))
   await mode("best-effort")
   await Promise.all([connected(root), connected(writable), connected(sibling)])
@@ -1084,11 +1094,11 @@ func check(ok bool) { if !ok { fmt.Fprintln(os.Stderr, "native command-boundary 
     releaseEvidence.source_files = await Promise.all([
       "internal/opencode/release.go", "internal/opencode/release_terminals.go", "internal/opencode/release_test.go", "internal/opencode/release_terminals_windows_test.go",
       "internal/opencode/release_access_windows.go", "internal/opencode/release_access_other.go",
-      "internal/run/checkout_release.go", "internal/run/checkout_release_test.go", "internal/run/checkout_release_windows_test.go",
+      "internal/run/cleanup.go", "internal/run/cleanup_binding.go", "internal/run/checkout_release.go",
+      "internal/run/checkout_release_test.go", "internal/run/checkout_release_windows_test.go",
       "internal/run/checkout_pagination_windows_test.go",
     ].map((file) => fileIdentity(path.join(repo, file))))
   }
-  const releaseSpec = await api("/openapi.json")
   const locationContract = releaseSpec.paths["/api/debug/location"]
   assert.equal(locationContract.get.operationId, "debug.location.list")
   assert.equal(locationContract.delete.operationId, "debug.location.evict")
@@ -1442,7 +1452,12 @@ func check(ok bool) { if !ok { fmt.Fprintln(os.Stderr, "native command-boundary 
   await refuseRelease("review-worktree", reviewRequest(newOID, 2), /unexpected loaded descendant/)
   assert(existsSync(descendant), "refused descendant must remain intact")
 
-  fixtureState.run.issues[0].phase = "abandoned"
+  // Reflect a confirmed merge only in the private Git repository and the
+  // synthetic approved run; do not contact a GitHub repository.
+  command("git", ["merge", "--ff-only", "smoke-issue"], root, env)
+  command("git", ["push", "origin", "main"], root, env)
+  assert.equal(command("git", ["rev-parse", "HEAD"], root, env).trim(), newOID)
+  Object.assign(fixtureState.run.issues[0], { phase: "merged", reviewed_head_oid: newOID, approved_head_oid: newOID })
   await writeFile(stateFile, JSON.stringify(fixtureState))
   const cleanupRequest = { schema_version: 1, issue_number: 1, statement: "cleanup-issue" }
   const activeExecutor = await start(writable, agentModels["orch-implementer"], lookupParent.session.id, "orch-implementer")
@@ -1464,8 +1479,76 @@ func check(ok bool) { if !ok { fmt.Fprintln(os.Stderr, "native command-boundary 
   const beforeCleanup = await cacheSnapshot()
   const cleanupKeys = targetKeys(beforeCleanup, [writable, reviewPath])
   assert.equal(cleanupKeys.length, 2)
-  releaseEvidence.cleanup = await runCommand("cleanup", cleanupRequest)
+  const baselineTool = "smoke_baseline_cleanup"
+  if (codeModeJobs) {
+    await controller.request("tool.attach", { tools: [{
+      name: baselineTool, description: "Exercise the old cleanup transport in the private fixture",
+      inputSchema: { type: "object", properties: {}, additionalProperties: false },
+      options: { codemode: true },
+    }] })
+  }
+  const jobs = async (filter = "") => (await api("/api/experimental/job" + filter)).data
+  const codeJobs = (rows, owner) => rows.filter((job) => job.kind === "codemode" && job.sessionID === owner)
+  const handoff = releaseEvidence.open_code_cleanup = {
+    confirmed: { run_id: fixtureState.run.id, issue_number: 1, approved_head_oid: newOID, phase: "merged" },
+  }
+  if (codeModeJobs) {
+    const baseline = await start(root)
+    const stateBeforeHold = await readFile(stateFile)
+    // Keep an actual host Code Mode job alive while its nested simulation tool
+    // runs the old CLI path. No dependence on the model's shell tool catalog.
+    const observeHold = async () => {
+      const call = await within(controller.next("tool.invocation"), "nested baseline cleanup")
+      assert.equal(call.name, baselineTool)
+      assert.equal(call.context.sessionID, baseline.session.id)
+      const job = await eventually(async () => codeJobs(await jobs("?status=running"), baseline.session.id)[0], "running cleanup Code Mode job")
+      const refusal = await runResult("cleanup", cleanupRequest)
+      assert.equal(refusal.status, 1)
+      assert.equal(refusal.stdout, "")
+      assert.match(refusal.stderr, /running Code Mode job prevents removal/)
+      await controller.request("tool.finish", {
+        id: call.id, output: { structured: refusal.stderr, content: [{ type: "text", text: refusal.stderr }] },
+      })
+      return job
+    }
+    const [blockedTurn, runningJob] = await Promise.all([
+      tool(baseline.turn, "execute", { code: `return await tools.${baselineTool}({})` }),
+      observeHold(),
+    ])
+    assert.match(evidence.last_tool.content, /is still running/)
+    const ended = await eventually(async () => {
+      const job = codeJobs(await jobs(), baseline.session.id).find((entry) => entry.id === runningJob.id)
+      return job?.status !== "running" && { status: job?.status ?? "not listed" }
+    }, "finished cleanup Code Mode job")
+    // Full Code Mode delivers detached completion in a follow-up turn. Let
+    // the first turn end, then consume that notification before cleanup.
+    await controller.request("llm.chunk", { id: blockedTurn.id, items: [{ type: "textDelta", text: "waiting for the script" }] })
+    await controller.request("llm.finish", { id: blockedTurn.id, reason: "stop" })
+    const notification = await nextTurn()
+    assert.match(JSON.stringify(notification.body.messages), /running Code Mode job prevents removal/)
+    await finish(baseline.session, notification)
+    assert.deepEqual(await readFile(stateFile), stateBeforeHold)
+    assert(existsSync(writable) && existsSync(reviewPath))
+    assert.deepEqual(await cacheSnapshot(), beforeCleanup)
+    handoff.old_job = {
+      full_codemode: true, kind: runningJob.kind, at_refusal: runningJob.status,
+      after_nested_call: ended.status, completion_notified: true, exit: 1,
+      checkouts_caches_and_state_preserved: true,
+    }
+    pass("real primary Code Mode cleanup job runs, refuses before eviction, then finishes")
+  }
+  const cleanupSession = await start(root)
+  assert(cleanupSession.turn.body.tools.some((entry) => entry.function?.name === "orch_cleanup"),
+    "the Architect must have a direct OpenCode cleanup tool, not another Code Mode invocation")
+  const cleanupTurn = await tool(cleanupSession.turn, "orch_cleanup", { ...cleanupRequest, run_id: fixtureState.run.id }, undefined, 180_000)
+  releaseEvidence.cleanup = JSON.parse(evidence.last_tool.content)
+  assert.deepEqual(codeJobs(await jobs(), cleanupSession.session.id), [],
+    "direct cleanup must not create or exempt a Code Mode job")
+  handoff.direct = { tool: "orch_cleanup", top_level: true, new_code_mode_job: false, result: releaseEvidence.cleanup }
+  await finish(cleanupSession.session, cleanupTurn)
   assert.equal(releaseEvidence.cleanup.phase, "cleaned")
+  handoff.persisted_phase = JSON.parse(await readFile(stateFile)).run.issues.find(({ number }) => number === 1).phase
+  assert.equal(handoff.persisted_phase, "cleaned")
   assert.equal(existsSync(writable), false)
   assert.equal(existsSync(reviewPath), false)
   releaseEvidence.after_cleanup = await api("/api/debug/location")
@@ -1486,8 +1569,20 @@ func check(ok bool) { if !ok { fmt.Fprintln(os.Stderr, "native command-boundary 
   }
   completed.git_registrations_after = command("git", ["worktree", "list", "--porcelain"], root, env)
   for (const directory of [writable, reviewPath]) assert(!completed.git_registrations_after.includes(directory.replaceAll("\\", "/")))
+  handoff.git_registrations_absent = true
+  releaseEvidence.cleanup_artifacts = {
+    executor_exists: existsSync(writable), review_exists: existsSync(reviewPath),
+    remote_heads: command("git", ["ls-remote", "--heads", "origin", "smoke-issue"], root, env).trim(),
+    local_ref_exit: result("git", ["show-ref", "--verify", "--quiet", "refs/heads/smoke-issue"], root, env).status,
+  }
+  assert.equal(releaseEvidence.cleanup_artifacts.executor_exists, false)
+  assert.equal(releaseEvidence.cleanup_artifacts.review_exists, false)
+  assert.equal(releaseEvidence.cleanup_artifacts.remote_heads, "")
+  assert.equal(releaseEvidence.cleanup_artifacts.local_ref_exit, 1)
+  handoff.artifacts = { issue_branch: "smoke-issue", ...releaseEvidence.cleanup_artifacts }
+  pass("direct OpenCode cleanup returns cleaned from the primary session without a standalone retry")
   pass("both completed child sessions remain assigned with unchanged history; checkout-bound Memhub connected before batched release; both Git checkouts removed")
-  releaseEvidence.primary_after = await nativeLookup(root, oldOID)
+  releaseEvidence.primary_after = await nativeLookup(root, newOID)
   releaseEvidence.unrelated_after = await nativeLookup(sibling, oldOID)
   if (aliasKeys.length) {
     releaseEvidence.cache_aliases.activity_after_cleanup = await aliasActivity()
@@ -1505,15 +1600,6 @@ func check(ok bool) { if !ok { fmt.Fprintln(os.Stderr, "native command-boundary 
   releaseEvidence.unmanaged_after = JSON.parse(evidence.last_tool.content)
   assert.equal(releaseEvidence.unmanaged_after.tasks_total, unmanagedTasks, "unrelated full-profile lookup must remain usable without losing its synthetic memory")
   await finish(unrelatedAfter.session, unrelatedAfter.turn)
-  releaseEvidence.cleanup_artifacts = {
-    executor_exists: existsSync(writable), review_exists: existsSync(reviewPath),
-    remote_heads: command("git", ["ls-remote", "--heads", "origin", "smoke-issue"], root, env).trim(),
-    local_ref_exit: result("git", ["show-ref", "--verify", "--quiet", "refs/heads/smoke-issue"], root, env).status,
-  }
-  assert.equal(releaseEvidence.cleanup_artifacts.executor_exists, false)
-  assert.equal(releaseEvidence.cleanup_artifacts.review_exists, false)
-  assert.equal(releaseEvidence.cleanup_artifacts.remote_heads, "")
-  assert.equal(releaseEvidence.cleanup_artifacts.local_ref_exit, 1)
   pass("engine executor/review cleanup after completed native lookups; descendant/activity refusals preserve fixtures; primary and unrelated lookup services still usable")
   if (process.platform === "win32") {
     // Ambiguous target caches remain untouched until normal owned-host shutdown.
