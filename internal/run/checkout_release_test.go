@@ -227,11 +227,12 @@ func TestOpenCodeCleanupDoesNotReactivateReleasedCheckouts(t *testing.T) {
 					if err != nil {
 						t.Fatal(err)
 					}
+					primaryOrdinaryRead := cmd.Args[1] == "get" &&
+						(endpoint.Path == "/api/shell" || endpoint.Path == "/api/pty") &&
+						endpoint.Query().Get("location[directory]") == root
 					if cmd.Args[1] == "delete" {
 						released = true
-					} else if released && endpoint.Path != "/api/debug/location" &&
-						!((endpoint.Path == "/api/shell" || endpoint.Path == "/api/pty") &&
-							endpoint.Query().Get("location[directory]") == root) {
+					} else if released && endpoint.Path != "/api/debug/location" && !primaryOrdinaryRead {
 						t.Fatalf("loading host probe after release: %+v", cmd)
 					}
 				}
