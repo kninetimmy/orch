@@ -905,6 +905,24 @@ presence of `GIT_SSL_NO_VERIFY` holds cleanup; unset it rather than assigning
 it a false value. Normal trust stores, configured CAs and authenticated HTTPS
 proxies are still supported; their trust is not redefined here.
 
+**HTTPS extra headers before and after:** matching the URL and validating TLS
+previously still allowed arbitrary Git `http.extraHeader` values to affect the
+request. Bound HTTPS now checks the effective ordered list before the first
+transfer, including URL scopes, includes, command settings and empty resets.
+It accepts only well-formed `Authorization` and `Proxy-Authorization` fields
+with an auth scheme and credentials. The transfer resets Git's header list
+at the exact URL and reapplies the checked values for both lookup and push;
+later config edits do not add headers to that attempt. This is not a lock or
+a snapshot of all Git configuration. Normal Git credential helpers, URL
+credentials and proxy authentication still work. If the effective list has
+other or malformed headers, or the config cannot be verified, preserve the
+work and inspect the settings in their original scopes. Unset `GIT_CONFIG`
+if it is set, since it changes which files the Git config query reads. Then
+re-confirm the run and issue before retrying the direct tool. Bound transport
+commands (HTTPS and SSH) also suppress inherited `GIT_TRACE_PERFORMANCE`,
+which previously could log endpoint data. Refusals do not print header
+values, raw URLs or transport errors.
+
 **SSH transport before and after:** a matching SSH URL previously still used
 Git's selected SSH command and the user's and system's SSH client configuration.
 A hostname override, proxy or reused connection could therefore reach a
@@ -924,14 +942,24 @@ and identities that depend on SSH config are not used by bound cleanup.
 received the remote name. For SSH it could select `remote.<name>.uploadpack`
 for the ref lookup and `remote.<name>.receivepack` for the push; for HTTPS it
 could select `remote.<name>.proxy` and `remote.<name>.proxyAuthMethod` for
-either. Bound merged reads and pushes now instead use the pinned URL
-via an invocation-scoped token. SSH uses Git's default pack programs; HTTPS
-uses normal HTTP and URL-scoped Git settings and proxy environment, not the
-named remote's proxy settings. This applies to **every** remote name passed to
-the bound helper, not just `origin`. Effective read/push URLs and URL rewrites
-still take part in preflight. Standalone and abandoned cleanup retain their
-named-remote Git operations and transport behavior. Other Git paths do not
-gain the bound transport restrictions.
+either. `remote.<name>.vcs` could select a named transport helper. Bound
+merged reads and pushes now instead use the pinned URL via an invocation-scoped
+token. SSH uses Git's default pack programs; HTTPS uses normal HTTP and
+URL-scoped Git settings and proxy environment, not the named remote's proxy
+settings. Neither operation inherits the named transport helper.
+
+Before, `remote.<name>.mirror` could request mirror mode for a named push,
+which is incompatible with an explicit deletion refspec. Bound deletion now
+ignores that setting and pushes only the approved ref deletion. A successful
+named push could also update or delete local remote-tracking refs via the
+named remote's fetch refspec. Bound deletion does not do that: a named
+remote-tracking ref can remain stale. Cleanup does not prune it.
+
+These changes apply to **every** remote name passed to the bound helper, not
+just `origin`. Effective read/push URLs and URL rewrites still take part in
+preflight. Standalone and abandoned cleanup retain their named-remote Git
+operations and transport behavior. Other Git paths do not gain the bound
+transport restrictions.
 
 The local branch guard still checks **every registered
 worktree**, including unrelated worktrees: unexpected attachments and
@@ -990,7 +1018,7 @@ installed, shared-host, other-platform or real-model qualification.
 | `ghops.MatchesPullRequestRepository` and repository-name validation | New offline comparison of the engine-recorded PR number and repository with the effective Git URL. It reuses the host/name rules; `Repo.Target` still requires the same consistent repository URL, slug and node ID for plan approval. No approval or run-state schema change. |
 | `releaseCheckouts`, `BindRemoteBranchAtHead`, `branchDestination`, `RemoteBranchBinding` and `branch_ssh*.go` | Bound merged preflight used to trust agreeing URLs without checking the recorded PR or authenticated transport. It now requires a unique matching destination and verified transport before eviction. The existing destination-drift recheck, approved OID, lease, opaque pin and redaction remain. Both SSH forms and HTTPS retain support under the policies above. `go.mod` now lists the already pinned Windows system API module as direct, without changing its version or the dependency graph. |
 | `Cleanup`, `ReleaseLocations`, `ReleaseCheck`, `recheckReleasedLocations`, `releaseActiveJobs` / `releaseRunningJobs` | The late global job read is requested only for bound merged cleanup. It adds no target-scoped requests, history walk, eviction, retry or deadline extension. Foreground and owner/child attribution remain before eviction. Before the review fix, the pre-eviction hold advised the legacy standalone path even for bound callers. It now advises a direct retry at every bound hold, including abandoned preflight. Legacy and review replacement advice, late ordinary checks, confirmation, Git order and final state save remain. |
-| `pr_destination_test.go`, `branch_head_test.go`, `checkout_release_test.go`, `cleanup_binding_test.go` | Prior refusal, pinning and cleanup cases remain. Added canonical transport, strict OpenSSH configuration, authenticated HTTPS and redirect cases; same-OID wrong remote, missing/ambiguous origin, refusal before eviction if SSH cannot authenticate, named transport controls, bound vs. legacy retry advice, and primary-owned Code Mode jobs starting at lookup and push with both checkouts or on a ref-only retry. Late tests assert that no owner or history read reloads a target. |
+| `pr_destination_test.go`, `branch_head_test.go`, `branch_https_test.go`, `checkout_release_test.go`, `cleanup_binding_test.go` | Prior refusal, pinning and cleanup cases remain. Added canonical transport, strict OpenSSH configuration, authenticated HTTPS and redirect cases; same-OID wrong remote, missing/ambiguous origin, refusal before transfer or eviction for unverifiable HTTPS headers, and no eviction if SSH cannot authenticate. Loopback HTTPS covers ordered headers, a reset and a config edit before transfer; the tracing regression verifies the child environment and redaction. Named transport controls, bound vs. legacy retry advice, and primary-owned Code Mode jobs starting at lookup and push with both checkouts or on a ref-only retry are covered. Late tests assert that no owner or history read reloads a target. |
 | `smoke.mjs`, `testdata/cleanup-https/main.go` and `testdata/cleanup-ssh.sh` | The smoke switches from the SSH shim to a verified TLS fixture as described above. The shim remains a pack-service substitute only in the Go test runner. The old Code Mode hold and direct success still check both refs and registrations; receipts add HTTPS artifact and shutdown evidence. Startup retry, separate unmanaged Memhub executable, provider trap and verified owned OpenCode shutdown remain. |
 | README, Delivery skill and this guide | Released unbound recovery remains documented, not as a workaround for bound holds. The Windows qualification is source evidence only; no install, release or runtime baseline change. |
 
