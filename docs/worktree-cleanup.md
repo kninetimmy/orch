@@ -851,6 +851,17 @@ to rerun the standalone command. This head requirement applies to bound
 **merged** cleanup, not abandoned issues, standalone cleanup or review
 replacement.
 
+**Before #551:** plain Git status could refresh stale file metadata in the
+executor index even when the working tree was clean. A later destination
+refusal could therefore leave different index bytes without deleting anything.
+**After #551:** `gitops.Git.RequireClean` disables optional index refreshes
+for its status invocation. This applies to every call to that helper, including
+the initial checkout inspection and ownership rechecks, not just a named
+worktree or a bound request. Modified, staged and untracked paths still fail
+the clean check; ignored paths and the existing diagnostics are unchanged.
+Other Git commands, checkout ownership, eviction and deletion policy are
+unchanged. This is not a lock against other Git activity.
+
 **Before the #547 review fix:** the last host activity checks preceded
 eviction. A primary-owned shell or PTY could start in a target cwd during the
 subsequent Git lookup or push without loading that target. **After:** confirmed
@@ -897,7 +908,14 @@ eviction. It accepts direct HTTPS and Git SSH forms (`ssh://git@host/owner/repo`
 and `git@host:owner/repo`), with or without the usual `.git` suffix and with
 default ports only. Local paths, unsupported or ambiguous endpoints and
 missing or inconsistent PR records refuse without printing the raw URLs.
-This compares the configured destination, not a new GitHub node-ID lookup.
+This compares the configured destination, not a stable repository ID. A
+replacement at the same URL can match the host, owner, repository name and
+exact branch tip. Cleanup does not distinguish or support that replacement.
+Finish or pause pending cleanup before a repository migration, mirror cutover,
+or restore that replaces the repository. Do not resume an old run against the
+replacement. No new credential setup is required; the existing HTTPS and SSH
+requirements still apply.
+
 Before, HTTPS could follow a redirect or disable certificate verification after
 matching the URL. Bound reads and pushes now refuse redirects and require TLS
 certificate and hostname verification, even if Git config disables it. The
@@ -945,6 +963,8 @@ URI and scp forms still work with that policy. If the system client, trusted
 key or noninteractive authentication is unavailable, preserve the work and
 inspect those prerequisites before retrying directly. SSH aliases, tunnels
 and identities that depend on SSH config are not used by bound cleanup.
+
+<a id="named-remote-transport"></a>
 
 **Named-remote transport before and after:** before the pinned transport, Git
 received the remote name. For SSH it could select `remote.<name>.uploadpack`
@@ -1005,9 +1025,10 @@ a loopback-only tunnel with a disposable TLS trust anchor. Before the bound
 extra-header check, the HTTPS fixture used a custom header; it now uses a
 disposable bearer credential in `Authorization`, without bypassing that check.
 Both transfer directions use the real Git protocol against the private bare
-repository.
-The same engine identity gate runs; no production bypass or GitHub request is
-involved. The earlier Windows **2.3.2**
+repository. The production host/name, transport and approved branch-tip
+checks run without a bypass or GitHub request. This is evidence for the
+unreleased direct path, not for the released v0.17.0 standalone recovery.
+The earlier Windows **2.3.2**
 [observation](#code-mode-holds-during-checkout-release-issue-543) identified
 the Code Mode hold; it was not direct-tool qualification. The Windows fixture
 enables Full Code Mode only when the host advertises the Code Mode job

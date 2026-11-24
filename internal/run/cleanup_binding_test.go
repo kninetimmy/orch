@@ -2,6 +2,7 @@ package run
 
 import (
 	"bytes"
+	"errors"
 	"fmt"
 	"net/url"
 	"os"
@@ -9,8 +10,10 @@ import (
 	"slices"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/kninetimmy/orch/internal/execx"
+	"github.com/kninetimmy/orch/internal/gitops"
 	"github.com/kninetimmy/orch/internal/state"
 )
 
@@ -36,9 +39,33 @@ func TestBoundMergedOpenCodeCleanupRequiresRecordedRepository(t *testing.T) {
 			for _, destination := range []string{"origin", wrong} {
 				rawGit(t, root, "push", destination, ref)
 			}
+			executor := worktreeAbs(root, 1)
+			var indexBefore []byte
+			var readIndex func() []byte
 			switch tc.name {
 			case "already retargeted":
 				rawGit(t, root, "remote", "set-url", "origin", wrong)
+				// Leave the tracked content alone but make the index stat data stale.
+				t.Setenv("GIT_OPTIONAL_LOCKS", "1")
+				index := strings.TrimSpace(rawGit(t, executor, "rev-parse", "--path-format=absolute", "--git-path", "index"))
+				readIndex = func() []byte {
+					t.Helper()
+					data, err := os.ReadFile(index)
+					if err != nil {
+						t.Fatal(err)
+					}
+					return data
+				}
+				tracked := filepath.Join(executor, "second.txt")
+				info, err := os.Stat(tracked)
+				if err != nil {
+					t.Fatal(err)
+				}
+				stale := info.ModTime().Add(-time.Hour)
+				if err := os.Chtimes(tracked, stale, stale); err != nil {
+					t.Fatal(err)
+				}
+				indexBefore = readIndex()
 			case "no origin":
 				rawGit(t, root, "remote", "remove", "origin")
 			case "ambiguous reads":
@@ -90,6 +117,48 @@ func TestBoundMergedOpenCodeCleanupRequiresRecordedRepository(t *testing.T) {
 			}
 			if tc.name == "unverifiable HTTPS headers" && (strings.Contains(err.Error(), "private fixture") || strings.Contains(err.Error(), "github.example.invalid")) {
 				t.Fatal("HTTPS preflight disclosed header data or the raw endpoint")
+			}
+			if readIndex != nil {
+				if !bytes.Equal(indexBefore, readIndex()) {
+					t.Fatal("destination refusal rewrote the executor index")
+				}
+				// A plain status must find the tree clean yet rewrite the index.
+				if out := rawGit(t, executor, "status", "--porcelain=v1", "--untracked-files=all"); out != "" {
+					t.Fatalf("fixture is not clean: %q", out)
+				}
+				if bytes.Equal(indexBefore, readIndex()) {
+					t.Fatal("plain git status did not reproduce the optional index write")
+				}
+				t.Log("destination refusal kept index bytes; plain git status was clean but refreshed them")
+			}
+		})
+	}
+}
+
+func TestBoundMergedOpenCodeCleanupRefusesDirtyExecutor(t *testing.T) {
+	for _, change := range []string{"modified", "staged", "untracked"} {
+		t.Run(change, func(t *testing.T) {
+			root, _, _, host, env := openCodeCheckoutFixture(t, state.PhaseMerged)
+			executor := worktreeAbs(root, 1)
+			file := "second.txt"
+			if change == "untracked" {
+				file = "untracked.txt"
+			}
+			if err := os.WriteFile(filepath.Join(executor, file), []byte("uncommitted work\n"), 0o644); err != nil {
+				t.Fatal(err)
+			}
+			if change == "staged" {
+				rawGit(t, executor, "add", "--", file)
+			}
+			st := loadRun(t, root)
+			before := stateBytes(t, root)
+			req := fmt.Appendf(nil, `{"schema_version":1,"issue_number":1,"statement":"cleanup-issue","run_id":%q}`, st.Run.ID)
+			res, err := Cleanup(t.Context(), env, req)
+			if res != nil || !errors.Is(err, gitops.ErrNotClean) || !strings.Contains(err.Error(), file) {
+				t.Fatalf("wanted refusal naming %s; result=%+v err=%v", file, res, err)
+			}
+			if len(host.deleted) != 0 || !bytes.Equal(before, stateBytes(t, root)) {
+				t.Fatal("dirty executor refusal evicted a cache or changed run state")
 			}
 		})
 	}

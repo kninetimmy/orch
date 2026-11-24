@@ -789,7 +789,7 @@ unmanaged scope. See the [OpenCode binding and qualification guide](adapters/ope
 
 ## Unreleased
 
-### Direct OpenCode cleanup (#547, #549)
+### Direct OpenCode cleanup (#547, #549, #551)
 
 **Before (through v0.17.0):** cleanup invoked inside Code Mode could block
 itself even when no other work was active. Recovery meant waiting for the job
@@ -808,6 +808,24 @@ For an activity hold, keep the checkouts unused, let the job finish, verify the
 run and issue, then retry the confirmed `orch_cleanup` directly from primary.
 For a repository or ownership refusal, preserve the work and inspect the
 evidence instead of switching tools.
+
+**Before #551:** inspecting a clean executor could still refresh its Git
+index before a destination refusal. **After:** the clean check reads status
+without that optional write. Modified, staged and untracked files still
+block removal.
+
+Bound merged cleanup checks the recorded PR host, owner and repository name
+over verified HTTPS or SSH and requires the exact approved branch tip if
+the ref is present. Before URL pinning, Git used the remote name and its
+transport settings; now the bound lookup and deletion use the verified URL
+instead. See the [named-remote settings before and after](docs/worktree-cleanup.md#named-remote-transport).
+These checks do not verify a stable repository ID. A replacement at the same
+URL with the same branch and commit can still match. Finish or pause pending
+cleanup before a repository migration, mirror cutover, or restore that
+replaces the repository. Do not resume an old run against the replacement.
+No new credential setup is required; the existing transport requirements
+still apply.
+
 The [cleanup guide](docs/worktree-cleanup.md) preserves the released standalone
 recovery, which does not retain the new bound checks.
 
