@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"net/url"
 	"os"
 	"path/filepath"
 	"slices"
@@ -202,6 +203,22 @@ func TestBoundMergedOpenCodeCleanupCanResumeAfterRemoteDeletion(t *testing.T) {
 	if len(host.deleted) != 2 || loadRun(t, root).Run.Issues[0].Phase != state.PhaseCleaned {
 		t.Fatal("cleanup did not dispose both owned caches and save cleaned")
 	}
+	late := false
+	var probes int
+	for _, cmd := range host.calls {
+		if cmd.Name != "opencode2" || len(cmd.Args) != 3 {
+			continue
+		}
+		if cmd.Args[1] == "delete" {
+			late = true
+		}
+		if late && cmd.Args[2] == "/api/experimental/job?status=running" {
+			probes++
+		}
+	}
+	if probes != 2 {
+		t.Fatalf("wanted the global job probe after absent remote lookup and executor removal, got %d", probes)
+	}
 	for _, path := range []string{worktreeAbs(root, 1), reviewWorktreeAbs(root, 1)} {
 		if _, err := os.Stat(path); !os.IsNotExist(err) {
 			t.Fatalf("cleanup left checkout %s: %v", path, err)
@@ -221,6 +238,8 @@ func TestBoundCleanupHoldsActivityDuringGit(t *testing.T) {
 		{"lookup", "/api/pty", true},
 		{"push", "/api/pty", false},
 		{"push", "/api/shell", true},
+		{"lookup", "codemode", false},
+		{"push", "codemode", false},
 		{"executor removal", "/api/pty", false},
 	} {
 		t.Run(fmt.Sprintf("%s%s/unknown=%t", tc.during, tc.endpoint, tc.unknown), func(t *testing.T) {
@@ -234,16 +253,41 @@ func TestBoundCleanupHoldsActivityDuringGit(t *testing.T) {
 				t.Fatal(err)
 			}
 			before := stateBytes(t, root)
+			registrations := rawGit(t, root, "worktree", "list", "--porcelain")
 			cwd, want := review, "running shell or terminal prevents removal"
 			owner := root
+			const primaryOwner = "sesPrimary"
+			const jobs = "/api/experimental/job?status=running"
+			lateJobProbe := false
+			if tc.endpoint == "codemode" {
+				want = "running Code Mode job prevents removal: its working directories cannot be verified"
+			}
 			if tc.unknown {
 				cwd, want = filepath.Join(root, "unverifiable-cwd"), "host directory identity is unavailable"
 			}
-			if tc.during == "push" && !tc.unknown {
+			if tc.during == "push" && tc.endpoint == "/api/pty" {
 				owner = t.TempDir()
 				host.loaded[owner] = true
 			}
 			started := false
+			host.beforeAPI = func(endpoint *url.URL) {
+				if len(host.deleted) != 2 {
+					return
+				}
+				switch endpoint.Path {
+				case "/api/debug/location", "/api/shell", "/api/pty":
+					if key := endpoint.Query().Get("location[directory]"); key != "" && (key == executor || key == review) {
+						t.Fatalf("scoped read of released target: %s", endpoint)
+					}
+				case "/api/experimental/job":
+					if endpoint.RequestURI() != jobs {
+						t.Fatalf("unexpected late job request: %s", endpoint)
+					}
+					lateJobProbe = lateJobProbe || started
+				default:
+					t.Fatalf("unexpected potentially loading request after both evictions: %s", endpoint)
+				}
+			}
 			host.beforeGit = func(cmd execx.Cmd) {
 				if len(host.deleted) != 2 || started {
 					return
@@ -257,15 +301,24 @@ func TestBoundCleanupHoldsActivityDuringGit(t *testing.T) {
 					started = slices.Contains(cmd.Args, "remove") && cmd.Args[len(cmd.Args)-1] == executor
 				}
 				if started {
-					// The owner stays outside the targets. The activity does not
-					// load the review cache or appear in session/job inventories.
-					host.ordinaryCwds = map[string]map[string]string{tc.endpoint: {owner: cwd}}
+					if tc.endpoint == "codemode" {
+						host.sessions = map[string]string{primaryOwner: root}
+						host.jobInventory = `{"data":[{"id":"jobLate","kind":"codemode","status":"running","sessionID":"` + primaryOwner + `"}]}`
+					} else {
+						// The owner stays outside the targets. Ordinary activity
+						// does not load the review or appear in job inventories.
+						host.ordinaryCwds = map[string]map[string]string{tc.endpoint: {owner: cwd}}
+					}
 				}
 			}
 			req := fmt.Appendf(nil, `{"schema_version":1,"issue_number":1,"statement":"cleanup-issue","run_id":%q}`, st.Run.ID)
 			res, err := Cleanup(t.Context(), env, req)
 			if !started || res != nil || err == nil || !strings.Contains(err.Error(), want) {
-				t.Fatalf("wanted %q after Git started, got started=%t result=%+v error=%v", want, started, res, err)
+				t.Fatalf("wanted %q after Git started, got started=%t result=%+v error=%v evictions=%d persisted phase=%s",
+					want, started, res, err, len(host.deleted), loadRun(t, root).Run.Issues[0].Phase)
+			}
+			if tc.endpoint == "codemode" && !lateJobProbe {
+				t.Fatal("late hold did not use the global job inventory")
 			}
 			if content, err := os.ReadFile(scratch); err != nil || string(content) != "review notes" {
 				t.Fatalf("late hold lost review scratch: %q %v", content, err)
@@ -277,6 +330,8 @@ func TestBoundCleanupHoldsActivityDuringGit(t *testing.T) {
 				}
 			} else if strings.TrimSpace(rawGit(t, executor, "rev-parse", "HEAD")) != approved {
 				t.Fatal("late hold changed executor checkout")
+			} else if rawGit(t, root, "worktree", "list", "--porcelain") != registrations {
+				t.Fatal("late hold changed worktree registrations")
 			}
 			remote := strings.TrimSpace(rawGit(t, root, "ls-remote", "--heads", "origin", ref))
 			if tc.during == "lookup" && remote != approved+"	"+ref || tc.during != "lookup" && remote != "" {

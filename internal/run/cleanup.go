@@ -109,12 +109,12 @@ func Cleanup(ctx context.Context, env Env, reqJSON []byte) (*CleanupResult, erro
 	if bound != nil {
 		remote = bound.remote
 	}
-	// A primary-owned shell or PTY can start in a target cwd during Git I/O
-	// without reloading that target. Recheck this activity and then the original
-	// ownership, not a replacement checkout.
+	// A primary-owned shell, PTY or Code Mode job can start during Git I/O
+	// without reloading a target. Recheck observable activity and then the
+	// original ownership, not a replacement checkout.
 	beforeRemoval := func(removed string) error {
 		if check != nil {
-			if err := check(ctx, removed); err != nil {
+			if err := check(ctx, removed, remote != nil); err != nil {
 				return err
 			}
 		}

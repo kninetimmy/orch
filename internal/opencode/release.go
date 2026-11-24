@@ -309,9 +309,8 @@ func ReleaseLocations(ctx context.Context, runner execx.Runner, primary string, 
 			}
 		}
 	}
-	// Session/terminal and target-scoped reads can reload a checkout. This
-	// handoff still performs only exact evictions and non-loading inventories
-	// from here. Later cleanup checks may scope ordinary reads to surviving keys.
+	// Per-session/terminal and target-scoped reads can reload a checkout. After
+	// eviction, use only global observations and ordinary reads of surviving keys.
 	for _, key := range loaded {
 		if key != "" {
 			query := url.Values{"location[directory]": {key}}.Encode()
@@ -340,12 +339,12 @@ func ReleaseLocations(ctx context.Context, runner execx.Runner, primary string, 
 		return nil, err
 	}
 	deadline, _ := ctx.Deadline()
-	return func(ctx context.Context, removed string) error {
+	return func(ctx context.Context, removed string, checkJobs bool) error {
 		ctx, cancel := context.WithDeadline(ctx, deadline)
 		defer cancel()
 		return recheckReleasedLocations(ctx, func(method, endpoint string, out any) error {
 			return request(ctx, method, endpoint, out)
-		}, targetInfos, removed, releasedInventory)
+		}, targetInfos, removed, releasedInventory, checkJobs)
 	}, nil
 }
 
@@ -445,6 +444,8 @@ func releaseBelongs(targets []string, directory string) (bool, error) {
 	return false, nil
 }
 
+const runningJobsEndpoint = "/api/experimental/job?status=running"
+
 func releaseActiveJobs(call releaseCall, targets []string) error {
 	sessionInTarget := func(id string) (bool, error) {
 		if !strings.HasPrefix(id, "ses") {
@@ -463,16 +464,6 @@ func releaseActiveJobs(call releaseCall, targets []string) error {
 			return false, fmt.Errorf("OpenCode checkout release: activity session identity mismatch")
 		}
 		return releaseBelongs(targets, response.Data.Location.Directory)
-	}
-	checkSession := func(id string) error {
-		belongs, err := sessionInTarget(id)
-		if err != nil {
-			return err
-		}
-		if belongs {
-			return fmt.Errorf("OpenCode checkout release: active session or unfinished background job prevents removal")
-		}
-		return nil
 	}
 	var active struct {
 		Data map[string]struct {
@@ -494,10 +485,27 @@ func releaseActiveJobs(call releaseCall, targets []string) error {
 	}
 	slices.Sort(ids)
 	for _, id := range ids {
-		if err := checkSession(id); err != nil {
+		if err := checkReleaseSession(sessionInTarget, id); err != nil {
 			return err
 		}
 	}
+	return releaseRunningJobs(call, sessionInTarget)
+}
+
+func checkReleaseSession(sessionInTarget func(string) (bool, error), id string) error {
+	belongs, err := sessionInTarget(id)
+	if err != nil {
+		return err
+	}
+	if belongs {
+		return fmt.Errorf("OpenCode checkout release: active session or unfinished background job prevents removal")
+	}
+	return nil
+}
+
+// A nil attribution function means post-eviction: job data is global, but
+// resolving a session can load its checkout. Do not issue those reads then.
+func releaseRunningJobs(call releaseCall, sessionInTarget func(string) (bool, error)) error {
 	var jobs struct {
 		Data []struct {
 			ID             string `json:"id"`
@@ -507,7 +515,7 @@ func releaseActiveJobs(call releaseCall, targets []string) error {
 			ChildSessionID string `json:"childSessionID"`
 		} `json:"data"`
 	}
-	if err := call("get", "/api/experimental/job?status=running", &jobs); err != nil {
+	if err := call("get", runningJobsEndpoint, &jobs); err != nil {
 		return err
 	}
 	if jobs.Data == nil || len(jobs.Data) > 1000 {
@@ -519,27 +527,44 @@ func releaseActiveJobs(call releaseCall, targets []string) error {
 		}
 		switch job.Kind {
 		case "codemode":
-			belongs, err := sessionInTarget(job.SessionID)
-			if err != nil {
-				return err
+			if sessionInTarget == nil && !strings.HasPrefix(job.SessionID, "ses") {
+				return fmt.Errorf("OpenCode checkout release: malformed activity session identifier")
 			}
 			// The inventory has no nested tool destinations. Verifying an
 			// outside owner does not establish where the job's tools work.
 			reason := "its working directories cannot be verified"
-			if belongs {
-				reason = "its owning session is in a target checkout"
+			if sessionInTarget != nil {
+				belongs, err := sessionInTarget(job.SessionID)
+				if err != nil {
+					return err
+				}
+				if belongs {
+					reason = "its owning session is in a target checkout"
+				}
+			}
+			if sessionInTarget == nil {
+				return fmt.Errorf("OpenCode checkout release: running Code Mode job prevents removal: %s; "+
+					"let the job finish, verify the active run and issue, then retry the confirmed cleanup outside Code Mode from the verified primary checkout", reason)
 			}
 			return fmt.Errorf("OpenCode checkout release: running Code Mode job prevents removal: %s; "+
 				"let the job finish, then rerun the normal command (for cleanup, `orch run cleanup`) "+
 				"from a standalone foreground terminal at the verified primary checkout when OpenCode is idle", reason)
 		case "shell", "image", "subagent":
+			if sessionInTarget == nil {
+				// This late check adds the global Code Mode hold, not a second
+				// owner attribution pass for other known job kinds.
+				if !strings.HasPrefix(job.SessionID, "ses") || job.Kind == "subagent" && !strings.HasPrefix(job.ChildSessionID, "ses") {
+					return fmt.Errorf("OpenCode checkout release: malformed activity session identifier")
+				}
+				continue
+			}
 			// The owner may be in primary while the actual subagent runs in target.
 			// Both count: owner-side completion/report delivery can also re-enter.
-			if err := checkSession(job.SessionID); err != nil {
+			if err := checkReleaseSession(sessionInTarget, job.SessionID); err != nil {
 				return err
 			}
 			if job.Kind == "subagent" {
-				if err := checkSession(job.ChildSessionID); err != nil {
+				if err := checkReleaseSession(sessionInTarget, job.ChildSessionID); err != nil {
 					return err
 				}
 			}

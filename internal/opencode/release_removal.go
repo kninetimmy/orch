@@ -12,10 +12,11 @@ import (
 // ReleaseCheck rechecks observable activity before Git mutation after release.
 // If removed is nonempty, the caller has already verified deletion of that
 // checkout. Only remaining targets need delete access and cwd attribution.
-type ReleaseCheck func(ctx context.Context, removed string) error
+// Bound merged cleanup also requests the non-loading global job probe.
+type ReleaseCheck func(ctx context.Context, removed string, checkJobs bool) error
 
 func recheckReleasedLocations(ctx context.Context, call releaseCall, targets []releaseLocation, removed string,
-	inventory func(releaseCall) ([]releaseLocation, error),
+	inventory func(releaseCall) ([]releaseLocation, error), checkJobs bool,
 ) error {
 	remaining := targets
 	if removed != "" {
@@ -55,6 +56,11 @@ func recheckReleasedLocations(ctx context.Context, call releaseCall, targets []r
 	if err := releaseOrdinaryProcesses(call, cwds, before); err != nil {
 		return err
 	}
+	if checkJobs {
+		if err := releaseRunningJobs(call, nil); err != nil {
+			return err
+		}
+	}
 	after, err := inventory(call)
 	if err != nil {
 		return err
@@ -66,6 +72,9 @@ func recheckReleasedLocations(ctx context.Context, call releaseCall, targets []r
 	if len(before) != len(after) || slices.ContainsFunc(after, func(location releaseLocation) bool {
 		return !os.SameFile(seen[location.Directory], location.info)
 	}) {
+		if checkJobs {
+			return fmt.Errorf("OpenCode checkout release: location inventory changed during the final activity check; refusing Git removal")
+		}
 		return fmt.Errorf("OpenCode checkout release: location inventory changed during the final shell/PTY check; refusing Git removal")
 	}
 	return checkReleaseDeleteAccess(ctx, remaining)
