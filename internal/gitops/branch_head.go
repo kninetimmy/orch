@@ -5,8 +5,10 @@ import (
 	"crypto/rand"
 	"errors"
 	"fmt"
+	"net/url"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strconv"
 	"strings"
 
@@ -44,6 +46,7 @@ type RemoteBranchBinding struct {
 	remote, endpoint, transport string
 	ref, head                   string
 	sshCommand                  string
+	httpsConfig                 string
 }
 
 // BindRemoteBranchAtHead requires a single effective read/push destination
@@ -60,6 +63,9 @@ func (g *Git) BindRemoteBranchAtHead(ctx context.Context, remote, branch, head s
 		ref: "refs/heads/" + branch, head: head}
 	switch {
 	case strings.HasPrefix(endpoint, "https://"):
+		if err := binding.bindHTTPS(ctx); err != nil {
+			return nil, err
+		}
 	case strings.HasPrefix(endpoint, "ssh://"), strings.HasPrefix(endpoint, "git@"):
 		binding.sshCommand, err = boundSSHCommand()
 		if err != nil {
@@ -140,6 +146,166 @@ func (b *RemoteBranchBinding) Delete(ctx context.Context, c Confirmation) error 
 
 var errBoundHTTPSVerify = errors.New("bound HTTPS cleanup requires TLS verification; unset GIT_SSL_NO_VERIFY and re-confirm cleanup")
 
+var errBoundHTTPSConfig = errors.New("bound HTTPS cleanup could not verify Git extra headers; preserve the work and inspect http.extraHeader settings")
+
+func (b *RemoteBranchBinding) bindHTTPS(ctx context.Context) error {
+	// Only the config command honors GIT_CONFIG as an alternate file. It
+	// would not describe the configuration used by the transport.
+	if _, overridden := os.LookupEnv("GIT_CONFIG"); overridden {
+		return errors.New("bound HTTPS cleanup cannot verify Git extra headers with GIT_CONFIG set; unset it and re-confirm cleanup")
+	}
+	parameters := os.Getenv("GIT_CONFIG_PARAMETERS")
+	res, err := b.g.runBranchTransport(ctx, []string{"GIT_CONFIG_PARAMETERS=" + parameters},
+		"config", "--includes", "--null", "--get-regexp", "^http\\.(.*\\.)?extraheader$")
+	if err != nil || res.Stderr != "" || (res.ExitCode != 0 && (res.ExitCode != 1 || res.Stdout != "")) {
+		return errBoundHTTPSConfig
+	}
+	var headers []string
+	if res.ExitCode == 0 {
+		headers, err = b.httpsExtraHeaders(ctx, res.Stdout)
+		if err != nil {
+			return err
+		}
+	}
+	// An exact URL match at the end of command config wins even over
+	// URL-scoped file and environment entries. Reset the whole list, then
+	// replay only the checked snapshot. File edits cannot add a header to
+	// a later transfer; we do not freeze the rest of Git's configuration.
+	key := "http." + strings.TrimRight(b.endpoint, "/") + "/."
+	quote := func(s string) string { return "'" + strings.ReplaceAll(s, "'", "'\\''") + "'" }
+	if parameters != "" {
+		parameters += " "
+	}
+	parameters += quote(key+"followRedirects") + "='false' " + quote(key+"sslVerify") + "='true'"
+	for _, value := range append([]string{""}, headers...) {
+		parameters += " " + quote(key+"extraHeader") + "=" + quote(value)
+	}
+	b.httpsConfig = "GIT_CONFIG_PARAMETERS=" + parameters
+	return nil
+}
+
+func (b *RemoteBranchBinding) httpsExtraHeaders(ctx context.Context, records string) ([]string, error) {
+	endpoint, user, ok := headerMatchURL(b.endpoint)
+	records, terminated := strings.CutSuffix(records, "\x00")
+	if !ok || !terminated {
+		return nil, errBoundHTTPSConfig
+	}
+	var headers []string
+	var best string
+	for record := range strings.SplitSeq(records, "\x00") {
+		name, value, valued := strings.Cut(record, "\n")
+		if !valued {
+			return nil, errBoundHTTPSConfig
+		}
+		if name == "http.extraheader" {
+			if best != "" {
+				continue
+			}
+		} else {
+			scope, scoped := strings.CutPrefix(name, "http.")
+			scope, extra := strings.CutSuffix(scope, ".extraheader")
+			candidate, scopeUser, valid := headerMatchURL(scope)
+			if !scoped || !extra || !valid {
+				return nil, errBoundHTTPSConfig
+			}
+			if scopeUser != "" && scopeUser != user {
+				continue
+			}
+			if candidate != best {
+				wins, err := b.g.httpsHeaderScopeWins(ctx, endpoint, best, candidate)
+				if err != nil {
+					return nil, err
+				}
+				if !wins {
+					continue
+				}
+				best = candidate
+			}
+		}
+		if value == "" {
+			headers = nil // An explicit empty value is Git's list reset.
+		} else {
+			headers = append(headers, value)
+		}
+	}
+	for _, value := range headers {
+		if !boundHTTPSAuthHeader(value) {
+			return nil, errors.New("bound HTTPS cleanup allows only well-formed Authorization and Proxy-Authorization extra headers; preserve the work and inspect Git config")
+		}
+	}
+	return headers, nil
+}
+
+// The HTTP callback sees matching entries in order, including entries before
+// a more specific match. A normal --get-urlmatch returns only the last value.
+// Ask Git to compare the candidate to the best scope so far, with marker
+// values in an isolated stdin config. No auth values are needed for matching.
+func (g *Git) httpsHeaderScopeWins(ctx context.Context, endpoint, best, candidate string) (bool, error) {
+	var config strings.Builder
+	escape := strings.NewReplacer("\\", "\\\\", "\"", "\\\"")
+	for i, scope := range []string{best, candidate} {
+		if scope != "" {
+			fmt.Fprintf(&config, "[http \"%s\"]\n orch-match = %d\n", escape.Replace(scope), i)
+		}
+	}
+	res, err := g.r.Run(ctx, execx.Cmd{Name: "git", Dir: g.root, Env: branchTransportEnv(), Stdin: strings.NewReader(config.String()),
+		Args: []string{"config", "--file", "-", "--no-includes", "--null", "--get-urlmatch", "http.orch-match", endpoint}})
+	if err == nil && res.Stderr == "" {
+		switch {
+		case res.ExitCode == 0 && res.Stdout == "1\x00":
+			return true, nil
+		case res.ExitCode == 0 && res.Stdout == "0\x00" && best != "", res.ExitCode == 1 && res.Stdout == "" && best == "":
+			return false, nil
+		}
+	}
+	return false, errBoundHTTPSConfig
+}
+
+var urlUserEscapes = regexp.MustCompile("%[0-9A-Fa-f]{2}")
+
+// Keep credentials off the matcher argv and out of its input. Git ignores
+// passwords and compares usernames case-sensitively after normalizing URL
+// escapes. Project an equivalent username to a fixed, non-secret marker.
+func headerMatchURL(raw string) (masked, user string, ok bool) {
+	u, err := url.Parse(raw)
+	scheme, rest, hasScheme := strings.Cut(raw, "://")
+	if err != nil || !hasScheme || u.Host == "" {
+		return "", "", false
+	}
+	if u.User == nil {
+		return raw, "", true
+	}
+	authority := rest
+	if stop := strings.IndexAny(rest, "/?#"); stop >= 0 {
+		authority = rest[:stop]
+	}
+	userinfo, _, _ := strings.Cut(authority, "@")
+	if strings.Count(authority, "@") != 1 {
+		return "", "", false
+	}
+	username, _, _ := strings.Cut(userinfo, ":")
+	user = urlUserEscapes.ReplaceAllStringFunc(username, func(escape string) string {
+		raw, _ := url.PathUnescape(escape)
+		if strings.Contains("ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-._~", raw) {
+			return raw
+		}
+		return strings.ToUpper(escape)
+	})
+	return scheme + "://orch-match@" + rest[len(userinfo)+1:], user + "@", true
+}
+
+func boundHTTPSAuthHeader(value string) bool {
+	name, field, ok := strings.Cut(value, ":")
+	if !ok || (!strings.EqualFold(name, "Authorization") && !strings.EqualFold(name, "Proxy-Authorization")) ||
+		strings.ContainsFunc(field, func(r rune) bool { return r != '\t' && (r < ' ' || r > '~') }) {
+		return false
+	}
+	scheme, credentials, ok := strings.Cut(strings.Trim(field, " \t"), " ")
+	return ok && scheme != "" && strings.Trim(credentials, " \t") != "" && !strings.ContainsFunc(scheme, func(r rune) bool {
+		return !strings.ContainsRune("ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789!#$%&'*+-.^_`|~", r)
+	})
+}
+
 func (b *RemoteBranchBinding) run(ctx context.Context, args ...string) (execx.Result, error) {
 	// Git rewrites even a literal URL passed to push. A fresh opaque token
 	// maps directly to the already-expanded endpoint in Git's single rewrite
@@ -169,25 +335,20 @@ func (b *RemoteBranchBinding) run(ctx context.Context, args ...string) (execx.Re
 		if _, insecure := os.LookupEnv("GIT_SSL_NO_VERIFY"); insecure {
 			return execx.Result{}, errBoundHTTPSVerify
 		}
-		// Override even URL-specific config, without putting the URL on argv.
-		// Git HTTP normalizes the URL to a trailing slash.
-		key := strings.ReplaceAll("http."+b.endpoint+"/.", "'", "'\\''")
-		parameters := os.Getenv("GIT_CONFIG_PARAMETERS")
-		if parameters != "" {
-			parameters += " " // Git rejects leading whitespace before the first parameter.
-		}
-		config = append(config, "GIT_CONFIG_PARAMETERS="+parameters+
-			"'"+key+"followRedirects'='false' '"+key+"sslVerify'='true'")
+		config = append(config, b.httpsConfig)
 	}
 	return b.g.runBranchTransport(ctx, config, args...)
 }
 
 func (g *Git) runBranchTransport(ctx context.Context, config []string, args ...string) (execx.Result, error) {
+	return g.r.Run(ctx, execx.Cmd{Name: "git", Args: args, Dir: g.root, Env: append(branchTransportEnv(), config...)})
+}
+
+func branchTransportEnv() []string {
 	// A trace can contain a credential-bearing URL even when the argv here
 	// does not, for example in Git's own transport helper invocation.
-	env := append([]string{"GIT_TRACE=0", "GIT_TRACE_CURL=0", "GIT_TRACE_PACKET=0",
+	return append([]string{"GIT_TRACE=0", "GIT_TRACE_CURL=0", "GIT_TRACE_PACKET=0", "GIT_TRACE_PERFORMANCE=0",
 		"GIT_TRACE2=0", "GIT_TRACE2_EVENT=0", "GIT_TRACE2_PERF=0"}, gitEnv...)
-	return g.r.Run(ctx, execx.Cmd{Name: "git", Args: args, Dir: g.root, Env: append(env, config...)})
 }
 
 // RequireBranchIdle permits attachment only in allowedWorktree, if provided.

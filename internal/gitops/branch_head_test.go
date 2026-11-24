@@ -195,10 +195,11 @@ func TestBoundSSHTransportPinsOpenSSHPolicy(t *testing.T) {
 }
 
 func TestBoundRemoteDoesNotProjectTransportSecrets(t *testing.T) {
+	t.Setenv("GIT_TRACE_PERFORMANCE", "1")
 	const url = "https://fixture:credential-token@example.invalid/owner/repo.git"
 	const head = "0000000000000000000000000000000000000001"
 	const ref = "refs/heads/orch/issue-1"
-	for _, failure := range []string{"remote", "repository", "ls-remote", "push"} {
+	for _, failure := range []string{"remote", "repository", "config", "ls-remote", "push"} {
 		t.Run(failure, func(t *testing.T) {
 			g := &Git{root: t.TempDir(), r: branchTransportRunner(func(_ context.Context, cmd execx.Cmd) (execx.Result, error) {
 				for _, arg := range cmd.Args {
@@ -206,7 +207,8 @@ func TestBoundRemoteDoesNotProjectTransportSecrets(t *testing.T) {
 						t.Fatal("transport put credentials on the command line")
 					}
 				}
-				if !slices.Contains(cmd.Env, "GIT_TRACE=0") || !slices.Contains(cmd.Env, "GIT_TRACE2_EVENT=0") {
+				if !slices.Contains(cmd.Env, "GIT_TRACE=0") || !slices.Contains(cmd.Env, "GIT_TRACE2_EVENT=0") ||
+					!slices.Contains(cmd.Env, "GIT_TRACE_PERFORMANCE=0") {
 					t.Fatal("inherited Git tracing could log the URL")
 				}
 				if cmd.Args[0] == failure {
@@ -216,6 +218,8 @@ func TestBoundRemoteDoesNotProjectTransportSecrets(t *testing.T) {
 				switch cmd.Args[0] {
 				case "remote":
 					return execx.Result{Stdout: url + "\n"}, nil
+				case "config":
+					return execx.Result{ExitCode: 1}, nil // No configured extra headers.
 				case "ls-remote":
 					if failure == "repository" {
 						t.Fatal("transport used an unverified destination")

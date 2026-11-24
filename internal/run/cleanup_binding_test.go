@@ -22,6 +22,7 @@ func TestBoundMergedOpenCodeCleanupRequiresRecordedRepository(t *testing.T) {
 		{"ambiguous reads", "read and deletion destinations could not be matched"},
 		{"ambiguous pushes", "read and deletion destinations could not be matched"},
 		{"unverifiable SSH authentication", "could not verify the approved remote branch with strict OpenSSH"},
+		{"unverifiable HTTPS headers", "only well-formed Authorization and Proxy-Authorization"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			root, _, approved, host, env := openCodeCheckoutFixture(t, state.PhaseMerged)
@@ -48,6 +49,13 @@ func TestBoundMergedOpenCodeCleanupRequiresRecordedRepository(t *testing.T) {
 				rawGit(t, root, "remote", "set-url", "--push", "--add", "origin", wrong)
 			case "unverifiable SSH authentication":
 				host.sshRefusal = true
+			case "unverifiable HTTPS headers":
+				// SSH/file are the only allowed protocols in this fixture. The
+				// matching HTTPS URL must be refused without launching a transfer.
+				rawGit(t, root, "remote", "set-url", "origin", "https://github.example.invalid/fixture/orch-smoke.git")
+				t.Setenv("GIT_CONFIG_COUNT", "1")
+				t.Setenv("GIT_CONFIG_KEY_0", "http.extraHeader")
+				t.Setenv("GIT_CONFIG_VALUE_0", "X-Orch-Test: private fixture header")
 			}
 			regs, before := rawGit(t, root, "worktree", "list", "--porcelain"), stateBytes(t, root)
 			req := fmt.Appendf(nil, `{"schema_version":1,"issue_number":1,"statement":"cleanup-issue","run_id":%q}`, st.Run.ID)
@@ -79,6 +87,9 @@ func TestBoundMergedOpenCodeCleanupRequiresRecordedRepository(t *testing.T) {
 				}
 			} else if len(transfers) != 0 {
 				t.Fatal("unverifiable repository reached a Git transfer")
+			}
+			if tc.name == "unverifiable HTTPS headers" && (strings.Contains(err.Error(), "private fixture") || strings.Contains(err.Error(), "github.example.invalid")) {
+				t.Fatal("HTTPS preflight disclosed header data or the raw endpoint")
 			}
 		})
 	}
