@@ -172,8 +172,12 @@ func (b *RemoteBranchBinding) run(ctx context.Context, args ...string) (execx.Re
 		// Override even URL-specific config, without putting the URL on argv.
 		// Git HTTP normalizes the URL to a trailing slash.
 		key := strings.ReplaceAll("http."+b.endpoint+"/.", "'", "'\\''")
-		config = append(config, "GIT_CONFIG_PARAMETERS="+os.Getenv("GIT_CONFIG_PARAMETERS")+
-			" '"+key+"followRedirects'='false' '"+key+"sslVerify'='true'")
+		parameters := os.Getenv("GIT_CONFIG_PARAMETERS")
+		if parameters != "" {
+			parameters += " " // Git rejects leading whitespace before the first parameter.
+		}
+		config = append(config, "GIT_CONFIG_PARAMETERS="+parameters+
+			"'"+key+"followRedirects'='false' '"+key+"sslVerify'='true'")
 	}
 	return b.g.runBranchTransport(ctx, config, args...)
 }

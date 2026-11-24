@@ -52,7 +52,8 @@ func TestBoundHTTPSRemoteDoesNotFollowRedirects(t *testing.T) {
 	g, root := newRepo(t)
 	endpoint := server.URL + "/owner/repo.git"
 	rawGit(t, root, "remote", "add", "origin", endpoint)
-	t.Setenv("GIT_CONFIG_PARAMETERS", "'http."+endpoint+"/.followRedirects'='true' 'http."+endpoint+"/.sslVerify'='false'")
+	overrides := "'http." + endpoint + "/.followRedirects'='true' 'http." + endpoint + "/.sslVerify'='false'"
+	t.Setenv("GIT_CONFIG_PARAMETERS", overrides)
 	bind := func() error {
 		_, err := g.BindRemoteBranchAtHead(t.Context(), "origin", "issue", "0000000000000000000000000000000000000001",
 			func(value string) bool { return value == endpoint })
@@ -67,6 +68,9 @@ func TestBoundHTTPSRemoteDoesNotFollowRedirects(t *testing.T) {
 	if err := bind(); err == nil || strings.Contains(err.Error(), endpoint) {
 		t.Fatalf("bound HTTPS trusted an unrecognized certificate or leaked the URL: %v", err)
 	}
+	if err := os.Unsetenv("GIT_CONFIG_PARAMETERS"); err != nil {
+		t.Fatal(err)
+	}
 	ca := filepath.Join(t.TempDir(), "ca.pem")
 	if err := os.WriteFile(ca, pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: server.Certificate().Raw}), 0o600); err != nil {
 		t.Fatal(err)
@@ -74,7 +78,11 @@ func TestBoundHTTPSRemoteDoesNotFollowRedirects(t *testing.T) {
 	t.Setenv("GIT_SSL_CAINFO", ca)
 	rawGit(t, root, "config", "http.schannelUseSSLCAInfo", "true")
 	if err := bind(); err != nil {
-		t.Fatalf("matching HTTPS endpoint was not usable: %v", err)
+		t.Fatalf("matching HTTPS endpoint was not usable without inherited Git parameters: %v", err)
+	}
+	t.Setenv("GIT_CONFIG_PARAMETERS", overrides)
+	if err := bind(); err != nil {
+		t.Fatalf("matching HTTPS endpoint was not usable with inherited Git parameters: %v", err)
 	}
 	var proxyRequests atomic.Int32
 	proxy := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
