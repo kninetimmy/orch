@@ -33,7 +33,7 @@ type releaseParameter struct {
 
 // ReleaseLocation retains the single-checkout handoff for review replacement.
 func ReleaseLocation(ctx context.Context, runner execx.Runner, primary, target string) error {
-	_, err := ReleaseLocations(ctx, runner, primary, nil, target)
+	_, err := ReleaseLocations(ctx, runner, primary, nil, false, target)
 	return err
 }
 
@@ -47,9 +47,11 @@ func ReleaseLocation(ctx context.Context, runner execx.Runner, primary, target s
 // session/terminal probes. Now probes that could load a target precede eviction.
 // Bound cleanup supplies verify to recheck engine ownership before disposal.
 // Cleanup can use the returned check at later Git boundaries, under the same
-// deadline; review replacement needs only this release.
-func ReleaseLocations(ctx context.Context, runner execx.Runner, primary string, verify func(context.Context) error, targets ...string) (ReleaseCheck, error) {
-	if len(targets) == 0 {
+// deadline. checkJobs also needs a late check on a ref-only retry, where
+// there is no checkout to release or scan. Review replacement needs only this
+// release.
+func ReleaseLocations(ctx context.Context, runner execx.Runner, primary string, verify func(context.Context) error, checkJobs bool, targets ...string) (ReleaseCheck, error) {
+	if len(targets) == 0 && !checkJobs {
 		return nil, nil
 	}
 	ctx, cancel := context.WithTimeout(ctx, 2*time.Minute)
@@ -88,6 +90,16 @@ func ReleaseLocations(ctx context.Context, runner execx.Runner, primary string, 
 	}
 	call := func(method, endpoint string, out any) error {
 		return request(ctx, method, endpoint, out)
+	}
+	deadline, _ := ctx.Deadline()
+	if len(targets) == 0 {
+		return func(ctx context.Context, _ string) error {
+			ctx, cancel := context.WithDeadline(ctx, deadline)
+			defer cancel()
+			return releaseRunningJobs(func(method, endpoint string, out any) error {
+				return request(ctx, method, endpoint, out)
+			}, nil)
+		}, nil
 	}
 	targetInfos := make([]releaseLocation, 0, len(targets))
 	for _, target := range targets {
@@ -338,8 +350,7 @@ func ReleaseLocations(ctx context.Context, runner execx.Runner, primary string, 
 	if err := checkReleaseDeleteAccess(ctx, targetInfos); err != nil {
 		return nil, err
 	}
-	deadline, _ := ctx.Deadline()
-	return func(ctx context.Context, removed string, checkJobs bool) error {
+	return func(ctx context.Context, removed string) error {
 		ctx, cancel := context.WithDeadline(ctx, deadline)
 		defer cancel()
 		return recheckReleasedLocations(ctx, func(method, endpoint string, out any) error {

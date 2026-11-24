@@ -13,7 +13,7 @@ import (
 // If removed is nonempty, the caller has already verified deletion of that
 // checkout. Only remaining targets need delete access and cwd attribution.
 // Bound merged cleanup also requests the non-loading global job probe.
-type ReleaseCheck func(ctx context.Context, removed string, checkJobs bool) error
+type ReleaseCheck func(ctx context.Context, removed string) error
 
 func recheckReleasedLocations(ctx context.Context, call releaseCall, targets []releaseLocation, removed string,
 	inventory func(releaseCall) ([]releaseLocation, error), checkJobs bool,
@@ -41,6 +41,9 @@ func recheckReleasedLocations(ctx context.Context, call releaseCall, targets []r
 		}
 	}
 	if len(remaining) == 0 {
+		if checkJobs {
+			return releaseRunningJobs(call, nil)
+		}
 		return nil
 	}
 	cwds := make([]string, 0, len(remaining))

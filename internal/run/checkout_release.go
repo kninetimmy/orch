@@ -92,7 +92,7 @@ func (c *verbCtx) releaseCheckouts(ctx context.Context, git *gitops.Git, bound *
 	// Before #525 a later target's host preflight could reopen an earlier one.
 	// Batch every loading probe before either eviction; final host inventory and
 	// Windows delete-access observations must pass for both before Git mutation.
-	check, err := opencode.ReleaseLocations(ctx, c.env.Runner, c.env.RepoRoot, verify, targets...)
+	check, err := opencode.ReleaseLocations(ctx, c.env.Runner, c.env.RepoRoot, verify, bound != nil && bound.remote != nil, targets...)
 	if err != nil {
 		return nil, err
 	}

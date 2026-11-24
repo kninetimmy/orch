@@ -866,8 +866,11 @@ owner is in primary; a job record does not establish its nested working
 directories. Malformed, unknown or unavailable job evidence refuses. The late
 probe does not look up individual sessions, repeat the persistent-terminal walk
 or attribute other known job kinds to targets; their existing pre-eviction
-checks still apply. Unbound cleanup, bound abandoned cleanup and review
-replacement retain their previous activity checks.
+checks still apply. Before #549 an empty release batch did no host work.
+Bound merged cleanup now still reads global jobs at the Git boundaries on
+a ref-only retry, with no target or cache scan. Unbound cleanup, bound
+abandoned cleanup and review replacement retain their previous checks,
+including no host work for an empty batch.
 
 **Before the #547 review fix:** bound merged cleanup compared the fetch and
 push URLs, but the leased push still resolved `origin` again. Matching branch
@@ -956,7 +959,7 @@ other-platform or real-model qualification.
 | `ghops.MatchesPullRequestRepository` and repository-name validation | New offline comparison of the engine-recorded PR number and repository with the effective Git URL. It reuses the host/name rules; `Repo.Target` still requires the same consistent repository URL, slug and node ID for plan approval. No approval or run-state schema change. |
 | `releaseCheckouts`, `BindRemoteBranchAtHead`, `branchDestination`, `RemoteBranchBinding` | Bound merged preflight used to trust agreeing URLs without checking the recorded PR. It now refuses before any transfer or eviction without a unique matching destination; the existing destination-drift recheck, approved OID, lease, opaque URL pin and sanitized errors remain. HTTPS redirect refusal is only for bound transfers. The earlier named-remote receive-program behavior is recorded above. |
 | `Cleanup`, `ReleaseCheck`, `recheckReleasedLocations`, `releaseActiveJobs` / `releaseRunningJobs` | The new late global job read is requested only for bound merged cleanup. It adds no target-scoped requests, history walk, eviction, retry or deadline extension. Foreground and owner/child attribution remain before eviction. Ordinary late shell/PTY, cache identity, original checkout ownership and Windows access checks remain where they were. The direct tool, confirmation, Git operation order and final state write do not change. |
-| `pr_destination_test.go`, `branch_head_test.go`, `checkout_release_test.go`, `cleanup_binding_test.go` | Prior refusal, pinning and cleanup cases remain. Added canonical transport and redirect cases; real Git with identical refs in different repositories, missing/ambiguous origin, and a named-remote receive-program control; and primary-owned Code Mode jobs starting at lookup and push. Late tests assert that no owner or history read reloads a target. |
+| `pr_destination_test.go`, `branch_head_test.go`, `checkout_release_test.go`, `cleanup_binding_test.go` | Prior refusal, pinning and cleanup cases remain. Added canonical transport and redirect cases; real Git with identical refs in different repositories, missing/ambiguous origin, and a named-remote receive-program control; and primary-owned Code Mode jobs starting at lookup and push with both checkouts or on a ref-only retry. Late tests assert that no owner or history read reloads a target. |
 | `smoke.mjs` and `testdata/cleanup-ssh.sh` | The transport change is fixture-only. The helper accepts only the fixed synthetic destinations and runs local Git upload/receive-pack; no SSH service or real credentials. The old Code Mode hold and direct success also check both refs and registrations, with matching PR/destination evidence in the receipt. Startup retry, separate unmanaged Memhub executable, provider trap and verified owned shutdown remain. |
 | README and this guide | Released recovery remains available when the tool is unavailable, not as a workaround for identity drift. The new behavior and Windows qualification are source evidence only; no install, release or runtime baseline change. |
 

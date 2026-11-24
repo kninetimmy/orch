@@ -114,7 +114,7 @@ func Cleanup(ctx context.Context, env Env, reqJSON []byte) (*CleanupResult, erro
 	// original ownership, not a replacement checkout.
 	beforeRemoval := func(removed string) error {
 		if check != nil {
-			if err := check(ctx, removed, remote != nil); err != nil {
+			if err := check(ctx, removed); err != nil {
 				return err
 			}
 		}

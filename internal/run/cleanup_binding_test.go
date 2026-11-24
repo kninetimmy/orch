@@ -232,24 +232,31 @@ func TestBoundMergedOpenCodeCleanupCanResumeAfterRemoteDeletion(t *testing.T) {
 func TestBoundCleanupHoldsActivityDuringGit(t *testing.T) {
 	for _, tc := range []struct {
 		during, endpoint string
-		unknown          bool
+		unknown, absent  bool
 	}{
-		{"lookup", "/api/shell", false},
-		{"lookup", "/api/pty", true},
-		{"push", "/api/pty", false},
-		{"push", "/api/shell", true},
-		{"lookup", "codemode", false},
-		{"push", "codemode", false},
-		{"executor removal", "/api/pty", false},
+		{during: "lookup", endpoint: "/api/shell"},
+		{during: "lookup", endpoint: "/api/pty", unknown: true},
+		{during: "push", endpoint: "/api/pty"},
+		{during: "push", endpoint: "/api/shell", unknown: true},
+		{during: "lookup", endpoint: "codemode"},
+		{during: "push", endpoint: "codemode"},
+		{during: "lookup", endpoint: "codemode", absent: true},
+		{during: "push", endpoint: "codemode", absent: true},
+		{during: "executor removal", endpoint: "/api/pty"},
 	} {
-		t.Run(fmt.Sprintf("%s%s/unknown=%t", tc.during, tc.endpoint, tc.unknown), func(t *testing.T) {
+		t.Run(fmt.Sprintf("%s%s/unknown=%t/absent=%t", tc.during, tc.endpoint, tc.unknown, tc.absent), func(t *testing.T) {
 			root, reviewHead, approved, host, env := openCodeCheckoutFixture(t, state.PhaseMerged)
 			executor, review := worktreeAbs(root, 1), reviewWorktreeAbs(root, 1)
 			st := loadRun(t, root)
 			ref := "refs/heads/" + st.Run.Issues[0].Branch
 			rawGit(t, root, "push", "origin", ref)
 			scratch := filepath.Join(review, "keep-scratch")
-			if err := os.WriteFile(scratch, []byte("review notes"), 0o644); err != nil {
+			if tc.absent {
+				for _, checkout := range []string{executor, review} {
+					rawGit(t, root, "worktree", "remove", checkout)
+					delete(host.loaded, checkout)
+				}
+			} else if err := os.WriteFile(scratch, []byte("review notes"), 0o644); err != nil {
 				t.Fatal(err)
 			}
 			before := stateBytes(t, root)
@@ -271,7 +278,7 @@ func TestBoundCleanupHoldsActivityDuringGit(t *testing.T) {
 			}
 			started := false
 			host.beforeAPI = func(endpoint *url.URL) {
-				if len(host.deleted) != 2 {
+				if !tc.absent && len(host.deleted) != 2 {
 					return
 				}
 				switch endpoint.Path {
@@ -288,13 +295,19 @@ func TestBoundCleanupHoldsActivityDuringGit(t *testing.T) {
 					t.Fatalf("unexpected potentially loading request after both evictions: %s", endpoint)
 				}
 			}
+			lookups := 0
 			host.beforeGit = func(cmd execx.Cmd) {
-				if len(host.deleted) != 2 || started {
+				if started || !tc.absent && len(host.deleted) != 2 {
 					return
 				}
 				switch tc.during {
 				case "lookup":
-					started = slices.Contains(cmd.Args, "ls-remote")
+					if slices.Contains(cmd.Args, "ls-remote") {
+						lookups++
+						// Without evictions to distinguish the two lookups, skip
+						// the first (ref preflight) on a ref-only retry.
+						started = !tc.absent || lookups == 2
+					}
 				case "push":
 					started = slices.Contains(cmd.Args, "push")
 				case "executor removal":
@@ -320,17 +333,26 @@ func TestBoundCleanupHoldsActivityDuringGit(t *testing.T) {
 			if tc.endpoint == "codemode" && !lateJobProbe {
 				t.Fatal("late hold did not use the global job inventory")
 			}
-			if content, err := os.ReadFile(scratch); err != nil || string(content) != "review notes" {
-				t.Fatalf("late hold lost review scratch: %q %v", content, err)
-			}
-			detachedHeadAt(t, review, reviewHead)
-			if tc.during == "executor removal" {
-				if _, err := os.Stat(executor); !os.IsNotExist(err) {
-					t.Fatalf("successful earlier executor removal was not observed: %v", err)
+			if tc.absent {
+				for _, checkout := range []string{executor, review} {
+					if _, err := os.Lstat(checkout); !os.IsNotExist(err) {
+						t.Fatalf("refusal changed checkout absence: %v", err)
+					}
 				}
-			} else if strings.TrimSpace(rawGit(t, executor, "rev-parse", "HEAD")) != approved {
-				t.Fatal("late hold changed executor checkout")
-			} else if rawGit(t, root, "worktree", "list", "--porcelain") != registrations {
+			} else {
+				if content, err := os.ReadFile(scratch); err != nil || string(content) != "review notes" {
+					t.Fatalf("late hold lost review scratch: %q %v", content, err)
+				}
+				detachedHeadAt(t, review, reviewHead)
+				if tc.during == "executor removal" {
+					if _, err := os.Stat(executor); !os.IsNotExist(err) {
+						t.Fatalf("successful earlier executor removal was not observed: %v", err)
+					}
+				} else if strings.TrimSpace(rawGit(t, executor, "rev-parse", "HEAD")) != approved {
+					t.Fatal("late hold changed executor checkout")
+				}
+			}
+			if tc.during != "executor removal" && rawGit(t, root, "worktree", "list", "--porcelain") != registrations {
 				t.Fatal("late hold changed worktree registrations")
 			}
 			remote := strings.TrimSpace(rawGit(t, root, "ls-remote", "--heads", "origin", ref))
