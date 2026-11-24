@@ -2,7 +2,6 @@ package run
 
 import (
 	"bytes"
-	"context"
 	"fmt"
 	"net/url"
 	"os"
@@ -22,6 +21,7 @@ func TestBoundMergedOpenCodeCleanupRequiresRecordedRepository(t *testing.T) {
 		{"no origin", "read and deletion destinations could not be matched"},
 		{"ambiguous reads", "read and deletion destinations could not be matched"},
 		{"ambiguous pushes", "read and deletion destinations could not be matched"},
+		{"unverifiable SSH authentication", "could not verify the approved remote branch with strict OpenSSH"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			root, _, approved, host, env := openCodeCheckoutFixture(t, state.PhaseMerged)
@@ -46,6 +46,8 @@ func TestBoundMergedOpenCodeCleanupRequiresRecordedRepository(t *testing.T) {
 			case "ambiguous pushes":
 				rawGit(t, root, "remote", "set-url", "--push", "origin", originalURL)
 				rawGit(t, root, "remote", "set-url", "--push", "--add", "origin", wrong)
+			case "unverifiable SSH authentication":
+				host.sshRefusal = true
 			}
 			regs, before := rawGit(t, root, "worktree", "list", "--porcelain"), stateBytes(t, root)
 			req := fmt.Appendf(nil, `{"schema_version":1,"issue_number":1,"statement":"cleanup-issue","run_id":%q}`, st.Run.ID)
@@ -65,10 +67,18 @@ func TestBoundMergedOpenCodeCleanupRequiresRecordedRepository(t *testing.T) {
 					t.Fatalf("refusal removed checkout or its cache: %v", err)
 				}
 			}
+			var transfers []string
 			for _, call := range host.calls {
-				if call.Name == "git" && call.Args[0] == "ls-remote" {
-					t.Fatal("unverifiable repository received a Git transfer")
+				if call.Name == "git" && (call.Args[0] == "ls-remote" || call.Args[0] == "push") {
+					transfers = append(transfers, call.Args[0])
 				}
+			}
+			if host.sshRefusal {
+				if !slices.Equal(transfers, []string{"ls-remote"}) || strings.Contains(err.Error(), "private fixture") {
+					t.Fatal("unverified SSH should stop at the first lookup without projecting raw failure output")
+				}
+			} else if len(transfers) != 0 {
+				t.Fatal("unverifiable repository reached a Git transfer")
 			}
 		})
 	}
@@ -391,13 +401,15 @@ func TestBoundCleanupPinsRemoteAcrossReconfiguration(t *testing.T) {
 				rawGit(t, root, "config", "url."+originalURL+".insteadOf", "orch-fixture://first")
 			}
 			if scenario == "push URL changes" {
-				// The exact ref cannot be deleted via the old named-remote push:
-				// the SSH fixture refuses the remote-specific receive program.
+				// Both old named-remote operations selected repository-specific
+				// programs. The bound operations use Git's default programs.
+				rawGit(t, root, "config", "remote.origin.uploadpack", "fixture-unexpected-upload-pack")
 				rawGit(t, root, "config", "remote.origin.receivepack", "fixture-unexpected-receive-pack")
-				res, err := (execx.Local{}).Run(context.Background(), execx.Cmd{Name: "git", Dir: root,
-					Args: []string{"push", "--dry-run", "origin", "--delete", st.Run.Issues[0].Branch}})
-				if err != nil || res.ExitCode == 0 || !strings.Contains(res.Stderr, "cleanup SSH fixture refused unexpected command") {
-					t.Fatalf("named push did not select the configured receive program: %+v %v", res, err)
+				for _, args := range [][]string{{"ls-remote", "--heads", "origin", ref}, {"push", "--dry-run", "origin", ":" + ref}} {
+					res, err := (execx.Local{}).Run(t.Context(), execx.Cmd{Name: "git", Dir: root, Args: args})
+					if err != nil || res.ExitCode == 0 || !strings.Contains(res.Stderr, "cleanup SSH fixture refused unexpected command") {
+						t.Fatalf("named %s did not select the configured program: %+v %v", args[0], res, err)
+					}
 				}
 			}
 			changed := false

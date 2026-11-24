@@ -137,7 +137,7 @@ const evidence = {
     status: command("git", ["status", "--porcelain", "--", "adapters/opencode"], repo).trim(),
     files: await Promise.all([
       ...["smoke.mjs", "smoke-artifacts.mjs", "smoke-retention.mjs", "smoke-storage.mjs", "smoke-shutdown.mjs",
-        "smoke-lock.mjs", "smoke-native.mjs", "testdata/cleanup-ssh.sh"].map((file) => path.join(harnessAdapter, file)),
+        "smoke-lock.mjs", "smoke-native.mjs", "testdata/cleanup-https/main.go"].map((file) => path.join(harnessAdapter, file)),
       ...await smokeLockEvidenceFiles(),
     ].map(fileIdentity)),
   },
@@ -150,7 +150,7 @@ function pass(message) {
 const temp = evidence.fixture_root = await storage.begin()
 const root = path.join(temp, process.platform === "win32" ? "repo & (native) % ! ^" : "repo")
 const origin = path.join(temp, "origin.git")
-const cleanupDestination = "git@github.example.invalid:fixture/orch-smoke.git"
+const cleanupDestination = "https://github.example.invalid/fixture/orch-smoke.git"
 const bin = path.join(temp, "bin")
 const state = path.join(temp, "state")
 const configFile = path.join(root, "opencode.json")
@@ -161,6 +161,8 @@ let controller
 let headers
 let baseURL
 let stopHost
+let cleanupHTTPS
+let cleanupHTTPSExit
 let failure
 let requests = 0
 const provider = createServer((_, response) => {
@@ -205,10 +207,7 @@ try {
     FASTEMBED_CACHE_PATH: path.join(temp, "models", "fastembed"),
     GIT_CONFIG_GLOBAL: process.platform === "win32" ? "NUL" : "/dev/null",
     GIT_CONFIG_NOSYSTEM: "1",
-    GIT_ALLOW_PROTOCOL: "file:ssh",
-    GIT_SSH_COMMAND: "sh .git/orch-fixture-ssh",
-    GIT_SSH_VARIANT: "simple",
-    ORCH_CLEANUP_FIXTURE_REMOTE: origin.replaceAll("\\", "/"),
+    GIT_ALLOW_PROTOCOL: "file:https",
     XDG_CONFIG_HOME: path.join(temp, "config"),
     XDG_STATE_HOME: state,
     XDG_DATA_HOME: path.join(temp, "data"),
@@ -269,7 +268,6 @@ try {
   }
   pass(selection.mode + " artifact preflight, private binary identities and native PATH resolution")
   command("git", ["init", "-b", "main"], root, env)
-  await copyFile(path.join(harnessAdapter, "testdata", "cleanup-ssh.sh"), path.join(root, ".git", "orch-fixture-ssh"))
   command("git", ["add", ".gitignore", "tracked.txt", "route.go"], root, env)
   command("git", ["add", "-f", ".orchestrator/config.toml"], root, env)
   command("git", ["-c", "user.name=Orch Smoke", "-c", "user.email=orch-smoke@example.invalid", "commit", "-m", "Create synthetic smoke fixture"], root, env)
@@ -1184,7 +1182,8 @@ func check(ok bool) { if !ok { fmt.Fprintln(os.Stderr, "native command-boundary 
       "internal/opencode/release_access_windows.go", "internal/opencode/release_access_other.go",
       "internal/opencode/release_removal.go",
       "internal/ghops/pr_destination.go",
-      "internal/gitops/branch_head.go",
+      "internal/gitops/branch_head.go", "internal/gitops/branch_head_test.go",
+      "internal/gitops/branch_ssh.go", "internal/gitops/branch_ssh_windows.go", "internal/gitops/branch_ssh_other.go",
       "internal/run/cleanup.go", "internal/run/cleanup_binding.go", "internal/run/checkout_release.go",
       "internal/run/cleanup_binding_test.go", "internal/run/checkout_release_test.go", "internal/run/checkout_release_windows_test.go",
       "internal/run/checkout_pagination_windows_test.go",
@@ -1267,6 +1266,32 @@ func check(ok bool) { if !ok { fmt.Fprintln(os.Stderr, "native command-boundary 
   const newOID = command("git", ["rev-parse", "HEAD"], writable, env).trim()
   assert.notEqual(oldOID, newOID)
   command("git", ["init", "--bare", origin], temp, env)
+  const cleanupServer = path.join(temp, process.platform === "win32" ? "cleanup-https.exe" : "cleanup-https")
+  command("go", ["build", "-o", cleanupServer, "./adapters/opencode/testdata/cleanup-https"], repo)
+  cleanupHTTPS = spawn(cleanupServer, [git, temp], { cwd: temp, env, stdio: ["pipe", "pipe", "pipe"], windowsHide: true })
+  cleanupHTTPSExit = joined(cleanupHTTPS)
+  cleanupHTTPS.stderr.on("data", (data) => (logs += data))
+  const httpsOutput = createInterface({ input: cleanupHTTPS.stdout })
+  let readyHTTPS
+  try {
+    readyHTTPS = JSON.parse(await within(Promise.race([
+      new Promise((resolve) => httpsOutput.once("line", resolve)),
+      cleanupHTTPSExit.then(({ code, error }) => { throw new Error("private HTTPS Git fixture exited at startup: " + (error ?? code)) }),
+    ]), "private HTTPS Git fixture startup"))
+  } finally {
+    httpsOutput.close()
+  }
+  assert(/^http:\/\/127\.0\.0\.1:\d+$/.test(readyHTTPS.proxy) && /^X-Orch-Smoke: [A-Z2-7]+$/.test(readyHTTPS.header),
+    "expected a private loopback tunnel and disposable Git fixture authorization")
+  const ca = path.join(temp, "cleanup-ca.pem")
+  for (const [key, value] of [["proxy", readyHTTPS.proxy], ["sslCAInfo", ca], ["extraHeader", readyHTTPS.header]]) {
+    command("git", ["config", "http.https://github.example.invalid/." + key, value], root, env)
+  }
+  command("git", ["config", "http.schannelUseSSLCAInfo", "true"], root, env)
+  releaseEvidence.git_transport = {
+    executable: await fileIdentity(cleanupServer), ca: await fileIdentity(ca),
+    policy: "verified HTTPS with fixture CA, fixed loopback tunnel, and disposable bare Git repository",
+  }
   command("git", ["remote", "add", "origin", cleanupDestination], root, env)
   command("git", ["push", "origin", "main", "smoke-issue"], root, env)
   const reviewPath = path.join(root, ".orchestrator", "worktrees", "review-issue-1")
@@ -1584,7 +1609,7 @@ func check(ok bool) { if !ok { fmt.Fprintln(os.Stderr, "native command-boundary 
   const codeJobs = (rows, owner) => rows.filter((job) => job.kind === "codemode" && job.sessionID === owner)
   const handoff = releaseEvidence.open_code_cleanup = {
     confirmed: { run_id: fixtureState.run.id, issue_number: 1, approved_head_oid: newOID, phase: "merged",
-      pr_url: fixtureState.run.issues[0].pr_url, git_destination: cleanupDestination, transport: "fixture-only SSH shim to private bare repo" },
+      pr_url: fixtureState.run.issues[0].pr_url, git_destination: cleanupDestination, transport: "authenticated HTTPS to private bare repo" },
   }
   if (codeModeJobs) {
     const baseline = await start(root)
@@ -1745,6 +1770,7 @@ func check(ok bool) { if !ok { fmt.Fprintln(os.Stderr, "native command-boundary 
   failure = error
 } finally {
   controller?.socket.close()
+  cleanupHTTPS?.stdin.destroy()
   const shutdown = evidence.owned_shutdown = { verified: false }
   try {
     if (server?.pid && server.exitCode === null && server.signalCode === null) {
@@ -1770,6 +1796,10 @@ func check(ok bool) { if !ok { fmt.Fprintln(os.Stderr, "native command-boundary 
       assert(!await present(path.join(state, "opencode", "service.json")), "owned private service record still exists")
       shutdown.service_record_removed = true
     } else shutdown.method = "no private host started"
+    if (cleanupHTTPSExit) {
+      const stopped = shutdown.git_https_fixture = { pid: cleanupHTTPS.pid, ...await within(cleanupHTTPSExit, "private HTTPS Git fixture shutdown") }
+      assert.equal(stopped.code, 0, "private HTTPS Git fixture shutdown was not confirmed")
+    }
     assert(evidence.direct_memhub_shutdown?.verified !== false, "owned direct Memhub shutdown is unconfirmed")
     shutdown.process_inventory = verifyStopped(temp)
     shutdown.verified = true

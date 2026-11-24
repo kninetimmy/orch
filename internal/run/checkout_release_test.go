@@ -42,6 +42,8 @@ type checkoutHost struct {
 	terminalCwds  map[string]string
 	ordinaryCwds  map[string]map[string]string
 	reactivated   []string
+	fixtureSSH    bool
+	sshRefusal    bool
 }
 
 func (h *checkoutHost) Run(ctx context.Context, cmd execx.Cmd) (execx.Result, error) {
@@ -51,6 +53,14 @@ func (h *checkoutHost) Run(ctx context.Context, cmd execx.Cmd) (execx.Result, er
 	if cmd.Name == "git" {
 		if h.beforeGit != nil {
 			h.beforeGit(cmd)
+		}
+		if h.fixtureSSH && slices.Contains(cmd.Env, "GIT_SSH_VARIANT=ssh") {
+			if h.sshRefusal {
+				return execx.Result{ExitCode: 128, Stderr: "private fixture host-key verification failed"}, nil
+			}
+			// This test runner substitutes the local pack service, not SSH
+			// authentication. The transport tests exercise the real policy.
+			cmd.Env = append(cmd.Env, "GIT_SSH_COMMAND=sh .git/orch-fixture-ssh", "GIT_SSH_VARIANT=simple")
 		}
 		res, err := (execx.Local{}).Run(ctx, cmd)
 		if len(cmd.Args) >= 3 && cmd.Args[0] == "worktree" && cmd.Args[1] == "remove" && cmd.Args[len(cmd.Args)-1] == h.partial && err == nil && res.ExitCode == 0 {
@@ -483,7 +493,8 @@ func checkoutFixture(t *testing.T, phase state.Phase, hostName string) (string, 
 	executor, review := worktreeAbs(root, 1), reviewWorktreeAbs(root, 1)
 	rawGit(t, root, "worktree", "add", "-b", st.Run.Issues[0].Branch, executor, second)
 	rawGit(t, root, "worktree", "add", "--detach", review, first)
-	host := &checkoutHost{t: t, root: root, loaded: map[string]bool{root: true, executor: true, review: true}}
+	host := &checkoutHost{t: t, root: root, fixtureSSH: phase == state.PhaseMerged,
+		loaded: map[string]bool{root: true, executor: true, review: true}}
 	return root, first, second, host, Env{RepoRoot: root, Runner: host, Now: fixedNow}
 }
 

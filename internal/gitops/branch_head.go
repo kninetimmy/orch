@@ -3,6 +3,7 @@ package gitops
 import (
 	"context"
 	"crypto/rand"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -42,6 +43,7 @@ type RemoteBranchBinding struct {
 	g                           *Git
 	remote, endpoint, transport string
 	ref, head                   string
+	sshCommand                  string
 }
 
 // BindRemoteBranchAtHead requires a single effective read/push destination
@@ -56,6 +58,16 @@ func (g *Git) BindRemoteBranchAtHead(ctx context.Context, remote, branch, head s
 	}
 	binding := &RemoteBranchBinding{g: g, remote: remote, endpoint: endpoint, transport: "orch-cleanup://" + rand.Text(),
 		ref: "refs/heads/" + branch, head: head}
+	switch {
+	case strings.HasPrefix(endpoint, "https://"):
+	case strings.HasPrefix(endpoint, "ssh://"), strings.HasPrefix(endpoint, "git@"):
+		binding.sshCommand, err = boundSSHCommand()
+		if err != nil {
+			return nil, err
+		}
+	default:
+		return nil, fmt.Errorf("remote destination has no supported bound transport; preserve the checkouts and branches")
+	}
 	if _, err := binding.Exists(ctx); err != nil {
 		return nil, err
 	}
@@ -93,7 +105,13 @@ func (b *RemoteBranchBinding) VerifyDestination(ctx context.Context) error {
 // Exists accepts only absence or the exact approved remote ref at the pin.
 func (b *RemoteBranchBinding) Exists(ctx context.Context) (bool, error) {
 	res, err := b.run(ctx, "ls-remote", "--heads", "--refs", "--", b.transport, b.ref)
+	if err == errBoundHTTPSVerify {
+		return false, err
+	}
 	if err != nil || res.ExitCode != 0 {
+		if b.sshCommand != "" {
+			return false, fmt.Errorf("could not verify the approved remote branch with strict OpenSSH; preserve it and check the system client, known host key and noninteractive authentication")
+		}
 		return false, fmt.Errorf("could not verify the approved remote branch; preserve it and inspect Git")
 	}
 	out := strings.TrimSpace(res.Stdout)
@@ -120,6 +138,8 @@ func (b *RemoteBranchBinding) Delete(ctx context.Context, c Confirmation) error 
 	return nil
 }
 
+var errBoundHTTPSVerify = errors.New("bound HTTPS cleanup requires TLS verification; unset GIT_SSL_NO_VERIFY and re-confirm cleanup")
+
 func (b *RemoteBranchBinding) run(ctx context.Context, args ...string) (execx.Result, error) {
 	// Git rewrites even a literal URL passed to push. A fresh opaque token
 	// maps directly to the already-expanded endpoint in Git's single rewrite
@@ -140,12 +160,20 @@ func (b *RemoteBranchBinding) run(ctx context.Context, args ...string) (execx.Re
 		fmt.Sprintf("GIT_CONFIG_KEY_%d=url.%s.pushInsteadOf", count+1, b.endpoint),
 		fmt.Sprintf("GIT_CONFIG_VALUE_%d=%s", count+1, b.transport),
 	}
-	if strings.HasPrefix(b.endpoint, "https://") {
-		// A redirect could reach a different repository after URL verification.
-		// Override even a URL-specific setting at Git's command scope, without
-		// placing the endpoint on argv. Git HTTP normalizes to a trailing slash.
-		key := strings.ReplaceAll("http."+b.endpoint+"/.followRedirects", "'", "'\\''")
-		config = append(config, "GIT_CONFIG_PARAMETERS="+os.Getenv("GIT_CONFIG_PARAMETERS")+" '"+key+"'='false'")
+	if b.sshCommand != "" {
+		// Git gives GIT_SSH_COMMAND precedence over core.sshCommand and GIT_SSH.
+		config = append(config, "GIT_SSH_COMMAND="+b.sshCommand, "GIT_SSH_VARIANT=ssh")
+	} else {
+		// Git checks for presence, not a Boolean value, so setting this to
+		// false in the child environment would still disable verification.
+		if _, insecure := os.LookupEnv("GIT_SSL_NO_VERIFY"); insecure {
+			return execx.Result{}, errBoundHTTPSVerify
+		}
+		// Override even URL-specific config, without putting the URL on argv.
+		// Git HTTP normalizes the URL to a trailing slash.
+		key := strings.ReplaceAll("http."+b.endpoint+"/.", "'", "'\\''")
+		config = append(config, "GIT_CONFIG_PARAMETERS="+os.Getenv("GIT_CONFIG_PARAMETERS")+
+			" '"+key+"followRedirects'='false' '"+key+"sslVerify'='true'")
 	}
 	return b.g.runBranchTransport(ctx, config, args...)
 }

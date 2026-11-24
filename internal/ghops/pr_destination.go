@@ -8,7 +8,8 @@ import (
 
 // MatchesPullRequestRepository compares a canonical PR web URL recorded by the
 // engine with one already-expanded Git destination. It establishes the
-// hostname/slug, not a GitHub node ID or a new remote lookup.
+// hostname/slug, not a GitHub node ID or a new remote lookup. The caller must
+// separately ensure the transport authenticates that destination.
 func MatchesPullRequestRepository(prURL string, number int, endpoint string) bool {
 	pr := repositoryURL(prURL)
 	if pr == nil || pr.Scheme != "https" || pr.User != nil || number <= 0 {
