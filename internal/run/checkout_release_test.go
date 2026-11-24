@@ -696,6 +696,33 @@ func TestOpenCodeCleanupCodeModeHoldThenRetry(t *testing.T) {
 	}
 }
 
+func TestBoundOpenCodeCleanupCodeModeRetryStaysBound(t *testing.T) {
+	for _, phase := range []state.Phase{state.PhaseMerged, state.PhaseAbandoned} {
+		t.Run(string(phase), func(t *testing.T) {
+			root, _, _, host, env := openCodeCheckoutFixture(t, phase)
+			run := loadRun(t, root).Run
+			const owner = "sesPrimary"
+			host.sessions = map[string]string{owner: root}
+			host.jobInventory = `{"data":[{"id":"jobActive","kind":"codemode","status":"running","sessionID":"` + owner + `"}]}`
+			before := stateBytes(t, root)
+			req := fmt.Appendf(nil, `{"schema_version":1,"issue_number":1,"statement":"cleanup-issue","run_id":%q}`, run.ID)
+			res, err := Cleanup(t.Context(), env, req)
+			if res != nil || err == nil || len(host.deleted) != 0 || !bytes.Equal(before, stateBytes(t, root)) {
+				t.Fatalf("expected a Code Mode hold before eviction: %+v %v", res, err)
+			}
+			for _, want := range []string{"running Code Mode job", "let the job finish", "re-confirm the run and issue",
+				"retry `orch_cleanup` directly", "outside Code Mode", "verified primary checkout"} {
+				if !strings.Contains(err.Error(), want) {
+					t.Fatalf("bound refusal %q missing %q", err, want)
+				}
+			}
+			if strings.Contains(err.Error(), "standalone") || strings.Contains(err.Error(), "orch run cleanup") {
+				t.Fatalf("bound refusal recommended an unbound retry: %v", err)
+			}
+		})
+	}
+}
+
 func TestOpenCodeCheckoutReleaseEviction(t *testing.T) {
 	for _, operation := range []string{"replace review", "cleanup executor", "cleanup review"} {
 		for _, scenario := range []string{"stable", "fresh active", "second change", "final change"} {

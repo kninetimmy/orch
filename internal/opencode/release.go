@@ -45,7 +45,8 @@ func ReleaseLocation(ctx context.Context, runner execx.Runner, primary, target s
 // On Windows the runner must support concurrent persistent-terminal reads.
 // Before #525 sequential handoffs could reload an earlier target through later
 // session/terminal probes. Now probes that could load a target precede eviction.
-// Bound cleanup supplies verify to recheck engine ownership before disposal.
+// Bound cleanup supplies verify to recheck engine ownership before disposal
+// and to keep retry advice on the bound path.
 // Cleanup can use the returned check at later Git boundaries, under the same
 // deadline. checkJobs also needs a late check on a ref-only retry, where
 // there is no checkout to release or scan. Review replacement needs only this
@@ -98,7 +99,7 @@ func ReleaseLocations(ctx context.Context, runner execx.Runner, primary string, 
 			defer cancel()
 			return releaseRunningJobs(func(method, endpoint string, out any) error {
 				return request(ctx, method, endpoint, out)
-			}, nil)
+			}, nil, true)
 		}, nil
 	}
 	targetInfos := make([]releaseLocation, 0, len(targets))
@@ -207,7 +208,7 @@ func ReleaseLocations(ctx context.Context, runner execx.Runner, primary string, 
 				return nil, err
 			}
 		}
-		if err := releaseActiveJobs(call, targets); err != nil {
+		if err := releaseActiveJobs(call, targets, verify != nil); err != nil {
 			return nil, err
 		}
 		if err := releaseActivity(ctx, request, targets); err != nil {
@@ -239,7 +240,7 @@ func ReleaseLocations(ctx context.Context, runner execx.Runner, primary string, 
 		}
 		// Re-read global activity and locations immediately before disposal. This
 		// narrows the observation window; it still cannot lock out concurrent entry.
-		if err := releaseActiveJobs(call, targets); err != nil {
+		if err := releaseActiveJobs(call, targets, verify != nil); err != nil {
 			return nil, err
 		}
 		currentLocations, stillLoaded, err := inventory(call)
@@ -309,7 +310,7 @@ func ReleaseLocations(ctx context.Context, runner execx.Runner, primary string, 
 		if err := releaseOrdinaryProcesses(call, targets, current); err != nil {
 			return nil, err
 		}
-		if err := releaseActiveJobs(call, targets); err != nil {
+		if err := releaseActiveJobs(call, targets, true); err != nil {
 			return nil, err
 		}
 		if _, err := checkInventory(); err != nil {
@@ -457,7 +458,7 @@ func releaseBelongs(targets []string, directory string) (bool, error) {
 
 const runningJobsEndpoint = "/api/experimental/job?status=running"
 
-func releaseActiveJobs(call releaseCall, targets []string) error {
+func releaseActiveJobs(call releaseCall, targets []string, bound bool) error {
 	sessionInTarget := func(id string) (bool, error) {
 		if !strings.HasPrefix(id, "ses") {
 			return false, fmt.Errorf("OpenCode checkout release: malformed activity session identifier")
@@ -500,7 +501,7 @@ func releaseActiveJobs(call releaseCall, targets []string) error {
 			return err
 		}
 	}
-	return releaseRunningJobs(call, sessionInTarget)
+	return releaseRunningJobs(call, sessionInTarget, bound)
 }
 
 func checkReleaseSession(sessionInTarget func(string) (bool, error), id string) error {
@@ -514,9 +515,9 @@ func checkReleaseSession(sessionInTarget func(string) (bool, error), id string) 
 	return nil
 }
 
-// A nil attribution function means post-eviction: job data is global, but
-// resolving a session can load its checkout. Do not issue those reads then.
-func releaseRunningJobs(call releaseCall, sessionInTarget func(string) (bool, error)) error {
+// Late and ref-only checks have no attribution function: job data is global,
+// but resolving a session can load its checkout. Do not issue those reads then.
+func releaseRunningJobs(call releaseCall, sessionInTarget func(string) (bool, error), bound bool) error {
 	var jobs struct {
 		Data []struct {
 			ID             string `json:"id"`
@@ -553,9 +554,9 @@ func releaseRunningJobs(call releaseCall, sessionInTarget func(string) (bool, er
 					reason = "its owning session is in a target checkout"
 				}
 			}
-			if sessionInTarget == nil {
+			if bound {
 				return fmt.Errorf("OpenCode checkout release: running Code Mode job prevents removal: %s; "+
-					"let the job finish, verify the active run and issue, then retry the confirmed cleanup outside Code Mode from the verified primary checkout", reason)
+					"let the job finish, re-confirm the run and issue, then retry `orch_cleanup` directly outside Code Mode from the verified primary checkout", reason)
 			}
 			return fmt.Errorf("OpenCode checkout release: running Code Mode job prevents removal: %s; "+
 				"let the job finish, then rerun the normal command (for cleanup, `orch run cleanup`) "+

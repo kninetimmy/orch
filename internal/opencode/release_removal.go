@@ -42,7 +42,7 @@ func recheckReleasedLocations(ctx context.Context, call releaseCall, targets []r
 	}
 	if len(remaining) == 0 {
 		if checkJobs {
-			return releaseRunningJobs(call, nil)
+			return releaseRunningJobs(call, nil, true)
 		}
 		return nil
 	}
@@ -60,7 +60,7 @@ func recheckReleasedLocations(ctx context.Context, call releaseCall, targets []r
 		return err
 	}
 	if checkJobs {
-		if err := releaseRunningJobs(call, nil); err != nil {
+		if err := releaseRunningJobs(call, nil, true); err != nil {
 			return err
 		}
 	}

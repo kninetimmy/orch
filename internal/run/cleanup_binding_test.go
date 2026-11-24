@@ -343,6 +343,9 @@ func TestBoundCleanupHoldsActivityDuringGit(t *testing.T) {
 			if tc.endpoint == "codemode" && !lateJobProbe {
 				t.Fatal("late hold did not use the global job inventory")
 			}
+			if tc.endpoint == "codemode" && (!strings.Contains(err.Error(), "retry `orch_cleanup` directly") || strings.Contains(err.Error(), "standalone")) {
+				t.Fatalf("late bound hold did not recommend a bound retry: %v", err)
+			}
 			if tc.absent {
 				for _, checkout := range []string{executor, review} {
 					if _, err := os.Lstat(checkout); !os.IsNotExist(err) {

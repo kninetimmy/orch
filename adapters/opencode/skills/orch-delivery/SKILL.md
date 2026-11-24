@@ -570,15 +570,19 @@ parent-session usage.
 10. **Cleanup** — **Before #547 (including v0.17.0):** `orch run cleanup` with
     `{"schema_version": 1, "issue_number": N, "statement": "cleanup-issue"}`
     removes the remote branch, executor and review worktrees, and local
-    branch as one act. A running Code Mode invocation can block itself.
+    branch as one act. A running Code Mode invocation can block itself. The
+    released unbound path recovered from a standalone foreground terminal.
     **After #547:** from the verified primary checkout, confirm the run ID and
     merged or abandoned issue from fresh `orch run status --json`. With cleanup
     confirmed, call `orch_cleanup` **directly**, not inside `execute`, with
     `{"schema_version":1,"run_id":"<confirmed run>","issue_number":N,"statement":"cleanup-issue"}`.
-    Wait for the engine result `phase: "cleaned"` before continuing. If the tool
-    is unavailable or the host reports a genuine hold, keep both checkouts
-    unused and follow [standalone recovery](../../../../docs/worktree-cleanup.md#resume-normal-cleanup-from-a-standalone-terminal)
-    after the job finishes. A refusal is not completion.
+    Wait for the engine result `phase: "cleaned"` before continuing. For an
+    activity hold, keep both checkouts unused, let the job finish, re-confirm
+    the run and issue, then retry `orch_cleanup` directly from primary. If
+    identity or ownership is unverifiable, preserve the work and inspect the
+    refusal. The [standalone procedure](../../../../docs/worktree-cleanup.md#resume-normal-cleanup-from-a-standalone-terminal)
+    is for the legacy unbound path only; it does not retain the direct tool's
+    safeguards. A refusal is not completion.
 
 11. **Complete** — once every issue is cleaned, call `orch run
     complete` with `{"schema_version": 1}` (run-level, no issue

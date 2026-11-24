@@ -805,10 +805,11 @@ baseline.
 Running Code Mode jobs still block removal, including jobs owned by primary
 sessions or first observed during bound merged cleanup's remote lookup or push.
 For an activity hold, keep the checkouts unused, let the job finish, verify the
-run and issue, then retry the confirmed action. For a repository or ownership
-refusal, preserve the work and inspect the evidence instead of switching tools.
-See the [cleanup guide](docs/worktree-cleanup.md) for standalone recovery on the
-released version or when the direct tool is unavailable.
+run and issue, then retry the confirmed `orch_cleanup` directly from primary.
+For a repository or ownership refusal, preserve the work and inspect the
+evidence instead of switching tools.
+The [cleanup guide](docs/worktree-cleanup.md) preserves the released standalone
+recovery, which does not retain the new bound checks.
 
 <a id="v0170-release-target-not-published"></a>
 
