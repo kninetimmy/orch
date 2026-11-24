@@ -789,7 +789,7 @@ unmanaged scope. See the [OpenCode binding and qualification guide](adapters/ope
 
 ## Unreleased
 
-### Direct OpenCode cleanup (#547)
+### Direct OpenCode cleanup (#547, #549)
 
 **Before (through v0.17.0):** cleanup invoked inside Code Mode could block
 itself even when no other work was active. Recovery meant waiting for the job
@@ -797,14 +797,18 @@ to finish, then rerunning the confirmed cleanup from a standalone terminal.
 
 **After:** the matching engine and OpenCode adapter run confirmed cleanup
 through the direct `orch_cleanup` tool from the verified primary session,
-outside Code Mode. An isolated Windows OpenCode **2.4.0** source smoke
-verified that path. The earlier Windows **2.3.2** observation established the
-Code Mode hold, not direct-tool qualification. Neither is installed
-qualification or a new engine runtime baseline.
+outside Code Mode. The isolated Windows OpenCode **2.4.0** source smoke checks
+the job hold, then direct cleanup without a standalone retry. The earlier
+Windows **2.3.2** observation established the Code Mode hold, not direct-tool
+qualification. Neither is installed qualification or a new engine runtime
+baseline.
 Running Code Mode jobs still block removal, including jobs owned by primary
-sessions. For a genuine hold, keep the checkouts unused, let the job finish,
-then retry the confirmed action. See the [cleanup guide](docs/worktree-cleanup.md)
-for the standalone recovery steps if the direct tool is unavailable.
+sessions or first observed during bound merged cleanup's remote lookup or push.
+For an activity hold, keep the checkouts unused, let the job finish, verify the
+run and issue, then retry the confirmed action. For a repository or ownership
+refusal, preserve the work and inspect the evidence instead of switching tools.
+See the [cleanup guide](docs/worktree-cleanup.md) for standalone recovery on the
+released version or when the direct tool is unavailable.
 
 <a id="v0170-release-target-not-published"></a>
 

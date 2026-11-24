@@ -858,6 +858,17 @@ checks apply. There is no second session-history scan, no target-scoped probe
 and no new eviction in this late check. All original pre-eviction foreground,
 job, persistent-terminal and shell/PTY holds still apply.
 
+**Before #549:** those late checks did not read running jobs. **After #549:**
+bound merged cleanup also reads the global running-job inventory at those
+boundaries, inside the same cache-inventory bracket and original deadline.
+Every observed running Code Mode job blocks remaining removal, even if its
+owner is in primary; a job record does not establish its nested working
+directories. Malformed, unknown or unavailable job evidence refuses. The late
+probe does not look up individual sessions, repeat the persistent-terminal walk
+or attribute other known job kinds to targets; their existing pre-eviction
+checks still apply. Unbound cleanup, bound abandoned cleanup and review
+replacement retain their previous activity checks.
+
 **Before the #547 review fix:** bound merged cleanup compared the fetch and
 push URLs, but the leased push still resolved `origin` again. Matching branch
 OIDs in two repositories did not make that safe. **After:** both remote ref
@@ -866,7 +877,33 @@ destination drift refuses before eviction or the next Git mutation; a
 configuration change racing the push cannot redirect it to a different
 `origin`. The Git commands use a private invocation-scoped URL mapping, not a
 repository config write; they do not expose credentials in their diagnostics
-or push other refs. The local branch guard still checks **every registered
+or push other refs.
+
+**Before #549:** the effective destinations could agree but already point to a
+different repository, or a single push URL could hide multiple read URLs.
+**After #549:** bound merged cleanup requires exactly one effective read URL
+and one matching effective push URL, and checks the host/owner/repository
+against the recorded HTTPS PR URL and number before a ref transfer or cache
+eviction. It accepts direct HTTPS and Git SSH forms (`ssh://git@host/owner/repo`
+and `git@host:owner/repo`), with or without the usual `.git` suffix and with
+default ports only. Local paths, unsupported or ambiguous endpoints and
+missing or inconsistent PR records refuse without printing the raw URLs.
+This compares the configured destination, not a new GitHub node-ID lookup.
+Before, HTTPS could follow a redirect after matching the URL; bound reads and
+pushes now refuse HTTPS redirects rather than transferring to an unverified
+repository. Other cleanup paths do not gain these restrictions.
+
+**Named-remote transport before and after:** before the pinned transport in
+#547, deletion passed the remote name to Git, so Git selected the configured
+`remote.origin.receivepack` program if present. Now bound merged deletion
+pushes to the pinned URL via the invocation-scoped token, so it does not
+select a receive program by remote name. This applies to the setting for any
+remote name used with the bound helper, not just `origin` (the only name used
+by this cleanup caller). The effective push URL still participates in the
+identity check. Standalone and abandoned cleanup still use the named remote;
+this does not assert changes to other settings or Git paths.
+
+The local branch guard still checks **every registered
 worktree**, including unrelated worktrees: unexpected attachments and
 observed or unverifiable rebase, am or bisect state refuse branch deletion.
 
@@ -876,31 +913,52 @@ If it is first observed after a successful push, either cache may already have
 been evicted and the remote ref is already gone, but both checkouts and the
 local ref are preserved. A hold found before review removal after executor
 removal preserves the review checkout and local ref. None of these refusals
-reports or saves `cleaned`, and there is no automatic rollback. These are
-bounded observations, not atomic exclusion of new host work or external
-Git/filesystem changes. Keep both checkouts unused throughout cleanup.
+reports or saves `cleaned`. There is no automatic rollback; do not recreate a
+successfully deleted remote ref. These are bounded observations, not atomic
+exclusion of new host work or external Git/filesystem changes. A job can
+still start between a check and Git mutation. In particular, there is no new
+job read between successful review removal and local-ref deletion. Keep both
+checkouts unused throughout cleanup.
 
 ### Windows source evidence
 
 The final source smoke uses the real isolated Windows OpenCode **2.4.0**
 server with simulated model responses and a synthetic confirmed merge in a
-private Git repository. The earlier Windows **2.3.2**
+private Git repository. Before #549 the fixture pointed `origin` directly at a
+local bare path and the PR URL did not identify that remote. Now the fixture
+uses a matching synthetic PR URL and SSH destination, with only its fixture
+transport connecting that destination to the disposable bare repository.
+The same engine identity gate runs; no production bypass or GitHub request is
+involved. The earlier Windows **2.3.2**
 [observation](#code-mode-holds-during-checkout-release-issue-543) identified
 the Code Mode hold; it was not direct-tool qualification. The Windows fixture
 enables Full Code Mode only when the host advertises the Code Mode job
 contract; otherwise the historical control is skipped, not the direct-tool
 check. With that contract present, the smoke observes
 a real detached script job while its nested fixture tool invokes the old CLI
-path. The engine refuses and preserves the paths, caches and phase. The
+path. The engine refuses and preserves the paths, caches, registrations,
+both issue refs and phase. The
 smoke observes the job leave the running inventory and receives the native
 completion notification. It then calls the top-level `orch_cleanup` tool
 from primary, allowing up to 180 seconds for that simulated tool invocation;
 other simulation waits are unchanged. It verifies no new Code Mode job and
 proves both checkout paths and registrations, plus both issue-branch refs,
 are gone with phase `cleaned`.
-The smoke receipt retains these outcomes. The engine's verified host
+The smoke receipt retains these outcomes, zero provider requests and verified
+shutdown of only the owned host. The engine's verified host
 baselines and advisory do not change. This is not installed, shared-host,
 other-platform or real-model qualification.
+
+### What #549 changes in the direct path
+
+| Element | Before → after; does earlier behavior still hold? |
+| --- | --- |
+| `ghops.MatchesPullRequestRepository` and repository-name validation | New offline comparison of the engine-recorded PR number and repository with the effective Git URL. It reuses the host/name rules; `Repo.Target` still requires the same consistent repository URL, slug and node ID for plan approval. No approval or run-state schema change. |
+| `releaseCheckouts`, `BindRemoteBranchAtHead`, `branchDestination`, `RemoteBranchBinding` | Bound merged preflight used to trust agreeing URLs without checking the recorded PR. It now refuses before any transfer or eviction without a unique matching destination; the existing destination-drift recheck, approved OID, lease, opaque URL pin and sanitized errors remain. HTTPS redirect refusal is only for bound transfers. The earlier named-remote receive-program behavior is recorded above. |
+| `Cleanup`, `ReleaseCheck`, `recheckReleasedLocations`, `releaseActiveJobs` / `releaseRunningJobs` | The new late global job read is requested only for bound merged cleanup. It adds no target-scoped requests, history walk, eviction, retry or deadline extension. Foreground and owner/child attribution remain before eviction. Ordinary late shell/PTY, cache identity, original checkout ownership and Windows access checks remain where they were. The direct tool, confirmation, Git operation order and final state write do not change. |
+| `pr_destination_test.go`, `branch_head_test.go`, `checkout_release_test.go`, `cleanup_binding_test.go` | Prior refusal, pinning and cleanup cases remain. Added canonical transport and redirect cases; real Git with identical refs in different repositories, missing/ambiguous origin, and a named-remote receive-program control; and primary-owned Code Mode jobs starting at lookup and push. Late tests assert that no owner or history read reloads a target. |
+| `smoke.mjs` and `testdata/cleanup-ssh.sh` | The transport change is fixture-only. The helper accepts only the fixed synthetic destinations and runs local Git upload/receive-pack; no SSH service or real credentials. The old Code Mode hold and direct success also check both refs and registrations, with matching PR/destination evidence in the receipt. Startup retry, separate unmanaged Memhub executable, provider trap and verified owned shutdown remain. |
+| README and this guide | Released recovery remains available when the tool is unavailable, not as a workaround for identity drift. The new behavior and Windows qualification are source evidence only; no install, release or runtime baseline change. |
 
 ### Smoke startup
 
