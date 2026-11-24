@@ -1281,12 +1281,17 @@ func check(ok bool) { if !ok { fmt.Fprintln(os.Stderr, "native command-boundary 
   } finally {
     httpsOutput.close()
   }
-  assert(/^http:\/\/127\.0\.0\.1:\d+$/.test(readyHTTPS.proxy) && /^X-Orch-Smoke: [A-Z2-7]+$/.test(readyHTTPS.header),
+  assert(/^http:\/\/127\.0\.0\.1:\d+$/.test(readyHTTPS.proxy) && /^Authorization: Bearer [A-Z2-7]+$/.test(readyHTTPS.header),
     "expected a private loopback tunnel and disposable Git fixture authorization")
   const ca = path.join(temp, "cleanup-ca.pem")
-  for (const [key, value] of [["proxy", readyHTTPS.proxy], ["sslCAInfo", ca], ["extraHeader", readyHTTPS.header]]) {
+  for (const [key, value] of [["proxy", readyHTTPS.proxy], ["sslCAInfo", ca]]) {
     command("git", ["config", "http.https://github.example.invalid/." + key, value], root, env)
   }
+  // This disposable credential stays in private Git config, not Git argv.
+  const cleanupAuthConfig = path.join(root, ".git", "orch-https-fixture-auth")
+  await writeFile(cleanupAuthConfig, '[http "https://github.example.invalid/"]\n\textraHeader = ' + readyHTTPS.header + "\n",
+    { flag: "wx", mode: 0o600 })
+  command("git", ["config", "--add", "include.path", cleanupAuthConfig], root, env)
   command("git", ["config", "http.schannelUseSSLCAInfo", "true"], root, env)
   releaseEvidence.git_transport = {
     executable: await fileIdentity(cleanupServer), ca: await fileIdentity(ca),

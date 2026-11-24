@@ -59,7 +59,7 @@ func main() {
 		log.Fatal(err)
 	}
 
-	token := rand.Text()
+	auth := "Bearer " + rand.Text()
 	pack := &cgi.Handler{
 		Path: git, Args: []string{"http-backend"}, Dir: root,
 		Env: []string{"GIT_PROJECT_ROOT=" + filepath.ToSlash(root), "GIT_HTTP_EXPORT_ALL=1", "REMOTE_USER=orch-smoke"},
@@ -67,7 +67,7 @@ func main() {
 			"GIT_CONFIG_GLOBAL", "GIT_CONFIG_NOSYSTEM"},
 	}
 	server := httptest.NewUnstartedServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.Host != host || r.Header.Get("X-Orch-Smoke") != token {
+		if r.Host != host || r.Header.Get("Authorization") != auth {
 			http.Error(w, "private fixture", http.StatusForbidden)
 			return
 		}
@@ -111,7 +111,7 @@ func main() {
 		_, _ = io.Copy(client, upstream)
 	}))
 	defer proxy.Close()
-	if err := json.NewEncoder(os.Stdout).Encode(map[string]string{"proxy": proxy.URL, "header": "X-Orch-Smoke: " + token}); err != nil {
+	if err := json.NewEncoder(os.Stdout).Encode(map[string]string{"proxy": proxy.URL, "header": "Authorization: " + auth}); err != nil {
 		log.Fatal(err)
 	}
 	// EOF also stops this fixture if the owning harness dies.

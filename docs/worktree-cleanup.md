@@ -987,8 +987,11 @@ local bare path and the PR URL did not identify that remote. Now the fixture
 uses a matching synthetic PR URL and Git destination. The first #549 smoke
 used a fixture-only SSH shim. With the pinned OpenSSH policy that shim no
 longer routes bound Git, so the final smoke uses authenticated HTTPS through
-a loopback-only tunnel with a disposable TLS trust anchor. Both transfer
-directions use the real Git protocol against the private bare repository.
+a loopback-only tunnel with a disposable TLS trust anchor. Before the bound
+extra-header check, the HTTPS fixture used a custom header; it now uses a
+disposable bearer credential in `Authorization`, without bypassing that check.
+Both transfer directions use the real Git protocol against the private bare
+repository.
 The same engine identity gate runs; no production bypass or GitHub request is
 involved. The earlier Windows **2.3.2**
 [observation](#code-mode-holds-during-checkout-release-issue-543) identified
