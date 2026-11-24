@@ -94,18 +94,19 @@ func main() {
 			http.Error(w, "fixture unavailable", http.StatusBadGateway)
 			return
 		}
-		defer upstream.Close()
+		// The other copy direction may already have closed the tunnel.
+		defer func() { _ = upstream.Close() }()
 		client, stream, err := http.NewResponseController(w).Hijack()
 		if err != nil {
 			return
 		}
-		defer client.Close()
+		defer func() { _ = client.Close() }()
 		if _, err := stream.WriteString("HTTP/1.1 200 Connection Established\r\n\r\n"); err != nil || stream.Flush() != nil {
 			return
 		}
 		go func() {
 			_, _ = io.Copy(upstream, stream)
-			upstream.Close()
+			_ = upstream.Close()
 		}()
 		_, _ = io.Copy(client, upstream)
 	}))
