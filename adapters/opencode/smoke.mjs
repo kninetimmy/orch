@@ -137,7 +137,7 @@ const evidence = {
     status: command("git", ["status", "--porcelain", "--", "adapters/opencode"], repo).trim(),
     files: await Promise.all([
       ...["smoke.mjs", "smoke-artifacts.mjs", "smoke-retention.mjs", "smoke-storage.mjs", "smoke-shutdown.mjs",
-        "smoke-lock.mjs", "smoke-native.mjs"].map((file) => path.join(harnessAdapter, file)),
+        "smoke-lock.mjs", "smoke-native.mjs", "testdata/cleanup-ssh.sh"].map((file) => path.join(harnessAdapter, file)),
       ...await smokeLockEvidenceFiles(),
     ].map(fileIdentity)),
   },
@@ -149,6 +149,8 @@ function pass(message) {
 }
 const temp = evidence.fixture_root = await storage.begin()
 const root = path.join(temp, process.platform === "win32" ? "repo & (native) % ! ^" : "repo")
+const origin = path.join(temp, "origin.git")
+const cleanupDestination = "git@github.example.invalid:fixture/orch-smoke.git"
 const bin = path.join(temp, "bin")
 const state = path.join(temp, "state")
 const configFile = path.join(root, "opencode.json")
@@ -188,7 +190,7 @@ try {
   const orchBinary = path.join(bin, process.platform === "win32" ? "orch.exe" : "orch")
   const git = command(process.platform === "win32" ? "where.exe" : "which", ["git"], repo).trim().split(/\r?\n/)[0]
   const env = Object.fromEntries(Object.entries(process.env)
-    .filter(([name]) => !/API_KEY|TOKEN|SECRET|CREDENTIAL|ACCESS_KEY|PASSWORD|COOKIE|^GIT_|^MEMHUB_|^HF_|^FASTEMBED_|^NODE_COMPILE_CACHE$|^(HTTP|HTTPS|ALL|NO)_PROXY$/i.test(name))
+    .filter(([name]) => !/API_KEY|TOKEN|SECRET|CREDENTIAL|ACCESS_KEY|PASSWORD|COOKIE|^GIT_|^MEMHUB_|^HF_|^FASTEMBED_|^ORCH_CLEANUP_FIXTURE_|^NODE_COMPILE_CACHE$|^(HTTP|HTTPS|ALL|NO)_PROXY$/i.test(name))
     .map(([name, value]) => [process.platform === "win32" ? name.toUpperCase() : name, value]))
   Object.assign(env, {
     PATH: [bin, path.dirname(git), ...(process.platform === "win32" ? [path.join(process.env.SystemRoot, "System32")] : ["/usr/bin", "/bin"])].join(delimiter),
@@ -203,6 +205,10 @@ try {
     FASTEMBED_CACHE_PATH: path.join(temp, "models", "fastembed"),
     GIT_CONFIG_GLOBAL: process.platform === "win32" ? "NUL" : "/dev/null",
     GIT_CONFIG_NOSYSTEM: "1",
+    GIT_ALLOW_PROTOCOL: "file:ssh",
+    GIT_SSH_COMMAND: "sh .git/orch-fixture-ssh",
+    GIT_SSH_VARIANT: "simple",
+    ORCH_CLEANUP_FIXTURE_REMOTE: origin.replaceAll("\\", "/"),
     XDG_CONFIG_HOME: path.join(temp, "config"),
     XDG_STATE_HOME: state,
     XDG_DATA_HOME: path.join(temp, "data"),
@@ -263,6 +269,7 @@ try {
   }
   pass(selection.mode + " artifact preflight, private binary identities and native PATH resolution")
   command("git", ["init", "-b", "main"], root, env)
+  await copyFile(path.join(harnessAdapter, "testdata", "cleanup-ssh.sh"), path.join(root, ".git", "orch-fixture-ssh"))
   command("git", ["add", ".gitignore", "tracked.txt", "route.go"], root, env)
   command("git", ["add", "-f", ".orchestrator/config.toml"], root, env)
   command("git", ["-c", "user.name=Orch Smoke", "-c", "user.email=orch-smoke@example.invalid", "commit", "-m", "Create synthetic smoke fixture"], root, env)
@@ -1176,6 +1183,7 @@ func check(ok bool) { if !ok { fmt.Fprintln(os.Stderr, "native command-boundary 
       "internal/opencode/release.go", "internal/opencode/release_terminals.go", "internal/opencode/release_test.go", "internal/opencode/release_terminals_windows_test.go",
       "internal/opencode/release_access_windows.go", "internal/opencode/release_access_other.go",
       "internal/opencode/release_removal.go",
+      "internal/ghops/pr_destination.go",
       "internal/gitops/branch_head.go",
       "internal/run/cleanup.go", "internal/run/cleanup_binding.go", "internal/run/checkout_release.go",
       "internal/run/cleanup_binding_test.go", "internal/run/checkout_release_test.go", "internal/run/checkout_release_windows_test.go",
@@ -1245,7 +1253,10 @@ func check(ok bool) { if !ok { fmt.Fprintln(os.Stderr, "native command-boundary 
     approved_at: new Date().toISOString(), config_revision: gate.config_revision,
     contract_version: gate.execution.version, execution_digest: "sha256:" + hash(executionBytes),
   }
-  Object.assign(fixtureState.run.issues[0], { phase: "pr-open", pr_number: 1, pr_url: "https://example.invalid/synthetic/1" })
+  const fixtureRepoURL = "https://github.example.invalid/fixture/orch-smoke"
+  Object.assign(fixtureState.run.issues[0], {
+    phase: "pr-open", url: fixtureRepoURL + "/issues/1", pr_number: 1, pr_url: fixtureRepoURL + "/pull/1",
+  })
   await writeFile(lockPath, JSON.stringify({ schema_version: 1, run_id: fixtureState.run.id, host: "opencode", hostname: hostname(), pid: process.pid, acquired_at: new Date().toISOString() }))
   await writeFile(stateFile, JSON.stringify(fixtureState))
   releaseEvidence.synthetic_gate = gate
@@ -1255,9 +1266,8 @@ func check(ok bool) { if !ok { fmt.Fprintln(os.Stderr, "native command-boundary 
   command("git", ["-c", "user.name=Orch Smoke", "-c", "user.email=orch-smoke@example.invalid", "commit", "-m", "Create synthetic lifecycle revision"], writable, env)
   const newOID = command("git", ["rev-parse", "HEAD"], writable, env).trim()
   assert.notEqual(oldOID, newOID)
-  const origin = path.join(temp, "origin.git")
   command("git", ["init", "--bare", origin], temp, env)
-  command("git", ["remote", "add", "origin", origin], root, env)
+  command("git", ["remote", "add", "origin", cleanupDestination], root, env)
   command("git", ["push", "origin", "main", "smoke-issue"], root, env)
   const reviewPath = path.join(root, ".orchestrator", "worktrees", "review-issue-1")
   const reviewRequest = (head, number = 1) => ({ schema_version: 1, issue_number: number, head_oid: head })
@@ -1573,7 +1583,8 @@ func check(ok bool) { if !ok { fmt.Fprintln(os.Stderr, "native command-boundary 
   const jobs = async (filter = "") => (await api("/api/experimental/job" + filter)).data
   const codeJobs = (rows, owner) => rows.filter((job) => job.kind === "codemode" && job.sessionID === owner)
   const handoff = releaseEvidence.open_code_cleanup = {
-    confirmed: { run_id: fixtureState.run.id, issue_number: 1, approved_head_oid: newOID, phase: "merged" },
+    confirmed: { run_id: fixtureState.run.id, issue_number: 1, approved_head_oid: newOID, phase: "merged",
+      pr_url: fixtureState.run.issues[0].pr_url, git_destination: cleanupDestination, transport: "fixture-only SSH shim to private bare repo" },
   }
   if (codeModeJobs) {
     const baseline = await start(root)
@@ -1582,6 +1593,13 @@ func check(ok bool) { if !ok { fmt.Fprintln(os.Stderr, "native command-boundary 
     const input = baselineCleanupInput(`return await tools.${baselineTool}({})`, execute.function.parameters)
     const refusalPattern = /running Code Mode job prevents removal/
     const stateBeforeHold = await readFile(stateFile)
+    const gitSnapshot = () => [
+      command("git", ["worktree", "list", "--porcelain"], root, env),
+      command("git", ["rev-parse", "refs/heads/smoke-issue"], root, env).trim(),
+      command("git", ["ls-remote", "--heads", "origin", "smoke-issue"], root, env).trim(),
+    ]
+    const gitBeforeHold = gitSnapshot()
+    assert.deepEqual(gitBeforeHold.slice(1), [newOID, newOID + "\trefs/heads/smoke-issue"])
     // Keep an actual host Code Mode job alive while its nested simulation tool
     // runs the old CLI path. No dependence on the model's shell tool catalog.
     const observeHold = async () => {
@@ -1624,10 +1642,12 @@ func check(ok bool) { if !ok { fmt.Fprintln(os.Stderr, "native command-boundary 
     assert.deepEqual(await readFile(stateFile), stateBeforeHold)
     assert(existsSync(writable) && existsSync(reviewPath))
     assert.deepEqual(await cacheSnapshot(), beforeCleanup)
+    assert.deepEqual(gitSnapshot(), gitBeforeHold)
     handoff.old_job = {
       full_codemode: true, kind: runningJob.kind, at_refusal: runningJob.status,
       after_nested_call: ended.status, completion_notified: true, exit: 1,
       checkouts_caches_and_state_preserved: true,
+      worktree_registrations_and_both_refs_preserved: true,
     }
     pass("real primary Code Mode cleanup job runs, refuses before eviction, then finishes")
   }

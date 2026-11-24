@@ -44,12 +44,15 @@ type RemoteBranchBinding struct {
 	ref, head                   string
 }
 
-// BindRemoteBranchAtHead verifies the single effective deletion destination
-// against the fetch destination, then checks the exact ref at that endpoint.
-func (g *Git) BindRemoteBranchAtHead(ctx context.Context, remote, branch, head string) (*RemoteBranchBinding, error) {
+// BindRemoteBranchAtHead requires a single effective read/push destination
+// matching the caller's recorded repository, then checks the exact ref there.
+func (g *Git) BindRemoteBranchAtHead(ctx context.Context, remote, branch, head string, matchesRepository func(string) bool) (*RemoteBranchBinding, error) {
 	endpoint, err := g.branchDestination(ctx, remote)
 	if err != nil {
 		return nil, err
+	}
+	if matchesRepository == nil || !matchesRepository(endpoint) {
+		return nil, fmt.Errorf("remote destination does not identify the recorded PR repository; preserve the checkouts and branches and inspect Git")
 	}
 	binding := &RemoteBranchBinding{g: g, remote: remote, endpoint: endpoint, transport: "orch-cleanup://" + rand.Text(),
 		ref: "refs/heads/" + branch, head: head}
@@ -60,13 +63,14 @@ func (g *Git) BindRemoteBranchAtHead(ctx context.Context, remote, branch, head s
 }
 
 func (g *Git) branchDestination(ctx context.Context, remote string) (string, error) {
-	read, readErr := g.runBranchTransport(ctx, nil, "remote", "get-url", "--", remote)
+	read, readErr := g.runBranchTransport(ctx, nil, "remote", "get-url", "--all", "--", remote)
 	push, pushErr := g.runBranchTransport(ctx, nil, "remote", "get-url", "--push", "--all", "--", remote)
 	// Strip one output terminator; trimming whitespace could change the
 	// destination. Git expands URL rewrites in get-url.
 	line := func(s string) string { return strings.TrimSuffix(s, "\n") }
 	endpoint := line(read.Stdout)
 	if readErr != nil || pushErr != nil || read.ExitCode != 0 || push.ExitCode != 0 ||
+		strings.TrimSpace(read.Stderr) != "" || strings.TrimSpace(push.Stderr) != "" ||
 		strings.TrimSpace(endpoint) == "" || strings.ContainsAny(endpoint, "\r\n\x00") || endpoint != line(push.Stdout) {
 		return "", fmt.Errorf("remote read and deletion destinations could not be matched; preserve the branch")
 	}
@@ -129,13 +133,21 @@ func (b *RemoteBranchBinding) run(ctx context.Context, args ...string) (execx.Re
 			return execx.Result{}, fmt.Errorf("could not bind the Git transport configuration")
 		}
 	}
-	return b.g.runBranchTransport(ctx, []string{
+	config := []string{
 		"GIT_CONFIG_COUNT=" + strconv.FormatUint(count+2, 10),
 		fmt.Sprintf("GIT_CONFIG_KEY_%d=url.%s.insteadOf", count, b.endpoint),
 		fmt.Sprintf("GIT_CONFIG_VALUE_%d=%s", count, b.transport),
 		fmt.Sprintf("GIT_CONFIG_KEY_%d=url.%s.pushInsteadOf", count+1, b.endpoint),
 		fmt.Sprintf("GIT_CONFIG_VALUE_%d=%s", count+1, b.transport),
-	}, args...)
+	}
+	if strings.HasPrefix(b.endpoint, "https://") {
+		// A redirect could reach a different repository after URL verification.
+		// Override even a URL-specific setting at Git's command scope, without
+		// placing the endpoint on argv. Git HTTP normalizes to a trailing slash.
+		key := strings.ReplaceAll("http."+b.endpoint+"/.followRedirects", "'", "'\\''")
+		config = append(config, "GIT_CONFIG_PARAMETERS="+os.Getenv("GIT_CONFIG_PARAMETERS")+" '"+key+"'='false'")
+	}
+	return b.g.runBranchTransport(ctx, config, args...)
 }
 
 func (g *Git) runBranchTransport(ctx context.Context, config []string, args ...string) (execx.Result, error) {

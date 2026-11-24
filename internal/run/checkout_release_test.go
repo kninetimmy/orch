@@ -460,6 +460,22 @@ func checkoutFixture(t *testing.T, phase state.Phase, hostName string) (string, 
 	st.Run.Issues = []state.Issue{fixtureIssue("synthetic", 1, phase)}
 	if phase == state.PhaseMerged {
 		st.Run.Issues[0].ApprovedHeadOID = second
+		st.Run.Issues[0].PRURL = "https://github.example.invalid/fixture/orch-smoke/pull/10"
+		// Keep real Git transport/ref operations, but make the synthetic SSH
+		// repository name reachable only through the disposable local fixture.
+		origin := strings.TrimSpace(rawGit(t, root, "remote", "get-url", "origin"))
+		script, err := os.ReadFile(filepath.Join("..", "..", "adapters", "opencode", "testdata", "cleanup-ssh.sh"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(root, ".git", "orch-fixture-ssh"), script, 0o600); err != nil {
+			t.Fatal(err)
+		}
+		t.Setenv("ORCH_CLEANUP_FIXTURE_REMOTE", filepath.ToSlash(origin))
+		t.Setenv("GIT_SSH_COMMAND", "sh .git/orch-fixture-ssh")
+		t.Setenv("GIT_SSH_VARIANT", "simple")
+		t.Setenv("GIT_ALLOW_PROTOCOL", "file:ssh")
+		rawGit(t, root, "remote", "set-url", "origin", "git@github.example.invalid:fixture/orch-smoke.git")
 	}
 	if err := state.Save(root, st); err != nil {
 		t.Fatal(err)

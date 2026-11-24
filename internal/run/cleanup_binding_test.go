@@ -2,6 +2,7 @@ package run
 
 import (
 	"bytes"
+	"context"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -12,6 +13,65 @@ import (
 	"github.com/kninetimmy/orch/internal/execx"
 	"github.com/kninetimmy/orch/internal/state"
 )
+
+func TestBoundMergedOpenCodeCleanupRequiresRecordedRepository(t *testing.T) {
+	const wrong = "git@github.example.invalid:fixture/other.git"
+	for _, tc := range []struct{ name, want string }{
+		{"already retargeted", "does not identify the recorded PR repository"},
+		{"no origin", "read and deletion destinations could not be matched"},
+		{"ambiguous reads", "read and deletion destinations could not be matched"},
+		{"ambiguous pushes", "read and deletion destinations could not be matched"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			root, _, approved, host, env := openCodeCheckoutFixture(t, state.PhaseMerged)
+			st := loadRun(t, root)
+			ref := "refs/heads/" + st.Run.Issues[0].Branch
+			originalURL := strings.TrimSpace(rawGit(t, root, "remote", "get-url", "origin"))
+			dir := t.TempDir()
+			other := filepath.Join(dir, "other.git")
+			rawGit(t, dir, "init", "--bare", other)
+			t.Setenv("ORCH_CLEANUP_FIXTURE_OTHER", filepath.ToSlash(other))
+			for _, destination := range []string{"origin", wrong} {
+				rawGit(t, root, "push", destination, ref)
+			}
+			switch tc.name {
+			case "already retargeted":
+				rawGit(t, root, "remote", "set-url", "origin", wrong)
+			case "no origin":
+				rawGit(t, root, "remote", "remove", "origin")
+			case "ambiguous reads":
+				rawGit(t, root, "remote", "set-url", "--add", "origin", wrong)
+				rawGit(t, root, "remote", "set-url", "--push", "origin", originalURL)
+			case "ambiguous pushes":
+				rawGit(t, root, "remote", "set-url", "--push", "origin", originalURL)
+				rawGit(t, root, "remote", "set-url", "--push", "--add", "origin", wrong)
+			}
+			regs, before := rawGit(t, root, "worktree", "list", "--porcelain"), stateBytes(t, root)
+			req := fmt.Appendf(nil, `{"schema_version":1,"issue_number":1,"statement":"cleanup-issue","run_id":%q}`, st.Run.ID)
+			res, err := Cleanup(t.Context(), env, req)
+			local := strings.TrimSpace(rawGit(t, root, "for-each-ref", "--format=%(objectname)", ref))
+			from := strings.TrimSpace(rawGit(t, os.Getenv("ORCH_CLEANUP_FIXTURE_REMOTE"), "for-each-ref", "--format=%(objectname)", ref))
+			to := strings.TrimSpace(rawGit(t, other, "for-each-ref", "--format=%(objectname)", ref))
+			regsKept := regs == rawGit(t, root, "worktree", "list", "--porcelain")
+			if res != nil || err == nil || !strings.Contains(err.Error(), tc.want) ||
+				len(host.deleted) != 0 || !regsKept || local != approved || from != approved || to != approved ||
+				!bytes.Equal(before, stateBytes(t, root)) {
+				t.Fatalf("wanted %q before mutation; result=%+v err=%v evictions=%d registrations kept=%t approved refs kept (local, original, alternate)=%t,%t,%t persisted phase=%s",
+					tc.want, res, err, len(host.deleted), regsKept, local == approved, from == approved, to == approved, loadRun(t, root).Run.Issues[0].Phase)
+			}
+			for _, checkout := range []string{worktreeAbs(root, 1), reviewWorktreeAbs(root, 1)} {
+				if _, err := os.Stat(checkout); err != nil || !host.loaded[checkout] {
+					t.Fatalf("refusal removed checkout or its cache: %v", err)
+				}
+			}
+			for _, call := range host.calls {
+				if call.Name == "git" && call.Args[0] == "ls-remote" {
+					t.Fatal("unverifiable repository received a Git transfer")
+				}
+			}
+		})
+	}
+}
 
 func TestBoundMergedOpenCodeCleanupPreservesDriftedRefs(t *testing.T) {
 	for _, tc := range []struct{ name, want string }{
@@ -235,7 +295,8 @@ func TestBoundCleanupPinsRemoteAcrossReconfiguration(t *testing.T) {
 			root, _, approved, host, env := openCodeCheckoutFixture(t, state.PhaseMerged)
 			st := loadRun(t, root)
 			ref := "refs/heads/" + st.Run.Issues[0].Branch
-			original := strings.TrimSpace(rawGit(t, root, "remote", "get-url", "origin"))
+			original := os.Getenv("ORCH_CLEANUP_FIXTURE_REMOTE")
+			originalURL := strings.TrimSpace(rawGit(t, root, "remote", "get-url", "origin"))
 			dir := t.TempDir()
 			rawGit(t, dir, "init", "--bare", "other.git")
 			other := filepath.Join(dir, "other.git")
@@ -250,7 +311,17 @@ func TestBoundCleanupPinsRemoteAcrossReconfiguration(t *testing.T) {
 			t.Setenv("GIT_CONFIG_VALUE_0", "true")
 			if scenario == "URL rewrite changes" {
 				rawGit(t, root, "remote", "set-url", "origin", "orch-fixture://first")
-				rawGit(t, root, "config", "url."+original+".insteadOf", "orch-fixture://first")
+				rawGit(t, root, "config", "url."+originalURL+".insteadOf", "orch-fixture://first")
+			}
+			if scenario == "push URL changes" {
+				// The exact ref cannot be deleted via the old named-remote push:
+				// the SSH fixture refuses the remote-specific receive program.
+				rawGit(t, root, "config", "remote.origin.receivepack", "fixture-unexpected-receive-pack")
+				res, err := (execx.Local{}).Run(context.Background(), execx.Cmd{Name: "git", Dir: root,
+					Args: []string{"push", "--dry-run", "origin", "--delete", st.Run.Issues[0].Branch}})
+				if err != nil || res.ExitCode == 0 || !strings.Contains(res.Stderr, "cleanup SSH fixture refused unexpected command") {
+					t.Fatalf("named push did not select the configured receive program: %+v %v", res, err)
+				}
 			}
 			changed := false
 			if scenario == "observed change before eviction" {
@@ -269,8 +340,8 @@ func TestBoundCleanupPinsRemoteAcrossReconfiguration(t *testing.T) {
 					rawGit(t, root, "remote", "rename", "origin", "old-origin")
 					rawGit(t, root, "remote", "add", "origin", other)
 				case "URL rewrite changes":
-					rawGit(t, root, "config", "url."+other+".insteadOf", original)
-					rawGit(t, root, "config", "url."+other+".pushInsteadOf", original)
+					rawGit(t, root, "config", "url."+other+".insteadOf", originalURL)
+					rawGit(t, root, "config", "url."+other+".pushInsteadOf", originalURL)
 				case "push URL changes":
 					rawGit(t, root, "remote", "set-url", "--push", "origin", other)
 				default:

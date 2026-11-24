@@ -42,9 +42,10 @@ var (
 )
 
 func (t RepoTarget) Valid() bool {
-	validPart := func(s string) bool { return s != "." && s != ".." && repoPart.MatchString(s) }
-	return repoHost.MatchString(t.Host) && validPart(t.Owner) && validPart(t.Repository) && githubNodeID.MatchString(t.ID)
+	return repoHost.MatchString(t.Host) && validRepoPart(t.Owner) && validRepoPart(t.Repository) && githubNodeID.MatchString(t.ID)
 }
+
+func validRepoPart(s string) bool { return s != "." && s != ".." && repoPart.MatchString(s) }
 
 // Target derives the approval identity from one observed repository, not a
 // configured remote URL or request parameter. The URL and slug must agree.

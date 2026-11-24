@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 
 	"github.com/kninetimmy/orch/internal/execx"
+	"github.com/kninetimmy/orch/internal/ghops"
 	"github.com/kninetimmy/orch/internal/gitops"
 	"github.com/kninetimmy/orch/internal/opencode"
 	"github.com/kninetimmy/orch/internal/paths"
@@ -61,7 +62,8 @@ func (c *verbCtx) releaseCheckouts(ctx context.Context, git *gitops.Git, bound *
 	var verify func(context.Context) error
 	if bound != nil {
 		if bound.approvedHead != "" {
-			branch := c.issue().Branch
+			issue := c.issue()
+			branch := issue.Branch
 			// A retry with an absent executor still must preserve unexpected refs.
 			if _, err := git.LocalBranchAtHead(ctx, branch, bound.approvedHead); err != nil {
 				return nil, err
@@ -69,7 +71,9 @@ func (c *verbCtx) releaseCheckouts(ctx context.Context, git *gitops.Git, bound *
 			if err := git.RequireBranchIdle(ctx, branch, bound.checkouts[0].canonical); err != nil {
 				return nil, err
 			}
-			remote, err := git.BindRemoteBranchAtHead(ctx, "origin", branch, bound.approvedHead)
+			remote, err := git.BindRemoteBranchAtHead(ctx, "origin", branch, bound.approvedHead, func(endpoint string) bool {
+				return ghops.MatchesPullRequestRepository(issue.PRURL, issue.PRNumber, endpoint)
+			})
 			if err != nil {
 				return nil, err
 			}
