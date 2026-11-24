@@ -1,8 +1,8 @@
 # Truthful checkout removal
 
 For confirmed OpenCode issue cleanup, see the
-[direct tool](#direct-opencode-cleanup-issue-547) or the
-[standalone recovery steps](#resume-normal-cleanup-from-a-standalone-terminal).
+[direct tool](#direct-opencode-cleanup-issue-547). For legacy unbound cleanup,
+see the [standalone recovery steps](#resume-normal-cleanup-from-a-standalone-terminal).
 
 Issue #505 corrects the absence assumption introduced for executor cleanup
 in PR #12 and extended to disposable review cleanup/replacement in PR #97.
