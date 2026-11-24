@@ -177,7 +177,7 @@ func TestBoundSSHTransportPinsOpenSSHPolicy(t *testing.T) {
 		"batchmode": {"yes"}, "stricthostkeychecking": {"true", "yes"},
 		"canonicalizehostname": {"false", "no"}, "proxycommand": {"", "none"}, "proxyjump": {"", "none"},
 		"controlmaster": {"false", "no"}, "controlpath": {"", "none"},
-		"checkhostip": {"false", "no"},
+		"checkhostip":      {"false", "no"},
 		"verifyhostkeydns": {"false", "no"}, "updatehostkeys": {"false", "no"},
 	} {
 		if !slices.Contains(want, fields[k]) {
