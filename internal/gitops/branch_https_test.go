@@ -71,20 +71,34 @@ func TestBoundHTTPSRefusesUnverifiedHeaders(t *testing.T) {
 
 func TestBoundHTTPSPinsValidatedHeaders(t *testing.T) {
 	const proxyAuth = "Basic ZHVtbXk6ZHVtbXk="
+	const ambientUserAgent = "orch-test-environment/1"
 	setupGitEnv(t)
 	for _, name := range []string{"HTTPS_PROXY", "ALL_PROXY", "NO_PROXY", "https_proxy", "all_proxy", "no_proxy"} {
 		t.Setenv(name, "")
 	}
 	t.Setenv("GIT_ALLOW_PROTOCOL", "https")
+	t.Setenv("GIT_HTTP_USER_AGENT", ambientUserAgent)
 	var accepted atomic.Int32
+	var pushObserved atomic.Bool
 	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		service := r.URL.Query().Get("service")
+		wantUserAgent := "orch-cleanup/1"
+		if accepted.Load() == 0 {
+			wantUserAgent = ambientUserAgent // The first request is ordinary Git.
+		}
+		if got := r.Header.Values("User-Agent"); !slices.Equal(got, []string{wantUserAgent}) {
+			t.Errorf("%s User-Agent = %q, want [%q]", service, got, wantUserAgent)
+			w.WriteHeader(http.StatusForbidden)
+			return
+		}
 		if r.URL.Path != "/owner/repo.git/info/refs" || r.Header.Get("X-Orch-Test") != "" || r.Header.Get("Proxy-Authorization") != proxyAuth ||
 			!slices.Equal(r.Header.Values("Authorization"), []string{"Dummy first", "Dummy second", "Dummy third"}) {
 			w.WriteHeader(http.StatusForbidden)
 			return
 		}
 		accepted.Add(1)
-		if r.URL.Query().Get("service") == "git-receive-pack" {
+		if service == "git-receive-pack" {
+			pushObserved.Store(true)
 			// Only observe push discovery here; real deletion is exercised in
 			// the separate Windows smoke fixture.
 			w.WriteHeader(http.StatusMethodNotAllowed)
@@ -108,7 +122,7 @@ func TestBoundHTTPSPinsValidatedHeaders(t *testing.T) {
 	includeHeaderFixture(t, root, fmt.Sprintf("[remote \"origin\"]\n url = %s\n"+
 		"[http]\n extraHeader = X-Orch-Test: reset by following entry\n extraHeader =\n extraHeader = Authorization: Dummy first\n"+
 		"[http \"%s/owner/\"]\n extraHeader = authorization: Dummy second\n"+
-		"[http \"https://%%66ixture-user@%s/owner/repo.git/\"]\n extraHeader = Authorization: Dummy third\n"+
+		"[http \"https://%%66ixture-user@%s/owner/repo.git/\"]\n extraHeader = Authorization: Dummy third\n userAgent = orch-test-config/1\n"+
 		"[http \"%s/owner/other.git/\"]\n extraHeader = X-Orch-Test: irrelevant URL scope\n", endpoint, server.URL, authority, server.URL))
 	t.Setenv("GIT_CONFIG_COUNT", "1")
 	t.Setenv("GIT_CONFIG_KEY_0", "http.https://fixture-user@"+authority+"/owner/repo.git/.extraHeader")
@@ -143,7 +157,7 @@ func TestBoundHTTPSPinsValidatedHeaders(t *testing.T) {
 	if exists, err := binding.Exists(t.Context()); err != nil || exists || accepted.Load() != 3 {
 		t.Fatalf("the same validated authentication was not pinned for the next transfer: %v", err)
 	}
-	if err := binding.Delete(t.Context(), ExplicitConfirmation()); err == nil || accepted.Load() != 4 {
-		t.Fatal("push discovery did not use the same pinned authentication")
+	if err := binding.Delete(t.Context(), ExplicitConfirmation()); err == nil || accepted.Load() != 4 || !pushObserved.Load() {
+		t.Fatal("push discovery did not use the pinned authentication and User-Agent")
 	}
 }

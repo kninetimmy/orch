@@ -148,6 +148,8 @@ var errBoundHTTPSVerify = errors.New("bound HTTPS cleanup requires TLS verificat
 
 var errBoundHTTPSConfig = errors.New("bound HTTPS cleanup could not verify Git extra headers; preserve the work and inspect http.extraHeader settings")
 
+const boundHTTPSUserAgent = "orch-cleanup/1"
+
 func (b *RemoteBranchBinding) bindHTTPS(ctx context.Context) error {
 	// Only the config command honors GIT_CONFIG as an alternate file. It
 	// would not describe the configuration used by the transport.
@@ -177,6 +179,7 @@ func (b *RemoteBranchBinding) bindHTTPS(ctx context.Context) error {
 		parameters += " "
 	}
 	parameters += quote(key+"followRedirects") + "='false' " + quote(key+"sslVerify") + "='true'"
+	parameters += " " + quote(key+"userAgent") + "=" + quote(boundHTTPSUserAgent)
 	for _, value := range append([]string{""}, headers...) {
 		parameters += " " + quote(key+"extraHeader") + "=" + quote(value)
 	}
@@ -335,7 +338,8 @@ func (b *RemoteBranchBinding) run(ctx context.Context, args ...string) (execx.Re
 		if _, insecure := os.LookupEnv("GIT_SSL_NO_VERIFY"); insecure {
 			return execx.Result{}, errBoundHTTPSVerify
 		}
-		config = append(config, b.httpsConfig)
+		// Git lets GIT_HTTP_USER_AGENT override even exact URL-scoped config.
+		config = append(config, b.httpsConfig, "GIT_HTTP_USER_AGENT="+boundHTTPSUserAgent)
 	}
 	return b.g.runBranchTransport(ctx, config, args...)
 }

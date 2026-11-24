@@ -923,6 +923,14 @@ commands (HTTPS and SSH) also suppress inherited `GIT_TRACE_PERFORMANCE`,
 which previously could log endpoint data. Refusals do not print header
 values, raw URLs or transport errors.
 
+**HTTPS User-Agent before and after:** bound HTTPS previously used Git's
+default or its configured `http.userAgent`; `GIT_HTTP_USER_AGENT` could
+override either. Bound merged cleanup now sets both the exact URL's Git
+setting and the child process override to `orch-cleanup/1`, for every HTTPS
+ref lookup and leased deletion. The authentication and TLS settings above
+still apply. SSH, unbound and abandoned cleanup, and other Git commands do
+not gain this User-Agent restriction.
+
 **SSH transport before and after:** a matching SSH URL previously still used
 Git's selected SSH command and the user's and system's SSH client configuration.
 A hostname override, proxy or reused connection could therefore reach a
@@ -947,6 +955,12 @@ merged reads and pushes now instead use the pinned URL via an invocation-scoped
 token. SSH uses Git's default pack programs; HTTPS uses normal HTTP and
 URL-scoped Git settings and proxy environment, not the named remote's proxy
 settings. Neither operation inherits the named transport helper.
+
+A named `git ls-remote` could also inherit `remote.<name>.serverOption` for
+Git protocol v2 when no command-line server option was supplied. The bound
+lookup's URL token no longer selects those options. Unbound named lookups
+can still inherit them; `git push` did not use this setting before and does
+not use it now.
 
 Before, `remote.<name>.mirror` could request mirror mode for a named push,
 which is incompatible with an explicit deletion refspec. Bound deletion now
