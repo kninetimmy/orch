@@ -9,6 +9,7 @@ import { hostname } from "node:os"
 import path, { delimiter } from "node:path"
 import { fileURLToPath } from "node:url"
 import { createInterface } from "node:readline"
+import { setTimeout as delay } from "node:timers/promises"
 
 import { lookupServer, lookupTools, sameDirectory } from "./src/lookup.js"
 import { checkAdapterModule, copyBinary, fileIdentity, inside, prepareOrch, prepareSourceProbe, selectArtifacts, verifyArtifacts } from "./smoke-artifacts.mjs"
@@ -51,6 +52,14 @@ assert.equal(admittedVersion("opencode v1.18.34"), undefined)
 assert.equal(admittedVersion("opencode v2.2.6 extra"), undefined)
 assert.equal(admittedVersion("opencode v2.02.6"), undefined)
 
+function baselineCleanupInput(code, parameters) {
+  return parameters?.properties?.background?.type === "boolean" ? { code, background: true } : { code }
+}
+
+assert.deepEqual(baselineCleanupInput("return 1", { properties: { code: { type: "string" } } }), { code: "return 1" })
+assert.deepEqual(baselineCleanupInput("return 1", { properties: { background: { type: "boolean" } } }),
+  { code: "return 1", background: true })
+
 function findOpenCode(cwd, env) {
   for (const name of ["opencode2", "opencode"]) {
     const candidates = process.platform === "win32"
@@ -91,12 +100,12 @@ async function availablePort() {
   return port
 }
 
-async function within(promise, label) {
+async function within(promise, label, timeout = 30_000) {
   let timer
   try {
     return await Promise.race([
       promise,
-      new Promise((_, reject) => (timer = setTimeout(() => reject(new Error("timed out waiting for " + label)), 30_000))),
+      new Promise((_, reject) => (timer = setTimeout(() => reject(new Error("timed out waiting for " + label)), timeout))),
     ])
   } finally {
     clearTimeout(timer)
@@ -128,7 +137,7 @@ const evidence = {
     status: command("git", ["status", "--porcelain", "--", "adapters/opencode"], repo).trim(),
     files: await Promise.all([
       ...["smoke.mjs", "smoke-artifacts.mjs", "smoke-retention.mjs", "smoke-storage.mjs", "smoke-shutdown.mjs",
-        "smoke-lock.mjs", "smoke-native.mjs"].map((file) => path.join(harnessAdapter, file)),
+        "smoke-lock.mjs", "smoke-native.mjs", "testdata/cleanup-https/main.go"].map((file) => path.join(harnessAdapter, file)),
       ...await smokeLockEvidenceFiles(),
     ].map(fileIdentity)),
   },
@@ -140,6 +149,8 @@ function pass(message) {
 }
 const temp = evidence.fixture_root = await storage.begin()
 const root = path.join(temp, process.platform === "win32" ? "repo & (native) % ! ^" : "repo")
+const origin = path.join(temp, "origin.git")
+const cleanupDestination = "https://github.example.invalid/fixture/orch-smoke.git"
 const bin = path.join(temp, "bin")
 const state = path.join(temp, "state")
 const configFile = path.join(root, "opencode.json")
@@ -150,6 +161,8 @@ let controller
 let headers
 let baseURL
 let stopHost
+let cleanupHTTPS
+let cleanupHTTPSExit
 let failure
 let requests = 0
 const provider = createServer((_, response) => {
@@ -179,7 +192,7 @@ try {
   const orchBinary = path.join(bin, process.platform === "win32" ? "orch.exe" : "orch")
   const git = command(process.platform === "win32" ? "where.exe" : "which", ["git"], repo).trim().split(/\r?\n/)[0]
   const env = Object.fromEntries(Object.entries(process.env)
-    .filter(([name]) => !/API_KEY|TOKEN|SECRET|CREDENTIAL|ACCESS_KEY|PASSWORD|COOKIE|^GIT_|^MEMHUB_|^HF_|^FASTEMBED_|^NODE_COMPILE_CACHE$|^(HTTP|HTTPS|ALL|NO)_PROXY$/i.test(name))
+    .filter(([name]) => !/API_KEY|TOKEN|SECRET|CREDENTIAL|ACCESS_KEY|PASSWORD|COOKIE|^GIT_|^MEMHUB_|^HF_|^FASTEMBED_|^ORCH_CLEANUP_FIXTURE_|^NODE_COMPILE_CACHE$|^(HTTP|HTTPS|ALL|NO)_PROXY$/i.test(name))
     .map(([name, value]) => [process.platform === "win32" ? name.toUpperCase() : name, value]))
   Object.assign(env, {
     PATH: [bin, path.dirname(git), ...(process.platform === "win32" ? [path.join(process.env.SystemRoot, "System32")] : ["/usr/bin", "/bin"])].join(delimiter),
@@ -194,6 +207,7 @@ try {
     FASTEMBED_CACHE_PATH: path.join(temp, "models", "fastembed"),
     GIT_CONFIG_GLOBAL: process.platform === "win32" ? "NUL" : "/dev/null",
     GIT_CONFIG_NOSYSTEM: "1",
+    GIT_ALLOW_PROTOCOL: "file:https",
     XDG_CONFIG_HOME: path.join(temp, "config"),
     XDG_STATE_HOME: state,
     XDG_DATA_HOME: path.join(temp, "data"),
@@ -297,12 +311,21 @@ try {
   await mkdir(unmanagedNested, { recursive: true })
   await mkdir(unmanagedNonGit)
   command("git", ["init", "-b", "main"], unmanagedGit, env)
-  command(memhubBinary, ["init"], unmanagedGit, env)
+  // The user's unrelated full server runs its own byte-identical copy. The
+  // managed negative tests later rename, replace and delete bin/memhub, and a
+  // location reload also relaunches these unmanaged servers. With a shared
+  // path they ran the simulated legacy executable and, on Windows, could still
+  // have it mapped when the test deleted it (EPERM).
+  const unmanagedBin = path.join(temp, "unmanaged-bin")
+  await mkdir(unmanagedBin)
+  const unmanagedMemhub = path.join(unmanagedBin, path.basename(memhubBinary))
+  evidence.unmanaged_memhub = await copyBinary(selection.memhub, unmanagedMemhub)
+  command(unmanagedMemhub, ["init"], unmanagedGit, env)
   // The same loaded adapter, but only the user's ordinary full connection.
   // This synthetic memory is not an Orch-managed project or a child fallback.
   const unmanagedConfiguration = {
     ...configuration,
-    mcp: { servers: { memhub: { type: "local", command: [memhubBinary, "serve"], cwd: unmanagedGit } } },
+    mcp: { servers: { memhub: { type: "local", command: [unmanagedMemhub, "serve"], cwd: unmanagedGit } } },
   }
   for (const directory of [unmanagedGit, unmanagedNonGit]) {
     await writeFile(path.join(directory, "opencode.json"), JSON.stringify(unmanagedConfiguration))
@@ -330,9 +353,17 @@ try {
     throw new Error("timed out waiting for " + label + ": " + logs.slice(-4000))
   }
 
-  const service = await eventually(async () => JSON.parse(await readFile(path.join(state, "opencode", "service.json"), "utf8")), "private service record")
-  assert.equal(service.pid, server.pid, "service discovery must name our own process")
-  assert.equal(service.url, baseURL)
+  const serviceFile = path.join(state, "opencode", "service.json")
+  const record = await eventually(() => readFile(serviceFile), "private service record")
+  let service
+  try {
+    service = JSON.parse(record.toString("utf8"))
+  } catch {
+    throw new Error("private service record is not valid JSON")
+  }
+  assert(server.pid && service?.pid === server.pid, "service discovery must name our own process")
+  assert(service.url === baseURL, "private service record does not name the expected loopback endpoint")
+  assert(typeof service.password === "string" && service.password.length > 0, "private service record is missing authentication")
   headers = { authorization: "Basic " + Buffer.from("opencode:" + service.password).toString("base64"), "content-type": "application/json" }
   async function api(endpoint, options = {}) {
     let response
@@ -347,9 +378,64 @@ try {
   async function plugins(directory = root) {
     return (await api("/api/plugin?" + query(directory))).data.filter((entry) => entry.id === pluginID)
   }
-  const info = await api("/api/info")
-  assert.equal(info.pid, server.pid)
-  assert(inside(temp, path.resolve(info.paths.tmp)), "runtime temporary files must stay in the isolated fixture")
+  // The service record can appear before /api/info is ready. Bound only this
+  // startup probe, including in-flight bodies, to one shared retry budget.
+  {
+    const budget = 20_000
+    const started = performance.now()
+    const signal = AbortSignal.timeout(budget)
+    let attempts = 0
+    let lastStatus = "none"
+    const checkDeadline = () => {
+      const elapsed = performance.now() - started
+      if (signal.aborted || elapsed >= budget) {
+        throw new Error(`startup /api/info timed out after ${Math.round(elapsed)} ms (${attempts} attempts, last status ${lastStatus})`)
+      }
+    }
+    const checkChild = () => {
+      assert(server.pid === service.pid && server.exitCode === null && server.signalCode === null, "private server exited during startup")
+    }
+    const checkRecord = async () => {
+      checkChild()
+      const current = await readFile(serviceFile, { signal }).catch(() => {
+        throw new Error("private service record could not be read during startup")
+      })
+      checkChild()
+      assert(record.equals(current), "private service record changed during startup")
+    }
+    try {
+      for (;;) {
+        await checkRecord()
+        checkDeadline()
+        attempts++
+        const response = await fetch(baseURL + "/api/info", { method: "GET", headers, redirect: "error", signal }).catch(() => {
+          throw new Error("startup /api/info transport failed")
+        })
+        lastStatus = response.status
+        checkChild()
+        checkDeadline()
+        if (!response.ok) {
+          await response.body?.cancel()
+          if (lastStatus !== 503) throw new Error("startup /api/info returned HTTP " + lastStatus)
+          await delay(250, undefined, { signal })
+          continue
+        }
+        const info = await response.json().catch(() => {
+          throw new Error("startup /api/info response could not be read as JSON")
+        })
+        await checkRecord()
+        checkDeadline()
+        assert(info?.pid === service.pid, "startup /api/info must name our own process")
+        assert(typeof info.paths?.tmp === "string" && inside(temp, path.resolve(info.paths.tmp)),
+          "runtime temporary files must stay in the isolated fixture")
+        break
+      }
+    } catch (error) {
+      checkChild()
+      checkDeadline()
+      throw error
+    }
+  }
   stopHost = async () => {
     const current = JSON.parse(await readFile(path.join(state, "opencode", "service.json"), "utf8"))
     assert.equal(current.pid, server.pid, "shutdown must still name our owned server")
@@ -410,8 +496,8 @@ try {
   controller = await simulation("ws://127.0.0.1:" + backendPort)
   pass("deterministic simulation handshake and attachment; no session has run yet")
   let callID = 0
-  async function nextTurn() {
-    const turn = await within(controller.next("llm.request"), "simulated model request")
+  async function nextTurn(timeout) {
+    const turn = await within(controller.next("llm.request"), "simulated model request", timeout)
     evidence.last_request = turn.body
     assert.equal(turn.url, "https://api.openai.com/v1/chat/completions", "model must use the registered simulation destination")
     return turn
@@ -441,11 +527,11 @@ try {
     await api("/api/session/" + session.id + "/prompt", { method: "POST", body: JSON.stringify({ text: "Execute the deterministic smoke tool calls." }) })
     return { session, turn: await nextTurn() }
   }
-  async function tool(turn, name, input, denial) {
+  async function tool(turn, name, input, denial, timeout) {
     const id = "smoke-" + ++callID
     await controller.request("llm.chunk", { id: turn.id, items: [{ type: "toolCall", index: 0, id, name, input }] })
     await controller.request("llm.finish", { id: turn.id, reason: "tool-calls" })
-    const next = await nextTurn()
+    const next = await nextTurn(timeout)
     const entry = next.body.messages.findLast((message) => message.tool_call_id === id)
     assert(entry, "real tool execution must return the requested call identity")
     const body = JSON.stringify(entry)
@@ -1075,7 +1161,17 @@ func check(ok bool) { if !ok { fmt.Fprintln(os.Stderr, "native command-boundary 
   pass("normalized MCP collision preserves user server and existing write guard")
   // Lifecycle probes use only this server and owned synthetic checkouts.
   // Never manually evict a location or kill a process to make Git removal pass.
+  const releaseSpec = await api("/openapi.json")
+  const codeModeJobs = process.platform === "win32" &&
+    releaseSpec.components?.schemas?.["Job.CodeMode"]?.properties?.kind?.enum?.includes("codemode")
   delete configuration.mcp.servers["orch.memhub"]
+  if (codeModeJobs) {
+    // 2.3.2 exposes script jobs only with this opt-in. Apply it before the
+    // lifecycle probes start their alias PTYs, not during cleanup.
+    configuration.experimental = { ...configuration.experimental, full_codemode: true }
+  } else if (process.platform === "win32") {
+    console.log("No advertised Windows Code Mode job contract; testing the direct tool without the historical job control.")
+  }
   await writeFile(configFile, JSON.stringify(configuration))
   await mode("best-effort")
   await Promise.all([connected(root), connected(writable), connected(sibling)])
@@ -1084,11 +1180,15 @@ func check(ok bool) { if !ok { fmt.Fprintln(os.Stderr, "native command-boundary 
     releaseEvidence.source_files = await Promise.all([
       "internal/opencode/release.go", "internal/opencode/release_terminals.go", "internal/opencode/release_test.go", "internal/opencode/release_terminals_windows_test.go",
       "internal/opencode/release_access_windows.go", "internal/opencode/release_access_other.go",
-      "internal/run/checkout_release.go", "internal/run/checkout_release_test.go", "internal/run/checkout_release_windows_test.go",
+      "internal/opencode/release_removal.go",
+      "internal/ghops/pr_destination.go",
+      "internal/gitops/branch_head.go", "internal/gitops/branch_head_test.go",
+      "internal/gitops/branch_ssh.go", "internal/gitops/branch_ssh_windows.go", "internal/gitops/branch_ssh_other.go",
+      "internal/run/cleanup.go", "internal/run/cleanup_binding.go", "internal/run/checkout_release.go",
+      "internal/run/cleanup_binding_test.go", "internal/run/checkout_release_test.go", "internal/run/checkout_release_windows_test.go",
       "internal/run/checkout_pagination_windows_test.go",
     ].map((file) => fileIdentity(path.join(repo, file))))
   }
-  const releaseSpec = await api("/openapi.json")
   const locationContract = releaseSpec.paths["/api/debug/location"]
   assert.equal(locationContract.get.operationId, "debug.location.list")
   assert.equal(locationContract.delete.operationId, "debug.location.evict")
@@ -1152,7 +1252,10 @@ func check(ok bool) { if !ok { fmt.Fprintln(os.Stderr, "native command-boundary 
     approved_at: new Date().toISOString(), config_revision: gate.config_revision,
     contract_version: gate.execution.version, execution_digest: "sha256:" + hash(executionBytes),
   }
-  Object.assign(fixtureState.run.issues[0], { phase: "pr-open", pr_number: 1, pr_url: "https://example.invalid/synthetic/1" })
+  const fixtureRepoURL = "https://github.example.invalid/fixture/orch-smoke"
+  Object.assign(fixtureState.run.issues[0], {
+    phase: "pr-open", url: fixtureRepoURL + "/issues/1", pr_number: 1, pr_url: fixtureRepoURL + "/pull/1",
+  })
   await writeFile(lockPath, JSON.stringify({ schema_version: 1, run_id: fixtureState.run.id, host: "opencode", hostname: hostname(), pid: process.pid, acquired_at: new Date().toISOString() }))
   await writeFile(stateFile, JSON.stringify(fixtureState))
   releaseEvidence.synthetic_gate = gate
@@ -1162,9 +1265,39 @@ func check(ok bool) { if !ok { fmt.Fprintln(os.Stderr, "native command-boundary 
   command("git", ["-c", "user.name=Orch Smoke", "-c", "user.email=orch-smoke@example.invalid", "commit", "-m", "Create synthetic lifecycle revision"], writable, env)
   const newOID = command("git", ["rev-parse", "HEAD"], writable, env).trim()
   assert.notEqual(oldOID, newOID)
-  const origin = path.join(temp, "origin.git")
   command("git", ["init", "--bare", origin], temp, env)
-  command("git", ["remote", "add", "origin", origin], root, env)
+  const cleanupServer = path.join(temp, process.platform === "win32" ? "cleanup-https.exe" : "cleanup-https")
+  command("go", ["build", "-o", cleanupServer, "./adapters/opencode/testdata/cleanup-https"], repo)
+  cleanupHTTPS = spawn(cleanupServer, [git, temp], { cwd: temp, env, stdio: ["pipe", "pipe", "pipe"], windowsHide: true })
+  cleanupHTTPSExit = joined(cleanupHTTPS)
+  cleanupHTTPS.stderr.on("data", (data) => (logs += data))
+  const httpsOutput = createInterface({ input: cleanupHTTPS.stdout })
+  let readyHTTPS
+  try {
+    readyHTTPS = JSON.parse(await within(Promise.race([
+      new Promise((resolve) => httpsOutput.once("line", resolve)),
+      cleanupHTTPSExit.then(({ code, error }) => { throw new Error("private HTTPS Git fixture exited at startup: " + (error ?? code)) }),
+    ]), "private HTTPS Git fixture startup"))
+  } finally {
+    httpsOutput.close()
+  }
+  assert(/^http:\/\/127\.0\.0\.1:\d+$/.test(readyHTTPS.proxy) && /^Authorization: Bearer [A-Z2-7]+$/.test(readyHTTPS.header),
+    "expected a private loopback tunnel and disposable Git fixture authorization")
+  const ca = path.join(temp, "cleanup-ca.pem")
+  for (const [key, value] of [["proxy", readyHTTPS.proxy], ["sslCAInfo", ca]]) {
+    command("git", ["config", "http.https://github.example.invalid/." + key, value], root, env)
+  }
+  // This disposable credential stays in private Git config, not Git argv.
+  const cleanupAuthConfig = path.join(root, ".git", "orch-https-fixture-auth")
+  await writeFile(cleanupAuthConfig, '[http "https://github.example.invalid/"]\n\textraHeader = ' + readyHTTPS.header + "\n",
+    { flag: "wx", mode: 0o600 })
+  command("git", ["config", "--add", "include.path", cleanupAuthConfig], root, env)
+  command("git", ["config", "http.schannelUseSSLCAInfo", "true"], root, env)
+  releaseEvidence.git_transport = {
+    executable: await fileIdentity(cleanupServer), ca: await fileIdentity(ca),
+    policy: "verified HTTPS with fixture CA, fixed loopback tunnel, and disposable bare Git repository",
+  }
+  command("git", ["remote", "add", "origin", cleanupDestination], root, env)
   command("git", ["push", "origin", "main", "smoke-issue"], root, env)
   const reviewPath = path.join(root, ".orchestrator", "worktrees", "review-issue-1")
   const reviewRequest = (head, number = 1) => ({ schema_version: 1, issue_number: number, head_oid: head })
@@ -1442,7 +1575,12 @@ func check(ok bool) { if !ok { fmt.Fprintln(os.Stderr, "native command-boundary 
   await refuseRelease("review-worktree", reviewRequest(newOID, 2), /unexpected loaded descendant/)
   assert(existsSync(descendant), "refused descendant must remain intact")
 
-  fixtureState.run.issues[0].phase = "abandoned"
+  // Reflect a confirmed merge only in the private Git repository and the
+  // synthetic approved run; do not contact a GitHub repository.
+  command("git", ["merge", "--ff-only", "smoke-issue"], root, env)
+  command("git", ["push", "origin", "main"], root, env)
+  assert.equal(command("git", ["rev-parse", "HEAD"], root, env).trim(), newOID)
+  Object.assign(fixtureState.run.issues[0], { phase: "merged", reviewed_head_oid: newOID, approved_head_oid: newOID })
   await writeFile(stateFile, JSON.stringify(fixtureState))
   const cleanupRequest = { schema_version: 1, issue_number: 1, statement: "cleanup-issue" }
   const activeExecutor = await start(writable, agentModels["orch-implementer"], lookupParent.session.id, "orch-implementer")
@@ -1464,8 +1602,97 @@ func check(ok bool) { if !ok { fmt.Fprintln(os.Stderr, "native command-boundary 
   const beforeCleanup = await cacheSnapshot()
   const cleanupKeys = targetKeys(beforeCleanup, [writable, reviewPath])
   assert.equal(cleanupKeys.length, 2)
-  releaseEvidence.cleanup = await runCommand("cleanup", cleanupRequest)
+  const baselineTool = "smoke_baseline_cleanup"
+  if (codeModeJobs) {
+    await controller.request("tool.attach", { tools: [{
+      name: baselineTool, description: "Exercise the old cleanup transport in the private fixture",
+      inputSchema: { type: "object", properties: {}, additionalProperties: false },
+      options: { codemode: true },
+    }] })
+  }
+  const jobs = async (filter = "") => (await api("/api/experimental/job" + filter)).data
+  const codeJobs = (rows, owner) => rows.filter((job) => job.kind === "codemode" && job.sessionID === owner)
+  const handoff = releaseEvidence.open_code_cleanup = {
+    confirmed: { run_id: fixtureState.run.id, issue_number: 1, approved_head_oid: newOID, phase: "merged",
+      pr_url: fixtureState.run.issues[0].pr_url, git_destination: cleanupDestination, transport: "authenticated HTTPS to private bare repo" },
+  }
+  if (codeModeJobs) {
+    const baseline = await start(root)
+    const execute = baseline.turn.body.tools.find((entry) => entry.function?.name === "execute")
+    assert(execute, "baseline turn must advertise Code Mode execute")
+    const input = baselineCleanupInput(`return await tools.${baselineTool}({})`, execute.function.parameters)
+    const refusalPattern = /running Code Mode job prevents removal/
+    const stateBeforeHold = await readFile(stateFile)
+    const gitSnapshot = () => [
+      command("git", ["worktree", "list", "--porcelain"], root, env),
+      command("git", ["rev-parse", "refs/heads/smoke-issue"], root, env).trim(),
+      command("git", ["ls-remote", "--heads", "origin", "smoke-issue"], root, env).trim(),
+    ]
+    const gitBeforeHold = gitSnapshot()
+    assert.deepEqual(gitBeforeHold.slice(1), [newOID, newOID + "\trefs/heads/smoke-issue"])
+    // Keep an actual host Code Mode job alive while its nested simulation tool
+    // runs the old CLI path. No dependence on the model's shell tool catalog.
+    const observeHold = async () => {
+      const call = await within(controller.next("tool.invocation"), "nested baseline cleanup")
+      assert.equal(call.name, baselineTool)
+      assert.equal(call.context.sessionID, baseline.session.id)
+      const job = await eventually(async () => codeJobs(await jobs("?status=running"), baseline.session.id)[0], "running cleanup Code Mode job")
+      assert.equal(job.status, "running")
+      assert(typeof job.id === "string" && job.id, "running cleanup job must have an ID")
+      const refusal = await runResult("cleanup", cleanupRequest)
+      assert.equal(refusal.status, 1)
+      assert.equal(refusal.stdout, "")
+      assert.match(refusal.stderr, refusalPattern)
+      await controller.request("tool.finish", {
+        id: call.id, output: { structured: refusal.stderr, content: [{ type: "text", text: refusal.stderr }] },
+      })
+      return job
+    }
+    const [blockedTurn, runningJob] = await Promise.all([
+      tool(baseline.turn, "execute", input),
+      observeHold(),
+    ])
+    if (input.background) {
+      assert(evidence.last_tool.content.includes(runningJob.id), "background acknowledgement must identify the observed job")
+    } else {
+      assert.match(evidence.last_tool.content, /is still running/)
+    }
+    assert.doesNotMatch(JSON.stringify(blockedTurn.body.messages), refusalPattern, "the refusal must arrive in the completion turn")
+    const ended = await eventually(async () => {
+      const job = codeJobs(await jobs(), baseline.session.id).find((entry) => entry.id === runningJob.id)
+      return job?.status !== "running" && { status: job?.status ?? "not listed" }
+    }, "finished cleanup Code Mode job")
+    // Full Code Mode delivers detached completion in a follow-up turn. Let
+    // the first turn end, then consume that notification before cleanup.
+    await controller.request("llm.chunk", { id: blockedTurn.id, items: [{ type: "textDelta", text: "waiting for the script" }] })
+    await controller.request("llm.finish", { id: blockedTurn.id, reason: "stop" })
+    const notification = await nextTurn()
+    assert.match(JSON.stringify(notification.body.messages), refusalPattern)
+    await finish(baseline.session, notification)
+    assert.deepEqual(await readFile(stateFile), stateBeforeHold)
+    assert(existsSync(writable) && existsSync(reviewPath))
+    assert.deepEqual(await cacheSnapshot(), beforeCleanup)
+    assert.deepEqual(gitSnapshot(), gitBeforeHold)
+    handoff.old_job = {
+      full_codemode: true, kind: runningJob.kind, at_refusal: runningJob.status,
+      after_nested_call: ended.status, completion_notified: true, exit: 1,
+      checkouts_caches_and_state_preserved: true,
+      worktree_registrations_and_both_refs_preserved: true,
+    }
+    pass("real primary Code Mode cleanup job runs, refuses before eviction, then finishes")
+  }
+  const cleanupSession = await start(root)
+  assert(cleanupSession.turn.body.tools.some((entry) => entry.function?.name === "orch_cleanup"),
+    "the Architect must have a direct OpenCode cleanup tool, not another Code Mode invocation")
+  const cleanupTurn = await tool(cleanupSession.turn, "orch_cleanup", { ...cleanupRequest, run_id: fixtureState.run.id }, undefined, 180_000)
+  releaseEvidence.cleanup = JSON.parse(evidence.last_tool.content)
+  assert.deepEqual(codeJobs(await jobs(), cleanupSession.session.id), [],
+    "direct cleanup must not create or exempt a Code Mode job")
+  handoff.direct = { tool: "orch_cleanup", top_level: true, new_code_mode_job: false, result: releaseEvidence.cleanup }
+  await finish(cleanupSession.session, cleanupTurn)
   assert.equal(releaseEvidence.cleanup.phase, "cleaned")
+  handoff.persisted_phase = JSON.parse(await readFile(stateFile)).run.issues.find(({ number }) => number === 1).phase
+  assert.equal(handoff.persisted_phase, "cleaned")
   assert.equal(existsSync(writable), false)
   assert.equal(existsSync(reviewPath), false)
   releaseEvidence.after_cleanup = await api("/api/debug/location")
@@ -1486,8 +1713,20 @@ func check(ok bool) { if !ok { fmt.Fprintln(os.Stderr, "native command-boundary 
   }
   completed.git_registrations_after = command("git", ["worktree", "list", "--porcelain"], root, env)
   for (const directory of [writable, reviewPath]) assert(!completed.git_registrations_after.includes(directory.replaceAll("\\", "/")))
+  handoff.git_registrations_absent = true
+  releaseEvidence.cleanup_artifacts = {
+    executor_exists: existsSync(writable), review_exists: existsSync(reviewPath),
+    remote_heads: command("git", ["ls-remote", "--heads", "origin", "smoke-issue"], root, env).trim(),
+    local_ref_exit: result("git", ["show-ref", "--verify", "--quiet", "refs/heads/smoke-issue"], root, env).status,
+  }
+  assert.equal(releaseEvidence.cleanup_artifacts.executor_exists, false)
+  assert.equal(releaseEvidence.cleanup_artifacts.review_exists, false)
+  assert.equal(releaseEvidence.cleanup_artifacts.remote_heads, "")
+  assert.equal(releaseEvidence.cleanup_artifacts.local_ref_exit, 1)
+  handoff.artifacts = { issue_branch: "smoke-issue", ...releaseEvidence.cleanup_artifacts }
+  pass("direct OpenCode cleanup returns cleaned from the primary session without a standalone retry")
   pass("both completed child sessions remain assigned with unchanged history; checkout-bound Memhub connected before batched release; both Git checkouts removed")
-  releaseEvidence.primary_after = await nativeLookup(root, oldOID)
+  releaseEvidence.primary_after = await nativeLookup(root, newOID)
   releaseEvidence.unrelated_after = await nativeLookup(sibling, oldOID)
   if (aliasKeys.length) {
     releaseEvidence.cache_aliases.activity_after_cleanup = await aliasActivity()
@@ -1505,15 +1744,6 @@ func check(ok bool) { if !ok { fmt.Fprintln(os.Stderr, "native command-boundary 
   releaseEvidence.unmanaged_after = JSON.parse(evidence.last_tool.content)
   assert.equal(releaseEvidence.unmanaged_after.tasks_total, unmanagedTasks, "unrelated full-profile lookup must remain usable without losing its synthetic memory")
   await finish(unrelatedAfter.session, unrelatedAfter.turn)
-  releaseEvidence.cleanup_artifacts = {
-    executor_exists: existsSync(writable), review_exists: existsSync(reviewPath),
-    remote_heads: command("git", ["ls-remote", "--heads", "origin", "smoke-issue"], root, env).trim(),
-    local_ref_exit: result("git", ["show-ref", "--verify", "--quiet", "refs/heads/smoke-issue"], root, env).status,
-  }
-  assert.equal(releaseEvidence.cleanup_artifacts.executor_exists, false)
-  assert.equal(releaseEvidence.cleanup_artifacts.review_exists, false)
-  assert.equal(releaseEvidence.cleanup_artifacts.remote_heads, "")
-  assert.equal(releaseEvidence.cleanup_artifacts.local_ref_exit, 1)
   pass("engine executor/review cleanup after completed native lookups; descendant/activity refusals preserve fixtures; primary and unrelated lookup services still usable")
   if (process.platform === "win32") {
     // Ambiguous target caches remain untouched until normal owned-host shutdown.
@@ -1545,6 +1775,7 @@ func check(ok bool) { if !ok { fmt.Fprintln(os.Stderr, "native command-boundary 
   failure = error
 } finally {
   controller?.socket.close()
+  cleanupHTTPS?.stdin.destroy()
   const shutdown = evidence.owned_shutdown = { verified: false }
   try {
     if (server?.pid && server.exitCode === null && server.signalCode === null) {
@@ -1570,6 +1801,10 @@ func check(ok bool) { if !ok { fmt.Fprintln(os.Stderr, "native command-boundary 
       assert(!await present(path.join(state, "opencode", "service.json")), "owned private service record still exists")
       shutdown.service_record_removed = true
     } else shutdown.method = "no private host started"
+    if (cleanupHTTPSExit) {
+      const stopped = shutdown.git_https_fixture = { pid: cleanupHTTPS.pid, ...await within(cleanupHTTPSExit, "private HTTPS Git fixture shutdown") }
+      assert.equal(stopped.code, 0, "private HTTPS Git fixture shutdown was not confirmed")
+    }
     assert(evidence.direct_memhub_shutdown?.verified !== false, "owned direct Memhub shutdown is unconfirmed")
     shutdown.process_inventory = verifyStopped(temp)
     shutdown.verified = true

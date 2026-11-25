@@ -292,9 +292,10 @@ and approval/execution to 3.
 manual wire versions: Gate **4**, Status **4**, Activation **3**, Dispatch **4**,
 Review **4**, Escalate **2**, Block **2**, Resume **2**, Resolve Block **1** and
 Repair **1**. State schema 6, metrics document schema 2 and SDK/util/protocol
-pins 2.2.6 are unchanged. The source adapters and marketplace are labeled
-**0.13.2** for the pending **v0.17.0** candidate, following the 0.13.1 source
-bump in #522; match the engine and adapter content, not just those labels.
+pins 2.2.6 are unchanged. The **v0.17.0** candidate paired with **0.13.2**
+adapters and marketplace, following the 0.13.1 source bump in #522. The
+published release retained that pairing; match the engine and adapter
+content, not just those labels.
 Inspection does not authorize continuation or migrate an older run.
 OpenCode child lookup additionally requires **lookup-context schema 2** and a
 Memhub build supporting explicit `--memory-root`, `--code-root` and
@@ -387,10 +388,10 @@ go install github.com/kninetimmy/orch/cmd/orch@latest
 
 ## Codex parity
 
-Published engine **v0.16.0** pairs with **0.13.0** on all three hosts. The pending
-**v0.17.0** candidate pairs with **0.13.2**; that does not qualify new
-Codex/Claude behavior. Historically, v0.15.2 paired with Claude/Codex manual
-adapter 0.13.0 and OpenCode package 0.12.0.
+Published engine **v0.16.0** pairs with **0.13.0** on all three hosts. The
+**v0.17.0** candidate paired with **0.13.2**, as did the published release.
+That does not qualify new Codex/Claude behavior. Historically, v0.15.2 paired
+with Claude/Codex manual adapter 0.13.0 and OpenCode package 0.12.0.
 Codex shares the manual Delivery engine with Claude, but automation parity is
 unfinished.
 
@@ -788,19 +789,64 @@ unmanaged scope. See the [OpenCode binding and qualification guide](adapters/ope
 
 ## Unreleased
 
-### v0.17.0 release target (not published)
+### Direct OpenCode cleanup (#547, #549, #551)
 
-Latest published release is **[v0.16.0](https://github.com/kninetimmy/orch/releases/tag/v0.16.0)**,
-tagged at `18fd5032c35253d58b11963777bb002d9acdde79`. This pending candidate
-covers the merged changes after that tag through `e86ff7058cd80662df32eec36b97297fc2947d5e`
-(PR #544), plus this final release-notes and **0.13.2** adapter/marketplace bump.
-It does not announce a tag, GitHub release or npm publication.
+**Before (through v0.17.0):** cleanup invoked inside Code Mode could block
+itself even when no other work was active. Recovery meant waiting for the job
+to finish, then rerunning the confirmed cleanup from a standalone terminal.
+
+**After:** the matching engine and OpenCode adapter run confirmed cleanup
+through the direct `orch_cleanup` tool from the verified primary session,
+outside Code Mode. The isolated Windows OpenCode **2.4.0** source smoke checks
+the job hold, then direct cleanup without a standalone retry. The earlier
+Windows **2.3.2** observation established the Code Mode hold, not direct-tool
+qualification. Neither is installed qualification or a new engine runtime
+baseline.
+Running Code Mode jobs still block removal, including jobs owned by primary
+sessions or first observed during bound merged cleanup's remote lookup or push.
+For an activity hold, keep the checkouts unused, let the job finish, verify the
+run and issue, then retry the confirmed `orch_cleanup` directly from primary.
+For a repository or ownership refusal, preserve the work and inspect the
+evidence instead of switching tools.
+
+**Before #551:** inspecting a clean executor could still refresh its Git
+index before a destination refusal. **After:** the clean check reads status
+without that optional write. Modified, staged and untracked files still
+block removal.
+
+Bound merged cleanup checks the recorded PR host, owner and repository name
+over verified HTTPS or SSH and requires the exact approved branch tip if
+the ref is present. Before URL pinning, Git used the remote name and its
+transport settings; now the bound lookup and deletion use the verified URL
+instead. See the [named-remote settings before and after](docs/worktree-cleanup.md#named-remote-transport).
+These checks do not verify a stable repository ID. A replacement at the same
+URL with the same branch and commit can still match. Finish or pause pending
+cleanup before a repository migration, mirror cutover, or restore that
+replaces the repository. Do not resume an old run against the replacement.
+No new credential setup is required; the existing transport requirements
+still apply.
+
+The [cleanup guide](docs/worktree-cleanup.md) preserves the released standalone
+recovery, which does not retain the new bound checks.
+
+<a id="v0170-release-target-not-published"></a>
+
+## v0.17.0 release
+
+Published **2026-11-23 UTC** as
+[v0.17.0](https://github.com/kninetimmy/orch/releases/tag/v0.17.0) at
+`61219da5f853fbf8f7956927c9404ebebfcda4c1`. Before publication, **v0.16.0**
+at `18fd5032c35253d58b11963777bb002d9acdde79` was the latest release.
+v0.17.0 includes changes through PR #544
+(`e86ff7058cd80662df32eec36b97297fc2947d5e`), plus the final release notes and
+**0.13.2** adapter/marketplace bump. The preparation itself did not publish
+a tag, GitHub release or npm package. OpenCode remains unpublished to npm.
 
 - Safer checkout cleanup refuses success while worktree residue remains and
   releases finished OpenCode locations before Git removal. Alias identity,
   cache-eviction rechecks, teardown holds and concurrent saved-session checks
   protect active sessions and terminals. Unknown or running Code Mode jobs
-  block cleanup with specific recovery guidance, not a forced removal. See
+  block cleanup with standalone recovery guidance, not a forced removal. See
   [cleanup and recovery](docs/worktree-cleanup.md) (#507, #508, #511, #512,
   #524, #526, #538, #544).
 - Windows OpenCode uses the native CLI behind npm shims without shell
@@ -833,12 +879,15 @@ It does not announce a tag, GitHub release or npm publication.
 
 **Qualification and limits.** Earlier Windows source/explicit-artifact smoke
 and installed observations in these guides qualify only their recorded
-commits and bytes, not this v0.17.0 candidate or its eventual merged binary.
-Source tests and hosted CI do not replace the local Windows OpenCode smoke,
-prove shared-service activation or qualify a model-driven five-role trial,
-other platforms, Claude/Codex direct child memory or complete host parity.
+commits and bytes, not the v0.17.0 candidate, its eventual merged binary or
+later source. Separately, v0.17.0 passed isolated Windows OpenCode smoke in
+source-build and explicit-artifact modes. Source tests and hosted CI do not
+replace the local Windows OpenCode smoke, prove shared-service activation
+or qualify a model-driven five-role trial, other platforms, Claude/Codex
+direct child memory or complete host parity.
 
-**Operator upgrade and release handoff.**
+**Operator upgrade and release handoff.** No final v0.17.0 artifact was
+published at the preparation stage described here.
 
 1. **Finish active Delivery runs on their original engine and matching adapters
    before upgrading.** Update only between runs in **Assist**. If a run cannot
@@ -848,11 +897,11 @@ other platforms, Claude/Codex direct child memory or complete host parity.
    adapter/skills, compatible Memhub and configuration with paths, commits and
    hashes. Upgrade the engine and matching adapters as a unit, not labels alone.
 2. After separately approved installation, verify downloaded binaries against
-   the trusted release's published `SHA256SUMS` **before execution**. No final
-   v0.17.0 artifact is published yet. Reload the affected OpenCode location or
-   restart Claude/Codex, refresh stale/changed agent definitions, run selected-host
-   doctor and verify loaded source/hashes. Exercise a fresh bounded approved
-   workflow. Rollback is also Assist-only and restores the recorded compatible
+   the trusted release's published `SHA256SUMS` **before execution**.
+   Reload the affected OpenCode location or restart Claude/Codex, refresh
+   stale/changed agent definitions, run selected-host doctor and verify loaded
+   source/hashes. Exercise a fresh bounded approved workflow. Rollback is also
+   Assist-only and restores the recorded compatible
    engine/adapter/Memhub/configuration pair, never a live-run migration.
 3. **Separate post-merge gate:** after independent review, CI and merge, fetch
    and verify the exact clean main commit containing this final bump and the

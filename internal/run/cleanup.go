@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 
 	"github.com/kninetimmy/orch/internal/gitops"
 	"github.com/kninetimmy/orch/internal/metrics"
@@ -28,6 +29,9 @@ type CleanupRequest struct {
 	SchemaVersion int    `json:"schema_version"`
 	IssueNumber   int    `json:"issue_number"`
 	Statement     string `json:"statement"`
+	// RunID is required by the direct OpenCode tool. Omit for the ordinary
+	// CLI request; it keeps its existing confirmation and preflight.
+	RunID *string `json:"run_id,omitempty"`
 }
 
 // CleanupResult reports the completed cleanup.
@@ -57,18 +61,38 @@ func Cleanup(ctx context.Context, env Env, reqJSON []byte) (*CleanupResult, erro
 	if req.Statement != CleanupStatement {
 		return nil, fmt.Errorf("%w: cleanup statement %q does not equal %q", ErrBadRequest, req.Statement, CleanupStatement)
 	}
+	if req.IssueNumber <= 0 {
+		return nil, fmt.Errorf("%w: cleanup requires a positive issue_number", ErrBadRequest)
+	}
 
 	c, err := loadVerb(env, req.IssueNumber, []state.Phase{state.PhaseMerged, state.PhaseAbandoned}, false)
 	if err != nil {
 		return nil, err
 	}
 	issue := c.issue()
+	if req.RunID != nil && (*req.RunID == "" || *req.RunID != c.st.Run.ID || c.st.Run.Host != "opencode") {
+		return nil, fmt.Errorf("%w: OpenCode cleanup run_id does not match the active run", ErrBadRequest)
+	}
 
 	git, err := gitops.Open(ctx, env.Runner, env.RepoRoot)
 	if err != nil {
 		return nil, err
 	}
 	confirm := gitops.ExplicitConfirmation()
+	var bound *cleanupBinding
+	var approvedHead string
+	if req.RunID != nil {
+		if err := git.RequirePrimary(ctx); err != nil {
+			return nil, err
+		}
+		if issue.Phase == state.PhaseMerged {
+			if !headOIDPattern.MatchString(issue.ApprovedHeadOID) {
+				return nil, fmt.Errorf("OpenCode cleanup: merged issue has no verifiable approved PR head; preserve the checkouts and branches")
+			}
+			approvedHead = strings.ToLower(issue.ApprovedHeadOID)
+		}
+		bound = &cleanupBinding{approvedHead: approvedHead}
+	}
 
 	// Before #506, checkout-scoped OpenCode services could keep Windows paths
 	// locked through Git removal. Explicit cleanup now releases verified idle
@@ -77,17 +101,61 @@ func Cleanup(ctx context.Context, env Env, reqJSON []byte) (*CleanupResult, erro
 	// an earlier successful release may already have unloaded an idle cache.
 	// Before #510 other hosts skipped this boundary; now Windows checks both
 	// raw checkout paths/interiors before any branch deletion on every host.
-	if err := c.releaseCheckouts(ctx, git, false, true); err != nil {
-		return nil, err
-	}
-
-	// 1. Remote branch (idempotent: only delete when present).
-	exists, err := git.RemoteBranchExists(ctx, "origin", issue.Branch)
+	check, err := c.releaseCheckouts(ctx, git, bound, false, true)
 	if err != nil {
 		return nil, err
 	}
+	var remote *gitops.RemoteBranchBinding
+	if bound != nil {
+		remote = bound.remote
+	}
+	// A primary-owned shell, PTY or Code Mode job can start during Git I/O
+	// without reloading a target. Recheck observable activity and then the
+	// original ownership, not a replacement checkout.
+	beforeRemoval := func(removed string) error {
+		if check != nil {
+			if err := check(ctx, removed); err != nil {
+				return err
+			}
+		}
+		if bound != nil {
+			targets := bound.checkouts[:]
+			if removed != "" {
+				targets = targets[1:]
+			}
+			return c.verifyCleanupCheckouts(ctx, git, targets...)
+		}
+		return nil
+	}
+
+	// 1. Remote branch (idempotent: only delete when present).
+	var exists bool
+	if remote != nil {
+		exists, err = remote.Exists(ctx)
+	} else {
+		exists, err = git.RemoteBranchExists(ctx, "origin", issue.Branch)
+	}
+	if err != nil {
+		return nil, err
+	}
+	if err := beforeRemoval(""); err != nil {
+		return nil, err
+	}
+	if remote != nil {
+		if err := remote.VerifyDestination(ctx); err != nil {
+			return nil, err
+		}
+	}
 	if exists {
-		if err := git.DeleteRemoteBranch(ctx, "origin", issue.Branch, confirm); err != nil {
+		if remote != nil {
+			err = remote.Delete(ctx, confirm)
+		} else {
+			err = git.DeleteRemoteBranch(ctx, "origin", issue.Branch, confirm)
+		}
+		if err != nil {
+			return nil, err
+		}
+		if err := beforeRemoval(""); err != nil {
 			return nil, err
 		}
 	}
@@ -96,7 +164,8 @@ func Cleanup(ctx context.Context, env Env, reqJSON []byte) (*CleanupResult, erro
 	// registration alone; now gitops returns it only for an absent path.
 	// Existing unregistered residue is preserved and fails cleanup.
 	// RemoveWorktree verifies removal and prunes stale metadata itself.
-	if err := git.RemoveWorktree(ctx, c.worktreeAbs(), confirm); err != nil && !errors.Is(err, gitops.ErrUnknownWorktree) {
+	executor := c.worktreeAbs()
+	if err := git.RemoveWorktree(ctx, executor, confirm); err != nil && !errors.Is(err, gitops.ErrUnknownWorktree) {
 		return nil, err
 	}
 
@@ -106,13 +175,20 @@ func Cleanup(ctx context.Context, env Env, reqJSON []byte) (*CleanupResult, erro
 	// ReviewWorktree for why that absence is deliberate — so cleanup
 	// derives its path exactly as the verb that created it does rather
 	// than reading state that was never written.
+	if err := beforeRemoval(executor); err != nil {
+		return nil, err
+	}
 	if err := git.RemoveDetachedWorktree(ctx, reviewWorktreeAbs(env.RepoRoot, issue.Number)); err != nil && !errors.Is(err, gitops.ErrUnknownWorktree) {
 		return nil, err
 	}
 
 	// 4. Local branch (idempotent: only force-delete when it still
 	// resolves — a squash merge leaves it unmerged by design).
-	if _, err := git.RevParse(ctx, issue.Branch); err == nil {
+	if approvedHead != "" {
+		if err := git.ForceDeleteBranchAtHead(ctx, issue.Branch, approvedHead, confirm); err != nil {
+			return nil, err
+		}
+	} else if _, err := git.RevParse(ctx, issue.Branch); err == nil {
 		if err := git.ForceDeleteBranch(ctx, issue.Branch, confirm); err != nil {
 			return nil, err
 		}

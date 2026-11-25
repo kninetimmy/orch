@@ -33,7 +33,8 @@ type releaseParameter struct {
 
 // ReleaseLocation retains the single-checkout handoff for review replacement.
 func ReleaseLocation(ctx context.Context, runner execx.Runner, primary, target string) error {
-	return ReleaseLocations(ctx, runner, primary, target)
+	_, err := ReleaseLocations(ctx, runner, primary, nil, false, target)
+	return err
 }
 
 // ReleaseLocations is called only after the run engine verifies disposable
@@ -43,16 +44,22 @@ func ReleaseLocation(ctx context.Context, runner execx.Runner, primary, target s
 // service restart, session deletion or process termination.
 // On Windows the runner must support concurrent persistent-terminal reads.
 // Before #525 sequential handoffs could reload an earlier target through later
-// session/terminal probes. Now ALL loading probes precede the first eviction.
-func ReleaseLocations(ctx context.Context, runner execx.Runner, primary string, targets ...string) error {
-	if len(targets) == 0 {
-		return nil
+// session/terminal probes. Now probes that could load a target precede eviction.
+// Bound cleanup supplies verify to recheck engine ownership before disposal
+// and to keep retry advice on the bound path.
+// Cleanup can use the returned check at later Git boundaries, under the same
+// deadline. checkJobs also needs a late check on a ref-only retry, where
+// there is no checkout to release or scan. Review replacement needs only this
+// release.
+func ReleaseLocations(ctx context.Context, runner execx.Runner, primary string, verify func(context.Context) error, checkJobs bool, targets ...string) (ReleaseCheck, error) {
+	if len(targets) == 0 && !checkJobs {
+		return nil, nil
 	}
 	ctx, cancel := context.WithTimeout(ctx, 2*time.Minute)
 	defer cancel()
 	host, err := Resolve(ctx, runner, primary)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	request := func(ctx context.Context, method, endpoint string, out any) error {
 		if err := ctx.Err(); err != nil {
@@ -85,17 +92,27 @@ func ReleaseLocations(ctx context.Context, runner execx.Runner, primary string, 
 	call := func(method, endpoint string, out any) error {
 		return request(ctx, method, endpoint, out)
 	}
+	deadline, _ := ctx.Deadline()
+	if len(targets) == 0 {
+		return func(ctx context.Context, _ string) error {
+			ctx, cancel := context.WithDeadline(ctx, deadline)
+			defer cancel()
+			return releaseRunningJobs(func(method, endpoint string, out any) error {
+				return request(ctx, method, endpoint, out)
+			}, nil, true)
+		}, nil
+	}
 	targetInfos := make([]releaseLocation, 0, len(targets))
 	for _, target := range targets {
 		info, err := os.Stat(target)
 		if err != nil || !info.IsDir() {
-			return fmt.Errorf("OpenCode checkout release: target directory cannot be verified")
+			return nil, fmt.Errorf("OpenCode checkout release: target directory cannot be verified")
 		}
 		if same, err := sameDirectory(primary, target); err != nil || same {
-			return fmt.Errorf("OpenCode checkout release: refusing primary or unverifiable directory")
+			return nil, fmt.Errorf("OpenCode checkout release: refusing primary or unverifiable directory")
 		}
 		if slices.ContainsFunc(targetInfos, func(other releaseLocation) bool { return os.SameFile(other.info, info) }) {
-			return fmt.Errorf("OpenCode checkout release: duplicate target directory")
+			return nil, fmt.Errorf("OpenCode checkout release: duplicate target directory")
 		}
 		targetInfos = append(targetInfos, releaseLocation{Directory: target, info: info})
 	}
@@ -111,18 +128,18 @@ func ReleaseLocations(ctx context.Context, runner execx.Runner, primary string, 
 		} `json:"paths"`
 	}
 	if err := call("get", "/openapi.json", &spec); err != nil {
-		return err
+		return nil, err
 	}
 	evict := spec.Paths["/api/debug/location"]["delete"]
 	if spec.Paths["/api/debug/location"]["get"].OperationID != "debug.location.list" || evict.OperationID != "debug.location.evict" ||
 		!slices.ContainsFunc(evict.Parameters, func(p releaseParameter) bool {
 			return p.Name == "location" && p.In == "query" && p.Style == "deepObject" && p.Explode
 		}) {
-		return fmt.Errorf("OpenCode checkout release: explicit scoped disposal contract is unsupported")
+		return nil, fmt.Errorf("OpenCode checkout release: explicit scoped disposal contract is unsupported")
 	}
 	// Inventory reads do not activate an unloaded location. Keep every exact
 	// host key and independently verify its directory, even for physical aliases.
-	inventory := func() ([]releaseLocation, []string, error) {
+	inventory := func(call releaseCall) ([]releaseLocation, []string, error) {
 		var locations []releaseLocation
 		if err := call("get", "/api/debug/location", &locations); err != nil {
 			return nil, nil, err
@@ -180,29 +197,22 @@ func ReleaseLocations(ctx context.Context, runner execx.Runner, primary string, 
 		}
 		return missing, nil
 	}
-	unchanged := func(location releaseLocation) error {
-		info, err := releaseDirectory(location.Directory)
-		if err != nil || !os.SameFile(location.info, info) {
-			return fmt.Errorf("OpenCode checkout release: directory disappeared or changed identity; refusing Git removal")
-		}
-		return nil
-	}
-	before, loaded, err := inventory()
+	before, loaded, err := inventory(call)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	var evicted *releaseLocation
 	for recheck := false; ; recheck = true {
 		for _, target := range targetInfos {
-			if err := unchanged(target); err != nil {
-				return err
+			if err := checkReleaseIdentity(target); err != nil {
+				return nil, err
 			}
 		}
-		if err := releaseActiveJobs(call, targets); err != nil {
-			return err
+		if err := releaseActiveJobs(call, targets, verify != nil); err != nil {
+			return nil, err
 		}
 		if err := releaseActivity(ctx, request, targets); err != nil {
-			return err
+			return nil, err
 		}
 		for i, key := range loaded {
 			if key == "" {
@@ -217,99 +227,137 @@ func ReleaseLocations(ctx context.Context, runner execx.Runner, primary string, 
 				} `json:"project"`
 			}
 			if err := call("get", "/api/location?"+query, &location); err != nil {
-				return err
+				return nil, err
 			}
 			if location.Directory != key {
-				return fmt.Errorf("OpenCode checkout release: host location cache key differs from the queried target")
+				return nil, fmt.Errorf("OpenCode checkout release: host location cache key differs from the queried target")
 			}
 			for _, pair := range [][2]string{{targets[i], location.Directory}, {targets[i], location.Project.Directory}, {primary, location.Project.Canonical}} {
 				if same, err := sameDirectory(pair[0], pair[1]); err != nil || !same {
-					return fmt.Errorf("OpenCode checkout release: host location/project roots differ from the verified checkout")
+					return nil, fmt.Errorf("OpenCode checkout release: host location/project roots differ from the verified checkout")
 				}
 			}
 		}
 		// Re-read global activity and locations immediately before disposal. This
 		// narrows the observation window; it still cannot lock out concurrent entry.
-		if err := releaseActiveJobs(call, targets); err != nil {
-			return err
+		if err := releaseActiveJobs(call, targets, verify != nil); err != nil {
+			return nil, err
 		}
-		currentLocations, stillLoaded, err := inventory()
+		currentLocations, stillLoaded, err := inventory(call)
 		if err != nil {
-			return err
+			return nil, err
 		}
 		for i, key := range stillLoaded {
 			if key != "" && loaded[i] != key {
-				return fmt.Errorf("OpenCode checkout release: target cache key loaded or changed during activity checks; preserve it and retry after use finishes")
+				return nil, fmt.Errorf("OpenCode checkout release: target cache key loaded or changed during activity checks; preserve it and retry after use finishes")
 			}
 		}
 		missing, err := preserve(before, currentLocations, !recheck)
 		if err != nil {
-			return err
+			return nil, err
 		}
 		if (missing != nil || recheck) && !slices.Equal(stillLoaded, loaded) || recheck && len(currentLocations) != len(before) {
-			return fmt.Errorf("OpenCode checkout release: location inventory changed again or target changed; refusing Git removal")
+			return nil, fmt.Errorf("OpenCode checkout release: location inventory changed again or target changed; refusing Git removal")
 		}
 		if missing != nil {
 			// One unrelated idle-cache eviction permits a fresh read-only preflight,
 			// not an idle inference or a scoped read that could reload the lost key.
-			if err := unchanged(*missing); err != nil {
-				return err
+			if err := checkReleaseIdentity(*missing); err != nil {
+				return nil, err
 			}
 			evicted, before = missing, currentLocations
 			continue
 		}
 		if err := releaseOrdinaryProcesses(call, targets, currentLocations); err != nil {
-			return err
+			return nil, err
 		}
 		for _, target := range targetInfos {
-			if err := unchanged(target); err != nil {
-				return err
+			if err := checkReleaseIdentity(target); err != nil {
+				return nil, err
 			}
 		}
 		if evicted != nil {
-			if err := unchanged(*evicted); err != nil {
-				return err
+			if err := checkReleaseIdentity(*evicted); err != nil {
+				return nil, err
 			}
 		}
 		before = currentLocations
 		loaded = stillLoaded
 		break
 	}
-	// From the first eviction onward, ONLY exact evictions and non-loading
-	// debug inventories are allowed. Session/terminal reads can load locations.
+	if verify != nil {
+		if err := verify(ctx); err != nil {
+			return nil, err
+		}
+		checkInventory := func() ([]releaseLocation, error) {
+			current, currentKeys, err := inventory(call)
+			if err != nil {
+				return nil, err
+			}
+			if !slices.Equal(loaded, currentKeys) || len(current) != len(before) {
+				return nil, fmt.Errorf("OpenCode checkout release: inventory changed before disposal; preserve the checkouts")
+			}
+			_, err = preserve(before, current, false)
+			return current, err
+		}
+		// A primary-owned shell or PTY can start in a target cwd during
+		// ownership checks without appearing in session/job inventories.
+		// Probe only verified loaded keys and finish with a non-loading read.
+		current, err := checkInventory()
+		if err != nil {
+			return nil, err
+		}
+		if err := releaseOrdinaryProcesses(call, targets, current); err != nil {
+			return nil, err
+		}
+		if err := releaseActiveJobs(call, targets, true); err != nil {
+			return nil, err
+		}
+		if _, err := checkInventory(); err != nil {
+			return nil, err
+		}
+		for _, target := range targetInfos {
+			if err := checkReleaseIdentity(target); err != nil {
+				return nil, err
+			}
+		}
+	}
+	// Per-session/terminal and target-scoped reads can reload a checkout. After
+	// eviction, use only global observations and ordinary reads of surviving keys.
 	for _, key := range loaded {
 		if key != "" {
 			query := url.Values{"location[directory]": {key}}.Encode()
 			if err := call("delete", "/api/debug/location?"+query, nil); err != nil {
-				return err
+				return nil, err
 			}
 		}
 	}
-	after, remainsLoaded, err := inventory()
-	if err != nil {
-		return err
-	}
-	if slices.ContainsFunc(remainsLoaded, func(key string) bool { return key != "" }) {
-		return fmt.Errorf("OpenCode checkout release: scoped disposal did not unload a target or a target reactivated; refusing Git removal")
-	}
-	if _, err := preserve(before, after, false); err != nil {
-		return err
-	}
-	for _, target := range targetInfos {
-		if err := unchanged(target); err != nil {
-			return err
+	releasedInventory := func(call releaseCall) ([]releaseLocation, error) {
+		current, keys, err := inventory(call)
+		if err != nil {
+			return nil, err
 		}
-		if err := ctx.Err(); err != nil {
-			return releaseContextError(err)
+		if slices.ContainsFunc(keys, func(key string) bool { return key != "" }) {
+			return nil, fmt.Errorf("OpenCode checkout release: scoped disposal did not unload a target or a target reactivated; refusing Git removal")
 		}
-		if err := releaseDeleteAccess(target.Directory, target.info); err != nil {
-			return err
+		if _, err := preserve(before, current, false); err != nil {
+			return nil, err
 		}
+		return current, nil
 	}
-	if err := ctx.Err(); err != nil {
-		return releaseContextError(err)
+	if _, err := releasedInventory(call); err != nil {
+		return nil, err
 	}
-	return nil
+	if err := checkReleaseDeleteAccess(ctx, targetInfos); err != nil {
+		return nil, err
+	}
+	return func(ctx context.Context, removed string) error {
+		ctx, cancel := context.WithDeadline(ctx, deadline)
+		defer cancel()
+		return recheckReleasedLocations(ctx, func(method, endpoint string, out any) error {
+			return request(ctx, method, endpoint, out)
+		}, targetInfos, removed, releasedInventory, checkJobs)
+	}, nil
 }
 
 func releaseContextError(err error) error {
@@ -408,7 +456,9 @@ func releaseBelongs(targets []string, directory string) (bool, error) {
 	return false, nil
 }
 
-func releaseActiveJobs(call releaseCall, targets []string) error {
+const runningJobsEndpoint = "/api/experimental/job?status=running"
+
+func releaseActiveJobs(call releaseCall, targets []string, bound bool) error {
 	sessionInTarget := func(id string) (bool, error) {
 		if !strings.HasPrefix(id, "ses") {
 			return false, fmt.Errorf("OpenCode checkout release: malformed activity session identifier")
@@ -426,16 +476,6 @@ func releaseActiveJobs(call releaseCall, targets []string) error {
 			return false, fmt.Errorf("OpenCode checkout release: activity session identity mismatch")
 		}
 		return releaseBelongs(targets, response.Data.Location.Directory)
-	}
-	checkSession := func(id string) error {
-		belongs, err := sessionInTarget(id)
-		if err != nil {
-			return err
-		}
-		if belongs {
-			return fmt.Errorf("OpenCode checkout release: active session or unfinished background job prevents removal")
-		}
-		return nil
 	}
 	var active struct {
 		Data map[string]struct {
@@ -457,10 +497,27 @@ func releaseActiveJobs(call releaseCall, targets []string) error {
 	}
 	slices.Sort(ids)
 	for _, id := range ids {
-		if err := checkSession(id); err != nil {
+		if err := checkReleaseSession(sessionInTarget, id); err != nil {
 			return err
 		}
 	}
+	return releaseRunningJobs(call, sessionInTarget, bound)
+}
+
+func checkReleaseSession(sessionInTarget func(string) (bool, error), id string) error {
+	belongs, err := sessionInTarget(id)
+	if err != nil {
+		return err
+	}
+	if belongs {
+		return fmt.Errorf("OpenCode checkout release: active session or unfinished background job prevents removal")
+	}
+	return nil
+}
+
+// Late and ref-only checks have no attribution function: job data is global,
+// but resolving a session can load its checkout. Do not issue those reads then.
+func releaseRunningJobs(call releaseCall, sessionInTarget func(string) (bool, error), bound bool) error {
 	var jobs struct {
 		Data []struct {
 			ID             string `json:"id"`
@@ -470,7 +527,7 @@ func releaseActiveJobs(call releaseCall, targets []string) error {
 			ChildSessionID string `json:"childSessionID"`
 		} `json:"data"`
 	}
-	if err := call("get", "/api/experimental/job?status=running", &jobs); err != nil {
+	if err := call("get", runningJobsEndpoint, &jobs); err != nil {
 		return err
 	}
 	if jobs.Data == nil || len(jobs.Data) > 1000 {
@@ -482,27 +539,44 @@ func releaseActiveJobs(call releaseCall, targets []string) error {
 		}
 		switch job.Kind {
 		case "codemode":
-			belongs, err := sessionInTarget(job.SessionID)
-			if err != nil {
-				return err
+			if sessionInTarget == nil && !strings.HasPrefix(job.SessionID, "ses") {
+				return fmt.Errorf("OpenCode checkout release: malformed activity session identifier")
 			}
 			// The inventory has no nested tool destinations. Verifying an
 			// outside owner does not establish where the job's tools work.
 			reason := "its working directories cannot be verified"
-			if belongs {
-				reason = "its owning session is in a target checkout"
+			if sessionInTarget != nil {
+				belongs, err := sessionInTarget(job.SessionID)
+				if err != nil {
+					return err
+				}
+				if belongs {
+					reason = "its owning session is in a target checkout"
+				}
+			}
+			if bound {
+				return fmt.Errorf("OpenCode checkout release: running Code Mode job prevents removal: %s; "+
+					"let the job finish, re-confirm the run and issue, then retry `orch_cleanup` directly outside Code Mode from the verified primary checkout", reason)
 			}
 			return fmt.Errorf("OpenCode checkout release: running Code Mode job prevents removal: %s; "+
 				"let the job finish, then rerun the normal command (for cleanup, `orch run cleanup`) "+
 				"from a standalone foreground terminal at the verified primary checkout when OpenCode is idle", reason)
 		case "shell", "image", "subagent":
+			if sessionInTarget == nil {
+				// This late check adds the global Code Mode hold, not a second
+				// owner attribution pass for other known job kinds.
+				if !strings.HasPrefix(job.SessionID, "ses") || job.Kind == "subagent" && !strings.HasPrefix(job.ChildSessionID, "ses") {
+					return fmt.Errorf("OpenCode checkout release: malformed activity session identifier")
+				}
+				continue
+			}
 			// The owner may be in primary while the actual subagent runs in target.
 			// Both count: owner-side completion/report delivery can also re-enter.
-			if err := checkSession(job.SessionID); err != nil {
+			if err := checkReleaseSession(sessionInTarget, job.SessionID); err != nil {
 				return err
 			}
 			if job.Kind == "subagent" {
-				if err := checkSession(job.ChildSessionID); err != nil {
+				if err := checkReleaseSession(sessionInTarget, job.ChildSessionID); err != nil {
 					return err
 				}
 			}

@@ -35,10 +35,15 @@ type checkoutHost struct {
 	deleted       []string
 	partial       string
 	beforeAPI     func(*url.URL)
+	beforeGit     func(execx.Cmd)
+	beforeVersion func()
 	inventories   int
 	sessions      map[string]string
 	terminalCwds  map[string]string
+	ordinaryCwds  map[string]map[string]string
 	reactivated   []string
+	fixtureSSH    bool
+	sshRefusal    bool
 }
 
 func (h *checkoutHost) Run(ctx context.Context, cmd execx.Cmd) (execx.Result, error) {
@@ -46,6 +51,17 @@ func (h *checkoutHost) Run(ctx context.Context, cmd execx.Cmd) (execx.Result, er
 	defer h.mu.Unlock()
 	h.calls = append(h.calls, cmd)
 	if cmd.Name == "git" {
+		if h.beforeGit != nil {
+			h.beforeGit(cmd)
+		}
+		if h.fixtureSSH && slices.Contains(cmd.Env, "GIT_SSH_VARIANT=ssh") {
+			if h.sshRefusal {
+				return execx.Result{ExitCode: 128, Stderr: "private fixture host-key verification failed"}, nil
+			}
+			// This test runner substitutes the local pack service, not SSH
+			// authentication. The transport tests exercise the real policy.
+			cmd.Env = append(cmd.Env, "GIT_SSH_COMMAND=sh .git/orch-fixture-ssh", "GIT_SSH_VARIANT=simple")
+		}
 		res, err := (execx.Local{}).Run(ctx, cmd)
 		if len(cmd.Args) >= 3 && cmd.Args[0] == "worktree" && cmd.Args[1] == "remove" && cmd.Args[len(cmd.Args)-1] == h.partial && err == nil && res.ExitCode == 0 {
 			// Model Windows Git deregistration followed by leftover path and
@@ -66,6 +82,9 @@ func (h *checkoutHost) Run(ctx context.Context, cmd execx.Cmd) (execx.Result, er
 		return execx.Result{}, fmt.Errorf("unexpected fixture command")
 	}
 	if slices.Equal(cmd.Args, []string{"--version"}) {
+		if h.beforeVersion != nil {
+			h.beforeVersion()
+		}
 		return execx.Result{Stdout: "opencode v2.3.0"}, nil
 	}
 	if len(cmd.Args) != 3 || cmd.Args[0] != "api" || cmd.Dir != h.root {
@@ -148,7 +167,11 @@ func (h *checkoutHost) Run(ctx context.Context, cmd execx.Cmd) (execx.Result, er
 	case "/api/location":
 		return body(map[string]any{"directory": target, "project": map[string]string{"directory": target, "canonical": h.root}})
 	case "/api/shell", "/api/pty":
-		return body(map[string]any{"location": map[string]string{"directory": target}, "data": []any{}})
+		processes := []map[string]string{}
+		if cwd, ok := h.ordinaryCwds[endpoint.Path][target]; ok {
+			processes = append(processes, map[string]string{"id": "ordinary", "status": "running", "cwd": cwd})
+		}
+		return body(map[string]any{"location": map[string]string{"directory": target}, "data": processes})
 	}
 	if id, ok := strings.CutPrefix(endpoint.Path, "/api/session/"); ok {
 		if directory, ok := h.sessions[id]; ok {
@@ -214,13 +237,16 @@ func TestOpenCodeCleanupDoesNotReactivateReleasedCheckouts(t *testing.T) {
 					if err != nil {
 						t.Fatal(err)
 					}
+					primaryOrdinaryRead := cmd.Args[1] == "get" &&
+						(endpoint.Path == "/api/shell" || endpoint.Path == "/api/pty") &&
+						endpoint.Query().Get("location[directory]") == root
 					if cmd.Args[1] == "delete" {
 						released = true
-					} else if released && endpoint.Path != "/api/debug/location" {
+					} else if released && endpoint.Path != "/api/debug/location" && !primaryOrdinaryRead {
 						t.Fatalf("loading host probe after release: %+v", cmd)
 					}
 				}
-				t.Log("batched cleanup has no loading host probes after the first release")
+				t.Log("late cleanup probes use only inventory and ordinary reads scoped to the loaded primary")
 			}
 			if len(host.sessions) != len(sessions) {
 				t.Fatal("cleanup deleted completed session history")
@@ -280,6 +306,131 @@ func openCodeCheckoutFixture(t *testing.T, phase state.Phase) (string, string, s
 	return checkoutFixture(t, phase, "opencode")
 }
 
+func TestBoundOpenCodeCleanupRefusesStaleOrActiveTargets(t *testing.T) {
+	for _, tc := range []struct {
+		name, want string
+		phase      state.Phase
+	}{
+		{"stale run", "does not match the active run", state.PhaseAbandoned},
+		{"wrong phase", "in-review", state.PhaseInReview},
+		{"second job", "working directories cannot be verified", state.PhaseAbandoned},
+		{"late target work", "active session or unfinished background job", state.PhaseAbandoned},
+		{"late shell", "running shell or terminal prevents removal", state.PhaseAbandoned},
+		{"late PTY", "running shell or terminal prevents removal", state.PhaseAbandoned},
+		{"late unverifiable PTY", "host directory identity is unavailable", state.PhaseAbandoned},
+		{"changed review HEAD", "checkout identity changed", state.PhaseAbandoned},
+		{"replaced review directory", "checkout identity changed", state.PhaseAbandoned},
+		{"unregistered residue", "unregistered checkout", state.PhaseAbandoned},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			root, reviewHead, otherHead, host, env := openCodeCheckoutFixture(t, tc.phase)
+			executor, review := worktreeAbs(root, 1), reviewWorktreeAbs(root, 1)
+			st := loadRun(t, root)
+			branch, runID := st.Run.Issues[0].Branch, st.Run.ID
+			rawGit(t, root, "push", "origin", branch)
+			switch tc.name {
+			case "stale run":
+				runID = "previous-run"
+			case "second job":
+				host.sessions = map[string]string{"sesCaller": root, "sesOther": root}
+				host.jobInventory = `{"data":[
+					{"id":"jobOwn","kind":"shell","sessionID":"sesCaller","status":"running"},
+					{"id":"jobOther","kind":"codemode","sessionID":"sesOther","status":"running"}
+				]}`
+			case "late target work":
+				// Both original active/job probes see no work. Start a target
+				// drain while the ordinary cwd inventory is being collected.
+				host.beforeAPI = func(endpoint *url.URL) {
+					if endpoint.Path == "/api/pty" {
+						host.active = executor
+					}
+				}
+			case "late shell", "late PTY", "late unverifiable PTY":
+				endpoint, cwd := "/api/pty", review
+				if tc.name == "late shell" {
+					endpoint, cwd = "/api/shell", executor
+				}
+				if tc.name == "late unverifiable PTY" {
+					cwd = filepath.Join(root, "missing-cwd")
+				}
+				var sawFirstScan bool
+				host.beforeAPI = func(request *url.URL) {
+					if request.Path == endpoint && request.Query().Get("location[directory]") == root {
+						sawFirstScan = true
+					}
+				}
+				// Start a primary-owned process during the Git ownership recheck,
+				// after the first ordinary scan. It has no active session or job.
+				host.beforeGit = func(cmd execx.Cmd) {
+					if sawFirstScan && slices.Contains(cmd.Args, "--porcelain=v1") {
+						host.ordinaryCwds = map[string]map[string]string{endpoint: {root: cwd}}
+						host.beforeGit = nil
+					}
+				}
+			case "changed review HEAD":
+				host.beforeAPI = func(endpoint *url.URL) {
+					if endpoint.Path == "/api/pty" && reviewHead != otherHead {
+						rawGit(t, review, "checkout", "--detach", otherHead)
+						reviewHead = otherHead
+					}
+				}
+			case "replaced review directory":
+				// Change identity after engine ownership checks, before the
+				// host starts its own directory observations.
+				host.beforeVersion = func() {
+					host.beforeVersion = nil
+					gitPointer, err := os.ReadFile(filepath.Join(review, ".git"))
+					if err != nil {
+						t.Fatal(err)
+					}
+					if err := os.Rename(review, filepath.Join(root, "preserved-review")); err != nil {
+						t.Fatal(err)
+					}
+					if err := os.Mkdir(review, 0o755); err != nil {
+						t.Fatal(err)
+					}
+					if err := os.WriteFile(filepath.Join(review, ".git"), gitPointer, 0o644); err != nil {
+						t.Fatal(err)
+					}
+				}
+			case "unregistered residue":
+				rawGit(t, root, "worktree", "remove", "--force", review)
+				if err := os.Mkdir(review, 0o755); err != nil {
+					t.Fatal(err)
+				}
+				delete(host.loaded, review)
+			}
+			installedBefore := stateBytes(t, root)
+			refsBefore := rawGit(t, root, "ls-remote", "--heads", "origin", branch)
+			request := fmt.Appendf(nil, `{"schema_version":1,"issue_number":1,"statement":"cleanup-issue","run_id":%q}`, runID)
+			result, err := Cleanup(t.Context(), env, request)
+			if result != nil || err == nil || !strings.Contains(err.Error(), tc.want) {
+				t.Fatalf("wanted %q refusal, got result=%+v err=%v", tc.want, result, err)
+			}
+			if len(host.deleted) != 0 || !bytes.Equal(stateBytes(t, root), installedBefore) {
+				t.Fatal("refusal evicted a cache or changed the run")
+			}
+			for _, path := range []string{executor, review} {
+				if info, err := os.Stat(path); err != nil || !info.IsDir() {
+					t.Fatalf("refusal lost checkout %s: %v", path, err)
+				}
+			}
+			if rawGit(t, root, "ls-remote", "--heads", "origin", branch) != refsBefore ||
+				strings.TrimSpace(rawGit(t, root, "branch", "--list", branch)) == "" {
+				t.Fatal("refusal changed branch ownership")
+			}
+			if tc.name != "unregistered residue" {
+				detachedHeadAt(t, review, reviewHead)
+			}
+			if tc.name == "replaced review directory" {
+				if _, err := os.Stat(filepath.Join(root, "preserved-review")); err != nil {
+					t.Fatalf("original review path was not preserved: %v", err)
+				}
+			}
+		})
+	}
+}
+
 func checkoutFixture(t *testing.T, phase state.Phase, hostName string) (string, string, string, *checkoutHost, Env) {
 	t.Helper()
 	content, err := os.ReadFile(filepath.Join("..", "agents", "testdata", "opencode-mixed-provider.toml"))
@@ -317,13 +468,33 @@ func checkoutFixture(t *testing.T, phase state.Phase, hostName string) (string, 
 		t.Fatal(err)
 	}
 	st.Run.Issues = []state.Issue{fixtureIssue("synthetic", 1, phase)}
+	if phase == state.PhaseMerged {
+		st.Run.Issues[0].ApprovedHeadOID = second
+		st.Run.Issues[0].PRURL = "https://github.example.invalid/fixture/orch-smoke/pull/10"
+		// Keep real Git transport/ref operations, but make the synthetic SSH
+		// repository name reachable only through the disposable local fixture.
+		origin := strings.TrimSpace(rawGit(t, root, "remote", "get-url", "origin"))
+		script, err := os.ReadFile(filepath.Join("..", "..", "adapters", "opencode", "testdata", "cleanup-ssh.sh"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(root, ".git", "orch-fixture-ssh"), script, 0o600); err != nil {
+			t.Fatal(err)
+		}
+		t.Setenv("ORCH_CLEANUP_FIXTURE_REMOTE", filepath.ToSlash(origin))
+		t.Setenv("GIT_SSH_COMMAND", "sh .git/orch-fixture-ssh")
+		t.Setenv("GIT_SSH_VARIANT", "simple")
+		t.Setenv("GIT_ALLOW_PROTOCOL", "file:ssh")
+		rawGit(t, root, "remote", "set-url", "origin", "git@github.example.invalid:fixture/orch-smoke.git")
+	}
 	if err := state.Save(root, st); err != nil {
 		t.Fatal(err)
 	}
 	executor, review := worktreeAbs(root, 1), reviewWorktreeAbs(root, 1)
 	rawGit(t, root, "worktree", "add", "-b", st.Run.Issues[0].Branch, executor, second)
 	rawGit(t, root, "worktree", "add", "--detach", review, first)
-	host := &checkoutHost{t: t, root: root, loaded: map[string]bool{root: true, executor: true, review: true}}
+	host := &checkoutHost{t: t, root: root, fixtureSSH: phase == state.PhaseMerged,
+		loaded: map[string]bool{root: true, executor: true, review: true}}
 	return root, first, second, host, Env{RepoRoot: root, Runner: host, Now: fixedNow}
 }
 
@@ -522,6 +693,33 @@ func TestOpenCodeCleanupCodeModeHoldThenRetry(t *testing.T) {
 		if _, err := os.Lstat(target); !os.IsNotExist(err) {
 			t.Fatalf("cleanup retained checkout: %v", err)
 		}
+	}
+}
+
+func TestBoundOpenCodeCleanupCodeModeRetryStaysBound(t *testing.T) {
+	for _, phase := range []state.Phase{state.PhaseMerged, state.PhaseAbandoned} {
+		t.Run(string(phase), func(t *testing.T) {
+			root, _, _, host, env := openCodeCheckoutFixture(t, phase)
+			run := loadRun(t, root).Run
+			const owner = "sesPrimary"
+			host.sessions = map[string]string{owner: root}
+			host.jobInventory = `{"data":[{"id":"jobActive","kind":"codemode","status":"running","sessionID":"` + owner + `"}]}`
+			before := stateBytes(t, root)
+			req := fmt.Appendf(nil, `{"schema_version":1,"issue_number":1,"statement":"cleanup-issue","run_id":%q}`, run.ID)
+			res, err := Cleanup(t.Context(), env, req)
+			if res != nil || err == nil || len(host.deleted) != 0 || !bytes.Equal(before, stateBytes(t, root)) {
+				t.Fatalf("expected a Code Mode hold before eviction: %+v %v", res, err)
+			}
+			for _, want := range []string{"running Code Mode job", "let the job finish", "re-confirm the run and issue",
+				"retry `orch_cleanup` directly", "outside Code Mode", "verified primary checkout"} {
+				if !strings.Contains(err.Error(), want) {
+					t.Fatalf("bound refusal %q missing %q", err, want)
+				}
+			}
+			if strings.Contains(err.Error(), "standalone") || strings.Contains(err.Error(), "orch run cleanup") {
+				t.Fatalf("bound refusal recommended an unbound retry: %v", err)
+			}
+		})
 	}
 }
 

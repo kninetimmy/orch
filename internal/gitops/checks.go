@@ -7,6 +7,7 @@ import (
 	"slices"
 	"strings"
 
+	"github.com/kninetimmy/orch/internal/execx"
 	"github.com/kninetimmy/orch/internal/paths"
 )
 
@@ -15,14 +16,23 @@ import (
 // prerequisites; §15 preservation checks). dir "" means the primary
 // checkout. The error names the offending paths so the operator knows
 // what to commit or stash.
+// Before #551, status could refresh stale index metadata even on a clean
+// tree. Suppress that optional write for this inspection, not other Git commands.
 func (g *Git) RequireClean(ctx context.Context, dir string) error {
 	if dir == "" {
 		dir = g.root
 	}
-	out, err := g.git(ctx, dir, "status", "--porcelain=v1", "--untracked-files=all")
+	res, err := g.r.Run(ctx, execx.Cmd{
+		Name: "git", Dir: dir, Args: []string{"status", "--porcelain=v1", "--untracked-files=all"},
+		Env: append(slices.Clone(gitEnv), "GIT_OPTIONAL_LOCKS=0"),
+	})
 	if err != nil {
 		return err
 	}
+	if res.ExitCode != 0 {
+		return fmt.Errorf("git status in %s exited %d: %s", dir, res.ExitCode, strings.TrimSpace(res.Stderr))
+	}
+	out := strings.TrimSpace(res.Stdout)
 	if out == "" {
 		return nil
 	}
