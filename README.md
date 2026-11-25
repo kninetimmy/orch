@@ -5,7 +5,7 @@
 <p align="center">
   <img src="https://img.shields.io/badge/License-MIT-2E7D32?style=flat&logo=opensourceinitiative&logoColor=white" alt="License: MIT"/>
   <img src="https://img.shields.io/badge/Go-1.26%2B-00ADD8?style=flat&logo=go&logoColor=white" alt="Go 1.26+"/>
-  <img src="https://img.shields.io/badge/Release-v0.16.0-24292F?style=flat&logo=github&logoColor=white" alt="Release: v0.16.0"/>
+  <img src="https://img.shields.io/badge/Release-v0.17.0-24292F?style=flat&logo=github&logoColor=white" alt="Release: v0.17.0"/>
   <br/>
   <img src="https://img.shields.io/badge/Platform-Linux%20%C2%B7%20macOS%20%C2%B7%20Windows-607D8B?style=flat" alt="Platform: Linux, macOS, Windows"/>
   <img src="https://img.shields.io/badge/Hosts-Claude%20Code%20%C2%B7%20Codex%20CLI%20%C2%B7%20OpenCode%20V2-6E56CF?style=flat" alt="Hosts: Claude Code, Codex CLI, and OpenCode V2"/>
@@ -861,11 +861,13 @@ CI exception is part of this issue's execution or authority.
    `ORCH_SMOKE_MEMHUB` in both modes. Retain commits, hashes, runtime identities,
    zero-provider-request evidence, shutdown verification and receipts under the
    [smoke evidence rules](adapters/opencode/README.md#qualification-not-installation).
-3. Only after both passes and **separate explicit tag approval**, tag that
-   same verified merged bump commit. Do not add release content after the bump;
+3. Only after both passes and **separate explicit tag/publish approval**, tag that
+   same verified merged bump commit. Pushing a `v*` tag triggers automatic
+   GitHub release publication via the [release workflow](.github/workflows/release.yml);
+   obtain that approval **before pushing**. Do not add release content after the bump;
    further content needs a fresh bump and qualification, not different bytes
    under **0.13.3**. No tag or publication is authorized by this preparation.
-4. After separately approved publication, verify all six published binary
+4. After that approved publication, verify all six published binary
    assets against trusted `SHA256SUMS` and GitHub asset digests, and verify
    tag/commit provenance. Verify downloaded binaries **before execution**.
    Installation and installed adapter/skills acceptance remain separate,
