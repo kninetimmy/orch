@@ -1,9 +1,10 @@
 # Local inspections, configuration interviews, bounded evaluation preparation, plan decision gates, explicitly approved activation and issue dispatch over MCP
 
 `orch mcp` is an optional local stdio MCP server using the official Go SDK
-v1.8.0. Latest published engine **v0.16.0** includes this MCP server and pairs
-with **0.13.0** adapters. The pending **v0.17.0** candidate labels all source
-adapters and the marketplace **0.13.2**, following #522's 0.13.1 source bump.
+v1.8.0. Latest published engine **v0.17.0** includes this MCP server and pairs
+with **0.13.2** adapters. The pending **v0.17.1** candidate labels all source
+adapters and the marketplace **0.13.3**, without dependency or runtime changes
+in the release-preparation bump.
 Match actual guidance to the engine, not just those labels.
 The current cumulative surface is **17 tools, four fixed resources and one
 template**. The before/after counts below are historical increments, not
@@ -17,8 +18,8 @@ configuration remain separate, explicit work. A separately installed Windows
 candidate, `v0.16.0-prep.f57fc37` with `f57fc37` adapter/skills still labelled
 0.12.0, was checked for live 17/4/1 discovery and healthy CLI/MCP doctor.
 It is not the released 0.13.0 package, a published v0.16.0 artifact or
-qualification of the v0.17.0 candidate. See the [pending release notes and
-post-merge qualification/upgrade gates](../README.md#v0170-release-target-not-published)
+qualification of v0.17.0 or the v0.17.1 candidate. See the [pending release notes
+and post-merge qualification/upgrade gates](../README.md#v0171-release-target-not-published)
 and [historical v0.16.0 checkpoint](../README.md#v0160-release).
 
 At the repair increment the engine used state **6**, approval/execution **2**,

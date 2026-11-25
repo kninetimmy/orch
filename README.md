@@ -787,7 +787,18 @@ back in its report. Authoritatively unmanaged locations retain ordinary Memhub
 behavior without Orch child fences or a bound service; failed discovery is not
 unmanaged scope. See the [OpenCode binding and qualification guide](adapters/opencode/README.md#bound-child-memory-issue-495).
 
-## Unreleased
+<a id="unreleased"></a>
+
+## v0.17.1 release target (not published)
+
+Latest published engine remains [v0.17.0](#v0170-release), with **0.13.2**
+adapters and marketplace. The **v0.17.1** candidate includes direct OpenCode
+cleanup from [PR #552](https://github.com/kninetimmy/orch/pull/552), merged at
+`49ff995b677961d79af528331bedecf0e4bbf85a`, and this final release-preparation
+bump to **0.13.3** for all three adapters and the marketplace. This bump leaves
+dependency declarations and resolved packages unchanged; SDK/util/protocol remain
+**2.2.6**. No tag, release, installation or publication is part of this
+preparation. OpenCode remains checkout-backed and unpublished to npm.
 
 ### Direct OpenCode cleanup (#547, #549, #551)
 
@@ -797,8 +808,12 @@ to finish, then rerunning the confirmed cleanup from a standalone terminal.
 
 **After:** the matching engine and OpenCode adapter run confirmed cleanup
 through the direct `orch_cleanup` tool from the verified primary session,
-outside Code Mode. The isolated Windows OpenCode **2.4.0** source smoke checks
-the job hold, then direct cleanup without a standalone retry. The earlier
+outside Code Mode. The predecessor's isolated Windows OpenCode **2.4.0**
+source smoke passed **37 checks**, including the job hold and direct cleanup
+without a standalone retry, with zero provider requests and verified owned
+shutdown. That evidence belongs to PR #552's reviewed source head
+`74aa11dbcff635276662fdf8f097217404b70cfa`, not this final candidate or an
+installed host. The earlier
 Windows **2.3.2** observation established the Code Mode hold, not direct-tool
 qualification. Neither is installed qualification or a new engine runtime
 baseline.
@@ -809,8 +824,8 @@ run and issue, then retry the confirmed `orch_cleanup` directly from primary.
 For a repository or ownership refusal, preserve the work and inspect the
 evidence instead of switching tools.
 
-**Before #551:** inspecting a clean executor could still refresh its Git
-index before a destination refusal. **After:** the clean check reads status
+**Before #551 / PR #552:** inspecting a clean executor could still refresh its
+Git index before a destination refusal. **After:** the clean check reads status
 without that optional write. Modified, staged and untracked files still
 block removal.
 
@@ -827,7 +842,35 @@ No new credential setup is required; the existing transport requirements
 still apply.
 
 The [cleanup guide](docs/worktree-cleanup.md) preserves the released standalone
-recovery, which does not retain the new bound checks.
+recovery, which does not retain the new bound checks. The real #551 cleanup
+used an older standalone engine; it was not installed direct-tool qualification.
+
+**Qualification and release handoff.** Source tests and predecessor smoke do
+not qualify the exact v0.17.1 merged candidate, installed/shared-host behavior,
+other platforms or real-model workflows. No local post-merge smoke or manual
+CI exception is part of this issue's execution or authority.
+
+1. After independent review, required CI and merge, record the full reviewed
+   head and fetch/verify the exact clean main OID containing that reviewed
+   content and this final **0.13.3** bump. Build and identify the candidate
+   engine and matching adapter checkout from that merged commit.
+2. Under separate approval, run the Windows OpenCode smoke against that exact
+   candidate in both **source-build** and **explicit-artifact** modes. Unset
+   `ORCH_SMOKE_ORCH` and `ORCH_SMOKE_ADAPTER` for source-build; select the exact
+   candidate with both variables for explicit-artifact, with compatible
+   `ORCH_SMOKE_MEMHUB` in both modes. Retain commits, hashes, runtime identities,
+   zero-provider-request evidence, shutdown verification and receipts under the
+   [smoke evidence rules](adapters/opencode/README.md#qualification-not-installation).
+3. Only after both passes and **separate explicit tag approval**, tag that
+   same verified merged bump commit. Do not add release content after the bump;
+   further content needs a fresh bump and qualification, not different bytes
+   under **0.13.3**. No tag or publication is authorized by this preparation.
+4. After separately approved publication, verify all six published binary
+   assets against trusted `SHA256SUMS` and GitHub asset digests, and verify
+   tag/commit provenance. Verify downloaded binaries **before execution**.
+   Installation and installed adapter/skills acceptance remain separate,
+   Assist-only work under the [upgrade and rollback guidance](#v0170-release);
+   finish active runs with their original engine and matching adapters first.
 
 <a id="v0170-release-target-not-published"></a>
 
