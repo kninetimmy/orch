@@ -373,12 +373,17 @@ func TestGoldenTranscriptConfigureDisableCodex(t *testing.T) {
 	if doc.Kind != question.DocComplete {
 		t.Fatalf("Kind = %q, want %q", doc.Kind, question.DocComplete)
 	}
+	if doc.Complete == nil {
+		t.Fatal("Complete = nil, want a completion document")
+		return
+	}
 	if strings.Contains(doc.Complete.Summary.ConfigTOML, "hosts.codex") {
 		t.Errorf("ConfigTOML still mentions hosts.codex:\n%s", doc.Complete.Summary.ConfigTOML)
 	}
 	change := findFileChange(doc.Complete.Summary.Files, "AGENTS.md")
 	if change == nil {
 		t.Fatalf("Files = %v, want an AGENTS.md removal entry", doc.Complete.Summary.Files)
+		return
 	}
 	if change.Diff == "" {
 		t.Error("AGENTS.md Diff is empty, want a removal diff")
@@ -406,6 +411,10 @@ func TestGoldenTranscriptConfigureEnableCodexFromClaudeOnly(t *testing.T) {
 	if doc.Kind != question.DocComplete {
 		t.Fatalf("Kind = %q, want %q", doc.Kind, question.DocComplete)
 	}
+	if doc.Complete == nil {
+		t.Fatal("Complete = nil, want a completion document")
+		return
+	}
 	cfg, err := config.Parse([]byte(doc.Complete.Summary.ConfigTOML))
 	if err != nil {
 		t.Fatal(err)
@@ -423,6 +432,7 @@ func TestGoldenTranscriptConfigureEnableCodexFromClaudeOnly(t *testing.T) {
 	change := findFileChange(doc.Complete.Summary.Files, "AGENTS.md")
 	if change == nil {
 		t.Fatalf("Files = %v, want an AGENTS.md install entry", doc.Complete.Summary.Files)
+		return
 	}
 	if change.Existed {
 		t.Error("Existed = true, want false (AGENTS.md did not exist before)")
