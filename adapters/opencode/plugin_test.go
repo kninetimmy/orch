@@ -21,7 +21,7 @@ func TestPackagePinsOpenCodeV2Contract(t *testing.T) {
 	if err := json.Unmarshal([]byte(opencode.PackageJSON), &manifest); err != nil {
 		t.Fatal(err)
 	}
-	if manifest.Name != "@kninetimmy/orch-opencode" || manifest.Version == "" {
+	if manifest.Name != "@kninetimmy/orch-opencode" || manifest.Version != "0.13.3" {
 		t.Fatalf("manifest = %#v", manifest)
 	}
 	if got := manifest.Dependencies["@opencode/plugin"]; got != "2.2.6" {
