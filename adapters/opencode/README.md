@@ -1,18 +1,20 @@
 # OpenCode V2 adapter
 
 This directory is Orch's npm-native OpenCode V2 adapter. Its package ID
-is `@kninetimmy/orch-opencode` (source version `0.13.2`) and its running plugin
+is `@kninetimmy/orch-opencode` (source version `0.13.3`) and its running plugin
 ID is `orch.delivery`. It is not the Codex marketplace adapter: that is
 `adapters/codex/`, installed as `orch@orch` from the shared marketplace.
 
 ## Compatibility
 
-Latest published engine **v0.16.0** pairs with package **0.13.0** on all three
-hosts. The pending **v0.17.0** candidate pairs with **0.13.2** adapters and
-marketplace, following #522's 0.13.1 source bump. OpenCode is not published to
-npm. Historical v0.15.2 used OpenCode 0.12.0, and Claude/Codex packaged guidance
-was unchanged at the v0.16.0 checkpoint. See the [candidate release notes and
-post-merge qualification gates](../../README.md#v0170-release-target-not-published).
+Latest published engine **v0.17.0** pairs with package **0.13.2** on all three
+hosts. The pending **v0.17.1** candidate pairs with **0.13.3** adapters and
+marketplace; the bump leaves dependency declarations and resolved packages unchanged.
+OpenCode is not published to npm. Historical v0.16.0 paired with 0.13.0,
+v0.15.2 used OpenCode 0.12.0, and Claude/Codex packaged guidance was unchanged
+at the v0.16.0 checkpoint. See the [candidate release notes and
+post-merge qualification gates](../../README.md#v0171-release-target-not-published)
+and [published v0.17.0 notes](../../README.md#v0170-release).
 Use compatible engine/adapter **content**, not labels alone. The repair increment
 used state schema 6, approval/execution contract 2, Gate 3, Status 4, Activation 2,
 Dispatch 4, Review 3, Escalate 2, Block 2, Resume 2, Resolve Block 1 and CLI
@@ -963,8 +965,8 @@ and hashes. Select compatible engine/adapter content together, including
 lookup-context schema 2 and explicit-root lookup-only Memhub; an old engine or
 schema-1 adapter is not a fallback. Never replace these during an active run.
 Verify downloaded release binaries against trusted published checksums before
-execution; v0.17.0 has no published final artifact yet. Finish active Delivery
-runs with their original engine and matching adapters before upgrading, or
+execution; v0.17.0 is published, while v0.17.1 is only a candidate. Finish active
+Delivery runs with their original engine and matching adapters before upgrading, or
 explicitly abort and obtain fresh plan approval; active runs are not migrated.
 
 In the persistent checkout, set `ORCH_ADAPTER_COMMIT` to the inspected, approved
@@ -998,10 +1000,11 @@ doctor and bounded workflow checks. Downloaded rollback binaries require that
 previous release's trusted `SHA256SUMS`. Never mix new lookup wiring with an old
 engine, migrate a live run or weaken permissions to force compatibility.
 
-**Publication:** 0.13.0 is the final content-bearing release-preparation bump.
-Any later approved v0.16.0 tag must name its merge commit. Tag/release publication
-and final published-artifact verification are separate gates; this package stays
-checkout-backed and is not published to npm.
+**Publication:** 0.13.3 is the final content-bearing v0.17.1 release-preparation
+bump. After exact-merged-candidate source-build and explicit-artifact Windows
+smoke, any separately approved v0.17.1 tag must name that same merged bump
+commit. Tag/release publication and published checksums/assets verification are
+separate gates; this package stays checkout-backed and is not published to npm.
 
 ## Limitations
 
