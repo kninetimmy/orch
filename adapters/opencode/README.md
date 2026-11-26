@@ -356,6 +356,12 @@ not a promise that every V2 version accepts every possible path alias.
 | Isolated `smoke.mjs` lifecycle exercise | Existing source/selected-artifact, containment, native lookup, lifecycle refusal and shutdown probes remain. Windows additionally loads owned casing aliases, observes returned keys and native IDs, proves independent live PTY ownership across single-target retirement, checks exact-key/identity preservation and native lookups, and refuses real ambiguous target aliases without disposing them. Before #539, `evidence.json` and the OpenAPI artifact retained the identities and raw observations on pass. The pass receipt now keeps identities and check outcomes only. |
 | Callers, adapter runtime and qualification | Explicit executor/review engine entry points, generic teardown and `docs/worktree-cleanup.md` are not changed here. No adapter runtime code, version admission/advisory, model routing, dependencies or host/role configuration changes. Required local smoke is still absent from hosted CI. Source/isolated results are **not installed/manual qualification**; no real shared-host cache is created, evicted or restarted. |
 
+**Before #561:** the strict post-disposal preservation above also applied to
+direct merged cleanup. **After #561:** `ReleaseLocation` and the other
+non-merged or unbound release paths retain that rule; only bound merged
+cleanup can [verify one late loss of unrelated keys](../../docs/worktree-cleanup.md#retry-one-late-opencode-inventory-loss-issue-561).
+Alternate aliases still cannot substitute for missing exact keys.
+
 The existing two-minute/inventory limits and observation races remain. These
 checks cannot atomically exclude cache eviction/recreation, process cwd changes,
 filesystem replacement or host re-entry between observations and later Git
