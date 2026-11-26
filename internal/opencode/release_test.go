@@ -88,9 +88,14 @@ func (f *releaseFixture) session(id, directory string) {
 
 func (f *releaseFixture) run(t *testing.T) error {
 	t.Helper()
+	return ReleaseLocation(context.Background(), f.runner(t), f.root, f.target)
+}
+
+func (f *releaseFixture) runner(t *testing.T) execx.Runner {
+	t.Helper()
 	var originalDeadline time.Time
 	var recorded sync.Mutex
-	runner := releaseContextRunner(func(ctx context.Context, ctxCmd execx.Cmd) (execx.Result, error) {
+	return releaseContextRunner(func(ctx context.Context, ctxCmd execx.Cmd) (execx.Result, error) {
 		deadline, ok := ctx.Deadline()
 		if !ok || time.Until(deadline) > 2*time.Minute {
 			t.Error("host command has no bounded deadline")
@@ -158,7 +163,32 @@ func (f *releaseFixture) run(t *testing.T) error {
 		t.Errorf("unexpected endpoint: %+v", ctxCmd)
 		return execx.Result{}, errors.New("unexpected fixture endpoint")
 	})
-	return ReleaseLocation(context.Background(), runner, f.root, f.target)
+}
+
+func TestBoundMergedLateEvictionKeepsReleaseDeadline(t *testing.T) {
+	f := newReleaseFixture(t)
+	lateInventories := 0
+	f.beforeReinventory = func() {
+		if f.deletes == 0 {
+			return
+		}
+		lateInventories++
+		if lateInventories == 3 {
+			// Lose an exact key at the closing inventory of the first late pass.
+			f.loaded = slices.DeleteFunc(f.loaded, func(key string) bool { return key == f.unrelated })
+		}
+	}
+	verify := func(context.Context) error { return nil }
+	check, err := ReleaseLocations(t.Context(), f.runner(t), f.root, verify, true, f.target)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := check(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+	if lateInventories != 5 || f.deletes != 1 {
+		t.Fatalf("want one fresh late bracket and no further disposal: inventory reads=%d disposals=%d", lateInventories, f.deletes)
+	}
 }
 
 func TestReleaseLocation(t *testing.T) {
