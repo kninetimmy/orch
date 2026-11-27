@@ -145,6 +145,9 @@ admin_user_id = "<designated user's stable GitHub node ID>"
   a newer integration repair, an approving review must address the latest
   block with `disposition: "no-longer-present"` and say why. An older decision
   never carries forward.
+  If a later secret was reported on the held issue, [resolve its separate
+  decision first](decision-block-recovery.md); releasing the global stop alone
+  does not permit changed-head review.
 - Use `orch run merge-report` on the approving head, then obtain **a separate
   fresh human merge approval**, dated strictly after `risk_merge_report_at`.
   `orch run merge` checks the current review, applicable policy and successful

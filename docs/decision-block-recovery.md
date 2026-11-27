@@ -31,6 +31,15 @@ generic failure cannot replace an unresolved decision or its reason. Legacy
 blocks with no cause cannot be guessed operational: preserve their artifacts
 and return through plan approval. No active run is migrated by this change.
 
+Before this overlap fix, a secret reported during a residual-risk hold stopped
+the run but recorded no issue-level secret block. Now both blocks retain their
+IDs and reasons. Lift the run stop and then explicitly resolve the secret block
+before opening a review checkout or recording a review on a different head.
+The issue remains blocked on the original hold, which can no longer be
+accepted. Use fresh independent review of a different live head to address it,
+not generic resolution or resume. An interrupted review still needs its exact
+audit retry once the secret is resolved.
+
 ## Explicit integration repair
 
 Two historical continuations were insufficient:

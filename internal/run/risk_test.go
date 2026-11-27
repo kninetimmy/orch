@@ -208,13 +208,19 @@ func (g *riskServer) submit(challenge string) {
 		"commit": map[string]any{"oid": g.head}, "pullRequest": map[string]any{"id": "PR_issue"}, "repository": map[string]any{"id": "R_repo"}}
 }
 
+const riskConfigTOML = testConfigTOML + "\n[residual_risk]\nadmin_user_id = \"U_admin\"\n"
+
 func newRiskFixture(t *testing.T, enabled bool) (Env, *riskServer, ReviewRequest, AcceptRiskRequest) {
 	t.Helper()
 	toml := testConfigTOML
 	if enabled {
-		toml += "\n[residual_risk]\nadmin_user_id = \"U_admin\"\n"
+		toml = riskConfigTOML
 	}
-	root := setupRepo(t, toml)
+	return enterRiskFixture(t, setupRepo(t, toml))
+}
+
+func enterRiskFixture(t *testing.T, root string) (Env, *riskServer, ReviewRequest, AcceptRiskRequest) {
+	t.Helper()
 	iss := fixtureIssue("r", 1, state.PhasePROpen)
 	iss.URL = riskRepoURL + "/issues/1"
 	enterDeliveryAt(t, root, "r1", []state.Issue{iss})

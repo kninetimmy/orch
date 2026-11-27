@@ -132,7 +132,7 @@ func newActivateRepo(t *testing.T) string {
 // git sandboxes, scripted GitHub/memhub.
 type muxRunner struct {
 	git execx.Runner
-	gh  *execxtest.Script
+	gh  execx.Runner
 }
 
 func (m muxRunner) Run(ctx context.Context, c execx.Cmd) (execx.Result, error) {

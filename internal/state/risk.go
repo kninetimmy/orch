@@ -44,8 +44,8 @@ func (iss *Issue) LatestRiskBlock() *Block {
 }
 
 func (iss *Issue) ActiveRiskBlock() *Block {
-	if iss.Phase == PhaseBlocked && len(iss.Blocks) > 0 && iss.Blocks[len(iss.Blocks)-1].Cause == BlockResidualRisk {
-		return &iss.Blocks[len(iss.Blocks)-1]
+	if b := iss.CurrentBlock(); b != nil && b.Cause == BlockResidualRisk {
+		return b
 	}
 	return nil
 }

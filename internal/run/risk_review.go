@@ -57,6 +57,9 @@ func reviewRisk(ctx context.Context, c *verbCtx, gh *ghops.GH, req ReviewRequest
 	is := c.issue()
 	head := req.ReviewedHeadOID
 	if b := is.ActiveRiskBlock(); b != nil && strings.EqualFold(head, b.RiskHold.HeadOID) {
+		if b.RiskHold.Invalidated {
+			return nil, fmt.Errorf("%w: hold %d was invalidated; only a different live head can take fresh review while held", ErrBadApproval, b.ID)
+		}
 		return nil, fmt.Errorf("%w: same-head hold %d requires GitHub-authenticated accept-risk; only a different head can take fresh review while held", ErrBadApproval, b.ID)
 	}
 	if req.RiskHold != nil && (!req.RiskHold.EligibleOnly || !boundedRiskText(req.RiskHold.Trigger) ||
@@ -87,9 +90,13 @@ func reviewRisk(ctx context.Context, c *verbCtx, gh *ghops.GH, req ReviewRequest
 	}
 	stage := is.RiskReviewPending
 	retry := stage != nil
+	var interveningSecrets []state.Block
 	if retry {
 		if stage.HeadOID != head || stage.RequestDigest != digest {
 			return nil, fmt.Errorf("%w: unfinished residual-risk audit requires the exact review retry; preserve it if its head or policy changed", ErrReviewStale)
+		}
+		if b := is.ActiveRiskBlock(); b != nil {
+			interveningSecrets = is.Blocks[b.ID:]
 		}
 	} else {
 		if !sameReadinessAudit(a.issue, a.pr) {
@@ -168,9 +175,11 @@ func reviewRisk(ctx context.Context, c *verbCtx, gh *ghops.GH, req ReviewRequest
 		}
 		if req.RiskHold != nil {
 			id := len(is.Blocks) + 1
-			v, err := riskVerification(riskHoldName(id), VerdictRiskHold, head, stampPrecise, riskHoldRecord{
-				binding, id, cycle, reviewDigest, req.Reviewer, stage.Challenge, *req.RiskHold,
-			})
+			record := riskHoldRecord{binding, id, cycle, reviewDigest, req.Reviewer, stage.Challenge, *req.RiskHold}
+			if err := dropDisplacedHoldReceipt(m, interveningSecrets, record, head, stampPrecise); err != nil {
+				return nil, err
+			}
+			v, err := riskVerification(riskHoldName(id), VerdictRiskHold, head, stampPrecise, record)
 			if err != nil {
 				return nil, err
 			}
@@ -248,6 +257,31 @@ func reviewRisk(ctx context.Context, c *verbCtx, gh *ghops.GH, req ReviewRequest
 		return nil, err
 	}
 	return result, nil
+}
+
+// A resolved secret may have taken the next block ID after the review staged.
+// Move only byte-for-byte matching provisional receipts of this exact retry.
+func dropDisplacedHoldReceipt(m *manifest.Manifest, secrets []state.Block, record riskHoldRecord, head, stamp string) error {
+	for _, b := range secrets {
+		name := riskHoldName(b.ID)
+		current, found, err := uniqueRiskEntry(*m, name)
+		if err != nil {
+			return err
+		}
+		if !found {
+			continue
+		}
+		record.BlockID = b.ID
+		want, err := riskVerification(name, VerdictRiskHold, head, stamp, record)
+		if err != nil {
+			return err
+		}
+		if current != want {
+			return fmt.Errorf("%w: conflicting provisional hold receipt %s; preserve it and investigate", ErrReviewStale, name)
+		}
+		*m = withoutRiskEntry(*m, name)
+	}
+	return nil
 }
 
 func riskTestEvidence(is *state.Issue, m manifest.Manifest, head string, at time.Time) (string, error) {

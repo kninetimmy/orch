@@ -33,7 +33,8 @@ type ResolveBlockResult struct {
 
 // ResolveBlock persists the resolution before recovery can proceed. It does
 // not clear the phase or approvals, reset attempts, amend work, or bypass the
-// stopped-run gate. Resume must still reconcile artifacts after this call.
+// stopped-run gate. Resume reconciles ordinary blocks; a risk hold still
+// requires its own recovery path after resolving an overlapping secret.
 func ResolveBlock(_ context.Context, env Env, reqJSON []byte) (*ResolveBlockResult, error) {
 	var req ResolveBlockRequest
 	if err := decodeRequest(reqJSON, &req); err != nil {
@@ -50,17 +51,18 @@ func ResolveBlock(_ context.Context, env Env, reqJSON []byte) (*ResolveBlockResu
 		return nil, err
 	}
 	issue := c.issue()
-	if req.RunID != c.st.Run.ID || req.BlockID != len(issue.Blocks) {
+	b := issue.CurrentBlock()
+	if req.RunID != c.st.Run.ID || b == nil || req.BlockID != b.ID {
 		return nil, fmt.Errorf("%w: resolution must identify the current run, issue and original block; unknown legacy blocks require fresh plan approval", ErrBadApproval)
 	}
-	b := &issue.Blocks[len(issue.Blocks)-1]
-	if b.Cause == state.BlockResidualRisk || issue.RiskReviewPending != nil {
+	if b.Cause == state.BlockResidualRisk || (issue.RiskReviewPending != nil && b.PausedRiskBlockID == 0) {
 		return nil, fmt.Errorf("%w: generic resolution cannot discharge a residual-risk hold or finish its audit; see docs/residual-risk.md", ErrBadApproval)
 	}
 	if b.Cause == state.BlockOperational || b.Resolution != nil {
 		return nil, fmt.Errorf("%w: block %d has no pending decision; use `orch resume`", ErrBadRequest, b.ID)
 	}
 	b.Resolution = &state.BlockResolution{ResolvedBy: req.ResolvedBy, Detail: req.Detail, At: env.nowStamp(), Statement: req.Statement}
+	issue.BlockedReason = issue.CurrentBlock().Reason
 	if err := c.save(); err != nil {
 		return nil, err
 	}
@@ -68,4 +70,12 @@ func ResolveBlock(_ context.Context, env Env, reqJSON []byte) (*ResolveBlockResu
 		return nil, err
 	}
 	return &ResolveBlockResult{SchemaVersion: ResolveBlockSchemaVersion, IssueNumber: issue.Number, BlockID: b.ID, Phase: issue.Phase}, nil
+}
+
+func secretRiskRecovery(b *state.Block) string {
+	return fmt.Sprintf("Resolve issue-level secret block %d with `orch run resolve-block` before changed-head review, only if the approved scope and criteria remain unchanged. Releasing the global stop does not resolve this block. After resolution, hold %d still needs its changed-head review path; it cannot be accepted.", b.ID, b.PausedRiskBlockID)
+}
+
+func invalidatedRiskRecovery(b *state.Block) string {
+	return fmt.Sprintf("Residual-risk hold %d can no longer be accepted. Obtain fresh independent review on a different live head or return through plan approval.", b.ID)
 }

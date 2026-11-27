@@ -229,16 +229,20 @@ func nextIssue(run *state.Run, issue *state.Issue) NextAction {
 			a.ApprovalRequired = fmt.Sprintf("A GitHub-authenticated COMMENT from the designated repository admin, with the exact challenge and explicit reason, is required for hold %d; this is not merge approval.", b.ID)
 			if b.RiskHold.Invalidated {
 				a.Action, a.Reason, a.ApprovalRequired = "review-changed-head-or-replan", "Another blocker invalidated this hold's eligibility.", ""
+				a.Prerequisites = []string{invalidatedRiskRecovery(b)}
 			}
 		} else if issue.DecisionPending() {
-			if len(issue.Blocks) == 0 {
+			b := issue.CurrentBlock()
+			if b == nil {
 				a.Action, a.Reason = "replan", "The block cause is unknown; healthy artifacts cannot establish authorization."
 				a.Prerequisites = []string{"Preserve the run, then abort and re-plan; a legacy block cannot be resolved in place."}
 				a.ApprovalRequired = "Fresh human plan approval is required."
 			} else {
 				a.Action, a.Reason = "resolve-block", "The original block requires an explicit human/Architect decision, not operational recovery."
-				b := issue.Blocks[len(issue.Blocks)-1]
 				a.Prerequisites = []string{fmt.Sprintf("Resolve original block %d (%s) with `orch run resolve-block` only if approved scope and criteria remain unchanged, then use resume to reconcile artifacts; changed scope or criteria requires abort and fresh plan approval.", b.ID, b.Cause)}
+				if b.PausedRiskBlockID != 0 {
+					a.Prerequisites = []string{secretRiskRecovery(b), "Changed scope or criteria require abort and fresh plan approval."}
+				}
 				a.ApprovalRequired = fmt.Sprintf("Record the human/Architect resolution and detail with statement %q; this inspection is not that decision.", ResolveBlockStatement)
 			}
 		} else {

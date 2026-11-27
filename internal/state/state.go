@@ -241,6 +241,8 @@ type Block struct {
 	Reason     string           `json:"reason"`
 	Resolution *BlockResolution `json:"resolution,omitempty"`
 	RiskHold   *RiskHold        `json:"risk_hold,omitempty"`
+	// A later secret takes precedence without discharging this risk hold.
+	PausedRiskBlockID int `json:"paused_risk_block_id,omitempty"`
 }
 
 const (
@@ -259,29 +261,45 @@ type BlockResolution struct {
 	Statement  string `json:"statement"`
 }
 
+// CurrentBlock returns the block governing recovery, not necessarily the
+// newest record. Resolving a later secret returns control to the original hold.
+func (iss *Issue) CurrentBlock() *Block {
+	if iss.Phase != PhaseBlocked || len(iss.Blocks) == 0 {
+		return nil
+	}
+	b := &iss.Blocks[len(iss.Blocks)-1]
+	if b.PausedRiskBlockID != 0 && b.Resolution != nil {
+		return &iss.Blocks[b.PausedRiskBlockID-1]
+	}
+	return b
+}
+
 // DecisionPending fails closed for old blocks without structured provenance.
 // Observations can discharge operational blocks, never a decision.
 func (iss Issue) DecisionPending() bool {
 	if iss.Phase != PhaseBlocked {
 		return false
 	}
-	if len(iss.Blocks) == 0 {
-		return true
-	}
-	b := iss.Blocks[len(iss.Blocks)-1]
-	return b.Cause != BlockOperational && b.Resolution == nil
+	b := iss.CurrentBlock()
+	return b == nil || (b.Cause != BlockOperational && b.Resolution == nil)
 }
 
 // SetBlock is shared by every producer. A later failure cannot replace an
 // unresolved decision (including an old block whose cause is unknown).
+// A secret reported during a risk hold records a separate pending decision.
 func (iss *Issue) SetBlock(cause, reason string) {
+	pausedRiskBlockID := 0
 	if iss.DecisionPending() {
+		hold := iss.ActiveRiskBlock()
+		if cause != BlockSecret || hold == nil {
+			return
+		}
+		pausedRiskBlockID = hold.ID
+	}
+	if b := iss.CurrentBlock(); b != nil && b.Reason == reason && b.Cause == cause && b.Resolution == nil {
 		return
 	}
-	if iss.Phase == PhaseBlocked && iss.BlockedReason == reason && len(iss.Blocks) > 0 && iss.Blocks[len(iss.Blocks)-1].Cause == cause && iss.Blocks[len(iss.Blocks)-1].Resolution == nil {
-		return
-	}
-	iss.Blocks = append(iss.Blocks, Block{ID: len(iss.Blocks) + 1, Cause: cause, Reason: reason})
+	iss.Blocks = append(iss.Blocks, Block{ID: len(iss.Blocks) + 1, Cause: cause, Reason: reason, PausedRiskBlockID: pausedRiskBlockID})
 	iss.Phase = PhaseBlocked
 	iss.BlockedReason = reason
 }
@@ -406,6 +424,16 @@ func (r *Run) validateIssues() error {
 			default:
 				return fmt.Errorf("issue %d: unsupported block cause %q; preserve the run and use its original engine", iss.Number, b.Cause)
 			}
+			if id := b.PausedRiskBlockID; id != 0 {
+				if b.Cause != BlockSecret || id < 1 || id > j {
+					return fmt.Errorf("issue %d: invalid paused risk block reference", iss.Number)
+				}
+				prior, hold := iss.Blocks[j-1], iss.Blocks[id-1].RiskHold
+				if hold == nil || !hold.Invalidated || hold.Acceptance != nil ||
+					(prior.ID != id && (prior.PausedRiskBlockID != id || prior.Resolution == nil)) {
+					return fmt.Errorf("issue %d: secret must preserve the original invalidated risk hold", iss.Number)
+				}
+			}
 			if b.Resolution != nil && (b.Resolution.ResolvedBy == "" || b.Resolution.Detail == "" || b.Resolution.At == "" || b.Resolution.Statement != "resolve-block-without-scope-change") {
 				return fmt.Errorf("issue %d: invalid block resolution", iss.Number)
 			}
@@ -413,8 +441,8 @@ func (r *Run) validateIssues() error {
 		if p := iss.RiskReviewPending; p != nil && (!fullOID.MatchString(p.HeadOID) || p.RequestDigest == "" || p.At.IsZero()) {
 			return fmt.Errorf("issue %d: invalid pending residual risk review", iss.Number)
 		}
-		if iss.Phase == PhaseBlocked && len(iss.Blocks) > 0 && iss.BlockedReason != iss.Blocks[len(iss.Blocks)-1].Reason {
-			return fmt.Errorf("issue %d: blocked reason does not match its original block", iss.Number)
+		if b := iss.CurrentBlock(); b != nil && iss.BlockedReason != b.Reason {
+			return fmt.Errorf("issue %d: blocked reason does not match its current block", iss.Number)
 		}
 		if !iss.Phase.Valid() {
 			return fmt.Errorf("issue %d (%s): invalid phase %q", i, iss.PlanID, iss.Phase)

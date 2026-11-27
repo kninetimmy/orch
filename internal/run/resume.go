@@ -409,10 +409,17 @@ func reconcileIssue(iss state.Issue, obs issueObservations) outcome {
 	}
 	if iss.DecisionPending() {
 		guidance := "human/Architect resolution required: use `orch run resolve-block` only if approved scope and criteria remain unchanged; otherwise return through plan approval"
-		if len(iss.Blocks) == 0 {
+		b := iss.CurrentBlock()
+		switch {
+		case b == nil:
 			guidance = "block cause is unknown; preserve the run and return through plan approval (`orch abort` then re-plan); do not infer authorization from healthy artifacts"
-		}
-		if iss.ActiveRiskBlock() != nil {
+		case b.PausedRiskBlockID != 0:
+			guidance = secretRiskRecovery(b)
+		case b.RiskHold != nil && iss.RiskReviewPending != nil:
+			guidance = "unfinished residual-risk review audit; retry the exact review, not resume"
+		case b.RiskHold != nil && b.RiskHold.Invalidated:
+			guidance = invalidatedRiskRecovery(b)
+		case b.RiskHold != nil:
 			guidance = "resume cannot discharge a residual-risk hold; use authenticated accept-risk or fresh independent review on a different live head (docs/residual-risk.md)"
 		}
 		return outcome{action: ActionBlocked, phase: state.PhaseBlocked, reason: iss.BlockedReason, warnings: []string{fmt.Sprintf("issue #%d: %s", iss.Number, guidance)}}
