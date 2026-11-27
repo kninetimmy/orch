@@ -50,6 +50,8 @@ func newLeafClasses() map[string]leafClass {
 		"protected.paths":               classPolicy,
 		"protected.paths.path":          classPolicy,
 		"protected.paths.reason":        classPolicy,
+		"residual_risk":                 classPolicy,
+		"residual_risk.admin_user_id":   classPolicy,
 	}
 	for _, host := range []string{"codex", "claude", "opencode"} {
 		for _, role := range roleNames {

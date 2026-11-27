@@ -24,12 +24,19 @@ type Config struct {
 	// revision then, so pre-#397 revisions are unchanged.
 	Protected *Protected `toml:"protected" json:",omitempty"`
 
+	// ResidualRisk is an optional committed authorization policy, never a local preference.
+	ResidualRisk *ResidualRisk `toml:"residual_risk" json:",omitempty"`
+
 	// Overrides lists, sorted, the dotted keys applied from
 	// config.local.toml. It is the audit surface for PRD §23: which
 	// exact model/execution-profile values are in effect must always be visible.
 	// Empty (nil) when no local override file exists or it sets
 	// nothing. Never itself read from either TOML file.
 	Overrides []string `toml:"-"`
+}
+
+type ResidualRisk struct {
+	AdminUserID string `toml:"admin_user_id"`
 }
 
 // SurveyMethodologyVersion is the version of the survey methodology this

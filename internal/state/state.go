@@ -48,13 +48,14 @@ const (
 // from (PRD §8). The engine cannot verify a human; this is the
 // adapter's assertion, kept for the audit trail.
 type PlanRef struct {
-	Title           string    `json:"title"`
-	Digest          string    `json:"digest"`
-	ApprovedBy      string    `json:"approved_by"`
-	ApprovedAt      time.Time `json:"approved_at"`
-	ConfigRevision  string    `json:"config_revision"`
-	ContractVersion int       `json:"contract_version,omitempty"`
-	ExecutionDigest string    `json:"execution_digest,omitempty"`
+	Title              string    `json:"title"`
+	Digest             string    `json:"digest"`
+	ApprovedBy         string    `json:"approved_by"`
+	ApprovedAt         time.Time `json:"approved_at"`
+	ConfigRevision     string    `json:"config_revision"`
+	ContractVersion    int       `json:"contract_version,omitempty"`
+	ExecutionDigest    string    `json:"execution_digest,omitempty"`
+	GitHubRepositoryID string    `json:"github_repository_id,omitempty"`
 }
 
 // Phase is one issue's position in the Delivery lifecycle (PRD §12).
@@ -95,6 +96,7 @@ const (
 	// PhaseBlocked marks an issue awaiting recovery. Before v6, resume
 	// could clear every block; decisions now require an explicit resolution
 	// or fresh plan approval. Operational recovery still uses `orch resume`.
+	// A residual-risk decision is only eligible for the dedicated path.
 	PhaseBlocked Phase = "blocked"
 )
 
@@ -209,6 +211,10 @@ type Issue struct {
 	// shape. Contract v3 also fences review-evidence-unaware engines; ordinary
 	// reviews now persist their successfully audited head.
 	Repairs []IntegrationRepair `json:"repairs,omitempty"`
+	// Residual risk state is only written under approval contract v5.
+	RiskReviewPending *RiskReviewPending `json:"risk_review_pending,omitempty"`
+	RiskReviewDigest  string             `json:"risk_review_digest,omitempty"`
+	RiskMergeReportAt *time.Time         `json:"risk_merge_report_at,omitempty"`
 }
 
 // IntegrationRepair binds one authorization to the issue's immutable phase and
@@ -234,14 +240,16 @@ type Block struct {
 	Cause      string           `json:"cause"`
 	Reason     string           `json:"reason"`
 	Resolution *BlockResolution `json:"resolution,omitempty"`
+	RiskHold   *RiskHold        `json:"risk_hold,omitempty"`
 }
 
 const (
-	BlockOperational = "operational"
-	BlockHuman       = "human-decision"
-	BlockWrong       = "wrong-criterion"
-	BlockArchitect   = "return-to-architect"
-	BlockSecret      = "secret"
+	BlockOperational  = "operational"
+	BlockHuman        = "human-decision"
+	BlockWrong        = "wrong-criterion"
+	BlockArchitect    = "return-to-architect"
+	BlockSecret       = "secret"
+	BlockResidualRisk = "residual-review-risk"
 )
 
 type BlockResolution struct {
@@ -388,12 +396,22 @@ func (r *Run) validateIssues() error {
 			}
 			switch b.Cause {
 			case BlockOperational, BlockHuman, BlockWrong, BlockArchitect, BlockSecret:
+				if b.RiskHold != nil {
+					return fmt.Errorf("issue %d: residual risk hold on an ineligible block", iss.Number)
+				}
+			case BlockResidualRisk:
+				if b.Resolution != nil || b.RiskHold == nil || !b.RiskHold.valid(iss) {
+					return fmt.Errorf("issue %d: invalid residual risk block", iss.Number)
+				}
 			default:
 				return fmt.Errorf("issue %d: unsupported block cause %q; preserve the run and use its original engine", iss.Number, b.Cause)
 			}
 			if b.Resolution != nil && (b.Resolution.ResolvedBy == "" || b.Resolution.Detail == "" || b.Resolution.At == "" || b.Resolution.Statement != "resolve-block-without-scope-change") {
 				return fmt.Errorf("issue %d: invalid block resolution", iss.Number)
 			}
+		}
+		if p := iss.RiskReviewPending; p != nil && (!fullOID.MatchString(p.HeadOID) || p.RequestDigest == "" || p.At.IsZero()) {
+			return fmt.Errorf("issue %d: invalid pending residual risk review", iss.Number)
 		}
 		if iss.Phase == PhaseBlocked && len(iss.Blocks) > 0 && iss.BlockedReason != iss.Blocks[len(iss.Blocks)-1].Reason {
 			return fmt.Errorf("issue %d: blocked reason does not match its original block", iss.Number)

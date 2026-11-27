@@ -136,7 +136,7 @@ type Event struct {
 	// PRNumber is the issue's PR number on a pr-open or merge event.
 	PRNumber int `json:"pr_number,omitempty"`
 	// ReviewBlockCause is set on a review event whose review blocked its
-	// issue: BlockCauseWrongCriterion or BlockCauseFixCycleLimit. A review
+	// issue: BlockCauseWrongCriterion, BlockCauseFixCycleLimit, or BlockCauseResidualRisk. A review
 	// that blocked nothing records none.
 	ReviewBlockCause string `json:"review_block_cause,omitempty"`
 	// Fixes is the merged PR numbers an activate event's issue declares it
@@ -149,6 +149,7 @@ type Event struct {
 const (
 	BlockCauseWrongCriterion = "wrong_criterion"
 	BlockCauseFixCycleLimit  = "fix_cycle_limit"
+	BlockCauseResidualRisk   = "residual_review_risk"
 )
 
 // RoutingFacts mirrors the routing facts a plan declared for one issue.

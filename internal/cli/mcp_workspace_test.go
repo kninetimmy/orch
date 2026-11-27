@@ -444,7 +444,7 @@ func TestMCPDeliveryWorkspaceAndTarget(t *testing.T) {
 		t.Helper()
 		res := call(s, "orch_plan_gate", gateArgs, meta)
 		var doc run.GateDoc
-		if res.IsError || json.Unmarshal(mcpEvalBytes(t, res.StructuredContent), &doc) != nil || doc.SchemaVersion != 4 ||
+		if res.IsError || json.Unmarshal(mcpEvalBytes(t, res.StructuredContent), &doc) != nil || doc.SchemaVersion != run.GateSchemaVersion ||
 			doc.Target.GitHub.String() != approvedRepo || doc.Target.GitHub.ID != repoID || doc.Target.CheckoutID == "" {
 			t.Fatalf("gate omitted verified approval target: %+v", res)
 		}
@@ -544,7 +544,7 @@ func TestMCPDeliveryWorkspaceAndTarget(t *testing.T) {
 	runner.reassignOnWrite, runner.reassigned, runner.rejectLabel = true, false, false
 	result := call(mcpA, "orch_run_activate", request, meta)
 	var activated run.ActivationResult
-	if result.IsError || json.Unmarshal(mcpEvalBytes(t, result.StructuredContent), &activated) != nil || activated.SchemaVersion != 3 ||
+	if result.IsError || json.Unmarshal(mcpEvalBytes(t, result.StructuredContent), &activated) != nil || activated.SchemaVersion != run.ActivationSchemaVersion ||
 		len(activated.Issues) != 1 || activated.Issues[0].Number != 71 || activated.Issues[0].URL != "https://"+mcpRelocatedRepo+"/issues/71" ||
 		!runner.reassigned || runner.selectorID(approvedRepo) != replacementID || runner.mutableActivationWrites != 0 ||
 		!slices.Equal(runner.writes[mcpGitHubRepoID], []string{"createLabel", "createIssue"}) || len(runner.writes) != 1 ||
@@ -553,7 +553,7 @@ func TestMCPDeliveryWorkspaceAndTarget(t *testing.T) {
 	}
 	t.Log("checked name reassigned at write boundary: label and issue written only to the original ID")
 	st, err := state.Load(root)
-	if err != nil || st.Mode != state.ModeDelivery || st.Run.Plan.Digest != a.PlanDigest ||
+	if err != nil || st.Mode != state.ModeDelivery || st.Run.Plan.Digest != a.PlanDigest || st.Run.Plan.GitHubRepositoryID != mcpGitHubRepoID ||
 		st.Run.Issues[0].Phase != state.PhaseWorktreeReady {
 		t.Fatalf("activation state: %+v, %v", st, err)
 	}

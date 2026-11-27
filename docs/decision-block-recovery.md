@@ -18,6 +18,13 @@ if the decision is to retain the original criteria; changing criteria or scope
 requires aborting and returning through plan approval. The operation has no
 field for replacement work. Replayed resolutions cannot resolve a later block.
 
+Before Review v5, every known pending decision block went through this
+unauthenticated resolution. After, that remains true for the ordinary causes;
+`residual-review-risk` is reserved for [the authenticated GitHub path](residual-risk.md).
+Neither generic resolution nor resume discharges that hold. Repair still
+preserves the worktree and invalidates the old approval; for a residual-risk
+issue it also prevents reuse of acceptance across the new repair generation.
+
 A secret still stops the entire run. `orch resume --resume-stopped-run` lifts
 that run-level stop only; its issue decision still needs resolution. A later
 generic failure cannot replace an unresolved decision or its reason. Legacy
@@ -84,9 +91,9 @@ After success:
 1. Have the current routed executor fetch origin and integrate in that same worktree, retain
    approved implementation, run **all required checks**, commit and push.
 2. For pre-PR work, use normal `pr-open` with verification evidence.
-3. Obtain fresh independent review from the routed reviewer. Normal review
-   schema 3 now accepts `repair_number`; repaired issues require the latest
-   number, even if the head is unchanged. Include `verifications` on the
+3. Obtain fresh independent review from the routed reviewer. Review schema 3
+   introduced `repair_number`; current schema 5 still requires the latest
+   number for repaired issues, even if the head is unchanged. Include `verifications` on the
    repaired head (the existing `{name, command, result, detail}` shape).
    The engine stamps the live reviewed OID; a new head needs new evidence.
    An earlier review request without that repair acknowledgement is rejected.

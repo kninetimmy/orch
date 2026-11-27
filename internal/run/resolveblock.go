@@ -54,6 +54,9 @@ func ResolveBlock(_ context.Context, env Env, reqJSON []byte) (*ResolveBlockResu
 		return nil, fmt.Errorf("%w: resolution must identify the current run, issue and original block; unknown legacy blocks require fresh plan approval", ErrBadApproval)
 	}
 	b := &issue.Blocks[len(issue.Blocks)-1]
+	if b.Cause == state.BlockResidualRisk || issue.RiskReviewPending != nil {
+		return nil, fmt.Errorf("%w: generic resolution cannot discharge a residual-risk hold or finish its audit; see docs/residual-risk.md", ErrBadApproval)
+	}
 	if b.Cause == state.BlockOperational || b.Resolution != nil {
 		return nil, fmt.Errorf("%w: block %d has no pending decision; use `orch resume`", ErrBadRequest, b.ID)
 	}

@@ -75,6 +75,7 @@ func TestApprovalContractBindsEveryInput(t *testing.T) {
 		{name: "engine criterion trigger", plan: func(p *PlanDoc) { p.Issues[0].Facts.RiskDomains = []string{"authorization"} }},
 		{name: "concurrency", config: "[concurrency]\nmax_subagents = 2\n"},
 		{name: "merge", config: "[merge]\nstrategy = \"merge-commit\"\n"},
+		{name: "residual-risk designation", config: "[residual_risk]\nadmin_user_id = \"U_admin\"\n"},
 		{name: "metrics", config: "[metrics]\nenabled = true\n"},
 		{name: "memhub", rewrite: func(s string) string { return strings.Replace(s, `mode = "off"`, `mode = "best-effort"`, 1) }},
 		{name: "revision", rewrite: func(s string) string {

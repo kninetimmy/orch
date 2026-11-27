@@ -63,6 +63,26 @@ func CI(ctx context.Context, env Env, reqJSON []byte) (*CIResult, error) {
 	if err != nil {
 		return nil, err
 	}
+	if issue.RiskReviewPending != nil {
+		return nil, fmt.Errorf("%w: finish the exact residual-risk review audit first", ErrReviewStale)
+	}
+	if issue.LatestRiskBlock() != nil {
+		// Strict observations are not the legacy required-ci audit singleton.
+		// The acceptance and merge gates always make their own live probes.
+		pr, err := gh.PR(ctx, issue.PRNumber)
+		if err != nil {
+			return nil, err
+		}
+		a, err := openRiskAudit(ctx, c, gh, pr.HeadRefOid, true)
+		if err != nil {
+			return nil, err
+		}
+		summary, err := strictRiskCI(c, a)
+		if err != nil {
+			return nil, err
+		}
+		return &CIResult{CISchemaVersion, issue.Number, string(summary.State), ciChecks(summary), summary.Total}, nil
+	}
 	summary, err := gh.RequiredCI(ctx, issue.PRNumber)
 	if err != nil {
 		return nil, err

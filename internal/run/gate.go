@@ -19,7 +19,7 @@ import (
 // v3 additionally binds approval to the effective contract and exposes its
 // execution configuration. v2 bound only the submitted PlanDoc.
 // v4 adds the primary checkout and GitHub repository (selector and ID).
-const GateSchemaVersion = 4
+const GateSchemaVersion = 5
 
 // GateDoc is the human decision gate for a plan (PRD §8, covering
 // every §8 bullet): the adapter renders it natively and owns the four

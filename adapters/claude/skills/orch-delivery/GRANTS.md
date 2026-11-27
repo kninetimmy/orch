@@ -105,7 +105,8 @@ occur.
 
 **Before #534:** the grant plan activation example used only the digest and
 grant assertion, with no checkout or GitHub target. **After #534:** use the
-same schema-3 `ActivationRequest` as a human approval. Pass the identical gated
+same schema-3 `ActivationRequest` as a human approval. Residual-risk support
+raises both to schema 4; a grant cannot use the residual-risk path. Pass the identical gated
 `PlanDoc` (shown as `{}` below) and copy `GateDoc.plan_digest` and the entire
 `GateDoc.target` exactly, including the GitHub repository ID. Target checks
 apply to every activation, not just the human gate. Grant-specific eligibility
@@ -113,7 +114,7 @@ and the approver/statement below are unchanged:
 
 ```json
 {
-  "schema_version": 3,
+  "schema_version": 4,
   "plan": {},
   "approval": {
     "plan_digest": "sha256:...",

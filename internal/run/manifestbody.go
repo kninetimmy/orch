@@ -177,7 +177,7 @@ var acceptanceCriterionNamePattern = regexp.MustCompile(`^acceptance-criterion-[
 // verification of the same name.
 func rejectEngineOwnedNames(vs []manifest.Verification) error {
 	for _, v := range vs {
-		if engineVerificationNames[v.Name] || reviewCycleNamePattern.MatchString(v.Name) || acceptanceCriterionNamePattern.MatchString(v.Name) || manualCIAuditPattern.MatchString(v.Name) || reviewEvidenceNamePattern.MatchString(v.Name) {
+		if engineVerificationNames[v.Name] || reviewCycleNamePattern.MatchString(v.Name) || acceptanceCriterionNamePattern.MatchString(v.Name) || manualCIAuditPattern.MatchString(v.Name) || reviewEvidenceNamePattern.MatchString(v.Name) || riskAuditName.MatchString(v.Name) {
 			return fmt.Errorf("%w: verification name %q is engine-owned and cannot be supplied by a caller", ErrBadRequest, v.Name)
 		}
 	}
@@ -221,6 +221,7 @@ func readIssueManifest(ctx context.Context, gh *ghops.GH, number int) (ghops.Iss
 // receipts now retain their complete decisions and CI snapshots.
 // Before #528 review details were all eligible; numbered review-evidence
 // receipts now also retain every judgment/reason and execution artifact identity.
+// Residual-risk reviews, holds and decisions also keep their whole proof.
 // If the remaining body will not fit it fails closed naming
 // GitHub's hard limit and the offending size.
 func upsertCapped(existing string, m manifest.Manifest) (string, error) {
@@ -234,7 +235,7 @@ func upsertCapped(existing string, m manifest.Manifest) (string, error) {
 	trimmed := m
 	trimmed.Verifications = append([]manifest.Verification(nil), m.Verifications...)
 	for i := range trimmed.Verifications {
-		if trimmed.Verifications[i].Detail == "" || manualCIAuditPattern.MatchString(trimmed.Verifications[i].Name) || reviewEvidenceNamePattern.MatchString(trimmed.Verifications[i].Name) {
+		if trimmed.Verifications[i].Detail == "" || manualCIAuditPattern.MatchString(trimmed.Verifications[i].Name) || reviewEvidenceNamePattern.MatchString(trimmed.Verifications[i].Name) || riskAuditName.MatchString(trimmed.Verifications[i].Name) {
 			continue
 		}
 		trimmed.Verifications[i].Detail = ""

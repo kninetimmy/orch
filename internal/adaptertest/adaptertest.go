@@ -103,6 +103,7 @@ var runVerbTokens = map[string]bool{
 	"cleanup": true, "complete": true, "status": true,
 	"next":          true,
 	"resolve-block": true,
+	"accept-risk":   true,
 	"help":          true,
 }
 
@@ -389,11 +390,13 @@ func CheckSelectionWireVersions(t *testing.T, deliverySkillPath, architectSkillP
 		fmt.Sprintf("`GateDoc` (`schema_version: %d`)", run.GateSchemaVersion),
 		fmt.Sprintf("`{\"schema_version\": %d, \"issue_number\": N}`. Result (`DispatchResult`)", run.DispatchSchemaVersion),
 		fmt.Sprintf("{\"schema_version\": %d, \"issue_number\": N, \"reviewed_head_oid\": \"...\"", run.ReviewSchemaVersion),
-		fmt.Sprintf("\"verdict\": \"%s|%s|%s\"", run.VerdictApprove, run.VerdictRequestChanges, run.VerdictNeedsEvidence),
+		fmt.Sprintf("\"verdict\": \"%s|%s|%s|%s\"", run.VerdictApprove, run.VerdictRequestChanges, run.VerdictNeedsEvidence, run.VerdictRiskHold),
 		fmt.Sprintf("\"judgment\": \"%s|%s|%s|%s\"", run.JudgmentSatisfied, run.JudgmentUnsatisfied, run.JudgmentWrong, run.JudgmentUnverified),
 		"`execution_evidence`", "`review-evidence-<n>`", "fresh routed review",
 		"no grant code-fix cycle", "grants no new authority",
 		"approval-contract v2/v3", "docs/review-evidence.md",
+		"docs/residual-risk.md", "`execution.residual_risk_admin_user_id`", "`risk_follow_up`",
+		fmt.Sprintf("`orch run accept-risk` result v%d", run.AcceptRiskSchemaVersion),
 		fmt.Sprintf("{\"schema_version\": %d, \"issue_number\": N, \"trigger\": \"...\", \"detail\": \"...\"}", run.EscalateSchemaVersion),
 	}
 	for _, phrase := range phrases {

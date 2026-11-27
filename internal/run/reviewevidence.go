@@ -39,7 +39,7 @@ type reviewEvidenceRecord struct {
 }
 
 func reviewVerdict(v string) bool {
-	return v == VerdictApprove || v == VerdictRequestChanges || v == VerdictNeedsEvidence
+	return v == VerdictApprove || v == VerdictRequestChanges || v == VerdictNeedsEvidence || v == VerdictRiskHold
 }
 
 func checkExecutionEvidence(issue *state.Issue, req ReviewRequest, head string, now time.Time) ([]int, error) {

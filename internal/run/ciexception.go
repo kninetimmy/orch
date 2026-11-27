@@ -45,6 +45,9 @@ type manualCIRecord struct {
 
 func checkHumanCIException(c *verbCtx, approval *HumanCIException, statement string) error {
 	issue := c.issue()
+	if issue.LatestRiskBlock() != nil || issue.RiskReviewPending != nil {
+		return fmt.Errorf("%w: residual-risk issues cannot use manual CI or already-merged acknowledgment", ErrBadApproval)
+	}
 	if approval.Statement != statement || approval.RunID != c.st.Run.ID || approval.IssueNumber != issue.Number ||
 		approval.PRNumber <= 0 || approval.PRNumber != issue.PRNumber || !headOIDPattern.MatchString(approval.HeadOID) ||
 		strings.TrimSpace(approval.ApprovedBy) == "" || strings.HasPrefix(strings.TrimSpace(approval.ApprovedBy), grantApproverPrefix) ||

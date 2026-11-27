@@ -173,6 +173,7 @@ func Repair(ctx context.Context, env Env, reqJSON []byte) (*RepairResult, error)
 	issue.Repairs = append(issue.Repairs, repair)
 	issue.ApprovedHeadOID, issue.LastReviewVerdict = "", ""
 	issue.ReviewedHeadOID = "" // pending criterion evidence is deliberately retained
+	issue.RiskReviewDigest, issue.RiskMergeReportAt = "", nil
 	issue.Phase = state.PhaseDispatched
 	if issue.PRNumber > 0 {
 		issue.Phase = state.PhaseInReview

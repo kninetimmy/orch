@@ -24,7 +24,7 @@ import (
 
 // ActivationSchemaVersion is the activation-request/result schema this
 // build accepts and emits. v3 requires the target from GateDoc v4.
-const ActivationSchemaVersion = 3
+const ActivationSchemaVersion = 4
 
 // ApprovalStatement is the exact assertion an adapter's human approval
 // must carry (PRD §8): the engine cannot verify a human, so this
@@ -329,13 +329,14 @@ func Activate(ctx context.Context, env Env, reqJSON []byte) (*ActivationResult, 
 		}
 	}
 	planRef := state.PlanRef{
-		Title:           plan.Title,
-		Digest:          digest,
-		ApprovedBy:      req.Approval.ApprovedBy,
-		ApprovedAt:      req.Approval.ApprovedAt,
-		ConfigRevision:  cfg.ConfigRevision,
-		ContractVersion: ContractVersion,
-		ExecutionDigest: executionDigest,
+		Title:              plan.Title,
+		Digest:             digest,
+		ApprovedBy:         req.Approval.ApprovedBy,
+		ApprovedAt:         req.Approval.ApprovedAt,
+		ConfigRevision:     cfg.ConfigRevision,
+		ContractVersion:    ContractVersion,
+		ExecutionDigest:    executionDigest,
+		GitHubRepositoryID: github.ID,
 	}
 	st, err := state.EnterDelivery(env.RepoRoot, plan.Host, planRef, stateIssues)
 	if err != nil {
