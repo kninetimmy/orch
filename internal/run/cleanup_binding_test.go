@@ -306,8 +306,8 @@ func TestBoundMergedOpenCodeCleanupCanResumeAfterRemoteDeletion(t *testing.T) {
 			probes++
 		}
 	}
-	if probes != 2 {
-		t.Fatalf("wanted the global job probe after absent remote lookup and executor removal, got %d", probes)
+	if probes != 3 {
+		t.Fatalf("wanted a global job probe after absent remote lookup and before each remaining deletion, got %d", probes)
 	}
 	for _, path := range []string{worktreeAbs(root, 1), reviewWorktreeAbs(root, 1)} {
 		if _, err := os.Stat(path); !os.IsNotExist(err) {

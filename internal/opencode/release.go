@@ -48,11 +48,11 @@ func ReleaseLocation(ctx context.Context, runner execx.Runner, primary, target s
 // Bound cleanup supplies verify to recheck engine ownership before disposal
 // and to keep retry advice on the bound path.
 // Cleanup can use the returned check at later Git boundaries, under the same
-// deadline. checkJobs also needs a late check on a ref-only retry, where
-// there is no checkout to release or scan. Review replacement needs only this
-// release.
-func ReleaseLocations(ctx context.Context, runner execx.Runner, primary string, verify func(context.Context) error, checkJobs bool, targets ...string) (ReleaseCheck, error) {
-	if len(targets) == 0 && !checkJobs {
+// deadline. Bound merged cleanup can recheck one late loss of unrelated keys
+// and still needs a global job check on a ref-only retry. Review replacement
+// needs only this release.
+func ReleaseLocations(ctx context.Context, runner execx.Runner, primary string, verify func(context.Context) error, boundMerged bool, targets ...string) (ReleaseCheck, error) {
+	if len(targets) == 0 && !boundMerged {
 		return nil, nil
 	}
 	ctx, cancel := context.WithTimeout(ctx, 2*time.Minute)
@@ -94,7 +94,7 @@ func ReleaseLocations(ctx context.Context, runner execx.Runner, primary string, 
 	}
 	deadline, _ := ctx.Deadline()
 	if len(targets) == 0 {
-		return func(ctx context.Context, _ string) error {
+		return func(ctx context.Context, _ ...string) error {
 			ctx, cancel := context.WithDeadline(ctx, deadline)
 			defer cancel()
 			return releaseRunningJobs(func(method, endpoint string, out any) error {
@@ -332,31 +332,46 @@ func ReleaseLocations(ctx context.Context, runner execx.Runner, primary string, 
 			}
 		}
 	}
-	releasedInventory := func(call releaseCall) ([]releaseLocation, error) {
+	// Start from the verified pre-disposal identities, not a new baseline
+	// that could silently adopt a reappearing key or a replaced directory.
+	var late *releasedLocationSet
+	if boundMerged {
+		late = &releasedLocationSet{loaded: make(map[string]releaseLocation)}
+		for _, location := range before {
+			if !slices.Contains(loaded, location.Directory) {
+				late.loaded[location.Directory] = location
+			}
+		}
+	}
+	releasedInventory := func(call releaseCall) ([]releaseLocation, bool, error) {
 		current, keys, err := inventory(call)
 		if err != nil {
-			return nil, err
+			return nil, false, err
 		}
 		if slices.ContainsFunc(keys, func(key string) bool { return key != "" }) {
-			return nil, fmt.Errorf("OpenCode checkout release: scoped disposal did not unload a target or a target reactivated; refusing Git removal")
+			return nil, false, fmt.Errorf("OpenCode checkout release: scoped disposal did not unload a target or a target reactivated; refusing Git removal")
 		}
-		if _, err := preserve(before, current, false); err != nil {
-			return nil, err
+		if late != nil {
+			retry, err := late.observe(current)
+			return current, retry, err
 		}
-		return current, nil
+		_, err = preserve(before, current, false)
+		return current, false, err
 	}
-	if _, err := releasedInventory(call); err != nil {
+	// If this first observation used the allowance, the first Git boundary
+	// must finish a fresh, now strict verification before any deletion.
+	if _, _, err := releasedInventory(call); err != nil {
 		return nil, err
 	}
 	if err := checkReleaseDeleteAccess(ctx, targetInfos); err != nil {
 		return nil, err
 	}
-	return func(ctx context.Context, removed string) error {
+	return func(ctx context.Context, removed ...string) error {
 		ctx, cancel := context.WithDeadline(ctx, deadline)
 		defer cancel()
 		return recheckReleasedLocations(ctx, func(method, endpoint string, out any) error {
 			return request(ctx, method, endpoint, out)
-		}, targetInfos, removed, releasedInventory, checkJobs)
+		}, targetInfos, removed, releasedInventory, boundMerged)
 	}, nil
 }
 
