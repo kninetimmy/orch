@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"os"
 	"strings"
 
 	"github.com/kninetimmy/orch/internal/gitops"
@@ -189,6 +190,13 @@ func Cleanup(ctx context.Context, env Env, reqJSON []byte) (*CleanupResult, erro
 		if bound.checkouts[0].registration != nil || bound.checkouts[1].registration != nil {
 			if err := beforeRemoval(executor, review); err != nil {
 				return nil, err
+			}
+		}
+		// The scan checks absence on entry and excludes removed targets from
+		// cwd attribution. Observe both paths again before touching the ref.
+		for _, path := range []string{executor, review} {
+			if _, err := os.Lstat(path); !errors.Is(err, os.ErrNotExist) {
+				return nil, fmt.Errorf("OpenCode cleanup: worktree path %s is no longer verifiably absent; preserve and inspect it before retrying", path)
 			}
 		}
 		if err := git.ForceDeleteBranchAtHead(ctx, issue.Branch, approvedHead, confirm); err != nil {

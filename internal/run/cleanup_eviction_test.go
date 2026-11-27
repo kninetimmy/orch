@@ -310,6 +310,71 @@ func TestBoundMergedOpenCodeCleanupLateEvictionRefusals(t *testing.T) {
 	}
 }
 
+func TestBoundMergedOpenCodeCleanupRecreatedPathDuringFinalScan(t *testing.T) {
+	for _, target := range []string{"executor", "review"} {
+		t.Run(target, func(t *testing.T) {
+			root, _, approved, host, env := openCodeCheckoutFixture(t, state.PhaseMerged)
+			executor, review := worktreeAbs(root, 1), reviewWorktreeAbs(root, 1)
+			path, other := executor, review
+			if target == "review" {
+				path, other = review, executor
+			}
+			run := loadRun(t, root).Run
+			ref := "refs/heads/" + run.Issues[0].Branch
+			rawGit(t, root, "push", "origin", ref)
+			before := stateBytes(t, root)
+			survivor := t.TempDir()
+			host.loaded[survivor] = true
+			var recreated os.FileInfo
+			host.beforeAPI = func(endpoint *url.URL) {
+				if len(host.deleted) != 2 {
+					return
+				}
+				checkCleanupLateScope(t, host, endpoint, root, survivor)
+				if recreated != nil || endpoint.Path != "/api/shell" || endpoint.Query().Get("location[directory]") != survivor {
+					return
+				}
+				for _, dir := range []string{executor, review} {
+					if _, err := os.Lstat(dir); err == nil {
+						return // Still an earlier scan, before both Git removals.
+					} else if !os.IsNotExist(err) {
+						t.Fatal(err)
+					}
+				}
+				if err := os.Mkdir(path, 0o755); err != nil {
+					t.Fatal(err)
+				}
+				var err error
+				recreated, err = os.Lstat(path)
+				if err != nil {
+					t.Fatal(err)
+				}
+				host.ordinaryCwds = map[string]map[string]string{"/api/shell": {survivor: path}}
+			}
+			req := fmt.Appendf(nil, `{"schema_version":1,"issue_number":1,"statement":"cleanup-issue","run_id":%q}`, run.ID)
+			res, err := Cleanup(t.Context(), env, req)
+			if recreated == nil {
+				t.Fatal("fixture did not recreate a path during the final shell scan")
+			}
+			if res != nil || err == nil || !strings.Contains(err.Error(), "no longer verifiably absent") || !strings.Contains(err.Error(), path) {
+				t.Fatalf("cleanup must refuse a recreated target: result=%+v err=%v", res, err)
+			}
+			if !bytes.Equal(before, stateBytes(t, root)) || strings.TrimSpace(rawGit(t, root, "rev-parse", ref)) != approved {
+				t.Fatal("refusal changed merged state or the local ref")
+			}
+			if info, err := os.Lstat(path); err != nil || !os.SameFile(recreated, info) {
+				t.Fatalf("refusal did not preserve the recreated path: %v", err)
+			}
+			if _, err := os.Lstat(other); !os.IsNotExist(err) {
+				t.Fatalf("expected other checkout to stay absent: %v", err)
+			}
+			if rawGit(t, root, "ls-remote", "--heads", "origin", ref) != "" {
+				t.Fatal("refusal rolled back the remote branch deletion")
+			}
+		})
+	}
+}
+
 func checkCleanupLateScope(t *testing.T, host *checkoutHost, endpoint *url.URL, surviving ...string) {
 	t.Helper()
 	switch endpoint.RequestURI() {

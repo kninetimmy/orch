@@ -1025,6 +1025,7 @@ that both paths are still absent, then rechecks the inventory and reported
 activity before local-ref deletion. A refusal at this point can leave both
 worktrees gone while the local ref and issue phase remain intact. Keep both
 worktrees unused throughout cleanup.
+[#565 also rechecks both paths after that scan](#verify-removed-paths-after-the-final-scan-issue-565).
 
 ### Windows source evidence
 
@@ -1167,3 +1168,35 @@ it does not roll back an earlier successful deletion.
 | `Cleanup` / `beforeRemoval`, ownership and Git guards | The same remote → executor → review → local deletion order and final state save remain. Before, the last host check for a tracked batch preceded review removal; now bound merged cleanup also checks before deleting the local ref. Original checkout registration, HEAD, cleanliness/detached and common-directory checks remain, as do remote destination binding and the leased remote and conditional local deletions at the approved OID. Generic Git removers, confirmation, state/schema and metrics are unchanged. |
 | `releaseFixture.runner`, `TestBoundMergedLateEvictionKeepsReleaseDeadline`, `TestBoundMergedOpenCodeCleanupLateEviction` and `TestBoundMergedOpenCodeCleanupLateEvictionRefusals` | Existing fixtures and strict non-bound regressions remain. New scripted cases exercise a stable multi-key loss at disposal, at late opening and across activity, the same deadline, fresh holds, identity/reload/extra-churn refusals, and preservation before and after successful Git mutations. The existing bound absent-remote regression also checks the new local-ref boundary. Tests use disposable Git repositories and no live OpenCode service. |
 | This guide and adapter README | Preserve the prior rules as history, identify which paths retain them, and document the bounded change. No runtime adapter, polling, API schema, dependency, installation, or release change. |
+
+## Verify removed paths after the final scan (issue #565)
+
+**Before #565 (PR #564):** for a tracked checkout inventory, `run.Cleanup`
+checked both paths at the start of the final host scan, then excluded them
+from working-directory attribution as removed targets. Even if a surviving
+loaded folder reported a shell working in a path recreated during that scan,
+cleanup could delete the local branch and save `cleaned`.
+
+**After #565:** before calling `ForceDeleteBranchAtHead`, `run.Cleanup` uses
+`os.Lstat` to verify that **both** the executor and review paths are still
+absent, including on a ref-only retry. An existing path (even a dangling link)
+or an inspection error other than not-exist refuses cleanup. The refusal names
+the path, leaves it untouched, preserves the local ref and issue phase, and
+does not roll back earlier successful deletions. This is an observation, not
+a lock against later filesystem changes.
+
+- **Callers:** Only bound merged OpenCode requests to `run.Cleanup` get the
+  new check. The `orch_cleanup` tool still sends the confirmed request through
+  `orch run cleanup`. Standalone unbound cleanup, abandoned cleanup, review
+  replacement, other hosts, and generic Git removers keep their existing rules.
+- **Host, Git and state:** `beforeRemoval` and host scanning are unchanged.
+  The one retry for stable unrelated evictions still uses the original deadline,
+  and ref-only retries keep their existing job checks, with no new host calls.
+  The accepted visibility gap above still holds: an unloaded owner can leave a
+  shell or terminal using either target without being detected. Confirmation,
+  activity, identity and ownership checks, deletion order, the approved-OID local
+  ref guard, and final state save and metrics on success all remain.
+- **Regression:** `TestBoundMergedOpenCodeCleanupRecreatedPathDuringFinalScan`
+  recreates each path in turn while a surviving loaded folder reports its shell
+  cwd there. It uses the existing disposable Git and scripted host fixture and
+  leaves the earlier eviction and refusal tests unchanged.
