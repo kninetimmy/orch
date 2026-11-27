@@ -11,6 +11,10 @@ import (
 	"github.com/kninetimmy/orch/internal/adaptertest"
 )
 
+func TestShippedRolesHaveProportionateRiskGuidance(t *testing.T) {
+	adaptertest.CheckProportionateRiskGuidance(t, ".md")
+}
+
 func TestPackagePinsOpenCodeV2Contract(t *testing.T) {
 	var manifest struct {
 		Name            string            `json:"name"`

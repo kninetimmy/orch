@@ -73,6 +73,10 @@ func decodeStrict(t *testing.T, path string, v any) {
 	}
 }
 
+func TestShippedRolesHaveProportionateRiskGuidance(t *testing.T) {
+	adaptertest.CheckProportionateRiskGuidance(t, ".toml")
+}
+
 func TestPluginManifestStrict(t *testing.T) {
 	var m pluginManifest
 	decodeStrict(t, ".codex-plugin/plugin.json", &m)
