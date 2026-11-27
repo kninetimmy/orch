@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"os"
 	"strings"
 
 	"github.com/kninetimmy/orch/internal/gitops"
@@ -112,18 +113,15 @@ func Cleanup(ctx context.Context, env Env, reqJSON []byte) (*CleanupResult, erro
 	// A primary-owned shell, PTY or Code Mode job can start during Git I/O
 	// without reloading a target. Recheck observable activity and then the
 	// original ownership, not a replacement checkout.
-	beforeRemoval := func(removed string) error {
+	beforeRemoval := func(removed ...string) error {
 		if check != nil {
-			if err := check(ctx, removed); err != nil {
+			if err := check(ctx, removed...); err != nil {
 				return err
 			}
 		}
-		if bound != nil {
-			targets := bound.checkouts[:]
-			if removed != "" {
-				targets = targets[1:]
-			}
-			return c.verifyCleanupCheckouts(ctx, git, targets...)
+		if bound != nil && len(removed) < len(bound.checkouts) {
+			// Checkout removals are ordered executor, then review.
+			return c.verifyCleanupCheckouts(ctx, git, bound.checkouts[len(removed):]...)
 		}
 		return nil
 	}
@@ -138,7 +136,7 @@ func Cleanup(ctx context.Context, env Env, reqJSON []byte) (*CleanupResult, erro
 	if err != nil {
 		return nil, err
 	}
-	if err := beforeRemoval(""); err != nil {
+	if err := beforeRemoval(); err != nil {
 		return nil, err
 	}
 	if remote != nil {
@@ -155,7 +153,7 @@ func Cleanup(ctx context.Context, env Env, reqJSON []byte) (*CleanupResult, erro
 		if err != nil {
 			return nil, err
 		}
-		if err := beforeRemoval(""); err != nil {
+		if err := beforeRemoval(); err != nil {
 			return nil, err
 		}
 	}
@@ -178,13 +176,29 @@ func Cleanup(ctx context.Context, env Env, reqJSON []byte) (*CleanupResult, erro
 	if err := beforeRemoval(executor); err != nil {
 		return nil, err
 	}
-	if err := git.RemoveDetachedWorktree(ctx, reviewWorktreeAbs(env.RepoRoot, issue.Number)); err != nil && !errors.Is(err, gitops.ErrUnknownWorktree) {
+	review := reviewWorktreeAbs(env.RepoRoot, issue.Number)
+	if err := git.RemoveDetachedWorktree(ctx, review); err != nil && !errors.Is(err, gitops.ErrUnknownWorktree) {
 		return nil, err
 	}
 
 	// 4. Local branch (idempotent: only force-delete when it still
 	// resolves — a squash merge leaves it unmerged by design).
 	if approvedHead != "" {
+		// A bound merged handoff with a tracked inventory must not ignore
+		// churn during review removal before mutating the last ref. Ref-only
+		// retries have no inventory and retain their existing job checks.
+		if bound.checkouts[0].registration != nil || bound.checkouts[1].registration != nil {
+			if err := beforeRemoval(executor, review); err != nil {
+				return nil, err
+			}
+		}
+		// The scan checks absence on entry and excludes removed targets from
+		// cwd attribution. Observe both paths again before touching the ref.
+		for _, path := range []string{executor, review} {
+			if _, err := os.Lstat(path); !errors.Is(err, os.ErrNotExist) {
+				return nil, fmt.Errorf("OpenCode cleanup: worktree path %s is no longer verifiably absent; preserve and inspect it before retrying", path)
+			}
+		}
 		if err := git.ForceDeleteBranchAtHead(ctx, issue.Branch, approvedHead, confirm); err != nil {
 			return nil, err
 		}
