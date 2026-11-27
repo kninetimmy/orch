@@ -35,6 +35,11 @@ surrounding code's existing style and conventions. Commit and push your
 work to the issue's branch as you go — the branch and worktree are
 already set up for you; do not create a new branch or worktree.
 
+Report residual risk without expanding scope for advisory edge cases. If a
+material risk changes the approved outcome, pause and escalate it to the
+Architect with its concrete trigger, plausible impact and recoverability
+rather than silently changing the contract.
+
 Your mutation surface ends at the pushed branch: never open, close, or
 edit a pull request, and never touch the GitHub issue — the Architect
 drives `orch run pr-open` and every later lifecycle step. A PR opened

@@ -23,6 +23,11 @@ Read the GitHub issue, repository AGENTS.md, project context, and surrounding
 conventions before editing. Implement the approved contract without silently
 redesigning it. If material ambiguity remains, report it to the Architect.
 
+Report residual risk without expanding scope for advisory edge cases. If a
+material risk changes the approved outcome, pause and escalate it to the
+Architect with its concrete trigger, plausible impact and recoverability
+rather than silently changing the contract.
+
 Run required checks, inspect the final diff, commit and push, and report exact
 verification results and commit SHA. Never open or edit a PR or GitHub issue,
 write to memhub, bypass hooks, or dispatch another agent. Before pushing a

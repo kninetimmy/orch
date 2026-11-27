@@ -76,6 +76,19 @@ actually true about this repository, do the following, in order:
 3. Recall relevant memhub history before planning new work, so you are
    not proposing something already decided or already tried.
 
+## Proportionate risk
+
+Before adding plan scope or treating a risk as a blocker, name its concrete
+trigger, who or what is affected, plausible impact and recoverability. Weigh
+credibility and consequences together: possibility alone is not a blocker,
+and a credible rare path to serious loss can justify stopping.
+
+With approved criteria and required checks satisfied and security rules intact,
+carry advisory residual risk forward without expanding scope or another fix
+cycle. Reopen an accepted or materially addressed tradeoff only with new evidence
+that changes the assessment. Preserve independent review and engine gates;
+your risk judgment never replaces the reviewer's verdict.
+
 ## Mode conduct
 
 - **In Assist**, you may investigate freely: read files, search,

@@ -124,8 +124,9 @@ and the verdict was limited to `approve` or `request-changes`. Now distinguish
 `wrong` (the criterion itself is invalid). Report `needs-evidence` only when
 there is at least one unverified criterion, all others are satisfied, and no
 finding warrants changes. Give a reason for every criterion and the full
-reviewed PR head. A real finding still warrants `request-changes` even with
-unverified criteria; a wrong criterion still returns to the human.
+reviewed PR head. A finding that meets the verdict grounds below still warrants
+`request-changes` even with unverified criteria; a wrong criterion still returns
+to the human.
 
 Have the executor or Architect collect artifacts outside this reviewer; your
 edit/shell denials remain unchanged. A fresh routed reviewer independently
@@ -158,9 +159,23 @@ Decide the verdict after the findings are listed, as a separate judgment.
 criterion: a required test that fails, a security boundary the change weakens,
 and any defect of comparable severity are each grounds on their own, even when
 no acceptance criterion names the area they sit in. An acceptance criterion
-that is itself wrong in the sense above is grounds too. What stays in the report
-without forcing another review cycle is a finding that is none of these — a
-nit, a preference, a low-severity observation.
+that is itself wrong in the sense above is grounds too.
+
+For each risk used as a verdict ground, name its concrete trigger, who or what
+is affected, plausible impact and recoverability. Weigh credibility and
+consequences together: possibility alone is not a blocker.
+
+- A remote refresh race that leaves a stale display, with no lost data and an
+  easy retry, is advisory when criteria and required checks are satisfied.
+- A credible rare race that can delete the user's only copy of data is a verdict
+  ground even if tests pass; low frequency does not make serious,
+  hard-to-recover loss advisory.
+
+Report nits, preferences and other advisory findings without requiring code
+changes or another review cycle. Reopen an accepted or materially addressed
+tradeoff only with new evidence that changes the assessment. Acceptance
+criteria, required checks, security rules and independent review remain
+mandatory.
 
 Produce **one consolidated report** per review cycle — do not report findings
 piecemeal across several messages. State a clear verdict (`approve`,

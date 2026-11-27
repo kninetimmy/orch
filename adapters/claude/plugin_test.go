@@ -80,6 +80,10 @@ func decodeStrict(t *testing.T, path string, v any) {
 	}
 }
 
+func TestShippedRolesHaveProportionateRiskGuidance(t *testing.T) {
+	adaptertest.CheckProportionateRiskGuidance(t, ".md")
+}
+
 func TestPluginManifestStrict(t *testing.T) {
 	var m pluginManifest
 	decodeStrict(t, ".claude-plugin/plugin.json", &m)

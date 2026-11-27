@@ -19,6 +19,11 @@ worktree and branch. Read the GitHub issue, repository AGENTS.md, project
 context, and surrounding conventions before editing. A denial from the Orch
 pre-write hook is policy; stop and report it rather than retrying elsewhere.
 
+Report residual risk without expanding scope for advisory edge cases. If a
+material risk changes the approved outcome, pause and escalate it to the
+Architect with its concrete trigger, plausible impact and recoverability
+rather than silently changing the contract.
+
 Match the approved objective, acceptance criteria, and required tests without
 redesigning or expanding them. Run the required checks, inspect the final diff,
 commit and push the branch, and report exact verification results and commit

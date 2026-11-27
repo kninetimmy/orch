@@ -106,6 +106,11 @@ the exact command that gates the change (`go test ./...`, `gofmt -l .`);
 it is not an invitation for comprehensive coverage, just the check this
 change must pass.
 
+Before adding plan scope or treating a risk as a blocker, name its concrete
+trigger, who or what is affected, plausible impact and recoverability. Weigh
+credibility and consequences together: possibility alone is not a blocker,
+and a credible rare path to serious loss can justify stopping.
+
 When the repository's CI does not run one of those required tests — it
 sits behind a build tag no workflow enables, needs a tool or credential
 CI has not got, or no workflow invokes it at all — name that exact
@@ -530,10 +535,18 @@ OpenCode manual usage contracts are unchanged.
    A `verdict` of `approve` is accepted only when every criterion is
    judged `satisfied`. Before review v4, record `request-changes` otherwise
    was the only non-approving path; now use `needs-evidence` for an
-   evidence-only stall, and `request-changes` for a real finding or wrong
-   criterion, including when evidence is also missing. Transcribe
-   the reviewer's per-criterion calls, never your own reading of its
+   evidence-only stall, and `request-changes` for a finding that warrants
+   changes or a wrong criterion, including when evidence is also missing.
+   Transcribe the reviewer's per-criterion calls, never your own reading of its
    summary.
+
+   Apply that blocker bar when separating advisory findings from verdict
+   grounds. With approved criteria and required checks satisfied and security
+   rules intact, carry advisory residual risk forward without expanding scope
+   or another fix cycle. Reopen an accepted or materially addressed tradeoff
+   only with new evidence that changes the assessment. Preserve the independent
+   reviewer's verdict and judgments; if its rationale needs clarification, ask
+   that reviewer rather than silently rewriting its verdict.
 
    `usage` remains optional for legacy callers. This adapter omits it:
    every fresh reviewer has its own recorded native session observation.
@@ -676,8 +689,8 @@ Cleanup and completion still need their separate ordinary calls.
 
 ## Escalation
 
-On unusual difficulty, reviewer uncertainty, or repeated weak-model
-failure, call `orch run escalate`:
+On unusual difficulty, reviewer uncertainty that could change the approved
+outcome, or repeated weak-model failure, call `orch run escalate`:
 
 ```json
 {"schema_version": 2, "issue_number": N, "trigger": "...", "detail": "..."}
