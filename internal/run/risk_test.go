@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -22,25 +23,28 @@ const (
 )
 
 type riskServer struct {
-	t             *testing.T
-	now           time.Time
-	head, prState string
-	issueBody     string
-	prBody        string
-	decision      map[string]any
-	viewerID      string
-	viewerRole    string
-	viewerBypass  string
-	adminRole     string
-	canAdminister bool
-	classic       bool
-	inherited     bool
-	extraRule     string
-	strict        bool
-	checks        []map[string]any
-	incomplete    bool
-	failMirror    bool
-	mergeCalls    int
+	t                *testing.T
+	now              time.Time
+	head, prState    string
+	issueBody        string
+	prBody           string
+	decision         map[string]any
+	viewerID         string
+	viewerPermission string
+	viewerBypass     string
+	ownerKind        string
+	ownerID          string
+	collaborators    [][]map[string]any
+	canAdminister    bool
+	classic          bool
+	inherited        bool
+	extraRule        string
+	strict           bool
+	onCreate         json.RawMessage
+	checks           []map[string]any
+	incomplete       bool
+	failMirror       bool
+	mergeCalls       int
 }
 
 func (g *riskServer) json(v any) execx.Result {
@@ -79,10 +83,12 @@ func (g *riskServer) Run(_ context.Context, cmd execx.Cmd) (execx.Result, error)
 		return g.graphql(cmd), nil
 	}
 	switch a[len(a)-1] {
-	case "repos/o/r/collaborators/automation/permission":
-		return g.json(riskPermission("automation", 11, "write", g.viewerRole)), nil
-	case "repos/o/r/collaborators/admin/permission":
-		return g.json(riskPermission("admin", 22, g.adminRole, g.adminRole)), nil
+	case "repos/o/r/collaborators?affiliation=all&per_page=100":
+		want := []string{"api", "--hostname", "github.com", "--method", "GET", "-H", "X-GitHub-Api-Version: 2026-03-10", "--paginate", "--slurp", a[len(a)-1]}
+		if !slices.Equal(a, want) || cmd.Stdin != nil {
+			g.t.Fatalf("collaborator evidence must be a fully paginated read: %q", a)
+		}
+		return g.json(g.collaborators), nil
 	case "repos/o/r/branches/main":
 		return g.json(map[string]any{"name": "main", "protected": true, "protection": map[string]any{
 			"enabled": g.classic, "required_status_checks": map[string]any{"enforcement_level": "off", "contexts": []any{}, "checks": []any{}},
@@ -92,28 +98,39 @@ func (g *riskServer) Run(_ context.Context, cmd execx.Cmd) (execx.Result, error)
 		if g.inherited {
 			source = "Organization"
 		}
+		params := map[string]any{"strict_required_status_checks_policy": g.strict,
+			"required_status_checks": []map[string]any{{"context": "build", "integration_id": 15368}}}
+		if g.onCreate != nil {
+			params["do_not_enforce_on_create"] = g.onCreate
+		}
 		page := []map[string]any{{"type": "required_status_checks", "ruleset_id": 9, "ruleset_source": "o/r", "ruleset_source_type": source,
-			"parameters": map[string]any{"strict_required_status_checks_policy": g.strict, "do_not_enforce_on_create": false,
-				"required_status_checks": []map[string]any{{"context": "build", "integration_id": 15368}}}}}
+			"parameters": params}}
 		if g.extraRule != "" {
 			page = append(page, map[string]any{"type": g.extraRule, "ruleset_id": 10, "ruleset_source": "o/r", "ruleset_source_type": source})
 		}
 		return g.json([]any{page}), nil
 	case "repos/o/r/rulesets/9?includes_parents=false":
-		return g.json(map[string]any{"id": 9, "target": "branch", "source_type": "Repository",
-			"source": "o/r", "enforcement": "active", "current_user_can_bypass": g.viewerBypass, "updated_at": fixedNow()}), nil
+		rule := map[string]any{"id": 9, "target": "branch", "source_type": "Repository",
+			"source": "o/r", "enforcement": "active", "updated_at": fixedNow()}
+		if g.viewerBypass != "" {
+			rule["current_user_can_bypass"] = g.viewerBypass
+		}
+		return g.json(rule), nil
 	}
 	g.t.Fatalf("unexpected gh arguments %q", a)
 	return execx.Result{}, nil
 }
 
-func riskPermission(login string, id int, permission, role string) map[string]any {
-	return map[string]any{"permission": permission, "role_name": role, "user": map[string]any{"login": login, "id": id, "type": "User"}}
+func riskCollaborator(login string, id int, role string) map[string]any {
+	admin := role == "admin"
+	return map[string]any{"login": login, "id": id, "type": "User", "role_name": role,
+		"permissions": map[string]any{"pull": true, "push": true, "admin": admin, "triage": true, "maintain": admin}}
 }
 
 func (g *riskServer) graphql(cmd execx.Cmd) execx.Result {
 	var in struct {
 		OperationName string
+		Query         string
 		Variables     map[string]json.RawMessage
 	}
 	if err := json.NewDecoder(cmd.Stdin).Decode(&in); err != nil {
@@ -124,7 +141,7 @@ func (g *riskServer) graphql(cmd execx.Cmd) execx.Result {
 	switch in.OperationName {
 	case "OrchRiskSnapshot":
 		if string(vars["repositoryId"]) != `"R_repo"` || string(vars["issue"]) != "1" || string(vars["pr"]) != "10" ||
-			string(vars["admin"]) != `"U_admin"` {
+			string(vars["admin"]) != `"U_admin"` || !strings.Contains(in.Query, "owner { kind: __typename id }") {
 			g.t.Fatalf("crossed snapshot query: %+v", vars)
 		}
 		pr := map[string]any{"number": 10, "id": "PR_issue", "url": riskRepoURL + "/pull/10", "state": g.prState,
@@ -137,9 +154,10 @@ func (g *riskServer) graphql(cmd execx.Cmd) execx.Result {
 			}}}
 		}
 		return wrap(map[string]any{"viewer": map[string]any{"id": g.viewerID, "databaseId": 11, "login": "automation"},
-			"admin": map[string]any{"id": "U_admin", "databaseId": 22, "login": "admin"},
+			"admin": map[string]any{"id": "U_admin", "databaseId": 22, "login": "o"},
 			"repository": map[string]any{"id": "R_repo", "nameWithOwner": "o/r", "url": riskRepoURL, "viewerCanAdminister": g.canAdminister,
-				"viewerPermission": "WRITE", "defaultBranchRef": map[string]any{"name": "main"}, "pullRequest": pr,
+				"viewerPermission": g.viewerPermission, "defaultBranchRef": map[string]any{"name": "main"}, "pullRequest": pr,
+				"owner": map[string]any{"kind": g.ownerKind, "id": g.ownerID},
 				"issue": map[string]any{"id": "I_issue", "number": 1, "url": riskRepoURL + "/issues/1", "state": "OPEN", "body": g.issueBody}}})
 	case "OrchRiskDecision":
 		return wrap(map[string]any{"viewer": map[string]any{"id": g.viewerID}, "node": g.decision})
@@ -186,7 +204,7 @@ func (g *riskServer) submit(challenge string) {
 		"state": "COMMENTED", "body": riskStatement + challenge + "\n\nRetry is cheap and the affected surface is bounded.",
 		"createdAt": g.now, "submittedAt": g.now, "editor": nil, "lastEditedAt": nil, "includesCreatedEdit": false,
 		"isMinimized": false, "viewerDidAuthor": false, "createdViaEmail": false, "isCopilotCodeReview": false,
-		"author": map[string]any{"id": "U_admin", "databaseId": 22, "login": "admin"},
+		"author": map[string]any{"id": "U_admin", "databaseId": 22, "login": "o"},
 		"commit": map[string]any{"oid": g.head}, "pullRequest": map[string]any{"id": "PR_issue"}, "repository": map[string]any{"id": "R_repo"}}
 }
 
@@ -207,7 +225,9 @@ func newRiskFixture(t *testing.T, enabled bool) (Env, *riskServer, ReviewRequest
 	}
 	body := baseManifestBody(t)
 	g := &riskServer{t: t, now: fixedNow(), head: riskHead, prState: "OPEN", issueBody: body, prBody: body,
-		viewerID: "U_automation", viewerRole: "write", viewerBypass: "never", adminRole: "admin", strict: true}
+		viewerID: "U_automation", viewerPermission: "WRITE", viewerBypass: "never", ownerKind: "User", ownerID: "U_admin",
+		collaborators: [][]map[string]any{{riskCollaborator("automation", 11, "write")}, {riskCollaborator("o", 22, "admin")}},
+		strict:        true, onCreate: json.RawMessage(`false`)}
 	g.green()
 	env := Env{RepoRoot: root, Runner: g, Now: func() time.Time { return g.now }}
 	return env, g, ReviewRequest{SchemaVersion: ReviewSchemaVersion, IssueNumber: 1, ReviewedHeadOID: riskHead, Verdict: VerdictRiskHold,
@@ -406,10 +426,10 @@ func TestResidualRiskRejectsUnauthenticatedStaleOrNonGreenDecision(t *testing.T)
 		},
 		"shared actor":     func(g *riskServer, _ *AcceptRiskRequest) { g.viewerID = "U_admin" },
 		"admin viewer":     func(g *riskServer, _ *AcceptRiskRequest) { g.canAdminister = true },
-		"custom writer":    func(g *riskServer, _ *AcceptRiskRequest) { g.viewerRole = "branch-manager" },
+		"custom writer":    func(g *riskServer, _ *AcceptRiskRequest) { g.collaborators[0][0]["role_name"] = "branch-manager" },
 		"policy bypass":    func(g *riskServer, _ *AcceptRiskRequest) { g.viewerBypass = "pull_requests_only" },
 		"unknown bypass":   func(g *riskServer, _ *AcceptRiskRequest) { g.viewerBypass = "" },
-		"no longer admin":  func(g *riskServer, _ *AcceptRiskRequest) { g.adminRole = "write" },
+		"no longer admin":  func(g *riskServer, _ *AcceptRiskRequest) { g.collaborators[1][0] = riskCollaborator("o", 22, "write") },
 		"missing check":    func(g *riskServer, _ *AcceptRiskRequest) { g.checks[0]["name"] = "optional" },
 		"empty rollup":     func(g *riskServer, _ *AcceptRiskRequest) { g.checks = []map[string]any{} },
 		"truncated checks": func(g *riskServer, _ *AcceptRiskRequest) { g.incomplete = true },

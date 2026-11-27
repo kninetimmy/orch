@@ -124,7 +124,7 @@ func openRiskAudit(ctx context.Context, c *verbCtx, gh *ghops.GH, head string, c
 			return a, err
 		}
 		br, ar := before.Repository, a.snapshot.Repository
-		if before.Viewer != a.snapshot.Viewer || before.Admin != a.snapshot.Admin || br.Issue != ar.Issue ||
+		if before.Viewer != a.snapshot.Viewer || before.Admin != a.snapshot.Admin || br.Owner != ar.Owner || br.Issue != ar.Issue ||
 			br.PullRequest.ID != ar.PullRequest.ID || br.PullRequest.Body != ar.PullRequest.Body {
 			return a, fmt.Errorf("%w: GitHub identities or audit changed during residual-risk verification; inspect again", ErrReviewStale)
 		}

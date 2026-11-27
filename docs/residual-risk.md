@@ -20,9 +20,18 @@ contract before approving; do not change it on an active run.
 admin_user_id = "<designated user's stable GitHub node ID>"
 ```
 
-- Use GitHub.com. The designated human uses a separate GitHub account/session
-  with standard repository **Admin**. The agent's `gh` must authenticate as a
-  different standard **Write** user, not as the admin, an app, or a custom role.
+- Use a **user-owned repository on GitHub.com**. Orch verifies the owner is a
+  `User` on the approved repository node; organization-owned and unverifiable
+  repositories are outside this path, including organizations where additive
+  custom roles could let a Write user edit rules. The designated human uses a
+  separate GitHub account/session with standard repository **Admin**. The
+  agent's `gh` must authenticate as a different standard **Write** user, not as
+  the admin, an app, or a custom role. Before the authorization follow-up,
+  role proof used the single-user permissions endpoint. Now Orch uses the
+  [fully paginated collaborator list](https://docs.github.com/en/rest/collaborators/collaborators#list-repository-collaborators),
+  which documents Write access. Both users must appear with the immutable
+  numeric IDs from GitHub, exact roles and explicit permission flags. Missing
+  or contradictory evidence refuses; there is no fallback.
   Keep the admin's tokens, browser session, SSH keys, and other credentials
   outside the agent environment. Do not give automation out-of-band credentials
   for the admin or any protection bypass. Never elevate a token to get a read
@@ -39,6 +48,9 @@ admin_user_id = "<designated user's stable GitHub node ID>"
   Orch refuses classic or mixed protection, inherited or unknown active rules,
   merge queues, multiple
   required-check rules, unpinned or ambiguous checks, or inaccessible policy.
+  The optional creation-only flag `do_not_enforce_on_create` may be absent:
+  its absence is recorded distinctly from `false`, and null or non-Boolean
+  values are refused. It cannot waive checks for the existing base branch.
   Do not remove existing protection to fit this feature. Ineligible repositories
   can use ordinary Delivery.
 - Successful CI means one identifiable GitHub CheckRun per required context
@@ -165,7 +177,9 @@ protections at merge. The working trust assumptions above still apply.
 | `Review`, `ReviewRequest` / `ReviewResult`, `reviewVerdict`, `checkJudgments`, `reviewRisk`, `checkRiskFollowUp` / `verifyRiskFollowUp` | Review 4's approve, request-changes and needs-evidence → Review 5 retains all three and adds `risk-hold`, optional hold/follow-up data and a challenge result. Every verdict still requires routed selection, one reasoned judgment per criterion, and live reviewed head. Only risk hold and risk-path approval add the exact required-test proof; neither allows unverified, wrong or unsatisfied criteria. Missing-evidence collection, genuine fix cycles and existing reviewer permissions remain. |
 | `openRiskAudit`, `currentRiskReview`, `riskTestEvidence`, `riskReceipt`, `addRiskEntry`, `readinessReviewEvidence`, `sameReadinessAudit`, `rejectEngineOwnedNames`, `upsertCapped` | Ordinary audit/readiness and rotating prose remain. Risk adds exact binding and matching typed receipts in both mirrors. **Every** numbered `risk-hold-N`, `risk-acceptance-N` and `risk-review-N` is reserved in all caller-verification inputs and retained whole, like existing execution-evidence receipts. Neither general audit prose nor a missing mirror promotes proof. |
 | `AcceptRisk`, `readRiskDecision`, CLI run dispatch/usage | No authenticated same-head disposition → schema-1 `accept-risk` under the existing mutation serializer. It is restricted to the current dedicated hold, verified decision and strict CI. It leaves the prior non-approving verdict, worktree and review/fix history unchanged; an exact retry cannot create a second acceptance. |
-| GitHub `RiskRead`, `RiskRoles`, `RiskRequiredPolicy`, `RiskCI`, `RiskDecision`, `WriteRiskAudit`, `MergeRiskPR` | Ordinary checkout-relative GitHub operations and `RequiredCI` are unchanged. This path uses node-bound GraphQL, narrow REST policy and role proof, and GitHub's expected-head enforcement on the verified PR node. Only the new path requires complete nonempty CI with no skipped checks. |
+| GitHub `RiskRead` and `RiskRoles`; owner comparison in `openRiskAudit` | Before the follow-up, risk probes accepted any GitHub.com repo owner type and relied on two single-user permission reads. After, they verify a user owner on the bound repository node and require both immutable users' exact standard roles and flags from the complete collaborator list. The owner also has to agree across the bracketed CI/audit read. These restrictions apply to every residual-risk gate; ordinary GitHub operations are unchanged. |
+| GitHub `RiskRequiredPolicy`, `RiskPolicy`, `RiskCI` | Before the follow-up, the creation-only flag had to be present. After, an omitted flag remains absent in the fingerprint and receipt, distinct from explicit `false`; malformed and null values refuse. The branch/policy reads, independent ruleset `never` proof, and nonempty app-pinned exact-head `SUCCESS` checks still apply to every residual-risk gate that uses them. Skipped checks still do not count as success. Ordinary `RequiredCI` is unchanged. |
+| GitHub `RiskDecision`, `WriteRiskAudit`, `MergeRiskPR` | These retain node-bound GraphQL and expected-head enforcement on the verified PR node. The role-proof follow-up does not change the decision, audit or merge mutation contracts. |
 | `Block`, `ResolveBlock`, `Resume` and `ReviewWorktree` | Operational recovery and explicit ordinary decision resolution remain. A generic block cannot replace the original risk reason but invalidates its acceptance eligibility. Neither generic resolution nor resume can discharge the risk hold; only its dedicated decision or fresh review of a different live head can progress. The review checkout stays detached/unregistered; only a held residual-risk issue can request this blocked-phase checkout. |
 | `Repair`, `CI`, `Next`, `Readiness` | Existing repair authorization and invalidation, ordinary CI reporting and read-only guidance remain. A new repair invalidates the risk review/report, too. Strict CI inspection on a risk issue does not overwrite the ordinary CI audit singleton; next/readiness distinguish hold/retry and strict non-authorizing merge evidence. |
 | `MergeReport`, `checkApprovingReview`, `Merge`, `checkHumanCIException` / `acknowledgeMerged`, `finishMerge` | Same ordinary wire, head pins, closure/audit/cleanup and separate approval remain. For **every issue with a recorded hold**, only an independently approved current review, unchanged policy, strict green CI and a new human approval after the report permit merge. Manual CI, grant approval and both forms of already-merged recovery stay available only outside this path. |

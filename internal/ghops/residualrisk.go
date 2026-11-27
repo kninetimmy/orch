@@ -28,6 +28,7 @@ type RiskSnapshot struct {
 	Repository    struct {
 		ID, NameWithOwner, URL, ViewerPermission string
 		ViewerCanAdminister                      *bool
+		Owner                                    struct{ Kind, ID string }
 		DefaultBranchRef                         struct{ Name string }
 		Issue                                    struct {
 			ID, URL, State, Body string
@@ -60,6 +61,7 @@ const riskSnapshotQuery = `query OrchRiskSnapshot($repositoryId: ID!, $issue: In
   repository: node(id: $repositoryId) {
     ... on Repository {
       id nameWithOwner url viewerCanAdminister viewerPermission defaultBranchRef { name }
+      owner { kind: __typename id }
       issue(number: $issue) { id number url state body }
       pullRequest(number: $pr) {
         id number url state body headRefName headRefOid baseRefName headRepository { id } baseRepository { id }
@@ -88,6 +90,9 @@ const riskSnapshotQuery = `query OrchRiskSnapshot($repositoryId: ID!, $issue: In
 // resolved against a checkout-selected repository.
 func (r *ActivationRepo) RiskRead(ctx context.Context, issue, pr int, admin string, ci bool) (RiskSnapshot, error) {
 	var out RiskSnapshot
+	if r.host != "github.com" {
+		return out, fmt.Errorf("residual risk is supported only for user-owned repositories on GitHub.com")
+	}
 	err := r.graphql(ctx, "OrchRiskSnapshot", riskSnapshotQuery, map[string]any{
 		"repositoryId": r.id, "issue": issue, "pr": pr, "admin": admin, "ci": ci,
 	}, &out)
@@ -100,8 +105,12 @@ func (r *ActivationRepo) RiskRead(ctx context.Context, issue, pr int, admin stri
 		repo.PullRequest.HeadRepository.ID != r.id || repo.PullRequest.BaseRepository.ID != r.id {
 		return out, fmt.Errorf("GitHub did not verify the issue and same-repository PR in repository %q", r.id)
 	}
+	if repo.Owner.Kind != "User" || !githubNodeID.MatchString(repo.Owner.ID) {
+		return out, fmt.Errorf("residual risk requires a verified user-owned GitHub.com repository; organization and unknown ownership are unsupported")
+	}
 	if !out.Viewer.valid() || !out.Admin.valid() || out.Admin.ID != admin ||
 		out.Viewer.ID == out.Admin.ID || out.Viewer.DatabaseID == out.Admin.DatabaseID ||
+		out.Viewer.ID == repo.Owner.ID ||
 		repo.ViewerCanAdminister == nil || *repo.ViewerCanAdminister || repo.ViewerPermission != "WRITE" {
 		return out, fmt.Errorf("residual risk requires distinct GitHub users and a non-admin automation viewer with WRITE permission")
 	}
@@ -115,29 +124,52 @@ func (r *ActivationRepo) onRiskTarget(target RepoTarget) bool {
 }
 
 func (r *ActivationRepo) RiskRoles(ctx context.Context, target RepoTarget, viewer, admin GitHubUser) error {
-	if !r.onRiskTarget(target) || !viewer.valid() || !admin.valid() {
+	if !r.onRiskTarget(target) || !viewer.valid() || !admin.valid() || viewer.ID == admin.ID || viewer.DatabaseID == admin.DatabaseID {
 		return fmt.Errorf("cannot verify GitHub repository roles for residual risk")
 	}
-	for _, entry := range []struct {
-		user GitHubUser
-		role string
-	}{{viewer, "write"}, {admin, "admin"}} {
-		var permission struct {
-			Permission string
-			RoleName   string `json:"role_name"`
-			User       struct {
-				ID          int64
-				Login, Type string
+	// Unlike the single-user permission endpoint, the list explicitly supports
+	// WRITE callers. Numeric IDs join REST rows to the GraphQL User identities.
+	var pages [][]struct {
+		ID          int64
+		Login, Type string
+		RoleName    string `json:"role_name"`
+		Permissions struct{ Pull, Push, Admin, Maintain, Triage *bool }
+	}
+	path := "repos/" + target.Owner + "/" + target.Repository + "/collaborators?affiliation=all&per_page=100"
+	if err := r.gh.ghJSON(ctx, &pages, "api", "--hostname", r.host, "--method", "GET", "-H", riskRESTVersion, "--paginate", "--slurp", path); err != nil {
+		return fmt.Errorf("verify GitHub repository collaborator roles: %w", err)
+	}
+	expected := map[int64]GitHubUser{viewer.DatabaseID: viewer, admin.DatabaseID: admin}
+	seenIDs, seenLogins := map[int64]bool{}, map[string]bool{}
+	for _, page := range pages {
+		if page == nil {
+			return fmt.Errorf("GitHub collaborator list contains an incomplete page")
+		}
+		for _, row := range page {
+			login := strings.ToLower(row.Login)
+			if row.ID <= 0 || strings.TrimSpace(login) == "" || seenIDs[row.ID] || seenLogins[login] {
+				return fmt.Errorf("GitHub collaborator list contains a missing or duplicate identity")
+			}
+			seenIDs[row.ID], seenLogins[login] = true, true
+			user, wanted := expected[row.ID]
+			if !wanted {
+				continue
+			}
+			wantAdmin := row.ID == admin.DatabaseID
+			role := "write"
+			if wantAdmin {
+				role = "admin"
+			}
+			p := row.Permissions
+			if !strings.EqualFold(row.Login, user.Login) || row.Type != "User" || row.RoleName != role ||
+				p.Pull == nil || !*p.Pull || p.Push == nil || !*p.Push || p.Admin == nil || *p.Admin != wantAdmin ||
+				(p.Maintain != nil && *p.Maintain != wantAdmin) || (p.Triage != nil && !*p.Triage) {
+				return fmt.Errorf("GitHub collaborator list did not confirm the standard %s role and flags for %s", role, user.Login)
 			}
 		}
-		path := "repos/" + target.Owner + "/" + target.Repository + "/collaborators/" + entry.user.Login + "/permission"
-		if err := r.gh.ghJSON(ctx, &permission, "api", "--hostname", r.host, "-H", riskRESTVersion, path); err != nil {
-			return fmt.Errorf("verify GitHub repository role: %w", err)
-		}
-		if permission.User.ID != entry.user.DatabaseID || !strings.EqualFold(permission.User.Login, entry.user.Login) ||
-			permission.User.Type != "User" || permission.Permission != entry.role || permission.RoleName != entry.role {
-			return fmt.Errorf("GitHub did not confirm the required standard %s role for %s", entry.role, entry.user.Login)
-		}
+	}
+	if !seenIDs[viewer.DatabaseID] || !seenIDs[admin.DatabaseID] {
+		return fmt.Errorf("GitHub collaborator list did not contain both verified residual-risk principals")
 	}
 	return nil
 }
@@ -146,7 +178,7 @@ type RiskPolicy struct {
 	RulesetID            int64               `json:"ruleset_id"`
 	UpdatedAt            time.Time           `json:"ruleset_updated_at"`
 	Strict               bool                `json:"strict"`
-	DoNotEnforceOnCreate bool                `json:"do_not_enforce_on_create"`
+	DoNotEnforceOnCreate *bool               `json:"do_not_enforce_on_create,omitempty"`
 	Required             []RiskRequiredCheck `json:"required"`
 }
 
@@ -217,13 +249,17 @@ func (r *ActivationRepo) RiskRequiredPolicy(ctx context.Context, target RepoTarg
 			}
 			var p struct {
 				Strict   *bool               `json:"strict_required_status_checks_policy"`
-				OnCreate *bool               `json:"do_not_enforce_on_create"`
+				OnCreate json.RawMessage     `json:"do_not_enforce_on_create"`
 				Checks   []RiskRequiredCheck `json:"required_status_checks"`
 			}
 			dec := json.NewDecoder(strings.NewReader(string(rule.Parameters)))
 			dec.DisallowUnknownFields()
-			if policy.RulesetID != 0 || dec.Decode(&p) != nil || p.Strict == nil || p.OnCreate == nil || len(p.Checks) == 0 {
+			if policy.RulesetID != 0 || dec.Decode(&p) != nil || p.Strict == nil || len(p.Checks) == 0 {
 				return RiskPolicy{}, fmt.Errorf("residual risk requires one verifiable, nonempty GitHub required-check rule")
+			}
+			var onCreate *bool
+			if p.OnCreate != nil && (json.Unmarshal(p.OnCreate, &onCreate) != nil || onCreate == nil) {
+				return RiskPolicy{}, fmt.Errorf("GitHub required-check rule do_not_enforce_on_create must be Boolean when supplied")
 			}
 			sort.Slice(p.Checks, func(i, j int) bool { return p.Checks[i].Context < p.Checks[j].Context })
 			for i, check := range p.Checks {
@@ -231,7 +267,7 @@ func (r *ActivationRepo) RiskRequiredPolicy(ctx context.Context, target RepoTarg
 					return RiskPolicy{}, fmt.Errorf("GitHub required checks must have unique contexts and a pinned app")
 				}
 			}
-			policy = RiskPolicy{RulesetID: rule.ID, Strict: *p.Strict, DoNotEnforceOnCreate: *p.OnCreate, Required: p.Checks}
+			policy = RiskPolicy{RulesetID: rule.ID, Strict: *p.Strict, DoNotEnforceOnCreate: onCreate, Required: p.Checks}
 		}
 	}
 	if policy.RulesetID == 0 {
