@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"regexp"
+	"strings"
 
 	"github.com/kninetimmy/orch/internal/gitops"
 	"github.com/kninetimmy/orch/internal/state"
@@ -101,15 +102,31 @@ func ReviewWorktree(ctx context.Context, env Env, reqJSON []byte) (*ReviewWorktr
 	if !headOIDPattern.MatchString(req.HeadOID) {
 		return nil, fmt.Errorf("%w: head_oid %q is not a full object id; pass the commit's complete hash, never an abbreviation or a ref name a concurrent verb could move", ErrBadRequest, req.HeadOID)
 	}
+	if req.IssueNumber <= 0 {
+		return nil, fmt.Errorf("%w: issue_number must be positive", ErrBadRequest)
+	}
 
 	// The phase gate is loadVerb's, not this verb's: a review checkout
 	// only makes sense for an issue whose PR is open and under review,
 	// the same pair the review verb accepts.
-	c, err := loadVerb(env, req.IssueNumber, []state.Phase{state.PhasePROpen, state.PhaseInReview}, false)
+	c, err := loadVerb(env, req.IssueNumber, []state.Phase{state.PhasePROpen, state.PhaseInReview, state.PhaseBlocked}, false)
 	if err != nil {
 		return nil, err
 	}
 	issue := c.issue()
+	if issue.Phase == state.PhaseBlocked {
+		block := issue.ActiveRiskBlock()
+		if block == nil || strings.EqualFold(req.HeadOID, block.RiskHold.HeadOID) {
+			return nil, fmt.Errorf("%w: a held issue only takes a review checkout for its different live head", ErrWrongPhase)
+		}
+		gh, err := openGitHub(ctx, env)
+		if err != nil {
+			return nil, err
+		}
+		if _, err := openRiskAudit(ctx, c, gh, req.HeadOID, false); err != nil {
+			return nil, err
+		}
+	}
 
 	git, err := gitops.Open(ctx, env.Runner, env.RepoRoot)
 	if err != nil {

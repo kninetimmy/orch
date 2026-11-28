@@ -334,6 +334,12 @@ approved ID.
 | Activation preflights and effects (`planGrant`, `RequireClean`, `CurrentBranch`, `MissingLabels`, `checkFixesMerged`, `memhubGate`, `RequireIgnored`, `EnsureLabelTaxonomy`, `EnterDelivery`, `CreateIssue`, `AddWorktree`, state/metrics/session and error recovery) | Before, grant/catalog/agent/clean checks preceded GitHub target resolution; after, Assist/no-lock and live target validation precede them so a drift refusal incurs neither grant lock nor external maintenance. Grants, catalog/rendered agents, cleanliness/default branch, area/merged-fixes/ignore checks all still apply. The fix binds area/fixes reads, taxonomy and issue creation by ID, without moving a phase: taxonomy is still the only pre-Delivery-lock mutation; the grant run is spent before the first issue; confirmed issue results are stored before worktree creation. Existing explicit recovery and saved state/lock on post-entry failure hold. |
 | `ContractVersion`, `ExecutionConfig`, `checkExecutionConfig`, `loadExecutionConfig`, `PlanRef`, status/approval evidence, resume | Before, contract 3 was executable; after, **every** lifecycle verb and resume require contract 4 with the existing execution fingerprint, versions and configuration checks. No persistent schema or record is migrated. Legacy reports remain readable and explicit abort is unchanged. Use the original engine for an active older run or abort/re-plan. |
 | Claude, Codex and OpenCode `orch-delivery` skills; `CheckSelectionWireVersions`; OpenCode doctor's skill markers | All gate consumers now require Gate 4, show the checkout, GitHub selector and ID, and echo the exact target in Activation 3. Native choice/approval policy, routing, existing other wire shapes and model pins hold. Doctor still checks real skill content, now with the ID in its target presentation marker. |
+
+Before [residual-risk support](residual-risk.md), Gate 4 and Activation 3
+carried this contract. After, Gate 5 also binds and presents the optional
+committed admin designation, and Activation 4 persists the verified repository
+ID with contract 5. The CLI/MCP target, human approval and workspace checks
+all still apply; older active runs are not migrated.
 | Claude `GRANTS.md` and `TestGrantActivationExampleMatchesEngine` | Before, the grant example omitted the checkout and GitHub target. After, it uses the same schema-3 request and exact target (including ID) as human activation. The grant statement, approver, stops, issuance/budget/merge policy and CLI-only scope are unchanged. The example now runs through `DecodeActivation` in the adapter test. |
 | OpenCode `smoke.mjs` gate consumer | The synthetic fixture still obtains execution metadata from a real gate without activating. Before, it needed no `gh`; after, the gate gets its target from scripted `gh` reads and the smoke verifies the v4 target, including ID. The smoke's plugin, lookup, release and guard coverage is not replaced. |
 | `README.md`, `ORCH-PRD.md`, this guide, `adapters/opencode/README.md`, `docs/review-evidence.md` | Historical gate/activation, launch-pin and approval-contract behavior remains recorded as before/after. Current source wires are distinguished from checkpoint/released wires. Checkout-specific OpenCode instructions now use project scope, with explicit one-entry global-pin removal. No installer, host settings, plugin registration, `orch_memhub` registration, dependency, CI or release change. |
@@ -451,12 +457,12 @@ the other sixteen tools retain their different schemas and annotations.
 | `orch_eval_status` | `{"run_id":"eval-aaaaaaaaaaaaaaaaaaaaaaaaaa"}` | `orch eval status --run ID --storage-root ROOT --json` (same retained report; MCP additionally checks repository identity) | 3 |
 | `orch_issue_context` | `{"issue_number":468}` | None; directly uses shared `run.IssueContext` | 1 |
 | `orch_eval_preview` | `{"plan_file":"plans/evaluation.json"}` | `orch eval preview --plan FILE --json` (same preparation; MCP additionally confines the proposal file and binds storage) | Existing proposal version 1, 2 or 3 |
-| `orch_plan_gate` | `{"plan":{...}}` | `orch run plan` (submitted plan JSON on stdin) | 4 |
+| `orch_plan_gate` | `{"plan":{...}}` | `orch run plan` (submitted plan JSON on stdin) | 5 (was 4) |
 | `orch_configure_step` | `{"schema_version":2,"answers":{}}` | `orch configure --step` (AnswerSet on stdin) | 2 |
 | `orch_configure_local_step` | `{"schema_version":2,"answers":{}}` | `orch configure-local --step` (AnswerSet on stdin) | 2 |
 | `orch_approval_status` | `{}` | None; directly combines shared `run.Status` and grant observation | 1 |
 | `orch_plan_validate` | `{"plan":{...}}` | None; directly uses shared `run.DecodePlan` and `PlanDoc.Validate` with fresh `config.Load` | 1 |
-| `orch_run_activate` | `{"schema_version":3,"plan":{...},"approval":{...}}` | `orch run activate` (activation request on stdin; MCP requires explicit human metadata and excludes grants) | 3 |
+| `orch_run_activate` | `{"schema_version":4,"plan":{...},"approval":{...}}` | `orch run activate` (activation request on stdin; MCP requires explicit human metadata and excludes grants) | 4 (was 3) |
 | `orch_run_dispatch` | `{"schema_version":4,"issue_number":493}` | `orch run dispatch` (same request on stdin) | 4 |
 
 For status, counterpart parity assumes the primary checkout: after #527 the CLI
@@ -1385,6 +1391,8 @@ the stable GitHub repository ID. It rechecks the target live. Before the #534
 write-binding fix, it pinned activation's GitHub operations to the checked
 selector; after, it pins them to the checked repository ID on that host.
 Existing activation result fields and partial-failure semantics hold.
+Residual-risk support moves the same request and result to schema 4 and retains
+all of these preconditions.
 
 First submit the plan to the separate effective-contract gate (`orch_plan_gate`
 or `orch run plan`), present the **entire gate** to the human and obtain their
@@ -1395,7 +1403,7 @@ itself, not an `activation_request` wrapper or a plan-file path:
 
 ```text
 {
-  "schema_version": 3,
+  "schema_version": 4,
   "plan": { ...the complete approved schema-1 PlanDoc... },
   "approval": {
     "plan_digest": "sha256:...the gate's effective-contract digest...",

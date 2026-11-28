@@ -369,7 +369,7 @@ func TestReviewStaleHeadIsPure(t *testing.T) {
 	root := setupDeliveryRepo(t, "r1", []state.Issue{fixtureIssue("a", 1, state.PhasePROpen)})
 	before := stateBytes(t, root)
 	script := &execxtest.Script{T: t, Calls: []execxtest.Call{ghAuth(), ghPRViewCall(10, "OPEN", "real-head")}}
-	_, err := Review(context.Background(), ghEnv(root, script), []byte(`{"schema_version":4,"issue_number":1,"reviewed_head_oid":"stale-head","verdict":"approve","summary":"s","reviewer":{"model":"claude-opus-4-8","effort":"high"},`+fixtureJudgments+`}`))
+	_, err := Review(context.Background(), ghEnv(root, script), []byte(`{"schema_version":5,"issue_number":1,"reviewed_head_oid":"stale-head","verdict":"approve","summary":"s","reviewer":{"model":"claude-opus-4-8","effort":"high"},`+fixtureJudgments+`}`))
 	if !errors.Is(err, ErrReviewStale) {
 		t.Fatalf("err = %v, want ErrReviewStale", err)
 	}
@@ -383,7 +383,7 @@ func TestReviewWrongReviewerIsPure(t *testing.T) {
 	root := setupDeliveryRepo(t, "r1", []state.Issue{fixtureIssue("a", 1, state.PhasePROpen)})
 	before := stateBytes(t, root)
 	script := &execxtest.Script{T: t} // fails before any gh call
-	_, err := Review(context.Background(), ghEnv(root, script), []byte(`{"schema_version":4,"issue_number":1,"reviewed_head_oid":"head","verdict":"approve","summary":"s","reviewer":{"model":"claude-haiku-4-5","effort":"low"},`+fixtureJudgments+`}`))
+	_, err := Review(context.Background(), ghEnv(root, script), []byte(`{"schema_version":5,"issue_number":1,"reviewed_head_oid":"head","verdict":"approve","summary":"s","reviewer":{"model":"claude-haiku-4-5","effort":"low"},`+fixtureJudgments+`}`))
 	if !errors.Is(err, ErrReviewerMismatch) {
 		t.Fatalf("err = %v, want ErrReviewerMismatch", err)
 	}
@@ -399,7 +399,7 @@ func TestReviewDistinguishesOpenCodeNoVariant(t *testing.T) {
 	root := setupDeliveryRepo(t, "r1", []state.Issue{issue})
 	before := stateBytes(t, root)
 	script := &execxtest.Script{T: t}
-	_, err := Review(context.Background(), ghEnv(root, script), []byte(`{"schema_version":4,"issue_number":1,"reviewed_head_oid":"head","verdict":"approve","summary":"s","reviewer":{"model":"openai/gpt-5.6-sol","no_variant":true},`+fixtureJudgments+`}`))
+	_, err := Review(context.Background(), ghEnv(root, script), []byte(`{"schema_version":5,"issue_number":1,"reviewed_head_oid":"head","verdict":"approve","summary":"s","reviewer":{"model":"openai/gpt-5.6-sol","no_variant":true},`+fixtureJudgments+`}`))
 	if !errors.Is(err, ErrReviewerMismatch) {
 		t.Fatalf("err = %v, want ErrReviewerMismatch", err)
 	}
@@ -417,7 +417,7 @@ func TestReviewBadVerificationIsBadRequestBeforeMutation(t *testing.T) {
 	root := setupDeliveryRepo(t, "r1", []state.Issue{fixtureIssue("a", 1, state.PhasePROpen)})
 	before := stateBytes(t, root)
 	script := &execxtest.Script{T: t}
-	req := `{"schema_version":4,"issue_number":1,"reviewed_head_oid":"head","verdict":"approve","summary":"s","reviewer":{"model":"claude-opus-4-8","effort":"high"},` + fixtureJudgments + `,"verifications":[{"name":"","result":"pass"}]}`
+	req := `{"schema_version":5,"issue_number":1,"reviewed_head_oid":"head","verdict":"approve","summary":"s","reviewer":{"model":"claude-opus-4-8","effort":"high"},` + fixtureJudgments + `,"verifications":[{"name":"","result":"pass"}]}`
 	_, err := Review(context.Background(), ghEnv(root, script), []byte(req))
 	if !errors.Is(err, ErrBadRequest) {
 		t.Fatalf("err = %v, want ErrBadRequest", err)
@@ -579,7 +579,7 @@ func TestReviewWritesSuppliedVerifications(t *testing.T) {
 		ghAuth(), ghPRViewCall(10, "OPEN", "head-oid-1"),
 		ghIssueViewCall(t, 1, "OPEN", body), ghSetIssueBodyCall(1), ghSetPRBodyCall(10),
 	}}
-	req := `{"schema_version":4,"issue_number":1,"reviewed_head_oid":"head-oid-1","verdict":"approve","summary":"looks good","reviewer":{"model":"claude-opus-4-8","effort":"high"},` + fixtureJudgments + `,"verifications":[{"name":"go test ./...","result":"pass","detail":"22 packages ok"}]}`
+	req := `{"schema_version":5,"issue_number":1,"reviewed_head_oid":"head-oid-1","verdict":"approve","summary":"looks good","reviewer":{"model":"claude-opus-4-8","effort":"high"},` + fixtureJudgments + `,"verifications":[{"name":"go test ./...","result":"pass","detail":"22 packages ok"}]}`
 	res, err := Review(context.Background(), ghEnv(root, script), []byte(req))
 	if err != nil {
 		t.Fatalf("Review: %v", err)
@@ -626,7 +626,7 @@ func TestReviewVerificationReplacesByName(t *testing.T) {
 		ghAuth(), ghPRViewCall(10, "OPEN", "head-oid-1"),
 		ghIssueViewCall(t, 1, "OPEN", body), ghSetIssueBodyCall(1), ghSetPRBodyCall(10),
 	}}
-	req := `{"schema_version":4,"issue_number":1,"reviewed_head_oid":"head-oid-1","verdict":"approve","summary":"looks good","reviewer":{"model":"claude-opus-4-8","effort":"high"},` + fixtureJudgments + `,"verifications":[{"name":"go test ./...","result":"pass","detail":"all green"}]}`
+	req := `{"schema_version":5,"issue_number":1,"reviewed_head_oid":"head-oid-1","verdict":"approve","summary":"looks good","reviewer":{"model":"claude-opus-4-8","effort":"high"},` + fixtureJudgments + `,"verifications":[{"name":"go test ./...","result":"pass","detail":"all green"}]}`
 	if _, err := Review(context.Background(), ghEnv(root, script), []byte(req)); err != nil {
 		t.Fatalf("Review: %v", err)
 	}
@@ -665,7 +665,7 @@ func TestReviewSummaryRoundTripsUnderReviewDetailCap(t *testing.T) {
 	if len(summary) >= reviewDetailCap {
 		t.Fatalf("fixture summary length %d must stay under reviewDetailCap %d", len(summary), reviewDetailCap)
 	}
-	req := fmt.Sprintf(`{"schema_version":4,"issue_number":1,"reviewed_head_oid":"head-oid-1","verdict":"approve","summary":%q,"reviewer":{"model":"claude-opus-4-8","effort":"high"},`+fixtureJudgments+`}`, summary)
+	req := fmt.Sprintf(`{"schema_version":5,"issue_number":1,"reviewed_head_oid":"head-oid-1","verdict":"approve","summary":%q,"reviewer":{"model":"claude-opus-4-8","effort":"high"},`+fixtureJudgments+`}`, summary)
 	if _, err := Review(context.Background(), ghEnv(root, script), []byte(req)); err != nil {
 		t.Fatalf("Review: %v", err)
 	}
@@ -709,7 +709,7 @@ func TestReviewSuppliedVerificationPreservesAcceptedDetail(t *testing.T) {
 				ghIssueViewCall(t, 1, "OPEN", body), ghSetIssueBodyCall(1), ghSetPRBodyCall(10),
 			}}
 			detail := strings.Repeat("界", length-1) + "😀"
-			req := fmt.Sprintf(`{"schema_version":4,"issue_number":1,"reviewed_head_oid":"head-oid-1","verdict":"approve","summary":"looks good","reviewer":{"model":"claude-opus-4-8","effort":"high"},`+fixtureJudgments+`,"verifications":[{"name":"go test","result":"pass","detail":%q}]}`, detail)
+			req := fmt.Sprintf(`{"schema_version":5,"issue_number":1,"reviewed_head_oid":"head-oid-1","verdict":"approve","summary":"looks good","reviewer":{"model":"claude-opus-4-8","effort":"high"},`+fixtureJudgments+`,"verifications":[{"name":"go test","result":"pass","detail":%q}]}`, detail)
 			if _, err := Review(context.Background(), ghEnv(root, script), []byte(req)); err != nil {
 				t.Fatalf("Review: %v", err)
 			}
@@ -743,7 +743,7 @@ func TestOverlongVerificationDetailRefusedBeforeMutation(t *testing.T) {
 		},
 		{
 			name: "review", phase: state.PhasePROpen,
-			request: `{"schema_version":4,"issue_number":1,"reviewed_head_oid":"head-oid-1","verdict":"approve","summary":"looks good","reviewer":{"model":"claude-opus-4-8","effort":"high"},` + fixtureJudgments + `,"verifications":[{"name":"first","result":"pass"},{"name":"long evidence","result":"pass","detail":%q}]}`,
+			request: `{"schema_version":5,"issue_number":1,"reviewed_head_oid":"head-oid-1","verdict":"approve","summary":"looks good","reviewer":{"model":"claude-opus-4-8","effort":"high"},` + fixtureJudgments + `,"verifications":[{"name":"first","result":"pass"},{"name":"long evidence","result":"pass","detail":%q}]}`,
 			run: func(env Env, request []byte) error {
 				_, err := Review(context.Background(), env, request)
 				return err
@@ -783,7 +783,7 @@ func TestOverlongVerificationDetailRefusedBeforeMutation(t *testing.T) {
 // name matching the review-cycle-<n> pattern Review generates, and one
 // matching the acceptance-criterion-<n> pattern Review writes for the
 // reviewer's per-criterion judgments.
-var engineOwnedVerificationNames = []string{"required-ci", "merge", "abandoned", "review-cycle-1", "acceptance-criterion-1", "plan-approval", "merge-approval", "ci-exception-1", "ci-exception-27", "merged-acknowledgment-1", "merged-acknowledgment-27"}
+var engineOwnedVerificationNames = []string{"required-ci", "merge", "abandoned", "review-cycle-1", "acceptance-criterion-1", "plan-approval", "merge-approval", "ci-exception-1", "ci-exception-27", "merged-acknowledgment-1", "merged-acknowledgment-27", "risk-hold-1", "risk-acceptance-27", "risk-review-42"}
 
 // TestReviewRejectsEngineOwnedVerificationNames proves a caller-supplied
 // verification whose name collides with an engine-owned entry is
@@ -795,7 +795,7 @@ func TestReviewRejectsEngineOwnedVerificationNames(t *testing.T) {
 			root := setupDeliveryRepo(t, "r1", []state.Issue{fixtureIssue("a", 1, state.PhasePROpen)})
 			before := stateBytes(t, root)
 			script := &execxtest.Script{T: t}
-			req := fmt.Sprintf(`{"schema_version":4,"issue_number":1,"reviewed_head_oid":"head","verdict":"approve","summary":"s","reviewer":{"model":"claude-opus-4-8","effort":"high"},`+fixtureJudgments+`,"verifications":[{"name":%q,"result":"pass"}]}`, name)
+			req := fmt.Sprintf(`{"schema_version":5,"issue_number":1,"reviewed_head_oid":"head","verdict":"approve","summary":"s","reviewer":{"model":"claude-opus-4-8","effort":"high"},`+fixtureJudgments+`,"verifications":[{"name":%q,"result":"pass"}]}`, name)
 			_, err := Review(context.Background(), ghEnv(root, script), []byte(req))
 			if !errors.Is(err, ErrBadRequest) {
 				t.Fatalf("err = %v, want ErrBadRequest", err)
@@ -857,7 +857,7 @@ func TestReviewStampsTheReviewedHead(t *testing.T) {
 		ghAuth(), ghPRViewCall(10, "OPEN", "head-oid-2"),
 		ghIssueViewCall(t, 1, "OPEN", body), ghSetIssueBodyCall(1), ghSetPRBodyCall(10),
 	}}
-	req := `{"schema_version":4,"issue_number":1,"reviewed_head_oid":"head-oid-2","verdict":"approve","summary":"looks good","reviewer":{"model":"claude-opus-4-8","effort":"high"},` + fixtureJudgments + `,"verifications":[{"name":"go test ./...","result":"pass"}]}`
+	req := `{"schema_version":5,"issue_number":1,"reviewed_head_oid":"head-oid-2","verdict":"approve","summary":"looks good","reviewer":{"model":"claude-opus-4-8","effort":"high"},` + fixtureJudgments + `,"verifications":[{"name":"go test ./...","result":"pass"}]}`
 	if _, err := Review(context.Background(), ghEnv(root, script), []byte(req)); err != nil {
 		t.Fatalf("Review: %v", err)
 	}
@@ -977,7 +977,7 @@ func TestVerificationInputRejectsACallerSuppliedCommitOID(t *testing.T) {
 		"review": {
 			fn:    func(ctx context.Context, e Env, b []byte) error { _, err := Review(ctx, e, b); return err },
 			phase: state.PhaseInReview,
-			req:   `{"schema_version":4,"issue_number":1,"reviewed_head_oid":"h","verdict":"approve","summary":"s","reviewer":{"model":"claude-opus-4-8","effort":"high"},` + fixtureJudgments + `,"verifications":[{"name":"go test","result":"pass","commit_oid":"claimed-head"}]}`,
+			req:   `{"schema_version":5,"issue_number":1,"reviewed_head_oid":"h","verdict":"approve","summary":"s","reviewer":{"model":"claude-opus-4-8","effort":"high"},` + fixtureJudgments + `,"verifications":[{"name":"go test","result":"pass","commit_oid":"claimed-head"}]}`,
 		},
 		"pr-open": {
 			fn:    func(ctx context.Context, e Env, b []byte) error { _, err := PROpen(ctx, e, b); return err },
@@ -1307,7 +1307,7 @@ func TestSelectionWireRequestVersionsRejectPrevious(t *testing.T) {
 
 func TestSelectionWireSchemaVersions(t *testing.T) {
 	got := []int{StatusSchemaVersion, GateSchemaVersion, DispatchSchemaVersion, EscalateSchemaVersion, ReviewSchemaVersion}
-	want := []int{4, 4, 4, 2, 4}
+	want := []int{4, 5, 4, 2, 5}
 	if !slices.Equal(got, want) {
 		t.Errorf("Selection wire versions = %v, want %v", got, want)
 	}

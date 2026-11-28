@@ -86,6 +86,11 @@ func Block(ctx context.Context, env Env, reqJSON []byte) (*BlockResult, error) {
 	case "secret":
 		cause = state.BlockSecret
 	}
+	if risk := issue.LatestRiskBlock(); risk != nil {
+		// A later blocker (including a run-stopping secret) cannot leave
+		// a previous residual-risk decision usable on the unchanged head.
+		risk.RiskHold.Invalidated = true
+	}
 	issue.SetBlock(cause, reason)
 	runStopped := req.Class == "secret"
 	if runStopped && c.st.Run.StoppedReason == "" {

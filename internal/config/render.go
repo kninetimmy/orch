@@ -97,6 +97,9 @@ func Render(c *Config) ([]byte, error) {
 			fmt.Fprintf(&b, "reason = %q\n", e.Reason)
 		}
 	}
+	if c.ResidualRisk != nil {
+		fmt.Fprintf(&b, "\n[residual_risk]\nadmin_user_id = %q\n", c.ResidualRisk.AdminUserID)
+	}
 
 	return []byte(b.String()), nil
 }

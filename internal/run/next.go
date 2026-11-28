@@ -143,6 +143,11 @@ func next(env Env, st *state.State, status *StatusDoc) (*NextDoc, error) {
 
 func nextIssue(run *state.Run, issue *state.Issue) NextAction {
 	a := NextAction{PlanID: issue.PlanID, IssueNumber: issue.Number, Phase: issue.Phase, Prerequisites: []string{}}
+	if issue.RiskReviewPending != nil && (issue.Phase == state.PhaseInReview || issue.Phase == state.PhasePROpen || canReviewWhileBlocked(issue)) {
+		a.Action, a.Reason = "retry-risk-review", "A residual-risk review has not finished writing its audit."
+		a.Prerequisites = []string{"Retry the exact review request on its original head and policy. Generic resume cannot complete it; preserve the audit and investigate any mismatch."}
+		return a
+	}
 	active := phaseAllowed(issue.Phase, []state.Phase{state.PhaseWorktreeReady, state.PhaseDispatched, state.PhasePROpen, state.PhaseInReview, state.PhaseAwaitingMerge})
 	if active {
 		if issue.Decision == nil {
@@ -193,11 +198,24 @@ func nextIssue(run *state.Run, issue *state.Issue) NextAction {
 		if repair := latestRepair(issue); repair != nil {
 			a.Prerequisites = append(a.Prerequisites, fmt.Sprintf("Review must acknowledge repair_number %d and supply fresh verification evidence for the repaired live head; pre-repair reviews and merge approvals cannot be reused.", repair.Number))
 		}
+		if b := issue.LatestRiskBlock(); b != nil {
+			if issue.LastReviewVerdict == VerdictRiskHold {
+				a.Prerequisites = append(a.Prerequisites, fmt.Sprintf("Dispatch a fresh independent reviewer with hold %d and its authenticated receipt, if still at the same head/repair. An approving review must explicitly address the hold (docs/residual-risk.md).", b.ID))
+			}
+			if a.Action == "merge-report" {
+				a.Prerequisites = []string{"Verify the strict nonempty GitHub required policy and exact-head SUCCESS at merge-report; manual CI is not available on the residual-risk path."}
+			}
+		}
 	case state.PhaseAwaitingMerge:
 		a.Action, a.Reason = "merge", "A merge report pinned this PR at the merge gate; it is not permission to merge."
 		a.Prerequisites = []string{"Present the report and obtain a separate approval before `orch run merge`; the engine must still verify the live PR head/required CI and confirm merge and issue closure."}
-		a.Prerequisites = append(a.Prerequisites, "If integration is needed even at this unchanged pinned head, obtain explicit human/Architect authorization and use `orch run repair` (docs/decision-block-recovery.md). It clears the old pin/verdict before writes and requires verification, fresh review/CI, a new merge report and new merge approval; resume alone does not authorize repair.")
 		a.ApprovalRequired = fmt.Sprintf("Fresh human approval for PR #%d at head %s with statement %q (or a separately valid existing grant contract, not evaluated here).", issue.PRNumber, issue.ApprovedHeadOID, MergeApprovalStatement)
+		if issue.LatestRiskBlock() != nil {
+			a.Prerequisites = append(a.Prerequisites, "Integration repair is unavailable after a recorded residual-risk hold (docs/residual-risk.md).")
+			a.ApprovalRequired = fmt.Sprintf("Separate fresh human approval after the residual-risk merge report for PR #%d at head %s with statement %q; no grant, manual CI, or already-merged recovery.", issue.PRNumber, issue.ApprovedHeadOID, MergeApprovalStatement)
+		} else {
+			a.Prerequisites = append(a.Prerequisites, "If integration is needed even at this unchanged pinned head, obtain explicit human/Architect authorization and use `orch run repair` (docs/decision-block-recovery.md). It clears the old pin/verdict before writes and requires verification, fresh review/CI, a new merge report and new merge approval; resume alone does not authorize repair.")
+		}
 		if repair := latestRepair(issue); repair != nil {
 			a.ApprovalRequired += fmt.Sprintf(" Approval must acknowledge repair_number %d and be dated after %s.", repair.Number, repair.At)
 		}
@@ -207,15 +225,26 @@ func nextIssue(run *state.Run, issue *state.Issue) NextAction {
 		a.ApprovalRequired = fmt.Sprintf("Explicit deletion confirmation with statement %q is required; guidance supplies no confirmation.", CleanupStatement)
 	case state.PhaseBlocked:
 		a.Blockers = []string{issue.BlockedReason}
-		if issue.DecisionPending() {
-			if len(issue.Blocks) == 0 {
+		if b := issue.ActiveRiskBlock(); b != nil {
+			a.Action, a.Reason = "accept-risk", "One residual review uncertainty is held; generic resolution and resume cannot discharge it."
+			a.Prerequisites = []string{fmt.Sprintf("Inspect the live head before using block %d. A different head needs fresh independent review, not this decision (docs/residual-risk.md).", b.ID)}
+			a.ApprovalRequired = fmt.Sprintf("A GitHub-authenticated COMMENT from the designated repository admin, with the exact challenge and explicit reason, is required for hold %d; this is not merge approval.", b.ID)
+			if b.RiskHold.Invalidated {
+				a.Action, a.Reason, a.ApprovalRequired = "review-changed-head-or-replan", "Another blocker invalidated this hold's eligibility.", ""
+				a.Prerequisites = []string{invalidatedRiskRecovery(b)}
+			}
+		} else if issue.DecisionPending() {
+			b := issue.CurrentBlock()
+			if b == nil {
 				a.Action, a.Reason = "replan", "The block cause is unknown; healthy artifacts cannot establish authorization."
 				a.Prerequisites = []string{"Preserve the run, then abort and re-plan; a legacy block cannot be resolved in place."}
 				a.ApprovalRequired = "Fresh human plan approval is required."
 			} else {
 				a.Action, a.Reason = "resolve-block", "The original block requires an explicit human/Architect decision, not operational recovery."
-				b := issue.Blocks[len(issue.Blocks)-1]
 				a.Prerequisites = []string{fmt.Sprintf("Resolve original block %d (%s) with `orch run resolve-block` only if approved scope and criteria remain unchanged, then use resume to reconcile artifacts; changed scope or criteria requires abort and fresh plan approval.", b.ID, b.Cause)}
+				if b.PausedRiskBlockID != 0 || len(stagedFirstHoldSecrets(issue)) != 0 {
+					a.Prerequisites = []string{secretRiskRecovery(b), "Changed scope or criteria require abort and fresh plan approval."}
+				}
 				a.ApprovalRequired = fmt.Sprintf("Record the human/Architect resolution and detail with statement %q; this inspection is not that decision.", ResolveBlockStatement)
 			}
 		} else {

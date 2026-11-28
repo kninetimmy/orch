@@ -18,8 +18,9 @@ the human; the executor cannot amend approved scope.
 ## Collect, then independently review
 
 1. The routed reviewer identifies missing evidence, its criteria and the full
-   reviewed PR head. The Architect transcribes the report into schema-4
-   `orch run review`, never substituting its own judgments.
+   reviewed PR head. Before residual-risk support this used schema 4; now the
+   Architect transcribes the same report into schema-5 `orch run review`,
+   never substituting its own judgments.
 2. The engine retains `in-review`, records the outcome and pending criterion
    numbers, and writes `review-evidence-<cycle>` alongside the existing review
    cycle/current criterion entries in the issue audit home and open PR mirror.
@@ -89,6 +90,9 @@ binds the checkout, GitHub selector and repository ID at the plan gate and
 activation. Contract-3 runs remain inspectable, not executable with the new
 engine; finish with the original engine or abort and obtain fresh approval.
 The evidence-only review rules do not change.
+After residual-risk support, Review **5** and approval contract **5** are
+required. Evidence-only behavior remains; [a residual-risk hold](residual-risk.md)
+cannot substitute for missing evidence or non-satisfied judgments.
 The optional review fields remain in state schema 6; manifest schema 5's
 generic verification format is unchanged. Contract-2 engines refuse contract-3
 runs before lifecycle saves could discard new fields/receipts. This engine

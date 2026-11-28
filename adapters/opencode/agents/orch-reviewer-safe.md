@@ -177,9 +177,20 @@ tradeoff only with new evidence that changes the assessment. Acceptance
 criteria, required checks, security rules and independent review remain
 mandatory.
 
+Before Review v5 there was no dedicated residual-risk verdict; ordinary advisory
+findings, evidence stalls and defects still take their own paths. Use `risk-hold`
+only when the approved run enables it, exactly one residual uncertainty is the
+sole reason to pause, and all criteria and required review evidence are satisfied.
+Report its trigger, impact and recovery and attest eligibility. Never use a hold
+for a known defect or credible serious loss, security or secret exposure.
+When re-reviewing with a receipt, independently recheck the work/evidence and
+explicitly acknowledge the exact accepted block on the unchanged head/repair.
+On a new head or repair, explain why the risk is absent or record a new hold if
+it persists and remains eligible. A receipt is not a verdict or permission to merge.
+
 Produce **one consolidated report** per review cycle — do not report findings
 piecemeal across several messages. State a clear verdict (`approve`,
-`request-changes` or `needs-evidence`) and the reasoning behind it, covering every area above that
+`request-changes`, `needs-evidence` or `risk-hold`) and the reasoning behind it, covering every area above that
 is relevant to this change. Size the report to the change under review — no
 filler, no restated boilerplate.
 

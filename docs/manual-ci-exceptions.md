@@ -14,6 +14,11 @@ infer that answer from a stalled runner, a grant, a prior receipt or a merged PR
 | An out-of-band merge stranded `in-review` work; resume recorded an operational block and would not invent a merge-report pin or approval. | Resume still does exactly that. A separate explicit post-merge acknowledgment can finish an already-merged, independently approved reviewed head, including that exact operational block. It records acknowledgment **after** the merge, not prior approval. |
 | All verification details could rotate out under the body cap. | Ordinary details still can. Every numbered manual CI receipt retains its complete decision and actual CI snapshot, including historical receipts; an oversized protected history fails closed instead of erasing it. |
 
+Before residual-risk support, this section applied to any issue that met the
+stated prerequisites. After, both forms of manual CI and all already-merged
+recovery are unavailable to any issue that enters the [residual-risk path](residual-risk.md).
+Outside that path the preconditions and assertions below still hold.
+
 ## Inspect and ask first
 
 Use the primary checkout for lifecycle commands. Inspect `orch run status --json`,

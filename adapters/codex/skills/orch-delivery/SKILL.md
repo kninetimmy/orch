@@ -38,7 +38,8 @@ faithfully.
 
 `orch run status --json` never reads stdin — call it bare.
 
-Selection-bearing wire versions are closed: StatusDoc `4`, GateDoc `4`, Dispatch `4`, Escalate `2`, Review `4`.
+Before residual-risk support the gate/activation/review versions were 4/3/4. Now:
+Selection-bearing wire versions are closed: StatusDoc `4`, GateDoc `5`, Dispatch `4`, Escalate `2`, Review `5`.
 Reject any other `schema_version` before reading or submitting a `Selection`.
 
 ## Questions and approvals
@@ -217,7 +218,7 @@ inherit.
 ## Plan gate
 
 Call `orch run plan` with the `PlanDoc` on stdin. The result is a
-`GateDoc` (`schema_version: 4`): `plan_digest`, `plan_title`, `host`, `target`
+`GateDoc` (`schema_version: 5`): `plan_digest`, `plan_title`, `host`, `target`
 (`{checkout, checkout_id, github: {host, owner, repository, id}}`),
 `config_revision`, `config_overrides`, `merge_strategy`, `execution`, `memhub`
 (`{mode, probe, recall, detail}`), `ci` (`{workflows_present, statement}`), and
@@ -270,12 +271,12 @@ current contract.
 
 Only after an actual affirmative human answer to the plan gate, call
 `orch run activate` with an `ActivationRequest`
-(`schema_version: 3`) carrying the **identical** `PlanDoc` just gated
+(`schema_version: 4`) carrying the **identical** `PlanDoc` just gated
 (same decoded content — the digest is recomputed server-side) plus:
 
 ```json
 {
-  "schema_version": 3,
+  "schema_version": 4,
   "plan": { "...": "the exact gated PlanDoc" },
   "approval": {
     "plan_digest": "sha256:...", "approved_by": "...",
@@ -294,18 +295,21 @@ Before GateDoc v3, the digest bound only the submitted plan; v3 bound the
 effective contract (submitted scope, engine-contributed criteria, routing and
 `execution` settings), not the checkout or GitHub destination. GateDoc v4
 binds that same contract plus the verified target, including the repository ID
-that distinguishes repositories at the same name. Present `execution` (all
+that distinguishes repositories at the same name. GateDoc v5 retains that
+binding and adds the committed residual-risk admin ID, when configured.
+Display `execution.residual_risk_admin_user_id` or say this action is off. Present `execution` (all
 six profiles, concurrency limit, merge strategy, memhub mode, and metrics
 setting) alongside the issues. Never compute approval from `PlanDoc.Digest`
 or reuse an old approval. The earlier byte-for-byte instruction is relaxed:
-JSON whitespace and object-key order do not change approval. Activation v1/v2,
+JSON whitespace and object-key order do not change approval. Activation v1–v3,
 missing or malformed identity, and target drift are refused; re-gate with
-matching engine and adapter versions and obtain fresh approval. Expect
-`ActivationResult` schema 3.
+matching engine and adapter versions and obtain fresh approval.
+Expect `ActivationResult` schema 4.
 
 Before state v6, v5 recorded the contract version and effective execution digest. State v6 retains them and adds block causes and resolution history; v4/v5 remain inspectable, but lifecycle verbs and resume refuse to hot-migrate them: finish using the original engine, or abort and re-plan. Effective configuration drift, including local overrides without a revision change, also requires restoring the approved settings or aborting and re-planning. This restriction applies to every lifecycle verb and resume; engine-authorized issue escalation within the approved profiles remains supported.
-Approval-contract v4 also refuses older approvals for every lifecycle verb and
-resume, even with state v6. Inspection and explicit abort remain available.
+Approval-contract v4 refused older approvals even with state v6.
+Approval-contract v5 also refuses older approvals (including active v4 runs)
+for every lifecycle verb and resume. Inspection and explicit abort remain available.
 
 `approved_by` = `git config
 user.name`, falling back to `"human"`. `approved_at` = current time as
@@ -513,8 +517,8 @@ OpenCode manual usage contracts are unchanged.
    already left, so you must track whichever value is current yourself:
 
    ```json
-   {"schema_version": 4, "issue_number": N, "reviewed_head_oid": "...",
-    "verdict": "approve|request-changes|needs-evidence", "summary": "...",
+   {"schema_version": 5, "issue_number": N, "reviewed_head_oid": "...",
+    "verdict": "approve|request-changes|needs-evidence|risk-hold", "summary": "...",
     "reviewer": {"model": "...", "effort": "..."},
     "judgments": [{"criterion": 1, "judgment": "satisfied|unsatisfied|wrong|unverified", "reason": "..."}],
     "verifications": [{"name": "...", "command": "...", "result": "...", "detail": "..."}]}
@@ -580,10 +584,11 @@ OpenCode manual usage contracts are unchanged.
    and independent review. Attribution is not authentication; the engine never
    executes supplied command text. Existing reviewer permissions, CI and human
    merge gates remain unchanged. At #528, Review v3/v4 or approval-contract v2/v3
-   mismatches failed explicitly. After #534, Review remains v4, and contract v4
-   is required for every lifecycle verb. On mismatch, preserve the run and use
+   mismatches failed explicitly. At #534, Review stayed v4, and contract v4
+   was required for every lifecycle verb. On mismatch, preserve the run and use
    its original engine, or abort and obtain fresh plan approval. Never migrate
-   an active run or replace its installed engine to continue it.
+   an active run or replace its installed engine to continue it. Now refuse mismatches with Review v5 or
+   approval contract v5 as well.
 
    `orch run pr-open` is not reachable a second time, so
    `verifications` is optional and takes pr-open's input shape — use
@@ -656,7 +661,27 @@ OpenCode manual usage contracts are unchanged.
     `true`, wrap up memhub (orch-architect: main checkout as cwd,
     Architect-only writes) before announcing the return to Assist.
 
+### Residual review risk hold
+
+Before Review v5 there was no dedicated hold: advisory findings continued,
+and missing evidence, fixes and generic blocks had their own paths. Those
+paths remain. For `risk-hold` or an issue with a prior hold, use
+[the shared engine procedure](../../../../docs/residual-risk.md). Preserve the
+routed verdict; require all criteria and tests to be satisfied. Credible serious
+loss, security/secret exposure and defects use their ordinary block/fix paths.
+Transcribe the hold payload, require Review result v5, and present its exact
+challenge, head and scope to the designated admin. The admin submits an unedited
+GitHub COMMENT in their own session. Validate it only via `orch run accept-risk`
+result v1; no local confirmation or caller name substitutes. A different head
+needs fresh independent review, not that decision. After acceptance, send its
+receipt to a fresh routed reviewer for an explicit `risk_follow_up` and unchanged
+technical checks. Use the separate human merge dialog after the strict merge
+report; `approved_at` must be later than `risk_merge_report_at`.
+
 ### Opt-in human CI exception / already-merged recovery
+
+These CI/recovery exceptions remain available outside the residual-risk path.
+On that path use neither exception, grant approval, nor generic block resolution.
 
 Before #517, pending/failing required CI had no manual continuation and an
 unpinned out-of-band merge remained blocked. Those remain the defaults. Only
@@ -740,8 +765,10 @@ does not resolve an issue decision.
 
 Read StatusDoc v4 for the issue's current `blocks` entry (its issue-local `id`,
 `cause`, original `reason`, and optional `resolution`). Present the original
-reason. Only after a human/Architect explicitly resolves that exact block while
-keeping approved scope and criteria unchanged, call `orch run resolve-block`:
+reason. Route `residual-review-risk` to the dedicated section above, not
+`resolve-block` or generic resume. Only after a human/Architect explicitly
+resolves the exact ordinary decision block while keeping approved scope and
+criteria unchanged, call `orch run resolve-block`:
 
 ```json
 {"schema_version": 1, "run_id": "...", "issue_number": N, "block_id": 1,

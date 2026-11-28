@@ -48,13 +48,14 @@ const (
 // from (PRD §8). The engine cannot verify a human; this is the
 // adapter's assertion, kept for the audit trail.
 type PlanRef struct {
-	Title           string    `json:"title"`
-	Digest          string    `json:"digest"`
-	ApprovedBy      string    `json:"approved_by"`
-	ApprovedAt      time.Time `json:"approved_at"`
-	ConfigRevision  string    `json:"config_revision"`
-	ContractVersion int       `json:"contract_version,omitempty"`
-	ExecutionDigest string    `json:"execution_digest,omitempty"`
+	Title              string    `json:"title"`
+	Digest             string    `json:"digest"`
+	ApprovedBy         string    `json:"approved_by"`
+	ApprovedAt         time.Time `json:"approved_at"`
+	ConfigRevision     string    `json:"config_revision"`
+	ContractVersion    int       `json:"contract_version,omitempty"`
+	ExecutionDigest    string    `json:"execution_digest,omitempty"`
+	GitHubRepositoryID string    `json:"github_repository_id,omitempty"`
 }
 
 // Phase is one issue's position in the Delivery lifecycle (PRD §12).
@@ -95,6 +96,7 @@ const (
 	// PhaseBlocked marks an issue awaiting recovery. Before v6, resume
 	// could clear every block; decisions now require an explicit resolution
 	// or fresh plan approval. Operational recovery still uses `orch resume`.
+	// A residual-risk decision is only eligible for the dedicated path.
 	PhaseBlocked Phase = "blocked"
 )
 
@@ -209,6 +211,10 @@ type Issue struct {
 	// shape. Contract v3 also fences review-evidence-unaware engines; ordinary
 	// reviews now persist their successfully audited head.
 	Repairs []IntegrationRepair `json:"repairs,omitempty"`
+	// Residual risk state is only written under approval contract v5.
+	RiskReviewPending *RiskReviewPending `json:"risk_review_pending,omitempty"`
+	RiskReviewDigest  string             `json:"risk_review_digest,omitempty"`
+	RiskMergeReportAt *time.Time         `json:"risk_merge_report_at,omitempty"`
 }
 
 // IntegrationRepair binds one authorization to the issue's immutable phase and
@@ -234,14 +240,18 @@ type Block struct {
 	Cause      string           `json:"cause"`
 	Reason     string           `json:"reason"`
 	Resolution *BlockResolution `json:"resolution,omitempty"`
+	RiskHold   *RiskHold        `json:"risk_hold,omitempty"`
+	// A later secret takes precedence without discharging this risk hold.
+	PausedRiskBlockID int `json:"paused_risk_block_id,omitempty"`
 }
 
 const (
-	BlockOperational = "operational"
-	BlockHuman       = "human-decision"
-	BlockWrong       = "wrong-criterion"
-	BlockArchitect   = "return-to-architect"
-	BlockSecret      = "secret"
+	BlockOperational  = "operational"
+	BlockHuman        = "human-decision"
+	BlockWrong        = "wrong-criterion"
+	BlockArchitect    = "return-to-architect"
+	BlockSecret       = "secret"
+	BlockResidualRisk = "residual-review-risk"
 )
 
 type BlockResolution struct {
@@ -251,29 +261,45 @@ type BlockResolution struct {
 	Statement  string `json:"statement"`
 }
 
+// CurrentBlock returns the block governing recovery, not necessarily the
+// newest record. Resolving a later secret returns control to the original hold.
+func (iss *Issue) CurrentBlock() *Block {
+	if iss.Phase != PhaseBlocked || len(iss.Blocks) == 0 {
+		return nil
+	}
+	b := &iss.Blocks[len(iss.Blocks)-1]
+	if b.PausedRiskBlockID != 0 && b.Resolution != nil {
+		return &iss.Blocks[b.PausedRiskBlockID-1]
+	}
+	return b
+}
+
 // DecisionPending fails closed for old blocks without structured provenance.
 // Observations can discharge operational blocks, never a decision.
 func (iss Issue) DecisionPending() bool {
 	if iss.Phase != PhaseBlocked {
 		return false
 	}
-	if len(iss.Blocks) == 0 {
-		return true
-	}
-	b := iss.Blocks[len(iss.Blocks)-1]
-	return b.Cause != BlockOperational && b.Resolution == nil
+	b := iss.CurrentBlock()
+	return b == nil || (b.Cause != BlockOperational && b.Resolution == nil)
 }
 
 // SetBlock is shared by every producer. A later failure cannot replace an
 // unresolved decision (including an old block whose cause is unknown).
+// A secret reported during a risk hold records a separate pending decision.
 func (iss *Issue) SetBlock(cause, reason string) {
+	pausedRiskBlockID := 0
 	if iss.DecisionPending() {
+		hold := iss.ActiveRiskBlock()
+		if cause != BlockSecret || hold == nil {
+			return
+		}
+		pausedRiskBlockID = hold.ID
+	}
+	if b := iss.CurrentBlock(); b != nil && b.Reason == reason && b.Cause == cause && b.Resolution == nil {
 		return
 	}
-	if iss.Phase == PhaseBlocked && iss.BlockedReason == reason && len(iss.Blocks) > 0 && iss.Blocks[len(iss.Blocks)-1].Cause == cause && iss.Blocks[len(iss.Blocks)-1].Resolution == nil {
-		return
-	}
-	iss.Blocks = append(iss.Blocks, Block{ID: len(iss.Blocks) + 1, Cause: cause, Reason: reason})
+	iss.Blocks = append(iss.Blocks, Block{ID: len(iss.Blocks) + 1, Cause: cause, Reason: reason, PausedRiskBlockID: pausedRiskBlockID})
 	iss.Phase = PhaseBlocked
 	iss.BlockedReason = reason
 }
@@ -388,15 +414,37 @@ func (r *Run) validateIssues() error {
 			}
 			switch b.Cause {
 			case BlockOperational, BlockHuman, BlockWrong, BlockArchitect, BlockSecret:
+				if b.RiskHold != nil {
+					return fmt.Errorf("issue %d: residual risk hold on an ineligible block", iss.Number)
+				}
+			case BlockResidualRisk:
+				if b.Resolution != nil || b.RiskHold == nil || !b.RiskHold.valid(iss) {
+					return fmt.Errorf("issue %d: invalid residual risk block", iss.Number)
+				}
 			default:
 				return fmt.Errorf("issue %d: unsupported block cause %q; preserve the run and use its original engine", iss.Number, b.Cause)
+			}
+			if id := b.PausedRiskBlockID; id != 0 {
+				if b.Cause != BlockSecret || id < 1 || id > j {
+					return fmt.Errorf("issue %d: invalid paused risk block reference", iss.Number)
+				}
+				prior, hold := iss.Blocks[j-1], iss.Blocks[id-1].RiskHold
+				if hold == nil || !hold.Invalidated || hold.Acceptance != nil ||
+					(prior.ID != id && (prior.PausedRiskBlockID != id || prior.Resolution == nil)) {
+					return fmt.Errorf("issue %d: secret must preserve the original invalidated risk hold", iss.Number)
+				}
 			}
 			if b.Resolution != nil && (b.Resolution.ResolvedBy == "" || b.Resolution.Detail == "" || b.Resolution.At == "" || b.Resolution.Statement != "resolve-block-without-scope-change") {
 				return fmt.Errorf("issue %d: invalid block resolution", iss.Number)
 			}
 		}
-		if iss.Phase == PhaseBlocked && len(iss.Blocks) > 0 && iss.BlockedReason != iss.Blocks[len(iss.Blocks)-1].Reason {
-			return fmt.Errorf("issue %d: blocked reason does not match its original block", iss.Number)
+		if p := iss.RiskReviewPending; p != nil && (!fullOID.MatchString(p.HeadOID) || p.RequestDigest == "" || p.At.IsZero() ||
+			p.FirstHoldBlockID < 0 || p.FirstHoldBlockID > len(iss.Blocks)+1 ||
+			(p.FirstHoldBlockID != 0 && (p.Challenge == "" || iss.LatestRiskBlock() != nil))) {
+			return fmt.Errorf("issue %d: invalid pending residual risk review", iss.Number)
+		}
+		if b := iss.CurrentBlock(); b != nil && iss.BlockedReason != b.Reason {
+			return fmt.Errorf("issue %d: blocked reason does not match its current block", iss.Number)
 		}
 		if !iss.Phase.Valid() {
 			return fmt.Errorf("issue %d (%s): invalid phase %q", i, iss.PlanID, iss.Phase)

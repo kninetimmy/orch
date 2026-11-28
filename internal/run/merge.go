@@ -100,6 +100,9 @@ func Merge(ctx context.Context, env Env, reqJSON []byte) (*MergeResult, error) {
 		return nil, err
 	}
 	issue := c.issue()
+	if issue.LatestRiskBlock() != nil {
+		return mergeResidualRisk(ctx, c, req)
+	}
 	if req.Approval.PRNumber != issue.PRNumber {
 		return nil, fmt.Errorf("%w: approval pr_number %d does not match issue #%d's PR %d", ErrMergeApproval, req.Approval.PRNumber, issue.Number, issue.PRNumber)
 	}

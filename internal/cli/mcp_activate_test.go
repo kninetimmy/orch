@@ -366,9 +366,9 @@ func mcpActivationRefusals(t *testing.T, ctx context.Context, root string, sessi
 	// Original bytes must reach DecodeActivation: the SDK's validation pass
 	// may otherwise normalize 3.0 or discard unknown nested fields.
 	for _, raw := range []string{
-		strings.Replace(string(request), `"schema_version":3`, `"schema_version":3.0`, 1),
-		strings.Replace(string(request), `"schema_version":3`, `"schema_version":2`, 1),
-		strings.Replace(string(request), `"schema_version":3`, `"schema_version":99`, 1),
+		strings.Replace(string(request), `"schema_version":4`, `"schema_version":4.0`, 1),
+		strings.Replace(string(request), `"schema_version":4`, `"schema_version":3`, 1),
+		strings.Replace(string(request), `"schema_version":4`, `"schema_version":99`, 1),
 		strings.Replace(string(request), `"host":`, `"unexpected":true,"host":`, 1),
 		strings.Replace(string(request), `"id":`, `"unexpected":true,"id":`, 1),
 		strings.Replace(string(request), `"read_only":`, `"unexpected":true,"read_only":`, 1),

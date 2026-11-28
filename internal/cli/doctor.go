@@ -564,6 +564,7 @@ func openCodeSkillContracts() []openCodeSkillContract {
 				fmt.Sprintf("Expect `ActivationResult` schema %d.", run.ActivationSchemaVersion),
 				fmt.Sprintf("`{\"schema_version\": %d, \"issue_number\": N}`. Result (`DispatchResult`)", run.DispatchSchemaVersion),
 				fmt.Sprintf("{\"schema_version\": %d, \"issue_number\": N, \"reviewed_head_oid\": \"...\"", run.ReviewSchemaVersion),
+				"`orch run accept-risk`",
 				fmt.Sprintf("{\"schema_version\": %d, \"issue_number\": N, \"trigger\": \"...\", \"detail\": \"...\"}", run.EscalateSchemaVersion),
 			},
 		},

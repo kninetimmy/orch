@@ -336,7 +336,7 @@ func cloneState(st *state.State) (*state.State, error) {
 // changed, so a converged resume can skip Save entirely. Only the fields
 // resume ever rewrites are compared.
 func applyOutcome(iss *state.Issue, o outcome) bool {
-	if iss.DecisionPending() {
+	if iss.DecisionPending() || iss.RiskReviewPending != nil {
 		return false
 	}
 	changed := false
@@ -370,6 +370,7 @@ func applyOutcome(iss *state.Issue, o outcome) bool {
 		iss.ApprovedHeadOID = ""
 		iss.LastReviewVerdict = ""
 		iss.ReviewedHeadOID = "" // pending evidence survives demotion
+		iss.RiskReviewDigest, iss.RiskMergeReportAt = "", nil
 		changed = true
 	}
 	// A blocked outcome records its reason; every other outcome clears any
@@ -403,10 +404,23 @@ func sameWork(iss *state.Issue, w approvedWork) bool {
 // blocked outcome is guarded so it can only land on an issue that
 // satisfies validateIssues (R1).
 func reconcileIssue(iss state.Issue, obs issueObservations) outcome {
+	if iss.RiskReviewPending != nil && !iss.DecisionPending() {
+		return outcome{action: ActionKept, phase: iss.Phase, reason: "unfinished residual-risk review audit; retry the exact review, not resume"}
+	}
 	if iss.DecisionPending() {
 		guidance := "human/Architect resolution required: use `orch run resolve-block` only if approved scope and criteria remain unchanged; otherwise return through plan approval"
-		if len(iss.Blocks) == 0 {
+		b := iss.CurrentBlock()
+		switch {
+		case b == nil:
 			guidance = "block cause is unknown; preserve the run and return through plan approval (`orch abort` then re-plan); do not infer authorization from healthy artifacts"
+		case b.PausedRiskBlockID != 0 || len(stagedFirstHoldSecrets(&iss)) != 0:
+			guidance = secretRiskRecovery(b)
+		case b.RiskHold != nil && iss.RiskReviewPending != nil:
+			guidance = "unfinished residual-risk review audit; retry the exact review, not resume"
+		case b.RiskHold != nil && b.RiskHold.Invalidated:
+			guidance = invalidatedRiskRecovery(b)
+		case b.RiskHold != nil:
+			guidance = "resume cannot discharge a residual-risk hold; use authenticated accept-risk or fresh independent review on a different live head (docs/residual-risk.md)"
 		}
 		return outcome{action: ActionBlocked, phase: state.PhaseBlocked, reason: iss.BlockedReason, warnings: []string{fmt.Sprintf("issue #%d: %s", iss.Number, guidance)}}
 	}
@@ -628,6 +642,9 @@ func reconcilePROpen(iss state.Issue, obs issueObservations) outcome {
 		}
 		// Rows 14/19: keep. CI is reported as observation only — resume
 		// never gates on CI.
+		if iss.LatestRiskBlock() != nil {
+			return outcome{action: ActionKept, phase: iss.Phase, reason: fmt.Sprintf("kept; PR #%d open; use the strict residual-risk gates", pr.Number)}
+		}
 		return outcome{action: ActionKept, phase: iss.Phase, reason: fmt.Sprintf("kept; PR #%d open (CI %s)", pr.Number, obs.ci)}
 	default:
 		return blockOut(fmt.Sprintf("PR #%d reads unexpected state %q", pr.Number, pr.State))
@@ -651,6 +668,9 @@ func reconcileAwaitingMerge(iss state.Issue, obs issueObservations) outcome {
 	switch pr.State {
 	case "MERGED":
 		if pr.HeadRefOid == iss.ApprovedHeadOID {
+			if iss.LatestRiskBlock() != nil {
+				return blockOut(fmt.Sprintf("PR #%d already reads MERGED on the residual-risk path; legacy merge recovery is not authorization; preserve the audit and investigate", pr.Number))
+			}
 			// Row 20: merged at the approved head. A closed issue here is
 			// normal (the Closes link), not a contradiction.
 			return outcome{action: ActionKept, phase: state.PhaseAwaitingMerge, reason: fmt.Sprintf("kept; PR #%d merged — re-run `orch run merge` with the recorded approval to finish issue closure", pr.Number)}
@@ -666,6 +686,9 @@ func reconcileAwaitingMerge(iss state.Issue, obs issueObservations) outcome {
 			return blockOut(fmt.Sprintf("issue #%d was closed outside orch before its PR #%d merged", iss.Number, pr.Number))
 		}
 		if pr.HeadRefOid == iss.ApprovedHeadOID {
+			if iss.LatestRiskBlock() != nil {
+				return outcome{action: ActionKept, phase: state.PhaseAwaitingMerge, reason: fmt.Sprintf("kept; PR #%d open at the approved head; integration repair is unavailable after a residual-risk hold", pr.Number)}
+			}
 			// Row 22 remains read-only reconciliation, not authorization to
 			// edit a pinned head. Repair is the explicit backwards transition.
 			return outcome{action: ActionKept, phase: state.PhaseAwaitingMerge, reason: fmt.Sprintf("kept; PR #%d open at the approved head; integration needed without a head change requires explicit `orch run repair` authorization", pr.Number)}
@@ -784,6 +807,9 @@ func anyObserves(issues []state.Issue) bool {
 // effectiveObsPhase is the phase an issue is observed as: a blocked issue
 // observes as its re-derived hypothesis so the right facts are read.
 func effectiveObsPhase(iss state.Issue) state.Phase {
+	if iss.RiskReviewPending != nil || iss.ActiveRiskBlock() != nil {
+		return state.PhasePlanned // no observations can discharge a residual-risk hold or audit retry
+	}
 	if iss.Phase == state.PhaseBlocked {
 		return derivedPhase(iss)
 	}
@@ -859,7 +885,7 @@ func observeIssue(ctx context.Context, gh *ghops.GH, git *gitops.Git, worktrees 
 		}
 		obs.prForBranch = pr
 	}
-	if readsCI(p) {
+	if readsCI(p) && iss.LatestRiskBlock() == nil {
 		ci, err := gh.RequiredCI(ctx, iss.PRNumber)
 		if err != nil {
 			return obs, err

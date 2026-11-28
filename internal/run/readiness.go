@@ -7,6 +7,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/kninetimmy/orch/internal/ghops"
 	"github.com/kninetimmy/orch/internal/lockfile"
 	"github.com/kninetimmy/orch/internal/manifest"
 	"github.com/kninetimmy/orch/internal/state"
@@ -86,12 +87,14 @@ func Readiness(ctx context.Context, env Env, issueNumber int) (*ReadinessDoc, er
 		return nil, ErrNoDeliveryRun
 	}
 	var issue *state.Issue
+	idx := -1
 	for i := range st.Run.Issues {
 		if st.Run.Issues[i].Number == issueNumber {
 			if issue != nil {
 				return nil, fmt.Errorf("%w: issue_number %d matches more than one run issue", ErrUnknownIssue, issueNumber)
 			}
 			issue = &st.Run.Issues[i]
+			idx = i
 		}
 	}
 	if issue == nil {
@@ -124,6 +127,13 @@ func Readiness(ctx context.Context, env Env, issueNumber int) (*ReadinessDoc, er
 	}
 	if issue.Phase == state.PhaseBlocked {
 		doc.Requirements = append(doc.Requirements, "The issue is blocked: "+issue.BlockedReason+"; inspection cannot resolve decisions or perform recovery.")
+		if b := issue.CurrentBlock(); b != nil && b.Resolution == nil && (b.PausedRiskBlockID != 0 || len(stagedFirstHoldSecrets(issue)) != 0) {
+			doc.Requirements = append(doc.Requirements, secretRiskRecovery(b))
+		} else if issue.RiskReviewPending != nil && canReviewWhileBlocked(issue) {
+			doc.Requirements = append(doc.Requirements, "Retry the exact staged review on its original head and policy; generic resume cannot complete it.")
+		} else if b := issue.ActiveRiskBlock(); b != nil && b.RiskHold.Invalidated && issue.RiskReviewPending == nil {
+			doc.Requirements = append(doc.Requirements, invalidatedRiskRecovery(b))
+		}
 	}
 	if !phaseAllowed(issue.Phase, []state.Phase{state.PhaseInReview, state.PhaseAwaitingMerge}) {
 		doc.MergeReport.Requirements = append(doc.MergeReport.Requirements, "A recorded approving review in phase in-review is required before merge-report; awaiting-merge identifies an already recorded gate.")
@@ -180,13 +190,29 @@ func Readiness(ctx context.Context, env Env, issueNumber int) (*ReadinessDoc, er
 		doc.Review.Current = false
 		doc.Review.Requirements = append(doc.Review.Requirements, err.Error())
 	}
-	summary, err := gh.RequiredCI(ctx, issue.PRNumber)
-	if err != nil {
-		return nil, fmt.Errorf("readiness required CI: %w", err)
+	var summary ghops.CISummary
+	if issue.LatestRiskBlock() != nil || issue.RiskReviewPending != nil {
+		doc.Limitations = append(doc.Limitations, "Residual-risk issues cannot use ordinary CI observations, a grant, manual CI, or already-merged recovery as authorization.")
+		if cfg != nil && issue.LatestRiskBlock() != nil && checkApprovingReview(issue) == nil && pr.State == "OPEN" {
+			vc := &verbCtx{env: env, cfg: cfg, st: st, idx: idx}
+			_, _, summary, err = verifyRiskMerge(ctx, vc, gh, pr.HeadRefOid)
+			if err != nil {
+				doc.MergeReport.Requirements = append(doc.MergeReport.Requirements, err.Error())
+			}
+		} else {
+			doc.MergeReport.Requirements = append(doc.MergeReport.Requirements, "A fresh, complete residual-risk approval is required before strict merge evidence can be verified.")
+		}
+	} else {
+		summary, err = gh.RequiredCI(ctx, issue.PRNumber)
+		if err != nil {
+			return nil, fmt.Errorf("readiness required CI: %w", err)
+		}
+		if err := requireMergeableCI(summary.State); err != nil {
+			doc.MergeReport.Requirements = append(doc.MergeReport.Requirements, err.Error())
+		}
 	}
-	doc.CI = &MergeReportCI{State: string(summary.State), Required: ciChecks(summary), Total: summary.Total}
-	if err := requireMergeableCI(summary.State); err != nil {
-		doc.MergeReport.Requirements = append(doc.MergeReport.Requirements, err.Error())
+	if summary.State != "" {
+		doc.CI = &MergeReportCI{State: string(summary.State), Required: ciChecks(summary), Total: summary.Total}
 	}
 	// Bracket CI/audit probes with PR reads; never attach their evidence to a
 	// different live head or a PR that closed while inspection was running.
@@ -197,7 +223,7 @@ func Readiness(ctx context.Context, env Env, issueNumber int) (*ReadinessDoc, er
 	if after.HeadRefOid != pr.HeadRefOid || after.State != pr.State || after.HeadRefName != pr.HeadRefName || after.URL != pr.URL || after.Body != pr.Body {
 		return nil, fmt.Errorf("PR #%d changed during readiness inspection; re-inspect its stable live head", pr.Number)
 	}
-	if cfg != nil {
+	if cfg != nil && doc.CI != nil {
 		doc.MergeReport.Preview = mergeReportResult(issue, pr, summary, cfg.Merge.Strategy, cfg.ConfigRevision)
 	}
 	doc.MergeReport.HeadCurrent = issue.ApprovedHeadOID != "" && issue.ApprovedHeadOID == pr.HeadRefOid
@@ -206,6 +232,10 @@ func Readiness(ctx context.Context, env Env, issueNumber int) (*ReadinessDoc, er
 		doc.MergeReport.Requirements = append(doc.MergeReport.Requirements, "The pinned merge-report head differs from the live PR head; the recorded gate is stale and must be refreshed through the normal workflow.")
 	}
 	finishReadiness(doc)
+	if issue.LatestRiskBlock() != nil {
+		doc.Merge.ApprovalRequired = "Separate fresh human approve-merge after a strict residual-risk merge report for the exact PR/head is required; this inspection and any GitHub risk COMMENT authorize no merge."
+		doc.Merge.Requirements[len(doc.Merge.Requirements)-1] = doc.Merge.ApprovalRequired
+	}
 	if repair := latestRepair(issue); repair != nil {
 		doc.Merge.ApprovalRequired += fmt.Sprintf(" Acknowledge repair_number %d and date the new approval after %s.", repair.Number, repair.At)
 		doc.Merge.Requirements = append(doc.Merge.Requirements, doc.Merge.ApprovalRequired)
@@ -283,7 +313,7 @@ func readinessReviewEvidence(issue *state.Issue, revision string, m manifest.Man
 		if err != nil || n < 1 || n > len(issue.AcceptanceCriteria) || v.CommitOID != evidence.CommitOID ||
 			(v.Result != JudgmentSatisfied && v.Result != JudgmentUnsatisfied && v.Result != JudgmentWrong && v.Result != JudgmentUnverified) ||
 			(evidence.Result == VerdictNeedsEvidence && v.Result != JudgmentSatisfied && v.Result != JudgmentUnverified) ||
-			(evidence.Result == VerdictApprove && v.Result != JudgmentSatisfied) {
+			((evidence.Result == VerdictApprove || evidence.Result == VerdictRiskHold) && v.Result != JudgmentSatisfied) {
 			return evidence, fmt.Errorf("audit review judgment %s contradicts the latest review verdict/commit", v.Name)
 		}
 	}
@@ -299,12 +329,12 @@ func sameReadinessAudit(a, b manifest.Manifest) bool {
 	a.Verifications = append([]manifest.Verification(nil), a.Verifications...)
 	b.Verifications = append([]manifest.Verification(nil), b.Verifications...)
 	for i := range a.Verifications {
-		if !reviewEvidenceNamePattern.MatchString(a.Verifications[i].Name) {
+		if !reviewEvidenceNamePattern.MatchString(a.Verifications[i].Name) && !riskAuditName.MatchString(a.Verifications[i].Name) {
 			a.Verifications[i].Detail = ""
 		}
 	}
 	for i := range b.Verifications {
-		if !reviewEvidenceNamePattern.MatchString(b.Verifications[i].Name) {
+		if !reviewEvidenceNamePattern.MatchString(b.Verifications[i].Name) && !riskAuditName.MatchString(b.Verifications[i].Name) {
 			b.Verifications[i].Detail = ""
 		}
 	}

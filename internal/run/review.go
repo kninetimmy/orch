@@ -29,14 +29,17 @@ import (
 // a stale adapter cannot submit an effort-only approximation.
 // v4 adds needs-evidence, unverified and head-bound execution_evidence. A v3
 // adapter must fail explicitly, not turn missing evidence into a code finding.
-const ReviewSchemaVersion = 4
+// v5 adds a dedicated non-approving residual-risk hold and follow-up.
+const ReviewSchemaVersion = 5
 
-// Before v4 there were two verdicts. NeedsEvidence now records a non-approving
-// evidence-only stall without requesting a code fix or granting authority.
+// Before v4 there were two verdicts. NeedsEvidence records an evidence-only
+// stall. Before v5 no verdict held one residual risk; RiskHold records it
+// without granting approval or requesting a fix cycle.
 const (
 	VerdictApprove        = "approve"
 	VerdictRequestChanges = "request-changes"
 	VerdictNeedsEvidence  = "needs-evidence"
+	VerdictRiskHold       = "risk-hold"
 )
 
 // Before v4 the three judgments were satisfied, unsatisfied and wrong.
@@ -100,6 +103,8 @@ type ReviewRequest struct {
 	// ExecutionEvidence identifies artifacts the routed reviewer evaluated, not
 	// commands for the engine to run. Attribution is not authenticated proof.
 	ExecutionEvidence []ExecutionEvidence `json:"execution_evidence,omitempty"`
+	RiskHold          *RiskHoldInput      `json:"risk_hold,omitempty"`
+	RiskFollowUp      *RiskFollowUp       `json:"risk_follow_up,omitempty"`
 	// Usage is adapter-reported model usage for this review cycle
 	// (PRD §21 "where available"); optional and best-effort. This is
 	// the reviewer's own usage — the cost of producing this review.
@@ -113,11 +118,10 @@ type ReviewRequest struct {
 	ExecutorUsage *metrics.Usage `json:"executor_usage,omitempty"`
 }
 
-// ReviewResult reports the recorded review cycle. Phase is the phase
-// the recording left the issue in, and WrongCriteria/BlockedReason are
-// populated only when a criterion was judged wrong: that outcome blocks
-// the issue for the human inside this call, so the result has to say so
-// — there is no second verb call left to report it.
+// ReviewResult reports the recorded review cycle and resulting phase.
+// WrongCriteria identifies wrongly judged criteria; BlockedReason
+// explains any block. RiskBlockID and RiskChallenge
+// identify a recorded residual-risk hold; neither supplies approval.
 type ReviewResult struct {
 	SchemaVersion      int         `json:"schema_version"`
 	IssueNumber        int         `json:"issue_number"`
@@ -128,6 +132,8 @@ type ReviewResult struct {
 	UnverifiedCriteria []int       `json:"unverified_criteria,omitempty"`
 	PendingEvidence    []int       `json:"pending_evidence,omitempty"`
 	BlockedReason      string      `json:"blocked_reason,omitempty"`
+	RiskChallenge      string      `json:"risk_challenge,omitempty"`
+	RiskBlockID        int         `json:"risk_block_id,omitempty"`
 }
 
 // Review records one consolidated review cycle (PRD §12 step 11). It
@@ -166,7 +172,13 @@ func Review(ctx context.Context, env Env, reqJSON []byte) (*ReviewResult, error)
 		return nil, fmt.Errorf("%w: schema_version %d is unsupported (this build supports %d)", ErrBadRequest, req.SchemaVersion, ReviewSchemaVersion)
 	}
 	if !reviewVerdict(req.Verdict) {
-		return nil, fmt.Errorf("%w: verdict %q is not one of %s, %s, %s", ErrBadRequest, req.Verdict, VerdictApprove, VerdictRequestChanges, VerdictNeedsEvidence)
+		return nil, fmt.Errorf("%w: verdict %q is not one of %s, %s, %s, %s", ErrBadRequest, req.Verdict, VerdictApprove, VerdictRequestChanges, VerdictNeedsEvidence, VerdictRiskHold)
+	}
+	if req.IssueNumber <= 0 {
+		return nil, fmt.Errorf("%w: issue_number must be positive", ErrBadRequest)
+	}
+	if (req.Verdict == VerdictRiskHold) != (req.RiskHold != nil) {
+		return nil, fmt.Errorf("%w: only risk-hold requires a risk_hold payload", ErrBadRequest)
 	}
 	if req.Summary == "" {
 		return nil, fmt.Errorf("%w: review summary must not be empty (PRD §12.11: one consolidated report per cycle)", ErrBadRequest)
@@ -185,11 +197,14 @@ func Review(ctx context.Context, env Env, reqJSON []byte) (*ReviewResult, error)
 		return nil, err
 	}
 
-	c, err := loadVerb(env, req.IssueNumber, []state.Phase{state.PhasePROpen, state.PhaseInReview}, false)
+	c, err := loadVerb(env, req.IssueNumber, []state.Phase{state.PhasePROpen, state.PhaseInReview, state.PhaseBlocked}, false)
 	if err != nil {
 		return nil, err
 	}
 	issue := c.issue()
+	if issue.Phase == state.PhaseBlocked && !canReviewWhileBlocked(issue) {
+		return nil, fmt.Errorf("%w: review while blocked requires an active residual-risk hold or an exact staged retry after explicit secret resolution", ErrWrongPhase)
+	}
 	if issue.Decision == nil {
 		return nil, fmt.Errorf("issue #%d has no routing decision; run `orch abort`", issue.Number)
 	}
@@ -246,6 +261,10 @@ func Review(ctx context.Context, env Env, reqJSON []byte) (*ReviewResult, error)
 		}
 	} else if req.RepairNumber != 0 {
 		return nil, fmt.Errorf("%w: no integration repair matches repair_number %d", ErrBadRequest, req.RepairNumber)
+	}
+
+	if req.Verdict == VerdictRiskHold || req.RiskFollowUp != nil || issue.LatestRiskBlock() != nil || issue.RiskReviewPending != nil {
+		return reviewRisk(ctx, c, gh, req, pending, unverified, wrong, repairVerified)
 	}
 
 	// Before v4 every non-approving verdict spent a grant fix cycle. Now
@@ -355,6 +374,24 @@ func Review(ctx context.Context, env Env, reqJSON []byte) (*ReviewResult, error)
 		}
 	}
 
+	if err := c.recordReviewMetrics(req, blockCause); err != nil {
+		return nil, err
+	}
+	return &ReviewResult{
+		SchemaVersion:      ReviewSchemaVersion,
+		IssueNumber:        issue.Number,
+		ReviewCycles:       issue.ReviewCycles,
+		Verdict:            req.Verdict,
+		Phase:              issue.Phase,
+		WrongCriteria:      wrong,
+		UnverifiedCriteria: unverified,
+		PendingEvidence:    pending,
+		BlockedReason:      issue.BlockedReason,
+	}, nil
+}
+
+func (c *verbCtx) recordReviewMetrics(req ReviewRequest, blockCause string) error {
+	issue := c.issue()
 	if err := c.recordMetric(metrics.Event{
 		Verb:             "review",
 		IssueNumber:      issue.Number,
@@ -364,7 +401,7 @@ func Review(ctx context.Context, env Env, reqJSON []byte) (*ReviewResult, error)
 		Usage:            req.Usage,
 		ReviewBlockCause: blockCause,
 	}); err != nil {
-		return nil, err
+		return err
 	}
 	// The executor's fix-cycle usage, when supplied, is recorded as its
 	// own event rather than folded into the reviewer's event above: the
@@ -380,21 +417,11 @@ func Review(ctx context.Context, env Env, reqJSON []byte) (*ReviewResult, error)
 			Role:         string(issue.Decision.Role),
 			Usage:        req.ExecutorUsage,
 		}); err != nil {
-			return nil, err
+			return err
 		}
 	}
 
-	return &ReviewResult{
-		SchemaVersion:      ReviewSchemaVersion,
-		IssueNumber:        issue.Number,
-		ReviewCycles:       issue.ReviewCycles,
-		Verdict:            req.Verdict,
-		Phase:              issue.Phase,
-		WrongCriteria:      wrong,
-		UnverifiedCriteria: unverified,
-		PendingEvidence:    pending,
-		BlockedReason:      issue.BlockedReason,
-	}, nil
+	return nil
 }
 
 // checkJudgments fails closed unless js carries exactly one judgment,
@@ -426,8 +453,8 @@ func checkJudgments(js []CriterionJudgment, verdict string, criteria []string) e
 			return fmt.Errorf("%w: criterion %d is judged more than once; each acceptance criterion takes exactly one judgment", ErrBadRequest, j.Criterion)
 		}
 		seen[j.Criterion] = true
-		if verdict == VerdictApprove && j.Judgment != JudgmentSatisfied {
-			return fmt.Errorf("%w: criterion %d is judged %s, so the verdict cannot be %s; record a non-approving verdict", ErrBadRequest, j.Criterion, j.Judgment, VerdictApprove)
+		if (verdict == VerdictApprove || verdict == VerdictRiskHold) && j.Judgment != JudgmentSatisfied {
+			return fmt.Errorf("%w: criterion %d is judged %s, so the verdict cannot be %s; record the applicable fix/evidence/block outcome", ErrBadRequest, j.Criterion, j.Judgment, verdict)
 		}
 		if verdict == VerdictNeedsEvidence && j.Judgment != JudgmentSatisfied && j.Judgment != JudgmentUnverified {
 			return fmt.Errorf("%w: evidence-only verdict cannot claim criterion %d is %s; record request-changes", ErrBadRequest, j.Criterion, j.Judgment)

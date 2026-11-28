@@ -18,7 +18,9 @@ import (
 // runs remain inspectable, not executable under changed approval semantics.
 // v4 binds the canonical primary checkout and GitHub repository (selector and
 // ID) at plan/activation.
-const ContractVersion = 4
+// v5 binds residual-risk policy and fences engines that cannot enforce its
+// held reviews, authenticated receipts and stricter merge path.
+const ContractVersion = 5
 
 // ExecutionConfig is the effective configuration approved for this run.
 // All six profiles are bound, including routes available to later escalation.
@@ -33,6 +35,7 @@ type ExecutionConfig struct {
 	MemhubMode           string          `json:"memhub_mode"`
 	MetricsEnabled       bool            `json:"metrics_enabled"`
 	BlastRadiusCriterion string          `json:"blast_radius_criterion"`
+	RiskAdminUserID      string          `json:"residual_risk_admin_user_id,omitempty"`
 }
 
 // Digest returns the canonical fingerprint persisted in the run's PlanRef.
@@ -43,12 +46,16 @@ func executionConfig(cfg *config.Config, host string) (ExecutionConfig, error) {
 	if err != nil {
 		return ExecutionConfig{}, err
 	}
-	return ExecutionConfig{
+	execution := ExecutionConfig{
 		Version: ContractVersion, Host: host, ConfigRevision: cfg.ConfigRevision,
 		Profiles: profile, MaxSubagents: cfg.Concurrency.MaxSubagents,
 		MergeStrategy: cfg.Merge.Strategy, MemhubMode: cfg.Memhub.Mode,
 		MetricsEnabled: cfg.Metrics.Enabled, BlastRadiusCriterion: BlastRadiusCriterion,
-	}, nil
+	}
+	if cfg.ResidualRisk != nil {
+		execution.RiskAdminUserID = cfg.ResidualRisk.AdminUserID
+	}
+	return execution, nil
 }
 
 // approvalContract binds submitted scope and the engine's effective result.

@@ -3,6 +3,7 @@ package run
 import (
 	"context"
 	"fmt"
+	"time"
 
 	"github.com/kninetimmy/orch/internal/ghops"
 	"github.com/kninetimmy/orch/internal/manifest"
@@ -31,18 +32,19 @@ type MergeReportCI struct {
 // MergeReportResult is the ready-to-merge report the adapter shows at the
 // human merge gate (PRD §8, §16).
 type MergeReportResult struct {
-	SchemaVersion  int                    `json:"schema_version"`
-	IssueNumber    int                    `json:"issue_number"`
-	PRNumber       int                    `json:"pr_number"`
-	PRURL          string                 `json:"pr_url"`
-	HeadOID        string                 `json:"head_oid"`
-	MergeStrategy  string                 `json:"merge_strategy"`
-	CI             MergeReportCI          `json:"ci"`
-	ReviewCycles   int                    `json:"review_cycles"`
-	ConfigRevision string                 `json:"config_revision"`
-	NoCIStatement  string                 `json:"no_ci_statement,omitempty"`
-	RepairNumber   int                    `json:"repair_number,omitempty"`
-	CIException    *manifest.Verification `json:"ci_exception,omitempty"`
+	SchemaVersion     int                    `json:"schema_version"`
+	IssueNumber       int                    `json:"issue_number"`
+	PRNumber          int                    `json:"pr_number"`
+	PRURL             string                 `json:"pr_url"`
+	HeadOID           string                 `json:"head_oid"`
+	MergeStrategy     string                 `json:"merge_strategy"`
+	CI                MergeReportCI          `json:"ci"`
+	ReviewCycles      int                    `json:"review_cycles"`
+	ConfigRevision    string                 `json:"config_revision"`
+	NoCIStatement     string                 `json:"no_ci_statement,omitempty"`
+	RepairNumber      int                    `json:"repair_number,omitempty"`
+	CIException       *manifest.Verification `json:"ci_exception,omitempty"`
+	RiskMergeReportAt *time.Time             `json:"risk_merge_report_at,omitempty"`
 }
 
 // MergeReport moves an approved, mergeable issue to awaiting-merge and
@@ -76,6 +78,10 @@ func MergeReport(ctx context.Context, env Env, reqJSON []byte) (*MergeReportResu
 	if err := checkApprovingReview(issue); err != nil {
 		return nil, err
 	}
+	risk := issue.LatestRiskBlock() != nil
+	if risk && req.CIException != nil {
+		return nil, fmt.Errorf("%w: residual-risk merge report cannot use a manual CI exception", ErrBadApproval)
+	}
 	if req.CIException != nil {
 		if err := checkHumanCIException(c, req.CIException, CIExceptionStatement); err != nil {
 			return nil, err
@@ -101,7 +107,14 @@ func MergeReport(ctx context.Context, env Env, reqJSON []byte) (*MergeReportResu
 	}
 	var summary ghops.CISummary
 	var receipt *manifest.Verification
-	if req.CIException == nil {
+	if risk {
+		_, _, summary, err = verifyRiskMerge(ctx, c, gh, pr.HeadRefOid)
+		if err != nil {
+			return nil, err
+		}
+		at := env.now()
+		issue.RiskMergeReportAt = &at
+	} else if req.CIException == nil {
 		summary, err = gh.RequiredCI(ctx, issue.PRNumber)
 		if err != nil {
 			return nil, err
@@ -150,15 +163,16 @@ func MergeReport(ctx context.Context, env Env, reqJSON []byte) (*MergeReportResu
 // MergeReport retains all of its preconditions and mutations above.
 func mergeReportResult(issue *state.Issue, pr ghops.PR, summary ghops.CISummary, strategy, revision string) *MergeReportResult {
 	result := &MergeReportResult{
-		SchemaVersion:  MergeReportSchemaVersion,
-		IssueNumber:    issue.Number,
-		PRNumber:       pr.Number,
-		PRURL:          pr.URL,
-		HeadOID:        pr.HeadRefOid,
-		MergeStrategy:  strategy,
-		CI:             MergeReportCI{State: string(summary.State), Required: ciChecks(summary), Total: summary.Total},
-		ReviewCycles:   issue.ReviewCycles,
-		ConfigRevision: revision,
+		SchemaVersion:     MergeReportSchemaVersion,
+		IssueNumber:       issue.Number,
+		PRNumber:          pr.Number,
+		PRURL:             pr.URL,
+		HeadOID:           pr.HeadRefOid,
+		MergeStrategy:     strategy,
+		CI:                MergeReportCI{State: string(summary.State), Required: ciChecks(summary), Total: summary.Total},
+		ReviewCycles:      issue.ReviewCycles,
+		ConfigRevision:    revision,
+		RiskMergeReportAt: issue.RiskMergeReportAt,
 	}
 	if summary.State == ghops.CINoChecks {
 		result.NoCIStatement = "no required CI checks gate this merge (PRD §16)"
@@ -175,7 +189,7 @@ func checkApprovingReview(issue *state.Issue) error {
 	if issue.LastReviewVerdict != VerdictApprove {
 		return fmt.Errorf("issue #%d has no approving review (last verdict %q); cannot report it ready to merge", issue.Number, issue.LastReviewVerdict)
 	}
-	if issue.ReviewedHeadOID == "" || len(issue.PendingEvidence) > 0 {
+	if issue.ReviewedHeadOID == "" || len(issue.PendingEvidence) > 0 || issue.RiskReviewPending != nil {
 		return fmt.Errorf("%w: issue #%d requires a fully recorded review with no pending evidence", ErrReviewStale, issue.Number)
 	}
 	if repair := latestRepair(issue); repair != nil {

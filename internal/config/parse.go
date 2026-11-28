@@ -2,10 +2,13 @@ package config
 
 import (
 	"fmt"
+	"regexp"
 	"strings"
 
 	"github.com/BurntSushi/toml"
 )
+
+var residualRiskUserID = regexp.MustCompile(`^[A-Za-z0-9_+/-]{1,128}={0,2}$`)
 
 // Parse decodes, defaults, and validates the configuration encoded in
 // data: unknown keys are rejected, PRD-specified defaults are applied
@@ -33,6 +36,9 @@ func Parse(data []byte) (*Config, error) {
 	}
 
 	applyDefaults(&cfg, md)
+	if cfg.ResidualRisk != nil && !residualRiskUserID.MatchString(cfg.ResidualRisk.AdminUserID) {
+		return nil, fmt.Errorf("residual_risk.admin_user_id must be a GitHub user node ID")
+	}
 	if err := validateHostSpecificKeys(&cfg, md); err != nil {
 		return nil, err
 	}
