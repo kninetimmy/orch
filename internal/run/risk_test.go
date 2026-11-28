@@ -510,7 +510,7 @@ func TestResidualRiskRefusesOtherBlocksAndEarlierException(t *testing.T) {
 	}
 }
 
-func TestResidualRiskInvalidatedByNewBlockOrRepairGeneration(t *testing.T) {
+func TestResidualRiskRefusesNewBlockOrMismatchedRepairGeneration(t *testing.T) {
 	t.Run("new blocker", func(t *testing.T) {
 		env, g, req, accept := newRiskFixture(t, true)
 		holdRisk(t, env, g, req)
@@ -521,12 +521,13 @@ func TestResidualRiskInvalidatedByNewBlockOrRepairGeneration(t *testing.T) {
 			t.Fatalf("accepted superseded blocker: %v", err)
 		}
 	})
-	t.Run("new repair", func(t *testing.T) {
+	t.Run("synthetic repair generation mismatch", func(t *testing.T) {
 		env, g, req, accept := newRiskFixture(t, true)
 		holdRisk(t, env, g, req)
 		if _, err := AcceptRisk(t.Context(), env, requestBytes(t, accept)); err != nil {
 			t.Fatal(err)
 		}
+		// Exercise the binding check, not a public Repair transition.
 		st := loadRun(t, env.RepoRoot)
 		issue := &st.Run.Issues[0]
 		issue.Repairs = []state.IntegrationRepair{{Number: 1, PhaseBefore: state.PhaseAwaitingMerge, HeadOID: riskHead, At: g.now.Format(time.RFC3339),
@@ -556,8 +557,22 @@ func TestResidualRiskApprovalChangedHeadMayExplainAbsence(t *testing.T) {
 	if _, err := AcceptRisk(t.Context(), env, requestBytes(t, accept)); !errors.Is(err, ErrWrongPhase) {
 		t.Fatalf("superseded hold got accepted: %v", err)
 	}
-	if _, err := MergeReport(t.Context(), env, requestBytes(t, MergeReportRequest{SchemaVersion: MergeReportSchemaVersion, IssueNumber: 1})); err != nil {
+	report, err := MergeReport(t.Context(), env, requestBytes(t, MergeReportRequest{SchemaVersion: MergeReportSchemaVersion, IssueNumber: 1}))
+	if err != nil {
 		t.Fatal(err)
+	}
+	repair := RepairRequest{RepairSchemaVersion, accept.RunID, 1, 1, state.PhaseAwaitingMerge, report.HeadOID,
+		"human", "Integrate the advanced base without changing approved work.", RepairStatement}
+	before := string(stateBytes(t, env.RepoRoot))
+	if _, err := Repair(t.Context(), env, requestBytes(t, repair)); !errors.Is(err, ErrBadApproval) || !strings.Contains(err.Error(), "unresolved block 1") {
+		t.Fatalf("public repair with a historical hold after fresh review and merge report: %v", err)
+	}
+	if string(stateBytes(t, env.RepoRoot)) != before {
+		t.Fatal("refused integration repair changed the run")
+	}
+	if doc, err := Next(t.Context(), env); err != nil ||
+		!strings.Contains(strings.Join(doc.Actions[0].Prerequisites, "\n"), "Integration repair is unavailable") {
+		t.Fatalf("next on the pinned risk-path head = %+v, %v", doc, err)
 	}
 }
 

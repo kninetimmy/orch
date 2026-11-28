@@ -336,7 +336,7 @@ func cloneState(st *state.State) (*state.State, error) {
 // changed, so a converged resume can skip Save entirely. Only the fields
 // resume ever rewrites are compared.
 func applyOutcome(iss *state.Issue, o outcome) bool {
-	if iss.DecisionPending() {
+	if iss.DecisionPending() || iss.RiskReviewPending != nil {
 		return false
 	}
 	changed := false
@@ -413,7 +413,7 @@ func reconcileIssue(iss state.Issue, obs issueObservations) outcome {
 		switch {
 		case b == nil:
 			guidance = "block cause is unknown; preserve the run and return through plan approval (`orch abort` then re-plan); do not infer authorization from healthy artifacts"
-		case b.PausedRiskBlockID != 0:
+		case b.PausedRiskBlockID != 0 || len(stagedFirstHoldSecrets(&iss)) != 0:
 			guidance = secretRiskRecovery(b)
 		case b.RiskHold != nil && iss.RiskReviewPending != nil:
 			guidance = "unfinished residual-risk review audit; retry the exact review, not resume"
@@ -686,6 +686,9 @@ func reconcileAwaitingMerge(iss state.Issue, obs issueObservations) outcome {
 			return blockOut(fmt.Sprintf("issue #%d was closed outside orch before its PR #%d merged", iss.Number, pr.Number))
 		}
 		if pr.HeadRefOid == iss.ApprovedHeadOID {
+			if iss.LatestRiskBlock() != nil {
+				return outcome{action: ActionKept, phase: state.PhaseAwaitingMerge, reason: fmt.Sprintf("kept; PR #%d open at the approved head; integration repair is unavailable after a residual-risk hold", pr.Number)}
+			}
 			// Row 22 remains read-only reconciliation, not authorization to
 			// edit a pinned head. Repair is the explicit backwards transition.
 			return outcome{action: ActionKept, phase: state.PhaseAwaitingMerge, reason: fmt.Sprintf("kept; PR #%d open at the approved head; integration needed without a head change requires explicit `orch run repair` authorization", pr.Number)}

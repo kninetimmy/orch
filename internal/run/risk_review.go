@@ -53,6 +53,26 @@ type riskHoldRecord struct {
 
 func boundedRiskText(s string) bool { return strings.TrimSpace(s) != "" && len(s) <= 2000 }
 
+// Only Secret decisions may intervene between staging the first hold and this retry.
+// The last one may still need explicit resolution.
+func stagedFirstHoldSecrets(is *state.Issue) []state.Block {
+	p := is.RiskReviewPending
+	if is.Phase != state.PhaseBlocked || p == nil || p.FirstHoldBlockID <= 0 || p.FirstHoldBlockID > len(is.Blocks) || is.LatestRiskBlock() != nil {
+		return nil
+	}
+	secrets := is.Blocks[p.FirstHoldBlockID-1:]
+	for i := range secrets {
+		if secrets[i].Cause != state.BlockSecret || (i < len(secrets)-1 && secrets[i].Resolution == nil) {
+			return nil
+		}
+	}
+	return secrets
+}
+
+func canReviewWhileBlocked(is *state.Issue) bool {
+	return is.ActiveRiskBlock() != nil || (len(stagedFirstHoldSecrets(is)) != 0 && !is.DecisionPending())
+}
+
 func reviewRisk(ctx context.Context, c *verbCtx, gh *ghops.GH, req ReviewRequest, pending, unverified, wrong []int, repairVerified bool) (*ReviewResult, error) {
 	is := c.issue()
 	head := req.ReviewedHeadOID
@@ -90,7 +110,8 @@ func reviewRisk(ctx context.Context, c *verbCtx, gh *ghops.GH, req ReviewRequest
 	}
 	stage := is.RiskReviewPending
 	retry := stage != nil
-	var interveningSecrets []state.Block
+	firstHoldSecrets := stagedFirstHoldSecrets(is)
+	interveningSecrets := firstHoldSecrets
 	if retry {
 		if stage.HeadOID != head || stage.RequestDigest != digest {
 			return nil, fmt.Errorf("%w: unfinished residual-risk audit requires the exact review retry; preserve it if its head or policy changed", ErrReviewStale)
@@ -109,6 +130,9 @@ func reviewRisk(ctx context.Context, c *verbCtx, gh *ghops.GH, req ReviewRequest
 				return nil, fmt.Errorf("generate residual risk challenge: %w", err)
 			}
 			stage.Challenge = hex.EncodeToString(challenge[:])
+			if is.LatestRiskBlock() == nil {
+				stage.FirstHoldBlockID = len(is.Blocks) + 1
+			}
 		}
 	}
 	stamp := stage.At.Format(time.RFC3339)
@@ -191,7 +215,7 @@ func reviewRisk(ctx context.Context, c *verbCtx, gh *ghops.GH, req ReviewRequest
 				return nil, err
 			}
 			hold = &state.RiskHold{HeadOID: head, ReviewCycle: cycle, RepairNumber: req.RepairNumber,
-				Challenge: stage.Challenge, AuditDigest: hash}
+				Challenge: stage.Challenge, AuditDigest: hash, Invalidated: len(firstHoldSecrets) != 0}
 		}
 	}
 	candidate := *is

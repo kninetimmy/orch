@@ -127,8 +127,10 @@ func Readiness(ctx context.Context, env Env, issueNumber int) (*ReadinessDoc, er
 	}
 	if issue.Phase == state.PhaseBlocked {
 		doc.Requirements = append(doc.Requirements, "The issue is blocked: "+issue.BlockedReason+"; inspection cannot resolve decisions or perform recovery.")
-		if b := issue.CurrentBlock(); b != nil && b.PausedRiskBlockID != 0 {
+		if b := issue.CurrentBlock(); b != nil && b.Resolution == nil && (b.PausedRiskBlockID != 0 || len(stagedFirstHoldSecrets(issue)) != 0) {
 			doc.Requirements = append(doc.Requirements, secretRiskRecovery(b))
+		} else if issue.RiskReviewPending != nil && canReviewWhileBlocked(issue) {
+			doc.Requirements = append(doc.Requirements, "Retry the exact staged review on its original head and policy; generic resume cannot complete it.")
 		} else if b := issue.ActiveRiskBlock(); b != nil && b.RiskHold.Invalidated && issue.RiskReviewPending == nil {
 			doc.Requirements = append(doc.Requirements, invalidatedRiskRecovery(b))
 		}

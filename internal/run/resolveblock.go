@@ -55,7 +55,7 @@ func ResolveBlock(_ context.Context, env Env, reqJSON []byte) (*ResolveBlockResu
 	if req.RunID != c.st.Run.ID || b == nil || req.BlockID != b.ID {
 		return nil, fmt.Errorf("%w: resolution must identify the current run, issue and original block; unknown legacy blocks require fresh plan approval", ErrBadApproval)
 	}
-	if b.Cause == state.BlockResidualRisk || (issue.RiskReviewPending != nil && b.PausedRiskBlockID == 0) {
+	if b.Cause == state.BlockResidualRisk || (issue.RiskReviewPending != nil && b.PausedRiskBlockID == 0 && len(stagedFirstHoldSecrets(issue)) == 0) {
 		return nil, fmt.Errorf("%w: generic resolution cannot discharge a residual-risk hold or finish its audit; see docs/residual-risk.md", ErrBadApproval)
 	}
 	if b.Cause == state.BlockOperational || b.Resolution != nil {
@@ -73,6 +73,9 @@ func ResolveBlock(_ context.Context, env Env, reqJSON []byte) (*ResolveBlockResu
 }
 
 func secretRiskRecovery(b *state.Block) string {
+	if b.PausedRiskBlockID == 0 {
+		return fmt.Sprintf("Resolve issue-level secret block %d with `orch run resolve-block` only if the approved scope and criteria remain unchanged. Releasing the global stop does not resolve this block. After resolution, retry the exact staged review on its original head and policy; the recovered hold cannot be accepted.", b.ID)
+	}
 	return fmt.Sprintf("Resolve issue-level secret block %d with `orch run resolve-block` before changed-head review, only if the approved scope and criteria remain unchanged. Releasing the global stop does not resolve this block. After resolution, hold %d still needs its changed-head review path; it cannot be accepted.", b.ID, b.PausedRiskBlockID)
 }
 

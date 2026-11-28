@@ -438,7 +438,9 @@ func (r *Run) validateIssues() error {
 				return fmt.Errorf("issue %d: invalid block resolution", iss.Number)
 			}
 		}
-		if p := iss.RiskReviewPending; p != nil && (!fullOID.MatchString(p.HeadOID) || p.RequestDigest == "" || p.At.IsZero()) {
+		if p := iss.RiskReviewPending; p != nil && (!fullOID.MatchString(p.HeadOID) || p.RequestDigest == "" || p.At.IsZero() ||
+			p.FirstHoldBlockID < 0 || p.FirstHoldBlockID > len(iss.Blocks)+1 ||
+			(p.FirstHoldBlockID != 0 && (p.Challenge == "" || iss.LatestRiskBlock() != nil))) {
 			return fmt.Errorf("issue %d: invalid pending residual risk review", iss.Number)
 		}
 		if b := iss.CurrentBlock(); b != nil && iss.BlockedReason != b.Reason {

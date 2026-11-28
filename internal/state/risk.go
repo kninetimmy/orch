@@ -26,6 +26,8 @@ type RiskReviewPending struct {
 	RequestDigest string    `json:"request_digest"`
 	At            time.Time `json:"at"`
 	Challenge     string    `json:"challenge,omitempty"`
+	// FirstHoldBlockID is the provisional receipt number before either mirror is written.
+	FirstHoldBlockID int `json:"first_hold_block_id,omitempty"`
 }
 
 func (h RiskHold) valid(issue Issue) bool {

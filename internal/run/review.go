@@ -202,8 +202,8 @@ func Review(ctx context.Context, env Env, reqJSON []byte) (*ReviewResult, error)
 		return nil, err
 	}
 	issue := c.issue()
-	if issue.Phase == state.PhaseBlocked && issue.ActiveRiskBlock() == nil {
-		return nil, fmt.Errorf("%w: only a residual-risk hold can take a fresh review on a different head while blocked", ErrWrongPhase)
+	if issue.Phase == state.PhaseBlocked && !canReviewWhileBlocked(issue) {
+		return nil, fmt.Errorf("%w: review while blocked requires an active residual-risk hold or an exact staged retry after explicit secret resolution", ErrWrongPhase)
 	}
 	if issue.Decision == nil {
 		return nil, fmt.Errorf("issue #%d has no routing decision; run `orch abort`", issue.Number)

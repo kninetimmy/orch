@@ -21,9 +21,13 @@ field for replacement work. Replayed resolutions cannot resolve a later block.
 Before Review v5, every known pending decision block went through this
 unauthenticated resolution. After, that remains true for the ordinary causes;
 `residual-review-risk` is reserved for [the authenticated GitHub path](residual-risk.md).
-Neither generic resolution nor resume discharges that hold. Repair still
-preserves the worktree and invalidates the old approval; for a residual-risk
-issue it also prevents reuse of acceptance across the new repair generation.
+Neither generic resolution nor resume discharges that hold. Previously all
+recorded decision blocks could be resolved before integration repair. Now
+`orch run repair` refuses an issue with any historical residual-risk block,
+even at a fresh merge pin, because that block cannot carry a generic resolution.
+Ordinary repair still preserves the worktree and invalidates the old approval.
+If repair was recorded before the first hold, the latest repair generation and
+fresh verification on the live reviewed revision still apply.
 
 A secret still stops the entire run. `orch resume --resume-stopped-run` lifts
 that run-level stop only; its issue decision still needs resolution. A later
@@ -39,6 +43,14 @@ The issue remains blocked on the original hold, which can no longer be
 accepted. Use fresh independent review of a different live head to address it,
 not generic resolution or resume. An interrupted review still needs its exact
 audit retry once the secret is resolved.
+
+Before the staged-first-hold fix, a Secret after the first partial audit write
+left the Secret unresolvable and the audit blocked. Now lift the run stop, then
+resolve that exact Secret after remediation. Until then neither review retry
+nor approval on a different head can progress. After resolution the issue
+stays blocked until the exact staged review finishes on its original head and
+policy. Both mirrors retain the review and one hold receipt under its final
+number. This records the hold without making it eligible for acceptance.
 
 ## Explicit integration repair
 
@@ -58,7 +70,8 @@ full `git rev-parse HEAD`, and (if present) the live PR head first.
 
 For a blocked issue, resolve any pending decision and run `orch resume` first.
 Repair does not accept `blocked`, unknown legacy blocks, or any other immutable
-phase besides the two named below. Pre-PR repair requires recovered block history,
+phase besides the two named below, and it refuses every issue with a recorded
+residual-risk hold. Pre-PR repair requires recovered block history,
 no recorded or live open PR, and preserved implementation commits. Ordinary initial
 work still uses dispatch.
 
@@ -192,7 +205,7 @@ driver, controller, dependency, model routing or host-isolation feature.
 
 | Element and consumers | Existing behavior retained / explicit change |
 | --- | --- |
-| `Repair`, `RepairRequest`, `RepairResult` | New schema 1 CLI engine transition only for recovered `worktree-ready` and pinned `awaiting-merge`. Exact authorization plus existing policy/artifact checks precede one atomic save. No autonomous action or git/GitHub mutation is introduced. |
+| `Repair`, `RepairRequest`, `RepairResult` | Schema 1 introduced repair for recovered `worktree-ready` and pinned `awaiting-merge`. After Review v5, those ordinary repair paths still work, but a historical residual-risk block cannot meet the resolved-history guard in either phase. Exact authorization plus existing policy/artifact checks still precede one atomic save. Repair performs no autonomous action or git/GitHub mutation. |
 | `state.Issue.Repairs`, `IntegrationRepair`, state validation | Optional v6 issue-local receipts add repair provenance and a post-repair verified head. No schema migration or new phase is added; existing block/resolution, attempt, routing and review-count histories are retained. Invalid receipt identity, phase, OIDs, actor/reason, timestamp and counts fail closed through **every** repair-aware `Load`/`Save` consumer, not only repair. Existing v4/v5 inspection/execution restrictions remain. |
 | `ContractVersion`, `ExecutionConfig`, approval/activation and compatibility gates | Before contract v2, older lifecycle engines could accept runs while discarding optional repair receipts. New approvals and execution fingerprints bind v2; existing `checkExecutionConfig` rejects v2 in v1 engines and v1 in v2 engines before lifecycle writes. This restriction covers **every** lifecycle verb, resume and next/readiness preflight, not only repair. Status/issue-context inspection remains available; explicit abort retains its reset behavior. Existing runs are not migrated: use their original engine or abort/re-plan. |
 | `loadVerb`, `checkApprovedWork`, `checkDependencies`, configuration checks | Reused unchanged, including lock ownership, stopped-run/config-drift refusals and dependency abandonment returning to the plan gate, with the versioned compatibility fence above. Repair does not exempt these checks. Session attribution and opt-in `recordMetric` retain existing behavior; enabled metrics add a `repair` event, disabled metrics stay disabled. |
