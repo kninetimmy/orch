@@ -24,6 +24,32 @@ generic failure cannot replace an unresolved decision or its reason. Legacy
 blocks with no cause cannot be guessed operational: preserve their artifacts
 and return through plan approval. No active run is migrated by this change.
 
+## When a new human-decision request is refused
+
+**Before:** With block schema 2, a distinct `orch run block` request of class
+`human-decision` could report success and update GitHub status and enabled
+metrics, even though the earlier decision was kept and the new one was not
+recorded. This also happened for legacy blocks with no recorded cause.
+
+**After:** A distinct explicit `human-decision` request is refused when any
+unresolved issue decision would prevent recording it. The refusal leaves run
+state, GitHub and metrics unchanged. An exact retry of a pending explicit
+`human-decision` (the same class and detail) still succeeds without adding a
+block. A `validation` or `other` block with the same detail is not an exact
+retry: those classes share the stored cause, not the original request class.
+
+Use `orch run status --json` to identify the original run, issue and block.
+Obtain the explicit unchanged-scope decision described above and record it
+with `orch run resolve-block`; do not resolve a block just to make room for
+another. Once the original decision is legitimately resolved, resubmit the
+refused schema-2 request. It records a new unresolved block with its own ID;
+the old resolution stays with the original block. No resume is needed just
+to record the new block, but ordinary recovery still requires `orch resume`
+to reconcile artifacts. If a secret stopped the run, lift the run stop
+explicitly before resolving the issue decision. For a legacy block with no
+recorded cause, preserve artifacts and return through fresh plan approval
+instead of trying to resolve it in place.
+
 ## Explicit integration repair
 
 Two historical continuations were insufficient:
@@ -161,16 +187,19 @@ CI acceptance is separate too; neither path waives the repair gates above.
 | All `state.Load` consumers | `run.Status`, CLI status/doctor/hook, configuration's active-run guard, bootstrap configure, and the activation gate still inspect state without authorizing work. Lifecycle `loadVerb` (dispatch, PR open, review-worktree, review, escalation, CI, merge report/merge, block, abandon, cleanup, complete, now resolve-block) and `resumeLoad` still enforce `checkExecutionConfig`; v4/v5 cannot execute with the v6 engine. `guard.Checker` binds `loadState` to `state.Load`; its containment and writable-phase rules still deny blocked worktrees. `state.Abort` and `CompleteDelivery` also load through this boundary; explicit abort retains its existing reset behavior, while completion still requires its consistency checks. Unsupported data cannot become permission to write. |
 | `Review` wrong judgments | Before it blocked, but healthy recovery erased the decision. Now it creates `wrong-criterion` provenance. Criterion coverage, independent reviewer checks, recorded judgments and needs-human labeling remain. Review request/result v3 is unchanged. |
 | `escalateReturnToArchitect` | Before ambiguity/exhaustion recorded a reason susceptible to recovery. Now it creates `return-to-architect` provenance. Rerouting and failed-attempt retirement remain unchanged; resolution does not reset attempts. Escalation wire v2 is unchanged. |
-| `Block` | Before schema 1 re-blocking overwrote any reason. Schema 2 keeps unresolved decisions. `hook`, `auth`, `github` are operational; `secret`, `validation`, `other`, `human-decision` require a decision. Secret run-stop, branch/worktree preservation and stopped-run exception remain. A later secret also preserves an existing run-stop reason. |
+| `Block`, `BlockRequest`, `BlockResult`, `BlockSchemaVersion`, `blockClasses` | Before schema 1 re-blocking overwrote any reason. Schema 2 keeps unresolved decisions. `hook`, `auth`, `github` are operational; `secret`, `validation`, `other`, `human-decision` require a decision. Secret run-stop, branch/worktree preservation and stopped-run exception remain. A later secret also preserves an existing run-stop reason. The new refusal applies only to `Block` with the explicit `human-decision` class, against any pending decision. It does not change other classes, class-to-cause mappings, other producers' use of `SetBlock`, or the schema-2 request/result. |
+| `loadVerb`, `loadVerbContext`, `recordArchitectSession` | The same run/lock, configuration, stopped-run and issue/phase checks apply. Only the explicit `human-decision` path defers optional Claude session attribution until its decision check passes. Other classes and verbs keep the prior attribution timing. |
+| `openGitHub`, `verbCtx.save`, `ghops.GH.SetStatus`, `verbCtx.recordMetric` | A refused decision reaches none of these. Accepted block requests, including exact retries, still open GitHub, save state, update the issue status and record the opt-in block event in the same order. |
 | `Resume`, `reconcileIssue`, `rederive`, `applyOutcome`, `sameWork` | Before schema 1 re-derived all blocks and copied approved work from audit bodies. Schema 2 only re-derives operational or explicitly resolved blocks and rejects edited/missing approved text. Sticky reasons survive missing artifacts, dry runs and repetition. Observation remains read-only, transport errors remain no-write failures, and operational recovery, orphan adoption, approved-head demotion and merge gates remain. All four approved-work fields, including the CI exclusion declaration, are checked. |
 | `ResolveBlock` and CLI `runVerbs` | New schema 1 operation records only the decision for the exact current block. It shares serialization, execution-config, phase and stopped-run checks with every mutating lifecycle verb. It performs no git/GitHub changes. Disabled metrics remain disabled; enabled metrics record the new verb using the existing event shape. |
 | `StatusDoc`, CLI resume rendering, all three host skills | Before StatusDoc v3 exposed state v5 approvals. StatusDoc v4 preserves them and exposes v6 block history; resume report v2 retains the report fields and adds the stronger semantics. Claude, Codex and OpenCode require matching versions and the same resolution/re-plan discipline. OpenCode's native Selection shapes and JavaScript plugin are unchanged. Doctor derives required skill versions from engine constants. |
 | Abandonment, cleanup, abort, completion | Existing explicit abandonment/cleanup gates remain. Abandonment can terminate an issue without resolving its decision; its original block evidence stays in state until the normal run termination. Abort is still the explicit path to a new approved plan; no automatic deletion or migration was added. |
-| Tests and fixtures | The actual review-gap reproduction failed before the fix. Tests now cover real block producers through reload/resume, legacy unknowns, repeated/dry runs, generic failures, operational recovery, exact resolution and scope drift. Operational seed fixtures now say so explicitly; the former repopulation test now verifies refusal. CLI routing and schema checks remain. |
+| Tests and fixtures | The actual review-gap reproduction failed before the fix. Tests now cover real block producers through reload/resume, legacy unknowns, repeated/dry runs, generic failures, operational recovery, exact resolution and scope drift. Operational seed fixtures now say so explicitly; the former repopulation test now verifies refusal. CLI routing and schema checks remain. Block tests also reproduce the false success and verify refusal before state, GitHub or metrics changes, exact retry, new unresolved history after resolution, and preserved behavior for all other classes. |
 
-These restrictions cover every decision block and every lifecycle mutation,
-not only `Review`, `Dispatch`, or one host. The implementation adds no budget
-driver, controller, dependency, model routing or host-isolation feature.
+The shared restrictions cover every decision block and every lifecycle mutation,
+not only `Review`, `Dispatch`, or one host. The new request refusal is narrower:
+it applies only to the explicit class described above. The implementation adds
+no budget driver, controller, dependency, model routing or host-isolation feature.
 
 ### Integration-repair blast radius
 
