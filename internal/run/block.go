@@ -47,6 +47,8 @@ type BlockResult struct {
 // branch and worktree. It is the only mutating verb allowed on a stopped
 // run, and it accepts any non-terminal phase including blocked. Before v2,
 // re-block updated the reason; now unresolved decisions retain their reason.
+// A distinct explicit human-decision is refused if it would not be recorded;
+// an exact retry still succeeds without adding a decision.
 // A secret block also stops the whole run (PRD §16),
 // after which every other mutating verb fails closed until the human
 // recovers. Unaffected issues continue unless the run stopped.
@@ -65,11 +67,27 @@ func Block(ctx context.Context, env Env, reqJSON []byte) (*BlockResult, error) {
 		return nil, fmt.Errorf("%w: block detail must not be empty", ErrBadRequest)
 	}
 
-	c, err := loadVerb(env, req.IssueNumber, nonTerminalPhases, true)
+	explicitDecision := req.Class == "human-decision"
+	c, err := loadVerbContext(env, req.IssueNumber, nonTerminalPhases, true, !explicitDecision)
 	if err != nil {
 		return nil, err
 	}
 	issue := c.issue()
+	reason := fmt.Sprintf("%s: %s", req.Class, req.Detail)
+	if explicitDecision {
+		if issue.DecisionPending() {
+			if len(issue.Blocks) == 0 {
+				return nil, fmt.Errorf("issue #%d: new human-decision was not recorded; the existing issue decision has no recorded cause and must be addressed first: preserve its artifacts and return through fresh plan approval", issue.Number)
+			}
+			b := issue.Blocks[len(issue.Blocks)-1]
+			if b.Cause != state.BlockHuman || b.Reason != reason {
+				return nil, fmt.Errorf("issue #%d: new human-decision was not recorded; the existing issue decision (block %d, %s) must be addressed first", issue.Number, b.ID, b.Cause)
+			}
+		}
+		if err := recordArchitectSession(env, c.cfg, c.st.Run); err != nil {
+			return nil, err
+		}
+	}
 
 	// Open gh before mutating state so an unavailable GitHub leaves the
 	// run untouched (fail closed, no side effect).
@@ -78,7 +96,6 @@ func Block(ctx context.Context, env Env, reqJSON []byte) (*BlockResult, error) {
 		return nil, err
 	}
 
-	reason := fmt.Sprintf("%s: %s", req.Class, req.Detail)
 	cause := state.BlockHuman
 	switch req.Class {
 	case "hook", "auth", "github":

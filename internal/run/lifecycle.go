@@ -105,6 +105,12 @@ func (c *verbCtx) worktreeAbs() string {
 // It returns the loaded context; the verb performs its ordered
 // operations and persists on the success path.
 func loadVerb(env Env, issueNumber int, allowed []state.Phase, exemptStop bool) (*verbCtx, error) {
+	return loadVerbContext(env, issueNumber, allowed, exemptStop, true)
+}
+
+// loadVerbContext lets Block defer session attribution until after its
+// decision preflight, which must leave even opt-in metrics untouched.
+func loadVerbContext(env Env, issueNumber int, allowed []state.Phase, exemptStop, recordSession bool) (*verbCtx, error) {
 	st, err := state.Load(env.RepoRoot)
 	if err != nil {
 		return nil, err
@@ -129,8 +135,10 @@ func loadVerb(env Env, issueNumber int, allowed []state.Phase, exemptStop bool) 
 		return nil, fmt.Errorf("%w (%s); run `orch abort` to return to assist, or `orch resume` to continue", ErrRunStopped, st.Run.StoppedReason)
 	}
 
-	if err := recordArchitectSession(env, cfg, st.Run); err != nil {
-		return nil, err
+	if recordSession {
+		if err := recordArchitectSession(env, cfg, st.Run); err != nil {
+			return nil, err
+		}
 	}
 
 	c := &verbCtx{env: env, cfg: cfg, st: st, owner: owner, idx: -1}
